@@ -1,5 +1,6 @@
 import Link from "next/link";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
+import RunAnalysisButton from "./RunAnalysisButton";
 import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-access";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import type { AiRecommendationRecord } from "@/features/ai/server/types";
@@ -122,6 +123,7 @@ export default async function GuidedOnboardingAnalysisSummaryPage({ params }: Pr
           ProFixIQ AI Business Analysis reviews the customers, vehicles, history, invoices, parts, and shop defaults that were imported or configured during guided setup. It recommends next actions for the shop; it does not auto-create operational records.
         </p>
         <div className="mt-5 flex flex-wrap items-center gap-3">
+          <RunAnalysisButton sessionId={sessionId} hasRecommendations={recommendations.length > 0} />
           <Link href="/dashboard/ai-recommendations" className="rounded-full border border-orange-300/35 bg-orange-300/10 px-4 py-2 text-sm font-semibold text-orange-100 transition hover:bg-orange-300/20">
             Open AI Recommendations
           </Link>

@@ -102,14 +102,12 @@ describe("guided onboarding AI Business Analysis page", () => {
     expect(source).toContain('href="/dashboard/ai-recommendations"');
   });
 
-  it("does not add generation or POST behavior", () => {
+  it("keeps recommendation creation out of the server-rendered page", () => {
     const source = read("app/dashboard/onboarding-v2/[sessionId]/summary/page.tsx");
 
-    expect(source).not.toContain("method: \"POST\"");
-    expect(source).not.toContain("method: 'POST'");
-    expect(source).not.toContain("Run Analysis");
     expect(source).not.toContain("createAiRecommendation");
     expect(source).not.toContain("insert(");
+    expect(source).not.toContain("runGuidedOnboardingAnalysis(");
   });
 
   it("keeps Staff removed and Shop Settings before AI Analysis", () => {
@@ -123,5 +121,69 @@ describe("guided onboarding AI Business Analysis page", () => {
       "analysis",
     ]);
     expect(GUIDED_ONBOARDING_STEP_KEYS).not.toContain("staff");
+  });
+});
+
+describe("guided onboarding deterministic analysis phase 2", () => {
+  it("adds an explicit run button without running analysis automatically on page load", () => {
+    const pageSource = read("app/dashboard/onboarding-v2/[sessionId]/summary/page.tsx");
+    const buttonSource = read("app/dashboard/onboarding-v2/[sessionId]/summary/RunAnalysisButton.tsx");
+
+    expect(pageSource).toContain("<RunAnalysisButton");
+    expect(buttonSource).toContain("Run AI Business Analysis");
+    expect(buttonSource).toContain("Re-run analysis");
+    expect(buttonSource).toContain("method: \"POST\"");
+    expect(pageSource).not.toContain("runGuidedOnboardingAnalysis(");
+  });
+
+  it("adds a shop-scoped POST route that verifies session and analysis step access", () => {
+    const source = read("app/api/onboarding-v2/guided/sessions/[sessionId]/analysis/route.ts");
+
+    expect(source).toContain("export async function POST");
+    expect(source).toContain("requireShopScopedApiAccess({ allowRoles: [\"owner\", \"admin\"] })");
+    expect(source).toContain('.from("guided_onboarding_sessions")');
+    expect(source).toContain('.eq("shop_id", shopId)');
+    expect(source).toContain('.from("guided_onboarding_steps")');
+    expect(source).toContain('.eq("step_key", "analysis")');
+    expect(source).toContain("analysis_run_completed");
+  });
+
+  it("collects bounded deterministic shop evidence and never calls an AI provider", () => {
+    const source = read("features/onboarding-v2/analysis/server.ts");
+
+    for (const table of ["customers", "vehicles", "work_order_lines", "invoices", "parts", "inspection_templates", "menu_items", "shop_hours", "shops"]) {
+      expect(source).toContain(`\"${table}\"`);
+    }
+    expect(source).toContain('select("id", { count: "exact", head: true })');
+    expect(source).toContain(", 200)");
+    expect(source).toContain("deterministic: true");
+    expect(source).toContain("noAutoCreate: true");
+    expect(source).not.toMatch(/openai|anthropic|chat\.completions|responses\.create|generateText/i);
+  });
+
+  it("creates onboarding session recommendations with idempotent duplicate checks", () => {
+    const source = read("features/onboarding-v2/analysis/server.ts");
+
+    expect(source).toContain('GUIDED_ANALYSIS_DOMAIN = "onboarding"');
+    expect(source).toContain('GUIDED_ANALYSIS_SUBJECT_TYPE = "guided_onboarding_session"');
+    expect(source).toContain('GUIDED_ANALYSIS_SOURCE = "guided_onboarding_analysis"');
+    expect(source).toContain("createAiRecommendation");
+    expect(source).toContain('.eq("recommendation_type", recommendationType)');
+    expect(source).toContain('.in("status", DUPLICATE_STATUSES)');
+    expect(source).toContain("skippedCount");
+    expect(source).toContain("sideEffects: []");
+    expect(source).toContain("autoCreate: false");
+  });
+
+  it("generates only the seven reviewable category families", () => {
+    const source = read("features/onboarding-v2/analysis/server.ts");
+
+    expect(source).toContain("Inspection templates first");
+    expect(source).toContain("Menu items and canned services second");
+    expect(source).toContain("Inventory improvements");
+    expect(source).toContain("Vendor suggestions");
+    expect(source).toContain("Customer and fleet segments");
+    expect(source).toContain("Maintenance packages");
+    expect(source).toContain("Automation rules");
   });
 });
