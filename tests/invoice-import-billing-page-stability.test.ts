@@ -34,7 +34,7 @@ describe("invoice import billing page stability", () => {
       "setTimeout(() => void load({ background: true }), 60);",
     );
     expect(importCard).toContain(
-      "onImportActiveChange?.(Boolean(activeJobId))",
+      "onImportActiveChange?.(importing)",
     );
   });
 
@@ -42,7 +42,7 @@ describe("invoice import billing page stability", () => {
     expect(billingPage).toContain(
       "onImported={() => void load({ background: true })}",
     );
-    expect(importCard).toContain("if (counts.imported > 0) onImported?.();");
+    expect(importCard).toContain("if (payload.counts.imported > 0) onImported?.();");
   });
 });
 
