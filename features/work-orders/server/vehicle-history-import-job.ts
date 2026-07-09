@@ -147,3 +147,79 @@ export async function processVehicleHistoryImportJobBatch(supabase: SupabaseClie
   await client.from("import_jobs").update({ status: completed ? "completed" : "processing", processed_rows: reconciledProcessed, imported_count: nextImported, skipped_count: reconciledSkipped, failed_count: nextFailed, summary, completed_at: completed ? new Date().toISOString() : null, updated_at: new Date().toISOString() }).eq("id", job.id);
   return { ok: true, processed: rows.length, completed, job: { id: job.id } };
 }
+
+export async function importVehicleHistoryRowsSynchronously({
+  supabase,
+  shopId,
+  rows,
+}: {
+  supabase: SupabaseClient<DB>;
+  shopId: string;
+  rows: HistoryImportRow[];
+}) {
+  const resolver = await loadResolver(supabase, shopId);
+  const counts: ImportCounts = { imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 };
+  const samples = { skippedRows: [] as unknown[], failedRows: [] as unknown[] };
+  const payloads: Array<{ rowNumber: number; repairOrderNumber: string | null; invoiceNumber: string | null; payload: DB["public"]["Tables"]["history"]["Insert"] & Record<string, unknown> }> = [];
+
+  for (const [index, row] of rows.entries()) {
+    const rowNumber = index + 1;
+    const repairOrderNumber = clean(row.repair_order_number ?? row.work_order_number);
+    const invoiceNumber = clean(row.invoice_number);
+    try {
+      const serviceDate = validDate(row.service_date);
+      const invalidNumber = ([ ["odometer", row.odometer], ["labor_hours", row.labor_hours], ["total", row.total] ] as const).find(([, value]) => clean(value) && num(value) === null);
+      if (!serviceDate || invalidNumber) {
+        const reason = !serviceDate ? "Invalid or missing service_date." : `${invalidNumber?.[0] ?? "value"} must be numeric when provided.`;
+        counts.skipped++;
+        samples.skippedRows.push({ row: rowNumber, reason, repairOrderNumber, invoiceNumber });
+        continue;
+      }
+      const vehicle = resolveVehicle(row, resolver);
+      const customer = resolveCustomer(row, resolver) ?? (vehicle?.customer_id ? resolver.customersById.get(vehicle.customer_id) ?? null : null);
+      if (!customer || ((clean(row.vehicle_id) || clean(row.vin)) && !vehicle)) {
+        const reason = !customer ? "Existing customer could not be matched." : "Existing vehicle could not be matched.";
+        counts.skipped++;
+        samples.skippedRows.push({ row: rowNumber, reason, repairOrderNumber, invoiceNumber });
+        continue;
+      }
+      let duplicateFound = false;
+      if (repairOrderNumber) duplicateFound = Boolean(await findDuplicateHistoryId(supabase, shopId, customer.id, "work_order_number", repairOrderNumber));
+      if (!duplicateFound && invoiceNumber) duplicateFound = Boolean(await findDuplicateHistoryId(supabase, shopId, customer.id, "invoice_number", invoiceNumber));
+      if (duplicateFound) {
+        counts.skipped++;
+        counts.duplicates++;
+        samples.skippedRows.push({ row: rowNumber, reason: "Duplicate repair order/invoice already exists.", repairOrderNumber, invoiceNumber });
+        continue;
+      }
+      const parts = clean(row.parts);
+      const notes = [clean(row.notes), parts ? `Parts: ${parts}` : null, clean(row.service_category) ? `Service category: ${clean(row.service_category)}` : null].filter(Boolean).join("\n") || null;
+      const description = [clean(row.service_category), clean(row.complaint), clean(row.correction)].filter(Boolean).join(" · ") || "Imported historical service record";
+      payloads.push({ rowNumber, repairOrderNumber, invoiceNumber, payload: { shop_id: shopId, customer_id: customer.id, vehicle_id: vehicle?.id ?? null, service_date: serviceDate, description, notes, work_order_number: repairOrderNumber, invoice_number: invoiceNumber, odometer: num(row.odometer), symptom: clean(row.complaint), cause: clean(row.cause), correction: clean(row.correction), labor_hours: num(row.labor_hours), total: num(row.total), advisor_name: clean(row.advisor), assigned_tech_name: clean(row.technician), historical_status: "imported", source_system: "vehicle_history_csv", source_row_id: String(rowNumber), source_payload: JSON.parse(JSON.stringify({ imported_at: new Date().toISOString(), raw_row: row, service_category: clean(row.service_category), parts: clean(row.parts) })) as DB["public"]["Tables"]["history"]["Insert"]["source_payload"] } });
+    } catch (error) {
+      counts.failed++;
+      samples.failedRows.push({ row: rowNumber, error: error instanceof Error ? error.message : "History row failed to import.", repairOrderNumber, invoiceNumber });
+    }
+  }
+
+  for (const batch of chunkArray(payloads, VEHICLE_HISTORY_IMPORT_BATCH_SIZE)) {
+    const { error } = await supabase.from("history").insert(batch.map((entry) => entry.payload));
+    if (error) {
+      for (const entry of batch) {
+        const { error: rowError } = await supabase.from("history").insert(entry.payload);
+        if (rowError) {
+          counts.failed++;
+          samples.failedRows.push({ row: entry.rowNumber, error: rowError.message, repairOrderNumber: entry.repairOrderNumber, invoiceNumber: entry.invoiceNumber });
+        } else counts.imported++;
+      }
+    } else counts.imported += batch.length;
+  }
+
+  return compactImportSummary({
+    counts,
+    totalRows: rows.length,
+    skippedRows: samples.skippedRows,
+    failedRows: samples.failedRows,
+    sampleLimit: VEHICLE_HISTORY_IMPORT_SAMPLE_LIMIT,
+  });
+}

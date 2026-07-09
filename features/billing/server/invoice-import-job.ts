@@ -825,3 +825,138 @@ export async function processInvoiceImportJobBatch(
 
   return { ok: true, processed: rows.length, completed, job: { id: job.id } };
 }
+
+export async function importInvoiceRowsSynchronously({
+  supabase,
+  shopId,
+  rows,
+}: {
+  supabase: SupabaseClient<DB>;
+  shopId: string;
+  rows: InvoiceImportRow[];
+}) {
+  const client = supabase as unknown as SupabaseClient;
+  const counts = { imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 };
+  const sample = { skippedRows: [] as unknown[], failedRows: [] as unknown[] };
+
+  const [{ data: customers }, { data: vehicles }, { data: workOrders }] = await Promise.all([
+    client.from("customers").select("id, external_id, email, phone, phone_number, name, business_name, first_name, last_name").eq("shop_id", shopId),
+    client.from("vehicles").select("id, external_id, vin, customer_id").eq("shop_id", shopId),
+    client.from("work_orders").select("id, custom_id, customer_id, vehicle_id").eq("shop_id", shopId),
+  ]);
+
+  const customerLookupMaps = buildCustomerLookupMaps((customers ?? []) as MatchedCustomer[]);
+  const vehiclesById = new Map<string, MatchedVehicle>();
+  for (const vehicle of (vehicles ?? []) as MatchedVehicle[]) {
+    if (vehicle.id) vehiclesById.set(vehicle.id, vehicle);
+    const external = String(vehicle.external_id ?? "").toLowerCase();
+    if (external) vehiclesById.set(external, vehicle);
+    const normalizedVin = vin(vehicle.vin);
+    if (normalizedVin) vehiclesById.set(normalizedVin, vehicle);
+  }
+  const workOrdersByNumber = new Map<string, MatchedWorkOrder>();
+  for (const workOrder of (workOrders ?? []) as MatchedWorkOrder[]) {
+    const customId = String(workOrder.custom_id ?? "").toLowerCase();
+    if (customId) workOrdersByNumber.set(customId, workOrder);
+    if (workOrder.id) workOrdersByNumber.set(workOrder.id, workOrder);
+  }
+
+  for (const batchRows of chunkArray(rows.map((raw, index) => ({ raw, rowNumber: index + 1 })), INVOICE_IMPORT_BATCH_SIZE)) {
+    const batchInvoiceNumbers = new Set<string>();
+    const batchSourceIds = new Set<string>();
+    for (const staged of batchRows) {
+      const invoiceNumber = clean(staged.raw.invoice_number ?? staged.raw.invoice_id);
+      const sourceId = clean(staged.raw.invoice_id);
+      if (invoiceNumber) batchInvoiceNumbers.add(invoiceNumber);
+      if (sourceId) batchSourceIds.add(sourceId);
+    }
+    const { historicalBySourceId, historicalByInvoiceNumber, liveCollisionsByInvoiceNumber } = await fetchBatchInvoiceMatches(client, shopId, batchInvoiceNumbers, batchSourceIds);
+    const pendingInvoiceNumbers = new Set<string>();
+
+    for (const staged of batchRows) {
+      const row = staged.raw;
+      const invoiceNumber = clean(row.invoice_number ?? row.invoice_id);
+      const sourceId = clean(row.invoice_id);
+      const workOrderNumber = clean(row.work_order_number);
+      try {
+        const issued = date(row.invoice_date);
+        if (!issued || !invoiceNumber) {
+          const reason = !issued ? "Invalid or missing invoice_date." : "Missing invoice_number or invoice_id.";
+          counts.skipped++;
+          sample.skippedRows.push({ row: staged.rowNumber, reason, invoiceNumber, workOrderNumber });
+          continue;
+        }
+        const existingHistoricalInvoice = (sourceId ? historicalBySourceId.get(sourceId) : null) ?? historicalByInvoiceNumber.get(invoiceNumber) ?? null;
+        if (pendingInvoiceNumbers.has(invoiceNumber) && !existingHistoricalInvoice) {
+          counts.skipped++;
+          counts.duplicates++;
+          sample.skippedRows.push({ row: staged.rowNumber, reason: "Duplicate invoice already exists in this import batch.", invoiceNumber, workOrderNumber });
+          continue;
+        }
+        const liveCollision = !existingHistoricalInvoice ? (liveCollisionsByInvoiceNumber.get(invoiceNumber) ?? null) : null;
+        if (liveCollision) {
+          counts.skipped++;
+          sample.skippedRows.push({ row: staged.rowNumber, reason: "live_invoice_number_collision", invoiceNumber, workOrderNumber, liveInvoiceId: liveCollision.id });
+          continue;
+        }
+        const status = normalizeInvoiceImportStatus(row);
+        if (!status) {
+          counts.skipped++;
+          sample.skippedRows.push({ row: staged.rowNumber, reason: "Invoice status represents a credit/refund reversal and is not imported as an invoice.", invoiceNumber, workOrderNumber, sourceStatus: clean(row.payment_status ?? row.status) });
+          continue;
+        }
+        const workOrder = workOrderNumber ? workOrdersByNumber.get(workOrderNumber.toLowerCase()) : null;
+        const vehicle = (clean(row.vehicle_id) ? (vehiclesById.get(clean(row.vehicle_id)!) ?? vehiclesById.get(clean(row.vehicle_id)!.toLowerCase())) : null) ?? (vin(row.vin) ? vehiclesById.get(vin(row.vin)!) : null);
+        const { customer, customerMatchSource, legacyCustomerId, customerEmailKey, customerPhoneKey, customerNameKey } = resolveInvoiceImportCustomer(row, customerLookupMaps);
+        const fallbackCustomerId = vehicle?.customer_id ?? workOrder?.customer_id ?? null;
+        const customerId = customer?.id ?? fallbackCustomerId;
+        const vehicleId = vehicle?.id ?? workOrder?.vehicle_id ?? null;
+        const total = num(row.total) ?? num(row.subtotal) ?? 0;
+        const amountPaid = num(row.amount_paid) ?? 0;
+        const payload: DB["public"]["Tables"]["invoices"]["Insert"] = {
+          shop_id: shopId,
+          customer_id: customerId,
+          work_order_id: workOrder?.id ?? null,
+          invoice_number: invoiceNumber,
+          issued_at: issued,
+          due_date: date(row.due_date),
+          paid_at: resolveImportedInvoicePaidAt(row, issued, status),
+          status,
+          labor_cost: num(row.labor_total) ?? 0,
+          parts_cost: num(row.parts_total) ?? 0,
+          subtotal: num(row.subtotal) ?? total,
+          tax_total: num(row.tax) ?? 0,
+          total,
+          notes: [clean(row.description), clean(row.notes)].filter(Boolean).join("\n") || null,
+          metadata: { imported: true, read_only: true, import_type: "invoice_csv", imported_invoice_id: sourceId, legacy_customer_id: legacyCustomerId, legacy_vehicle_id: clean(row.vehicle_id), matched_customer_id: customerId, matched_vehicle_id: vehicleId, customer_match_source: customerMatchSource ?? (vehicle?.customer_id ? "vehicle_customer_id" : workOrder?.customer_id ? "work_order_customer_id" : null), customer_match_failed_reason: customerId ? null : legacyCustomerId ? "legacy_customer_id_not_found" : customerEmailKey || customerPhoneKey || customerNameKey ? "customer_lookup_fields_not_found" : "no_customer_lookup_fields", vehicle_match_source: vehicle ? clean(row.vehicle_id) ? "vehicle_id" : vin(row.vin) ? "vin" : null : workOrder?.vehicle_id ? "work_order_vehicle_id" : null, source_system: clean(row.source_system), work_order_number: workOrderNumber, vehicle_id: vehicleId, vin: clean(row.vin), service_category: clean(row.service_category), labor_hours: num(row.labor_hours), shop_supplies: num(row.shop_supplies), amount_paid: amountPaid, balance_due: num(row.balance_due) ?? Math.max(0, total - amountPaid), advisor: clean(row.advisor), technician: clean(row.technician), raw_row: row } as DB["public"]["Tables"]["invoices"]["Insert"]["metadata"],
+        };
+        pendingInvoiceNumbers.add(invoiceNumber);
+        const write = existingHistoricalInvoice ? supabase.from("invoices").update(payload).eq("id", existingHistoricalInvoice.id) : supabase.from("invoices").insert(payload);
+        const { error } = await write;
+        if (error) {
+          if (!existingHistoricalInvoice && isInvoiceNumberUniqueConflict(error)) {
+            counts.skipped++;
+            counts.duplicates++;
+            sample.skippedRows.push({ row: staged.rowNumber, reason: "live_invoice_number_collision", invoiceNumber, workOrderNumber });
+          } else {
+            counts.failed++;
+            sample.failedRows.push({ row: staged.rowNumber, error: error.message, invoiceNumber, workOrderNumber });
+          }
+        } else {
+          counts.imported++;
+          if (existingHistoricalInvoice) counts.updated++;
+        }
+      } catch (error) {
+        counts.failed++;
+        sample.failedRows.push({ row: staged.rowNumber, error: error instanceof Error ? error.message : "Invoice row failed to import.", invoiceNumber, workOrderNumber });
+      }
+    }
+  }
+
+  return {
+    counts,
+    totalRows: rows.length,
+    skippedRows: sample.skippedRows.slice(0, INVOICE_IMPORT_SAMPLE_LIMIT),
+    failedRows: sample.failedRows.slice(0, INVOICE_IMPORT_SAMPLE_LIMIT),
+  };
+}
