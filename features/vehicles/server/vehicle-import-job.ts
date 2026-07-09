@@ -52,6 +52,13 @@ function normalizeRow(row: VehicleImportRow, shopId: string, customers: Customer
 }
 function pushUnique(values: string[], value: string | null | undefined) { if (value && !values.includes(value)) values.push(value); }
 function addMatch(index: Map<string, VehicleMatch>, field: "external_id" | "vin" | "unit_number" | "license_plate", vehicle: VehicleMatch) { const value = vehicle[field]; if (value && !index.has(`${field}:${value}`)) index.set(`${field}:${value}`, vehicle); }
+export function getVehicleAuthoritativeIdentity(vehicle: Pick<VehicleInsert, "external_id" | "vin" | "license_plate" | "unit_number">): string | null {
+  if (vehicle.external_id) return `external_id:${vehicle.external_id}`;
+  if (vehicle.vin) return `vin:${vehicle.vin}`;
+  if (vehicle.license_plate) return `license_plate:${vehicle.license_plate}`;
+  if (vehicle.unit_number) return `unit_number:${vehicle.unit_number}`;
+  return null;
+}
 async function loadExistingVehicleIndex(supabase: SupabaseClient<DB>, shopId: string, normalizedRows: VehicleInsert[]): Promise<Map<string, VehicleMatch>> {
   const values = { external_id: [] as string[], vin: [] as string[], unit_number: [] as string[], license_plate: [] as string[] };
   for (const row of normalizedRows) { pushUnique(values.external_id, row.external_id); pushUnique(values.vin, row.vin); pushUnique(values.unit_number, row.unit_number); pushUnique(values.license_plate, row.license_plate); }
@@ -70,7 +77,8 @@ async function loadExistingVehicleIndex(supabase: SupabaseClient<DB>, shopId: st
   return index;
 }
 function findExistingVehicleInIndex(index: Map<string, VehicleMatch>, normalized: VehicleInsert): VehicleMatch | null {
-  return (normalized.external_id ? index.get(`external_id:${normalized.external_id}`) : null) ?? (normalized.vin ? index.get(`vin:${normalized.vin}`) : null) ?? (normalized.unit_number ? index.get(`unit_number:${normalized.unit_number}`) : null) ?? (normalized.license_plate ? index.get(`license_plate:${normalized.license_plate}`) : null) ?? null;
+  const identity = getVehicleAuthoritativeIdentity(normalized);
+  return identity ? index.get(identity) ?? null : null;
 }
 function updatePayload(normalized: VehicleInsert): VehicleUpdate { return omitNullishVehicleUpdate({ unit_number: normalized.unit_number, vin: normalized.vin, license_plate: normalized.license_plate, state_province: normalized.state_province, year: normalized.year, make: normalized.make, model: normalized.model, customer_id: normalized.customer_id, external_id: normalized.external_id, submodel: normalized.submodel, color: normalized.color, mileage: normalized.mileage, odometer_unit: normalized.odometer_unit, engine: normalized.engine, fuel_type: normalized.fuel_type, drivetrain: normalized.drivetrain, body_type: normalized.body_type, asset_type: normalized.asset_type, status: normalized.status, purchase_date: normalized.purchase_date, in_service_date: normalized.in_service_date, last_service_date: normalized.last_service_date, tags: normalized.tags, notes: normalized.notes, import_notes: normalized.import_notes }); }
 
@@ -92,20 +100,14 @@ export async function processVehicleImportRows(supabase: SupabaseClient<DB>, sho
     }
 
     const vehicle = normalizedResult.vehicle;
-    const identityKeys = [
-      vehicle.external_id ? `external_id:${vehicle.external_id}` : null,
-      vehicle.vin ? `vin:${vehicle.vin}` : null,
-      vehicle.unit_number ? `unit_number:${vehicle.unit_number}` : null,
-      vehicle.license_plate ? `license_plate:${vehicle.license_plate}` : null,
-    ].filter(Boolean) as string[];
-    const duplicateKey = identityKeys.find((key) => seenIdentities.has(key));
-    if (duplicateKey) {
+    const identityKey = getVehicleAuthoritativeIdentity(vehicle);
+    if (identityKey && seenIdentities.has(identityKey)) {
       counts.duplicates += 1;
       counts.skipped += 1;
-      skippedRows.push({ row: rowNumber, reason: `Duplicate vehicle identity within this CSV (${duplicateKey}).` });
+      skippedRows.push({ row: rowNumber, reason: `Duplicate vehicle identity within this CSV (${identityKey}).` });
       continue;
     }
-    identityKeys.forEach((key) => seenIdentities.add(key));
+    if (identityKey) seenIdentities.add(identityKey);
     normalizedRows.push({ rowNumber, vehicle });
   }
 

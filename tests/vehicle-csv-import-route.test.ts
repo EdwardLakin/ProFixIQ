@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { processVehicleImportRows } from "@/features/vehicles/server/vehicle-import-job";
 import { describe, expect, it } from "vitest";
 
 const routeSource = () =>
@@ -200,5 +201,134 @@ describe("guided CSV import progress UI", () => {
       'summary: { importType: "vehicle_csv", ...nextCounts }',
     );
     expect(vehicleSource).toContain("payload.error ??");
+  });
+});
+
+type VehicleRecord = {
+  id: string;
+  shop_id: string;
+  external_id?: string | null;
+  vin?: string | null;
+  unit_number?: string | null;
+  license_plate?: string | null;
+  make?: string | null;
+  model?: string | null;
+};
+
+function createVehicleImportSupabase(existingVehicles: VehicleRecord[] = []) {
+  const vehicles = [...existingVehicles];
+  const updates: Array<{ id: string; payload: Record<string, unknown> }> = [];
+
+  const from = (table: string) => {
+    if (table === "customers") {
+      return {
+        select: () => ({
+          eq: () => ({
+            range: async () => ({ data: [], error: null }),
+          }),
+        }),
+      };
+    }
+
+    if (table !== "vehicles") throw new Error(`Unexpected table ${table}`);
+
+    return {
+      select: () => {
+        const filters: Record<string, unknown> = {};
+        return {
+          eq(field: string, value: unknown) {
+            filters[field] = value;
+            return this;
+          },
+          async in(field: keyof VehicleRecord, values: unknown[]) {
+            return {
+              data: vehicles.filter((vehicle) => vehicle.shop_id === filters.shop_id && values.includes(vehicle[field])),
+              error: null,
+            };
+          },
+        };
+      },
+      update(payload: Record<string, unknown>) {
+        const filters: Record<string, unknown> = {};
+        return {
+          eq(field: string, value: unknown) {
+            filters[field] = value;
+            if (filters.id && filters.shop_id) {
+              const vehicle = vehicles.find((entry) => entry.id === filters.id && entry.shop_id === filters.shop_id);
+              if (vehicle) Object.assign(vehicle, payload);
+              updates.push({ id: String(filters.id), payload });
+              return Promise.resolve({ error: null });
+            }
+            return this;
+          },
+        };
+      },
+      async insert(payload: VehicleRecord[]) {
+        vehicles.push(...payload.map((vehicle, index) => ({ ...vehicle, id: vehicle.id ?? `inserted-${vehicles.length + index + 1}` })));
+        return { error: null };
+      },
+    };
+  };
+
+  return { supabase: { from }, vehicles, updates };
+}
+
+describe("vehicle CSV import duplicate identity hierarchy", () => {
+  it("imports two rows with different vehicle_id values and the same unit_number", async () => {
+    const { supabase } = createVehicleImportSupabase();
+
+    const summary = await processVehicleImportRows(supabase as never, "shop-1", [
+      { vehicle_id: "veh-1", unit_number: "UNIT-617", make: "Ford", model: "F-150" },
+      { vehicle_id: "veh-2", unit_number: "UNIT-617", make: "Ford", model: "F-250" },
+    ]);
+
+    expect(summary.counts.created).toBe(2);
+    expect(summary.counts.duplicates).toBe(0);
+    expect(summary.counts.skipped).toBe(0);
+  });
+
+  it("dedupes two rows with no vehicle_id and the same unit_number", async () => {
+    const { supabase } = createVehicleImportSupabase();
+
+    const summary = await processVehicleImportRows(supabase as never, "shop-1", [
+      { unit_number: "UNIT-617", make: "Ford", model: "F-150" },
+      { unit_number: "UNIT-617", make: "Ford", model: "F-250" },
+    ]);
+
+    expect(summary.counts.created).toBe(1);
+    expect(summary.counts.duplicates).toBe(1);
+    expect(summary.counts.skipped).toBe(1);
+    expect(summary.skippedRows[0]).toMatchObject({ reason: "Duplicate vehicle identity within this CSV (unit_number:UNIT-617)." });
+  });
+
+  it("dedupes two rows with the same vehicle_id", async () => {
+    const { supabase } = createVehicleImportSupabase();
+
+    const summary = await processVehicleImportRows(supabase as never, "shop-1", [
+      { vehicle_id: "veh-1", unit_number: "UNIT-617", make: "Ford", model: "F-150" },
+      { vehicle_id: "veh-1", unit_number: "UNIT-999", make: "Ford", model: "F-250" },
+    ]);
+
+    expect(summary.counts.created).toBe(1);
+    expect(summary.counts.duplicates).toBe(1);
+    expect(summary.skippedRows[0]).toMatchObject({ reason: "Duplicate vehicle identity within this CSV (external_id:veh-1)." });
+  });
+
+  it("updates by external_id even if unit_number collides with another vehicle", async () => {
+    const { supabase, vehicles, updates } = createVehicleImportSupabase([
+      { id: "target", shop_id: "shop-1", external_id: "veh-1", unit_number: "UNIT-OLD", make: "Ford", model: "F-150" },
+      { id: "unit-collision", shop_id: "shop-1", external_id: "veh-2", unit_number: "UNIT-617", make: "Ford", model: "F-250" },
+    ]);
+
+    const summary = await processVehicleImportRows(supabase as never, "shop-1", [
+      { vehicle_id: "veh-1", unit_number: "UNIT-617", make: "Ford", model: "Updated" },
+    ]);
+
+    expect(summary.counts.updated).toBe(1);
+    expect(summary.counts.created).toBe(0);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].id).toBe("target");
+    expect(vehicles.find((vehicle) => vehicle.id === "target")?.model).toBe("Updated");
+    expect(vehicles.find((vehicle) => vehicle.id === "unit-collision")?.model).toBe("F-250");
   });
 });
