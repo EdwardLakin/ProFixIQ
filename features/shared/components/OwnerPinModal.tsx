@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@shared/components/ui/Button";
-import { Input } from "@shared/components/ui/input";
+import { Button } from "@/features/shared/components/ui/Button";
+import { Input } from "@/features/shared/components/ui/input";
 
 type Props = {
   shopId: string | null;

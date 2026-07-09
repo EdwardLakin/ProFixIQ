@@ -221,12 +221,12 @@ describe("guided onboarding page panels", () => {
     const context = parseGuidedPageContext(
       new URLSearchParams({
         guidedSessionId: "abc",
-        guidedStep: "staff",
+        guidedStep: "shop_settings",
         returnTo: "https://bad.example",
       }),
     );
 
-    expect(context?.stepKey).toBe("staff");
+    expect(context?.stepKey).toBe("shop_settings");
     expect(context?.returnTo).toBe("/dashboard/onboarding-v2/abc");
   });
 
@@ -238,18 +238,18 @@ describe("guided onboarding page panels", () => {
       "vehicle_history",
       "invoices",
       "parts",
-      "staff",
-      "pricing_shop_defaults",
+      "shop_settings",
       "analysis",
     ]);
   });
 
-  it("routes pricing defaults to owner settings and leaves analysis final", () => {
-    const pricingStep = GUIDED_ONBOARDING_STEPS.find((step) => step.key === "pricing_shop_defaults");
+  it("routes Shop Settings to the onboarding workspace and leaves analysis final", () => {
+    const shopSettingsStep = GUIDED_ONBOARDING_STEPS.find((step) => step.key === "shop_settings");
     const analysisStep = GUIDED_ONBOARDING_STEPS.at(-1);
 
-    expect(pricingStep?.destinationPath).toBe("/dashboard/owner/settings");
-    expect(buildGuidedDestination(pricingStep!, "session-xyz")).toContain("/dashboard/owner/settings?");
+    expect(shopSettingsStep?.destinationPath).toBe("/dashboard/onboarding-v2");
+    expect(buildGuidedDestination(shopSettingsStep!, "session-xyz")).toContain("/dashboard/onboarding-v2?");
+    expect(buildGuidedDestination(shopSettingsStep!, "session-xyz")).not.toContain("/dashboard/owner/settings");
     expect(analysisStep?.key).toBe("analysis");
     expect(buildGuidedDestination(analysisStep!, "session-xyz")).toContain("/dashboard/onboarding-v2/session-xyz/summary?");
   });
@@ -261,8 +261,7 @@ describe("guided onboarding page panels", () => {
       vehicle_history: "/work-orders/history",
       invoices: "/billing",
       parts: "/parts/inventory",
-      staff: "/dashboard/owner/create-user",
-      pricing_shop_defaults: "/dashboard/owner/settings",
+      shop_settings: "/dashboard/onboarding-v2",
       analysis: "/dashboard/onboarding-v2/session-xyz/summary",
     };
 

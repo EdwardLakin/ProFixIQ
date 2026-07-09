@@ -54,10 +54,8 @@ export function getGuidedStepPageInstructions(stepKey: GuidedOnboardingStepKey):
       return "Review completed, ready-to-invoice, and invoiced work so closeout paperwork is ready before go-live.";
     case "parts":
       return "Add parts manually or open the existing CSV import tools to prepare inventory for quoting and receiving.";
-    case "staff":
-      return "Provision the user account, choose the initial role, and continue with profile details in People when needed.";
-    case "pricing_shop_defaults":
-      return "Review labor rates, tax posture, fees, operating defaults, hours, and shop identity in Owner Settings. The existing owner PIN gate remains responsible for protecting this workspace.";
+    case "shop_settings":
+      return "Review shop identity, rates, supplies, hours, and workflow defaults in the focused onboarding Shop Settings card. Staff setup lives later in User Management/Create User.";
     case "analysis":
       return "Review AI recommendations based on imported and configured shop data. Recommendations should guide inspection templates first, then menu items and canned services, inventory, vendors, customer or fleet segments, maintenance packages, and automation rules; they should not auto-create records.";
   }

@@ -14,7 +14,7 @@ export default async function GuidedOnboardingAnalysisSummaryPage({ params }: Pr
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-200/80">Guided Setup · AI Business Analysis</p>
         <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">Review recommended launch improvements</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-300">
-          ProFixIQ AI Business Analysis reviews the customers, vehicles, history, invoices, parts, staff, and shop defaults that were imported or configured during guided setup. It recommends next actions for the shop; it does not auto-create operational records.
+          ProFixIQ AI Business Analysis reviews the customers, vehicles, history, invoices, parts, and shop defaults that were imported or configured during guided setup. It recommends next actions for the shop; it does not auto-create operational records.
         </p>
         <p className="mt-2 text-xs text-neutral-500">Session: {sessionId}</p>
       </section>
