@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { chunkArray } from "@/features/shared/lib/import/csv";
+import {
+  chunkArray,
+  compactImportSummary,
+} from "@/features/shared/lib/import/csv";
 import {
   getCustomerAuthoritativeId,
   getInvoiceNumber,
@@ -408,6 +411,68 @@ function samples(summary: Record<string, unknown> | null) {
   };
 }
 
+export async function createInvoiceImportJob({
+  supabase,
+  shopId,
+  rows,
+  createdBy = null,
+}: {
+  supabase: SupabaseClient<DB>;
+  shopId: string;
+  rows: InvoiceImportRow[];
+  createdBy?: string | null;
+}) {
+  const client = supabase as unknown as SupabaseClient;
+  const normalizedRows = rows.map(normalizeInvoiceImportRow);
+  const { data: job, error: jobError } = await client
+    .from("import_jobs")
+    .insert({
+      shop_id: shopId,
+      import_type: "invoices",
+      status: "queued",
+      total_rows: normalizedRows.length,
+      processed_rows: 0,
+      imported_count: 0,
+      skipped_count: 0,
+      failed_count: 0,
+      created_by: createdBy,
+      summary: {
+        ok: true,
+        counts: {
+          imported: 0,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+          duplicates: 0,
+        },
+        totalRows: normalizedRows.length,
+        skippedRows: [],
+        failedRows: [],
+        duplicates: 0,
+      },
+    })
+    .select("id")
+    .single<{ id: string }>();
+  if (jobError) throw jobError;
+  if (!job?.id) throw new Error("Unable to create invoice import job.");
+
+  for (const batch of chunkArray(normalizedRows, INVOICE_IMPORT_BATCH_SIZE)) {
+    const offset = normalizedRows.indexOf(batch[0]);
+    const { error: rowsError } = await client.from("import_job_rows").insert(
+      batch.map((row, index) => ({
+        job_id: job.id,
+        shop_id: shopId,
+        row_number: offset + index + 1,
+        raw_row: row,
+        status: "queued",
+      })),
+    );
+    if (rowsError) throw rowsError;
+  }
+
+  return { ok: true, jobId: job.id, totalRows: normalizedRows.length };
+}
+
 export async function processInvoiceImportJobBatch(
   supabase: SupabaseClient<DB>,
   jobId?: string,
@@ -445,12 +510,26 @@ export async function processInvoiceImportJobBatch(
 
   const rows = (data ?? []) as StagedRow[];
   if (!rows.length) {
+    const finalSummary = compactImportSummary({
+      counts: {
+        imported: job.imported_count ?? 0,
+        updated: 0,
+        skipped: job.skipped_count ?? 0,
+        failed: job.failed_count ?? 0,
+        duplicates: Number(job.summary?.duplicates ?? 0),
+      },
+      totalRows: job.processed_rows ?? 0,
+      skippedRows: samples(job.summary).skippedRows,
+      failedRows: samples(job.summary).failedRows,
+      sampleLimit: INVOICE_IMPORT_SAMPLE_LIMIT,
+    });
     await client
       .from("import_jobs")
       .update({
         status: "completed",
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        summary: finalSummary,
       })
       .eq("id", job.id);
     return { ok: true, processed: 0, completed: true, job: { id: job.id } };
@@ -809,11 +888,8 @@ export async function processInvoiceImportJobBatch(
   }
 
   const processedRows = (job.processed_rows ?? 0) + rows.length;
-  const summary = {
-    skippedRows: sample.skippedRows.slice(0, INVOICE_IMPORT_SAMPLE_LIMIT),
-    failedRows: sample.failedRows.slice(0, INVOICE_IMPORT_SAMPLE_LIMIT),
-    duplicates: Number(job.summary?.duplicates ?? 0) + counts.duplicates,
-  };
+  const duplicateCount =
+    Number(job.summary?.duplicates ?? 0) + counts.duplicates;
   const [
     { count: queuedCount },
     { count: importedCount },
@@ -862,7 +938,20 @@ export async function processInvoiceImportJobBatch(
       skipped_count: reconciledSkipped,
       failed_count: reconciledFailed,
       summary: {
-        ...summary,
+        ...compactImportSummary({
+          counts: {
+            imported: reconciledImported,
+            updated: 0,
+            skipped: reconciledSkipped,
+            failed: reconciledFailed,
+            duplicates: duplicateCount,
+          },
+          totalRows: job.total_rows ?? reconciledProcessed,
+          skippedRows: sample.skippedRows,
+          failedRows: sample.failedRows,
+          sampleLimit: INVOICE_IMPORT_SAMPLE_LIMIT,
+        }),
+        duplicates: duplicateCount,
         accounting: {
           imported: reconciledImported,
           skipped: reconciledSkipped,
