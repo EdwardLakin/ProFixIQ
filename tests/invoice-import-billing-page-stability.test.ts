@@ -51,3 +51,9 @@ it("shows legacy customer diagnostics when the customer join is missing", () => 
   expect(billingPage).toContain("customer_match_failed_reason");
   expect(billingPage).toContain("Customer match diagnostics");
 });
+
+it("uses the shared invoice normalizer in the import card preview", () => {
+  expect(importCard).toContain("normalizeInvoiceImportRow");
+  expect(importCard).toContain("INVOICE_IMPORT_SUPPORTED_COLUMNS");
+  expect(importCard).toContain("!response?.counts");
+});

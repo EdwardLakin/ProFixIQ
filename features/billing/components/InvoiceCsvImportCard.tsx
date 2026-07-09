@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { GuidedImportCardLayout } from "@/features/shared/components/import/GuidedImportCardLayout";
@@ -14,42 +20,14 @@ import {
 } from "@/features/shared/components/import/CsvImportProgress";
 import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
+import {
+  cleanInvoiceImportHeader,
+  getInvoiceNumber,
+  INVOICE_IMPORT_SUPPORTED_COLUMNS,
+  normalizeInvoiceImportRow,
+  type InvoiceImportRow,
+} from "@/features/billing/lib/invoice-import-normalizer";
 
-type InvoiceImportRow = {
-  invoice_id?: string | null;
-  invoice_number?: string | null;
-  work_order_number?: string | null;
-  customer_id?: string | null;
-  customer_email?: string | null;
-  customer_phone?: string | null;
-  customer_name?: string | null;
-  customer?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  name?: string | null;
-  vehicle_id?: string | null;
-  vin?: string | null;
-  invoice_date?: string | null;
-  due_date?: string | null;
-  paid_date?: string | null;
-  status?: string | null;
-  payment_status?: string | null;
-  service_category?: string | null;
-  description?: string | null;
-  labor_hours?: string | null;
-  labor_total?: string | null;
-  parts_total?: string | null;
-  shop_supplies?: string | null;
-  subtotal?: string | null;
-  tax?: string | null;
-  total?: string | null;
-  amount_paid?: string | null;
-  balance_due?: string | null;
-  advisor?: string | null;
-  technician?: string | null;
-  notes?: string | null;
-  source_system?: string | null;
-};
 type ImportCounts = {
   imported: number;
   updated: number;
@@ -75,63 +53,8 @@ type ImportResponse = {
     workOrderNumber: string | null;
   }>;
 };
-const SUPPORTED_COLUMNS = [
-  "invoice_id",
-  "invoice_number",
-  "work_order_number",
-  "customer_id",
-  "customer_email",
-  "customer_phone",
-  "customer_name",
-  "customer",
-  "email",
-  "phone",
-  "name",
-  "vehicle_id",
-  "vin",
-  "invoice_date",
-  "due_date",
-  "paid_date",
-  "status",
-  "payment_status",
-  "service_category",
-  "description",
-  "labor_hours",
-  "labor_total",
-  "parts_total",
-  "shop_supplies",
-  "subtotal",
-  "tax",
-  "total",
-  "amount_paid",
-  "balance_due",
-  "advisor",
-  "technician",
-  "notes",
-  "source_system",
-] as const;
-const RECOMMENDED_COLUMNS = SUPPORTED_COLUMNS.join(", ");
+const RECOMMENDED_COLUMNS = INVOICE_IMPORT_SUPPORTED_COLUMNS.join(", ");
 const SAMPLE = `${RECOMMENDED_COLUMNS}\nLEG-INV-1001,INV-1001,RO-1001,CUST-1001,avery@example.com,555-0101,Avery Customer,Avery Customer,avery@example.com,555-0101,Avery Customer,VEH-2001,1HGCM82633A004352,2024-03-18,2024-04-17,2024-03-20,closed,paid,Brakes,Front brake service,2.4,360.00,240.00,18.00,618.00,30.90,648.90,648.90,0.00,Avery Advisor,Sam Tech,Imported paid invoice,Legacy DMS`;
-function cleanHeader(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-}
-function cleanCell(value: unknown): string | null {
-  const text = String(value ?? "").trim();
-  return text.length ? text : null;
-}
-function normalizeParsedRow(row: Record<string, unknown>): InvoiceImportRow {
-  const normalized: InvoiceImportRow = {};
-  for (const [header, value] of Object.entries(row)) {
-    const key = cleanHeader(header);
-    if (!(SUPPORTED_COLUMNS as readonly string[]).includes(key)) continue;
-    normalized[key as keyof InvoiceImportRow] = cleanCell(value);
-  }
-  return normalized;
-}
 function hasValidDate(row: InvoiceImportRow): boolean {
   return Boolean(
     row.invoice_date && !Number.isNaN(new Date(row.invoice_date).getTime()),
@@ -144,8 +67,7 @@ function validOptionalNumber(value: string | null | undefined): boolean {
 function localValidation(row: InvoiceImportRow): string | null {
   if (!hasValidDate(row))
     return "invoice_date is required and must be a valid date";
-  if (!row.invoice_number && !row.invoice_id)
-    return "invoice_number or invoice_id is required";
+  if (!getInvoiceNumber(row)) return "invoice_number or invoice_id is required";
   for (const field of [
     "labor_hours",
     "labor_total",
@@ -236,10 +158,12 @@ export function InvoiceCsvImportCard({
       skipEmptyLines: true,
       complete: (results) => {
         const parsed = (results.data ?? [])
-          .map(normalizeParsedRow)
+          .map(normalizeInvoiceImportRow)
           .filter((row) => Object.keys(row).length > 0);
         setHeaders(
-          (results.meta.fields ?? []).map(cleanHeader).filter(Boolean),
+          (results.meta.fields ?? [])
+            .map(cleanInvoiceImportHeader)
+            .filter(Boolean),
         );
         setRows(parsed);
         setProgress({
@@ -335,7 +259,11 @@ export function InvoiceCsvImportCard({
         percent: 100,
       });
       setImporting(false);
-      if (isOnboarding && payload.counts.imported > 0 && payload.counts.failed === 0)
+      if (
+        isOnboarding &&
+        payload.counts.imported > 0 &&
+        payload.counts.failed === 0
+      )
         await completeOnboardingAfterImport(payload.counts);
       if (payload.counts.imported > 0) onImported?.();
     } catch (error) {
@@ -486,7 +414,9 @@ export function InvoiceCsvImportCard({
       <GuidedImportFooterActions
         importing={importing}
         completing={completingOnboarding}
-        canConfirm={Boolean(file && importableRows.length > 0)}
+        canConfirm={Boolean(
+          file && importableRows.length > 0 && !response?.counts,
+        )}
         onConfirm={() => void confirmImport()}
         isOnboarding={isOnboarding}
         returnTo={guidedQuery?.returnTo}

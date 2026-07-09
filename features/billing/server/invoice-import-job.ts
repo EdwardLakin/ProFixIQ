@@ -1,13 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { chunkArray } from "@/features/shared/lib/import/csv";
+import {
+  getCustomerAuthoritativeId,
+  getInvoiceNumber,
+  getInvoiceSourceId,
+  getVehicleAuthoritativeId,
+  normalizeInvoiceImportRow,
+  type InvoiceImportRow,
+} from "@/features/billing/lib/invoice-import-normalizer";
 
 type DB = Database;
 export const INVOICE_IMPORT_BATCH_SIZE = 1000;
 export const INVOICE_IMPORT_SAMPLE_LIMIT = 25;
 export const INVOICE_IMPORT_MAX_ROWS = 20_000;
 
-type InvoiceImportRow = Record<string, unknown>;
 type JobRow = {
   id: string;
   shop_id: string;
@@ -58,6 +65,15 @@ type ExistingInvoiceMatch = {
   invoice_number?: string | null;
   metadata?: Record<string, unknown> | null;
 };
+
+const INVOICE_IMPORT_DEBUG =
+  process.env.INVOICE_IMPORT_DEBUG === "1" ||
+  process.env.INVOICE_IMPORT_DEBUG === "true";
+
+function debugInvoiceImport(event: string, details: Record<string, unknown>) {
+  if (!INVOICE_IMPORT_DEBUG) return;
+  console.info(`[invoice-import] ${event}`, details);
+}
 
 const clean = (value: unknown) => {
   const text = String(value ?? "").trim();
@@ -143,7 +159,7 @@ export function resolveInvoiceImportCustomer(
   row: InvoiceImportRow,
   customerLookupMaps: CustomerLookupMaps,
 ) {
-  const legacyCustomerId = clean(row.customer_id);
+  const legacyCustomerId = getCustomerAuthoritativeId(row);
   const customerByLegacyId = legacyCustomerId
     ? (customerLookupMaps.byExternalId.get(legacyCustomerId) ??
       customerLookupMaps.byExternalIdKey.get(key(legacyCustomerId)!) ??
@@ -161,15 +177,16 @@ export function resolveInvoiceImportCustomer(
   const customerByName = customerNameKey
     ? (customerLookupMaps.byName.get(customerNameKey) ?? null)
     : null;
-  const customer =
-    customerByLegacyId ?? customerByEmail ?? customerByPhone ?? customerByName;
+  const customer = legacyCustomerId
+    ? customerByLegacyId
+    : (customerByEmail ?? customerByPhone ?? customerByName);
   const customerMatchSource = customerByLegacyId
     ? "customer_external_id"
-    : customerByEmail
+    : !legacyCustomerId && customerByEmail
       ? "email"
-      : customerByPhone
+      : !legacyCustomerId && customerByPhone
         ? "phone"
-        : customerByName
+        : !legacyCustomerId && customerByName
           ? "name"
           : null;
 
@@ -183,18 +200,61 @@ export function resolveInvoiceImportCustomer(
   };
 }
 
-function postgrestInList(values: Iterable<string>) {
-  return Array.from(values)
-    .map(
-      (value) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`,
-    )
-    .join(",");
-}
-
 function importedInvoiceId(
   metadata: Record<string, unknown> | null | undefined,
 ) {
   return clean(metadata?.imported_invoice_id);
+}
+
+async function fetchHistoricalInvoiceCsvMatches(
+  client: SupabaseClient,
+  shopId: string,
+  invoiceNumbers: Set<string>,
+  sourceIds: Set<string>,
+) {
+  const historicalBySourceId = new Map<string, ExistingInvoiceMatch>();
+  const historicalByInvoiceNumber = new Map<string, ExistingInvoiceMatch>();
+  const wantedSourceIds = new Set(
+    Array.from(sourceIds).map((value) => value.toLowerCase()),
+  );
+  const wantedInvoiceNumbers = new Set(
+    Array.from(invoiceNumbers).map((value) => value.toLowerCase()),
+  );
+  const pageSize = 1000;
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await client
+      .from("invoices")
+      .select("id, invoice_number, metadata")
+      .eq("shop_id", shopId)
+      .contains("metadata", { import_type: "invoice_csv" })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+
+    const rows = (data ?? []) as ExistingInvoiceMatch[];
+    for (const invoice of rows) {
+      const sourceId = importedInvoiceId(invoice.metadata);
+      if (
+        sourceId &&
+        wantedSourceIds.has(sourceId.toLowerCase()) &&
+        !historicalBySourceId.has(sourceId)
+      ) {
+        historicalBySourceId.set(sourceId, invoice);
+      }
+      const invoiceNumber = clean(invoice.invoice_number);
+      if (
+        invoiceNumber &&
+        wantedInvoiceNumbers.has(invoiceNumber.toLowerCase()) &&
+        !historicalByInvoiceNumber.has(invoiceNumber)
+      ) {
+        historicalByInvoiceNumber.set(invoiceNumber, invoice);
+      }
+    }
+
+    if (rows.length < pageSize) break;
+  }
+
+  return { historicalBySourceId, historicalByInvoiceNumber };
 }
 
 async function fetchBatchInvoiceMatches(
@@ -203,60 +263,31 @@ async function fetchBatchInvoiceMatches(
   invoiceNumbers: Set<string>,
   sourceIds: Set<string>,
 ) {
-  const historicalBySourceId = new Map<string, ExistingInvoiceMatch>();
-  const historicalByInvoiceNumber = new Map<string, ExistingInvoiceMatch>();
   const liveCollisionsByInvoiceNumber = new Map<string, ExistingInvoiceMatch>();
+  const { historicalBySourceId, historicalByInvoiceNumber } =
+    await fetchHistoricalInvoiceCsvMatches(
+      client,
+      shopId,
+      invoiceNumbers,
+      sourceIds,
+    );
 
-  const historicalFilters = [
-    sourceIds.size
-      ? `metadata->>imported_invoice_id.in.(${postgrestInList(sourceIds)})`
-      : null,
-    invoiceNumbers.size
-      ? `invoice_number.in.(${postgrestInList(invoiceNumbers)})`
-      : null,
-  ].filter(Boolean);
+  for (const chunk of chunkArray(Array.from(invoiceNumbers), 100)) {
+    const { data: liveRows, error: liveError } = chunk.length
+      ? await client
+          .from("invoices")
+          .select("id, invoice_number, metadata")
+          .eq("shop_id", shopId)
+          .in("invoice_number", chunk)
+      : { data: [], error: null };
+    if (liveError) throw liveError;
 
-  const historicalQuery = historicalFilters.length
-    ? client
-        .from("invoices")
-        .select("id, invoice_number, metadata")
-        .eq("shop_id", shopId)
-        .contains("metadata", { import_type: "invoice_csv" })
-        .or(historicalFilters.join(","))
-    : Promise.resolve({ data: [], error: null });
-
-  const liveQuery = invoiceNumbers.size
-    ? client
-        .from("invoices")
-        .select("id, invoice_number, metadata")
-        .eq("shop_id", shopId)
-        .in("invoice_number", Array.from(invoiceNumbers))
-    : Promise.resolve({ data: [], error: null });
-
-  const [
-    { data: historicalRows, error: historicalError },
-    { data: liveRows, error: liveError },
-  ] = await Promise.all([historicalQuery, liveQuery]);
-
-  if (historicalError) throw historicalError;
-  if (liveError) throw liveError;
-
-  for (const invoice of (historicalRows ?? []) as ExistingInvoiceMatch[]) {
-    const sourceId = importedInvoiceId(invoice.metadata);
-    if (sourceId && !historicalBySourceId.has(sourceId)) {
-      historicalBySourceId.set(sourceId, invoice);
-    }
-    const invoiceNumber = clean(invoice.invoice_number);
-    if (invoiceNumber && !historicalByInvoiceNumber.has(invoiceNumber)) {
-      historicalByInvoiceNumber.set(invoiceNumber, invoice);
-    }
-  }
-
-  for (const invoice of (liveRows ?? []) as ExistingInvoiceMatch[]) {
-    if (isHistoricalInvoiceCsvMetadata(invoice.metadata)) continue;
-    const invoiceNumber = clean(invoice.invoice_number);
-    if (invoiceNumber && !liveCollisionsByInvoiceNumber.has(invoiceNumber)) {
-      liveCollisionsByInvoiceNumber.set(invoiceNumber, invoice);
+    for (const invoice of (liveRows ?? []) as ExistingInvoiceMatch[]) {
+      if (isHistoricalInvoiceCsvMetadata(invoice.metadata)) continue;
+      const invoiceNumber = clean(invoice.invoice_number);
+      if (invoiceNumber && !liveCollisionsByInvoiceNumber.has(invoiceNumber)) {
+        liveCollisionsByInvoiceNumber.set(invoiceNumber, invoice);
+      }
     }
   }
 
@@ -428,9 +459,10 @@ export async function processInvoiceImportJobBatch(
   const batchInvoiceNumbers = new Set<string>();
   const batchSourceIds = new Set<string>();
   for (const staged of rows) {
-    const row = staged.raw_row;
-    const invoiceNumber = clean(row.invoice_number ?? row.invoice_id);
-    const sourceId = clean(row.invoice_id);
+    const rawRow = staged.raw_row;
+    const row = normalizeInvoiceImportRow(rawRow);
+    const invoiceNumber = getInvoiceNumber(row);
+    const sourceId = getInvoiceSourceId(row);
     if (invoiceNumber) batchInvoiceNumbers.add(invoiceNumber);
     if (sourceId) batchSourceIds.add(sourceId);
   }
@@ -497,9 +529,10 @@ export async function processInvoiceImportJobBatch(
   }> = [];
 
   for (const staged of rows) {
-    const row = staged.raw_row;
-    const invoiceNumber = clean(row.invoice_number ?? row.invoice_id);
-    const sourceId = clean(row.invoice_id);
+    const rawRow = staged.raw_row;
+    const row = normalizeInvoiceImportRow(rawRow);
+    const invoiceNumber = getInvoiceNumber(row);
+    const sourceId = getInvoiceSourceId(row);
     const workOrderNumber = clean(row.work_order_number);
 
     try {
@@ -524,10 +557,16 @@ export async function processInvoiceImportJobBatch(
 
       const existingHistoricalInvoice =
         (sourceId ? historicalBySourceId.get(sourceId) : null) ??
-        historicalByInvoiceNumber.get(invoiceNumber) ??
+        (!sourceId ? historicalByInvoiceNumber.get(invoiceNumber) : null) ??
         null;
+      const existingInvoiceMatchSource =
+        sourceId && existingHistoricalInvoice
+          ? "imported_invoice_id"
+          : existingHistoricalInvoice
+            ? "invoice_number"
+            : null;
       if (
-        pendingInvoiceNumbers.has(invoiceNumber) &&
+        pendingInvoiceNumbers.has(sourceId ?? invoiceNumber) &&
         !existingHistoricalInvoice
       ) {
         counts.skipped++;
@@ -549,10 +588,11 @@ export async function processInvoiceImportJobBatch(
       const workOrder = workOrderNumber
         ? workOrdersByNumber.get(workOrderNumber.toLowerCase())
         : null;
+      const authoritativeVehicleId = getVehicleAuthoritativeId(row);
       const vehicle =
-        (clean(row.vehicle_id)
-          ? (vehiclesById.get(clean(row.vehicle_id)!) ??
-            vehiclesById.get(clean(row.vehicle_id)!.toLowerCase()))
+        (authoritativeVehicleId
+          ? (vehiclesById.get(authoritativeVehicleId) ??
+            vehiclesById.get(authoritativeVehicleId.toLowerCase()))
           : null) ?? (vin(row.vin) ? vehiclesById.get(vin(row.vin)!) : null);
       const {
         customer,
@@ -574,8 +614,8 @@ export async function processInvoiceImportJobBatch(
             ? "work_order_customer_id"
             : null);
       const vehicleMatchSource = vehicle
-        ? clean(row.vehicle_id)
-          ? "vehicle_id"
+        ? authoritativeVehicleId
+          ? "vehicle_external_id"
           : vin(row.vin)
             ? "vin"
             : null
@@ -630,7 +670,22 @@ export async function processInvoiceImportJobBatch(
         continue;
       }
 
-      pendingInvoiceNumbers.add(invoiceNumber);
+      if (INVOICE_IMPORT_DEBUG && staged.row_number <= 10) {
+        debugInvoiceImport("row", {
+          rawRow,
+          normalizedRow: row,
+          invoiceIdentity: sourceId ?? invoiceNumber,
+          customerIdentity: legacyCustomerId,
+          vehicleIdentity: authoritativeVehicleId ?? vin(row.vin),
+          matchedCustomerId: customerId,
+          customerMatchSource: customerMatchSourceResolved,
+          matchedVehicleId: vehicleId,
+          vehicleMatchSource,
+          existingInvoiceMatchSource,
+        });
+      }
+
+      pendingInvoiceNumbers.add(sourceId ?? invoiceNumber);
       writes.push({
         stagedId: staged.id,
         rowNumber: staged.row_number,
@@ -661,7 +716,7 @@ export async function processInvoiceImportJobBatch(
             import_type: "invoice_csv",
             imported_invoice_id: sourceId,
             legacy_customer_id: legacyCustomerId,
-            legacy_vehicle_id: clean(row.vehicle_id),
+            legacy_vehicle_id: authoritativeVehicleId,
             matched_customer_id: customerId,
             matched_vehicle_id: vehicleId,
             customer_match_source: customerMatchSourceResolved,
@@ -679,7 +734,7 @@ export async function processInvoiceImportJobBatch(
               num(row.balance_due) ?? Math.max(0, total - amountPaid),
             advisor: clean(row.advisor),
             technician: clean(row.technician),
-            raw_row: row,
+            raw_row: rawRow,
           } as DB["public"]["Tables"]["invoices"]["Insert"]["metadata"],
         },
       });
@@ -836,16 +891,36 @@ export async function importInvoiceRowsSynchronously({
   rows: InvoiceImportRow[];
 }) {
   const client = supabase as unknown as SupabaseClient;
-  const counts = { imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 };
+  const counts = {
+    imported: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    duplicates: 0,
+  };
   const sample = { skippedRows: [] as unknown[], failedRows: [] as unknown[] };
 
-  const [{ data: customers }, { data: vehicles }, { data: workOrders }] = await Promise.all([
-    client.from("customers").select("id, external_id, email, phone, phone_number, name, business_name, first_name, last_name").eq("shop_id", shopId),
-    client.from("vehicles").select("id, external_id, vin, customer_id").eq("shop_id", shopId),
-    client.from("work_orders").select("id, custom_id, customer_id, vehicle_id").eq("shop_id", shopId),
-  ]);
+  const [{ data: customers }, { data: vehicles }, { data: workOrders }] =
+    await Promise.all([
+      client
+        .from("customers")
+        .select(
+          "id, external_id, email, phone, phone_number, name, business_name, first_name, last_name",
+        )
+        .eq("shop_id", shopId),
+      client
+        .from("vehicles")
+        .select("id, external_id, vin, customer_id")
+        .eq("shop_id", shopId),
+      client
+        .from("work_orders")
+        .select("id, custom_id, customer_id, vehicle_id")
+        .eq("shop_id", shopId),
+    ]);
 
-  const customerLookupMaps = buildCustomerLookupMaps((customers ?? []) as MatchedCustomer[]);
+  const customerLookupMaps = buildCustomerLookupMaps(
+    (customers ?? []) as MatchedCustomer[],
+  );
   const vehiclesById = new Map<string, MatchedVehicle>();
   for (const vehicle of (vehicles ?? []) as MatchedVehicle[]) {
     if (vehicle.id) vehiclesById.set(vehicle.id, vehicle);
@@ -861,56 +936,140 @@ export async function importInvoiceRowsSynchronously({
     if (workOrder.id) workOrdersByNumber.set(workOrder.id, workOrder);
   }
 
-  for (const batchRows of chunkArray(rows.map((raw, index) => ({ raw, rowNumber: index + 1 })), INVOICE_IMPORT_BATCH_SIZE)) {
+  for (const batchRows of chunkArray(
+    rows.map((raw, index) => ({ raw, rowNumber: index + 1 })),
+    INVOICE_IMPORT_BATCH_SIZE,
+  )) {
     const batchInvoiceNumbers = new Set<string>();
     const batchSourceIds = new Set<string>();
     for (const staged of batchRows) {
-      const invoiceNumber = clean(staged.raw.invoice_number ?? staged.raw.invoice_id);
-      const sourceId = clean(staged.raw.invoice_id);
+      const row = normalizeInvoiceImportRow(staged.raw);
+      const invoiceNumber = getInvoiceNumber(row);
+      const sourceId = getInvoiceSourceId(row);
       if (invoiceNumber) batchInvoiceNumbers.add(invoiceNumber);
       if (sourceId) batchSourceIds.add(sourceId);
     }
-    const { historicalBySourceId, historicalByInvoiceNumber, liveCollisionsByInvoiceNumber } = await fetchBatchInvoiceMatches(client, shopId, batchInvoiceNumbers, batchSourceIds);
+    const {
+      historicalBySourceId,
+      historicalByInvoiceNumber,
+      liveCollisionsByInvoiceNumber,
+    } = await fetchBatchInvoiceMatches(
+      client,
+      shopId,
+      batchInvoiceNumbers,
+      batchSourceIds,
+    );
     const pendingInvoiceNumbers = new Set<string>();
 
     for (const staged of batchRows) {
-      const row = staged.raw;
-      const invoiceNumber = clean(row.invoice_number ?? row.invoice_id);
-      const sourceId = clean(row.invoice_id);
+      const rawRow = staged.raw;
+      const row = normalizeInvoiceImportRow(rawRow);
+      const invoiceNumber = getInvoiceNumber(row);
+      const sourceId = getInvoiceSourceId(row);
       const workOrderNumber = clean(row.work_order_number);
       try {
         const issued = date(row.invoice_date);
         if (!issued || !invoiceNumber) {
-          const reason = !issued ? "Invalid or missing invoice_date." : "Missing invoice_number or invoice_id.";
+          const reason = !issued
+            ? "Invalid or missing invoice_date."
+            : "Missing invoice_number or invoice_id.";
           counts.skipped++;
-          sample.skippedRows.push({ row: staged.rowNumber, reason, invoiceNumber, workOrderNumber });
+          sample.skippedRows.push({
+            row: staged.rowNumber,
+            reason,
+            invoiceNumber,
+            workOrderNumber,
+          });
           continue;
         }
-        const existingHistoricalInvoice = (sourceId ? historicalBySourceId.get(sourceId) : null) ?? historicalByInvoiceNumber.get(invoiceNumber) ?? null;
-        if (pendingInvoiceNumbers.has(invoiceNumber) && !existingHistoricalInvoice) {
+        const existingHistoricalInvoice =
+          (sourceId ? historicalBySourceId.get(sourceId) : null) ??
+          (!sourceId ? historicalByInvoiceNumber.get(invoiceNumber) : null) ??
+          null;
+        const existingInvoiceMatchSource =
+          sourceId && existingHistoricalInvoice
+            ? "imported_invoice_id"
+            : existingHistoricalInvoice
+              ? "invoice_number"
+              : null;
+        if (
+          pendingInvoiceNumbers.has(sourceId ?? invoiceNumber) &&
+          !existingHistoricalInvoice
+        ) {
           counts.skipped++;
           counts.duplicates++;
-          sample.skippedRows.push({ row: staged.rowNumber, reason: "Duplicate invoice already exists in this import batch.", invoiceNumber, workOrderNumber });
+          sample.skippedRows.push({
+            row: staged.rowNumber,
+            reason: "Duplicate invoice already exists in this import batch.",
+            invoiceNumber,
+            workOrderNumber,
+          });
           continue;
         }
-        const liveCollision = !existingHistoricalInvoice ? (liveCollisionsByInvoiceNumber.get(invoiceNumber) ?? null) : null;
+        const liveCollision = !existingHistoricalInvoice
+          ? (liveCollisionsByInvoiceNumber.get(invoiceNumber) ?? null)
+          : null;
         if (liveCollision) {
           counts.skipped++;
-          sample.skippedRows.push({ row: staged.rowNumber, reason: "live_invoice_number_collision", invoiceNumber, workOrderNumber, liveInvoiceId: liveCollision.id });
+          sample.skippedRows.push({
+            row: staged.rowNumber,
+            reason: "live_invoice_number_collision",
+            invoiceNumber,
+            workOrderNumber,
+            liveInvoiceId: liveCollision.id,
+          });
           continue;
         }
         const status = normalizeInvoiceImportStatus(row);
         if (!status) {
           counts.skipped++;
-          sample.skippedRows.push({ row: staged.rowNumber, reason: "Invoice status represents a credit/refund reversal and is not imported as an invoice.", invoiceNumber, workOrderNumber, sourceStatus: clean(row.payment_status ?? row.status) });
+          sample.skippedRows.push({
+            row: staged.rowNumber,
+            reason:
+              "Invoice status represents a credit/refund reversal and is not imported as an invoice.",
+            invoiceNumber,
+            workOrderNumber,
+            sourceStatus: clean(row.payment_status ?? row.status),
+          });
           continue;
         }
-        const workOrder = workOrderNumber ? workOrdersByNumber.get(workOrderNumber.toLowerCase()) : null;
-        const vehicle = (clean(row.vehicle_id) ? (vehiclesById.get(clean(row.vehicle_id)!) ?? vehiclesById.get(clean(row.vehicle_id)!.toLowerCase())) : null) ?? (vin(row.vin) ? vehiclesById.get(vin(row.vin)!) : null);
-        const { customer, customerMatchSource, legacyCustomerId, customerEmailKey, customerPhoneKey, customerNameKey } = resolveInvoiceImportCustomer(row, customerLookupMaps);
-        const fallbackCustomerId = vehicle?.customer_id ?? workOrder?.customer_id ?? null;
+        const workOrder = workOrderNumber
+          ? workOrdersByNumber.get(workOrderNumber.toLowerCase())
+          : null;
+        const authoritativeVehicleId = getVehicleAuthoritativeId(row);
+        const vehicle =
+          (authoritativeVehicleId
+            ? (vehiclesById.get(authoritativeVehicleId) ??
+              vehiclesById.get(authoritativeVehicleId.toLowerCase()))
+            : null) ?? (vin(row.vin) ? vehiclesById.get(vin(row.vin)!) : null);
+        const {
+          customer,
+          customerMatchSource,
+          legacyCustomerId,
+          customerEmailKey,
+          customerPhoneKey,
+          customerNameKey,
+        } = resolveInvoiceImportCustomer(row, customerLookupMaps);
+        const fallbackCustomerId =
+          vehicle?.customer_id ?? workOrder?.customer_id ?? null;
         const customerId = customer?.id ?? fallbackCustomerId;
         const vehicleId = vehicle?.id ?? workOrder?.vehicle_id ?? null;
+        const customerMatchSourceResolved =
+          customerMatchSource ??
+          (vehicle?.customer_id
+            ? "vehicle_customer_id"
+            : workOrder?.customer_id
+              ? "work_order_customer_id"
+              : null);
+        const vehicleMatchSource = vehicle
+          ? authoritativeVehicleId
+            ? "vehicle_external_id"
+            : vin(row.vin)
+              ? "vin"
+              : null
+          : workOrder?.vehicle_id
+            ? "work_order_vehicle_id"
+            : null;
         const total = num(row.total) ?? num(row.subtotal) ?? 0;
         const amountPaid = num(row.amount_paid) ?? 0;
         const payload: DB["public"]["Tables"]["invoices"]["Insert"] = {
@@ -927,20 +1086,87 @@ export async function importInvoiceRowsSynchronously({
           subtotal: num(row.subtotal) ?? total,
           tax_total: num(row.tax) ?? 0,
           total,
-          notes: [clean(row.description), clean(row.notes)].filter(Boolean).join("\n") || null,
-          metadata: { imported: true, read_only: true, import_type: "invoice_csv", imported_invoice_id: sourceId, legacy_customer_id: legacyCustomerId, legacy_vehicle_id: clean(row.vehicle_id), matched_customer_id: customerId, matched_vehicle_id: vehicleId, customer_match_source: customerMatchSource ?? (vehicle?.customer_id ? "vehicle_customer_id" : workOrder?.customer_id ? "work_order_customer_id" : null), customer_match_failed_reason: customerId ? null : legacyCustomerId ? "legacy_customer_id_not_found" : customerEmailKey || customerPhoneKey || customerNameKey ? "customer_lookup_fields_not_found" : "no_customer_lookup_fields", vehicle_match_source: vehicle ? clean(row.vehicle_id) ? "vehicle_id" : vin(row.vin) ? "vin" : null : workOrder?.vehicle_id ? "work_order_vehicle_id" : null, source_system: clean(row.source_system), work_order_number: workOrderNumber, vehicle_id: vehicleId, vin: clean(row.vin), service_category: clean(row.service_category), labor_hours: num(row.labor_hours), shop_supplies: num(row.shop_supplies), amount_paid: amountPaid, balance_due: num(row.balance_due) ?? Math.max(0, total - amountPaid), advisor: clean(row.advisor), technician: clean(row.technician), raw_row: row } as DB["public"]["Tables"]["invoices"]["Insert"]["metadata"],
+          notes:
+            [clean(row.description), clean(row.notes)]
+              .filter(Boolean)
+              .join("\n") || null,
+          metadata: {
+            imported: true,
+            read_only: true,
+            import_type: "invoice_csv",
+            imported_invoice_id: sourceId,
+            legacy_customer_id: legacyCustomerId,
+            legacy_vehicle_id: authoritativeVehicleId,
+            matched_customer_id: customerId,
+            matched_vehicle_id: vehicleId,
+            customer_match_source: customerMatchSourceResolved,
+            customer_match_failed_reason: customerId
+              ? null
+              : legacyCustomerId
+                ? "legacy_customer_id_not_found"
+                : customerEmailKey || customerPhoneKey || customerNameKey
+                  ? "customer_lookup_fields_not_found"
+                  : "no_customer_lookup_fields",
+            vehicle_match_source: vehicleMatchSource,
+            source_system: clean(row.source_system),
+            work_order_number: workOrderNumber,
+            vehicle_id: vehicleId,
+            vin: clean(row.vin),
+            service_category: clean(row.service_category),
+            labor_hours: num(row.labor_hours),
+            shop_supplies: num(row.shop_supplies),
+            amount_paid: amountPaid,
+            balance_due:
+              num(row.balance_due) ?? Math.max(0, total - amountPaid),
+            advisor: clean(row.advisor),
+            technician: clean(row.technician),
+            raw_row: rawRow,
+          } as DB["public"]["Tables"]["invoices"]["Insert"]["metadata"],
         };
-        pendingInvoiceNumbers.add(invoiceNumber);
-        const write = existingHistoricalInvoice ? supabase.from("invoices").update(payload).eq("id", existingHistoricalInvoice.id) : supabase.from("invoices").insert(payload);
+        if (INVOICE_IMPORT_DEBUG && staged.rowNumber <= 10) {
+          debugInvoiceImport("row", {
+            rawRow,
+            normalizedRow: row,
+            invoiceIdentity: sourceId ?? invoiceNumber,
+            customerIdentity: legacyCustomerId,
+            vehicleIdentity: authoritativeVehicleId ?? vin(row.vin),
+            matchedCustomerId: customerId,
+            customerMatchSource: customerMatchSourceResolved,
+            matchedVehicleId: vehicleId,
+            vehicleMatchSource,
+            existingInvoiceMatchSource,
+          });
+        }
+
+        pendingInvoiceNumbers.add(sourceId ?? invoiceNumber);
+        const write = existingHistoricalInvoice
+          ? supabase
+              .from("invoices")
+              .update(payload)
+              .eq("id", existingHistoricalInvoice.id)
+          : supabase.from("invoices").insert(payload);
         const { error } = await write;
         if (error) {
-          if (!existingHistoricalInvoice && isInvoiceNumberUniqueConflict(error)) {
+          if (
+            !existingHistoricalInvoice &&
+            isInvoiceNumberUniqueConflict(error)
+          ) {
             counts.skipped++;
             counts.duplicates++;
-            sample.skippedRows.push({ row: staged.rowNumber, reason: "live_invoice_number_collision", invoiceNumber, workOrderNumber });
+            sample.skippedRows.push({
+              row: staged.rowNumber,
+              reason: "live_invoice_number_collision",
+              invoiceNumber,
+              workOrderNumber,
+            });
           } else {
             counts.failed++;
-            sample.failedRows.push({ row: staged.rowNumber, error: error.message, invoiceNumber, workOrderNumber });
+            sample.failedRows.push({
+              row: staged.rowNumber,
+              error: error.message,
+              invoiceNumber,
+              workOrderNumber,
+            });
           }
         } else {
           counts.imported++;
@@ -948,7 +1174,15 @@ export async function importInvoiceRowsSynchronously({
         }
       } catch (error) {
         counts.failed++;
-        sample.failedRows.push({ row: staged.rowNumber, error: error instanceof Error ? error.message : "Invoice row failed to import.", invoiceNumber, workOrderNumber });
+        sample.failedRows.push({
+          row: staged.rowNumber,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Invoice row failed to import.",
+          invoiceNumber,
+          workOrderNumber,
+        });
       }
     }
   }

@@ -248,3 +248,23 @@ describe("historical invoice imports", () => {
     );
   });
 });
+
+it("does not generate unsupported PostgREST JSON arrow OR filters for invoice lookups", () => {
+  expect(importer).not.toContain("metadata->>imported_invoice_id.in");
+  expect(importer).not.toContain(".or(historicalFilters.join" );
+  expect(importer).toContain("fetchHistoricalInvoiceCsvMatches");
+  expect(importer).toContain(".contains(\"metadata\", { import_type: \"invoice_csv\" })");
+  expect(importer).toContain(".range(from, from + pageSize - 1)");
+});
+
+it("chunks live invoice-number collision checks so 2600 IDs avoid giant URLs", () => {
+  expect(importer).toContain("for (const chunk of chunkArray(Array.from(invoiceNumbers), 100))");
+  expect(importer).not.toContain("postgrestInList");
+});
+
+it("uses source invoice identity before invoice-number fallback and never work_order_number", () => {
+  expect(importer).toContain("getInvoiceSourceId(row)");
+  expect(importer).toContain("getInvoiceNumber(row)");
+  expect(importer).toContain("pendingInvoiceNumbers.has(sourceId ?? invoiceNumber)");
+  expect(importer).not.toContain("pendingInvoiceNumbers.has(workOrderNumber");
+});
