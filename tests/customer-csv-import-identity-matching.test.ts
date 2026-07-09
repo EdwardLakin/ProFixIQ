@@ -167,6 +167,112 @@ describe("customer CSV import identity matching", () => {
     ]);
   });
 
+  it("creates a new customer when an external_id row shares Rocky Mountain Towing fallback identity with another external_id", async () => {
+    mockSupabase = createSupabaseMock([
+      {
+        id: "existing-rocky-mountain",
+        external_id: "CUST-100181",
+        email: "dispatch@rockymountaintowing.example",
+        phone: "4035550181",
+        name: "Rocky Mountain Towing",
+        business_name: "Rocky Mountain Towing",
+        address: "100 Tow Yard Rd",
+        city: "Calgary",
+        province: "AB",
+        postal_code: "T2P 1A1",
+      },
+    ]);
+
+    const body = await postRows([
+      {
+        customer_id: "CUST-100386",
+        company_name: "Rocky Mountain Towing",
+        email: "dispatch@rockymountaintowing.example",
+        phone: "(403) 555-0181",
+        address: "100 Tow Yard Rd",
+        city: "Calgary",
+        province: "AB",
+        postal_code: "T2P 1A1",
+        customer_since: "2024-03-01",
+      },
+    ]);
+
+    expect(body.counts).toMatchObject({
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0,
+    });
+    expect(body.skippedRows).toEqual([]);
+    expect(mockSupabase.updates).toEqual([]);
+    expect(mockSupabase.inserted).toHaveLength(1);
+    expect(mockSupabase.inserted[0]).toMatchObject({
+      external_id: "CUST-100386",
+      business_name: "Rocky Mountain Towing",
+    });
+  });
+
+  it("treats external_id column values like customer_id values for Northline and Red Deer style rows", async () => {
+    mockSupabase = createSupabaseMock([
+      {
+        id: "existing-northline",
+        external_id: "CUST-100777",
+        email: "ap@northline.example",
+        phone: "7805551177",
+        business_name: "Northline Contracting",
+        city: "Edmonton",
+        province: "AB",
+      },
+      {
+        id: "existing-red-deer",
+        external_id: "CUST-100888",
+        email: "rentals@reddeer.example",
+        phone: "4035551310",
+        business_name: "Red Deer Rentals",
+        city: "Red Deer",
+        province: "AB",
+      },
+    ]);
+
+    const body = await postRows([
+      {
+        external_id: "CUST-101177",
+        company_name: "Northline Contracting",
+        email: "ap@northline.example",
+        phone: "780-555-1177",
+        city: "Edmonton",
+        province: "AB",
+      },
+      {
+        external_id: "CUST-101310",
+        company_name: "Red Deer Rentals",
+        email: "rentals@reddeer.example",
+        phone: "403-555-1310",
+        city: "Red Deer",
+        province: "AB",
+      },
+    ]);
+
+    expect(body.counts).toMatchObject({
+      created: 2,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+      duplicates: 0,
+    });
+    expect(
+      body.counts.created +
+        body.counts.updated +
+        body.counts.skipped +
+        body.counts.failed,
+    ).toBe(2);
+    expect(mockSupabase.updates).toEqual([]);
+    expect(
+      mockSupabase.inserted.map((customer) => customer.external_id),
+    ).toEqual(["CUST-101177", "CUST-101310"]);
+  });
+
   it("still uses fallback duplicate protection when customer_id is missing", async () => {
     const body = await postRows([
       {
