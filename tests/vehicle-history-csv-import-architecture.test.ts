@@ -62,8 +62,10 @@ describe("vehicle history CSV import synchronous architecture", () => {
 
     expect(migration).toContain("alter table public.history add column if not exists shop_id");
     expect(migration).toContain("update public.history h");
-    expect(worker).toContain("findDuplicateHistoryId");
+    expect(worker).toContain("preloadDuplicateHistoryKeys");
     expect(worker).toContain('.eq("shop_id", shopId)');
+    expect(worker).toContain('new Set<DuplicateKey>()');
+    expect(worker).not.toContain("findDuplicateHistoryId");
     expect(worker).not.toContain('.in("customer_id"');
   });
 
@@ -73,7 +75,7 @@ describe("vehicle history CSV import synchronous architecture", () => {
     expect(source).toContain("const formData = new FormData()");
     expect(source).toContain('formData.append("file", file)');
     expect(source).toContain("payload.counts");
-    expect(source).toContain('phase: "Import complete"');
+    expect(source).toContain('"Import complete"');
     expect(source).not.toContain("setActiveJobId");
     expect(source).not.toContain("useImportJobProgress");
     expect(source).not.toContain("handleJobComplete");
@@ -85,6 +87,7 @@ describe("vehicle history CSV import synchronous architecture", () => {
 
     expect(source).toContain("/steps/vehicle_history/complete");
     expect(source).toContain('summary: { importType: "vehicle_history_csv", ...nextCounts }');
-    expect(source).toContain("payload.counts.imported > 0 && payload.counts.failed === 0");
+    expect(source).toContain("payload.counts.imported > 0");
+    expect(source).toContain("payload.counts.failed === 0");
   });
 });

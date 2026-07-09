@@ -358,7 +358,7 @@ export function VehicleHistoryCsvImportCard({
         phase:
           payload.counts.failed > 0
             ? "Import completed with failures"
-            : "Completed",
+            : "Import complete",
         phaseKey: payload.counts.failed > 0 ? "failed" : "completed",
         processed: finalTotal,
         total: finalTotal,
