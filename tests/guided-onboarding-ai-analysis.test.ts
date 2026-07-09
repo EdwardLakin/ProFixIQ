@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { GUIDED_ONBOARDING_STEP_KEYS } from "@/features/onboarding-v2/guided/steps";
-import { filterGuidedAnalysisRecommendations } from "../app/dashboard/onboarding-v2/[sessionId]/summary/page";
+import { filterGuidedAnalysisRecommendations } from "@/features/onboarding-v2/analysis/filterGuidedAnalysisRecommendations";
 import type { AiRecommendationRecord } from "@/features/ai/server/types";
 
 function read(path: string) {
