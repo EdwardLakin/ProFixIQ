@@ -13,29 +13,13 @@ import {
   type CsvImportProgressState,
 } from "@/features/shared/components/import/CsvImportProgress";
 import type { GuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
-
-type HistoryImportRow = {
-  customer_id?: string | null;
-  vehicle_id?: string | null;
-  vin?: string | null;
-  customer_name?: string | null;
-  customer_email?: string | null;
-  customer_phone?: string | null;
-  service_date?: string | null;
-  repair_order_number?: string | null;
-  invoice_number?: string | null;
-  odometer?: string | null;
-  service_category?: string | null;
-  complaint?: string | null;
-  cause?: string | null;
-  correction?: string | null;
-  parts?: string | null;
-  labor_hours?: string | null;
-  total?: string | null;
-  technician?: string | null;
-  advisor?: string | null;
-  notes?: string | null;
-};
+import {
+  cleanVehicleHistoryHeader as cleanHeader,
+  normalizeVehicleHistoryImportRow as normalizeParsedRow,
+  rowCustomerExternalId,
+  rowVehicleExternalId,
+  type HistoryImportRow,
+} from "@/features/work-orders/import/normalizeVehicleHistoryImportRow";
 
 type ImportCounts = {
   imported: number;
@@ -64,56 +48,14 @@ type ImportResponse = {
   }>;
 };
 
-const SUPPORTED_COLUMNS = [
-  "customer_id",
-  "vehicle_id",
-  "vin",
-  "customer_name",
-  "customer_email",
-  "customer_phone",
-  "service_date",
-  "repair_order_number",
-  "invoice_number",
-  "odometer",
-  "service_category",
-  "complaint",
-  "cause",
-  "correction",
-  "parts",
-  "labor_hours",
-  "total",
-  "technician",
-  "advisor",
-  "notes",
-] as const;
 const RECOMMENDED_COLUMNS =
   "customer_id, vehicle_id, vin, service_date, repair_order_number, invoice_number, odometer, service_category, complaint, cause, correction, parts, labor_hours, total, technician, advisor, notes";
 const SAMPLE = `${RECOMMENDED_COLUMNS}\nCUST-1001,VEH-204,1HGCM82633A004352,2024-03-18,RO-9182,INV-9182,84520,Brakes,Brake pedal pulsation,Front rotors warped,Replaced front pads and rotors,Front pads; front rotors,2.4,689.42,Sam Tech,Avery Advisor,Imported from legacy system`;
 
-function cleanHeader(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-}
-function cleanCell(value: unknown): string | null {
-  const text = String(value ?? "").trim();
-  return text.length ? text : null;
-}
-function normalizeParsedRow(row: Record<string, unknown>): HistoryImportRow {
-  const normalized: HistoryImportRow = {};
-  for (const [header, value] of Object.entries(row)) {
-    const key = cleanHeader(header);
-    if (!(SUPPORTED_COLUMNS as readonly string[]).includes(key)) continue;
-    normalized[key as keyof HistoryImportRow] = cleanCell(value);
-  }
-  return normalized;
-}
 function hasLinkIdentity(row: HistoryImportRow): boolean {
   return Boolean(
-    row.customer_id ||
-    row.vehicle_id ||
+    rowCustomerExternalId(row) ||
+    rowVehicleExternalId(row) ||
     row.vin ||
     row.customer_email ||
     row.customer_phone ||
