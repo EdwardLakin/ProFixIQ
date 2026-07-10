@@ -233,6 +233,7 @@ export default function WorkforceOverviewClient() {
         { label: "Payroll blocking", value: data.summary.payrollBlocking, tone: "border-red-500/45" },
         { label: "Assigned unavailable", value: data.summary.assignedToUnavailable, tone: "border-red-500/30" },
         { label: "Unassigned jobs", value: data.summary.unassignedJobs, tone: "border-red-500/30" },
+        { label: "Attendance exceptions", value: data.summary.activeAttendanceExceptions ?? 0, tone: "border-red-500/40" },
       ],
     },
     {
@@ -240,6 +241,8 @@ export default function WorkforceOverviewClient() {
       accent: "text-sky-100",
       items: [
         { label: "Working today", value: data.summary.workingToday, tone: "border-sky-400/30" },
+        { label: "Working on jobs", value: data.summary.workingOnJobs ?? 0, tone: "border-emerald-400/30" },
+        { label: "Idle techs", value: data.summary.idleTechnicians ?? 0, tone: "border-orange-400/30" },
         { label: "Away today", value: data.summary.awayToday, tone: "border-sky-500/20" },
         { label: "Away tomorrow", value: data.summary.awayTomorrow, tone: "border-sky-500/20" },
       ],
