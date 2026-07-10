@@ -3,9 +3,11 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-type LaborSegmentRow = DB["public"]["Tables"]["work_order_line_labor_segments"]["Row"];
+type LaborSegmentRow =
+  DB["public"]["Tables"]["work_order_line_labor_segments"]["Row"];
 
-type LaborSegmentInsert = DB["public"]["Tables"]["work_order_line_labor_segments"]["Insert"];
+type LaborSegmentInsert =
+  DB["public"]["Tables"]["work_order_line_labor_segments"]["Insert"];
 
 export async function startLaborSegment(params: {
   supabase: SupabaseClient<DB>;
@@ -27,7 +29,9 @@ export async function startLaborSegment(params: {
     source: params.source ?? "job_punch",
   };
 
-  const { error } = await params.supabase.from("work_order_line_labor_segments").insert(payload);
+  const { error } = await params.supabase
+    .from("work_order_line_labor_segments")
+    .insert(payload);
   return { error };
 }
 
@@ -36,10 +40,16 @@ export async function closeActiveLaborSegments(params: {
   workOrderLineId?: string;
   technicianId?: string;
   endedAtIso: string;
+  pauseReason?: string | null;
 }) {
   let query = params.supabase
     .from("work_order_line_labor_segments")
-    .update({ ended_at: params.endedAtIso })
+    .update({
+      ended_at: params.endedAtIso,
+      ...(params.pauseReason !== undefined
+        ? { pause_reason: params.pauseReason }
+        : {}),
+    })
     .is("ended_at", null);
 
   if (params.workOrderLineId) {
@@ -81,7 +91,10 @@ export async function syncLinePunchMirrorFromSegments(params: {
 
   if (segErr) return { error: segErr };
 
-  const rows = (segments ?? []) as Pick<LaborSegmentRow, "started_at" | "ended_at">[];
+  const rows = (segments ?? []) as Pick<
+    LaborSegmentRow,
+    "started_at" | "ended_at"
+  >[];
   if (rows.length === 0) {
     const { error } = await params.supabase
       .from("work_order_lines")
@@ -96,7 +109,10 @@ export async function syncLinePunchMirrorFromSegments(params: {
   let latestEndedAt: string | null = null;
   for (const segment of rows) {
     if (!segment.ended_at) continue;
-    if (!latestEndedAt || new Date(segment.ended_at).getTime() > new Date(latestEndedAt).getTime()) {
+    if (
+      !latestEndedAt ||
+      new Date(segment.ended_at).getTime() > new Date(latestEndedAt).getTime()
+    ) {
       latestEndedAt = segment.ended_at;
     }
   }

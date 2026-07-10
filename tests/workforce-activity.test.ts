@@ -413,6 +413,190 @@ describe("workforce activity DTO", () => {
     expect(a.operationalState).toBe("clocked_in_idle");
     expect(a.currentJob).toBeNull();
   });
+  it("reports hold closure as placed on hold instead of finished", () => {
+    const r = base({
+      shifts: [shift],
+      segments: [
+        {
+          ...segment,
+          ended_at: "2026-07-10T17:45:00.000Z",
+          pause_reason: "hold:Awaiting parts",
+        },
+      ],
+      lines: [
+        {
+          ...line,
+          status: "on_hold",
+          line_status: "on_hold",
+          hold_reason: "Awaiting parts",
+        },
+      ],
+      workOrders: [wo],
+      operationalLogs: [
+        {
+          id: "log-pause",
+          action: "pause",
+          user_id: "tech-1",
+          timestamp: "2026-07-10T17:45:00.000Z",
+          target_table: "work_order_line",
+          target_id: "line-1",
+          context: null,
+        },
+      ],
+    } as any);
+    expect(r.feed.map((i) => i.action)).toContain(
+      "placed job on hold — Awaiting parts",
+    );
+    expect(r.feed.map((i) => i.action)).not.toContain("finished job");
+    expect(r.feed.map((i) => i.action)).not.toContain("completed job");
+  });
+
+  it("reports hold release without fabricating resumed work", () => {
+    const r = base({
+      shifts: [shift],
+      segments: [
+        {
+          ...segment,
+          ended_at: "2026-07-10T17:45:00.000Z",
+          pause_reason: "hold",
+        },
+      ],
+      lines: [{ ...line, status: "awaiting", line_status: "awaiting" }],
+      workOrders: [wo],
+      operationalLogs: [
+        {
+          id: "log-release",
+          action: "resume",
+          user_id: "tech-1",
+          timestamp: "2026-07-10T17:50:00.000Z",
+          target_table: "work_order_line",
+          target_id: "line-1",
+          context: null,
+        },
+      ],
+    } as any);
+    expect(r.feed[0].action).toBe("released hold on job");
+    expect(r.feed.map((i) => i.action)).not.toContain("resumed job");
+  });
+
+  it("reports hold release then restart as release followed by resumed job and deduplicates sold labor", () => {
+    const r = base({
+      shifts: [shift],
+      segments: [
+        {
+          ...segment,
+          id: "seg-1",
+          started_at: "2026-07-10T17:00:00.000Z",
+          ended_at: "2026-07-10T17:27:00.000Z",
+          pause_reason: "hold",
+        },
+        {
+          ...segment,
+          id: "seg-2",
+          started_at: "2026-07-10T17:49:00.000Z",
+          ended_at: null,
+          source: "job_resume",
+        },
+      ],
+      lines: [line],
+      workOrders: [wo],
+      operationalLogs: [
+        {
+          id: "log-release",
+          action: "resume",
+          user_id: "tech-1",
+          timestamp: "2026-07-10T17:40:00.000Z",
+          target_table: "work_order_line",
+          target_id: "line-1",
+          context: null,
+        },
+      ],
+    } as any);
+    expect(r.feed.slice(0, 4).map((i) => i.action)).toEqual([
+      "resumed job",
+      "released hold on job",
+      "placed job on hold",
+      "started job",
+    ]);
+    expect(r.activities[0].today.soldLaborHours).toBe(1);
+  });
+
+  it("reports actual completion only when completion semantics are present", () => {
+    const r = base({
+      shifts: [shift],
+      segments: [
+        {
+          ...segment,
+          ended_at: "2026-07-10T17:45:00.000Z",
+          pause_reason: "completed",
+        },
+      ],
+      lines: [{ ...line, status: "completed", line_status: "completed" }],
+      workOrders: [wo],
+      operationalLogs: [
+        {
+          id: "log-finish",
+          action: "finish",
+          user_id: "tech-1",
+          timestamp: "2026-07-10T17:45:00.000Z",
+          target_table: "work_order_line",
+          target_id: "line-1",
+          context: null,
+        },
+      ],
+    } as any);
+    expect(r.feed[0].action).toBe("completed job");
+  });
+
+  it("reports shift-end closure without completion wording", () => {
+    const r = base({
+      shifts: [{ ...shift, end_time: "2026-07-10T17:45:00.000Z" }],
+      segments: [
+        {
+          ...segment,
+          ended_at: "2026-07-10T17:45:00.000Z",
+          pause_reason: "shift_end",
+        },
+      ],
+      lines: [line],
+      workOrders: [wo],
+    });
+    expect(r.feed[0].action).toBe("job time stopped at shift end");
+  });
+
+  it("uses neutral wording for unknown segment closure reasons", () => {
+    const r = base({
+      shifts: [shift],
+      segments: [{ ...segment, ended_at: "2026-07-10T17:45:00.000Z" }],
+      lines: [line],
+      workOrders: [wo],
+    });
+    expect(r.feed[0].action).toBe("stopped job time");
+  });
+
+  it("keeps historical hold wording stable after later line status changes", () => {
+    const r = base({
+      shifts: [shift],
+      segments: [
+        {
+          ...segment,
+          ended_at: "2026-07-10T17:45:00.000Z",
+          pause_reason: "hold:Awaiting parts",
+        },
+      ],
+      lines: [
+        {
+          ...line,
+          status: "completed",
+          line_status: "completed",
+          hold_reason: null,
+        },
+      ],
+      workOrders: [wo],
+    });
+    expect(r.feed[0].action).toBe("placed job on hold");
+  });
+
   it("orders combined feed newest first", () => {
     const r = base({
       shifts: [shift],
