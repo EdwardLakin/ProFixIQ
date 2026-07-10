@@ -29,7 +29,21 @@ vi.mock("@/features/dashboard/server/getOperationsDashboardPayload", () => ({
       blockedJobs: 2,
       waitingApprovals: 3,
       waitingParts: 4,
+      techniciansClockedIn: 5,
+      appointmentsToday: 2,
+      completedToday: 1,
     },
+    immediateAttention: [
+      { label: "Waiting for customer approval", value: "3", href: "/work-orders/board?stage=awaiting_approval" },
+    ],
+    todayOperations: [
+      { label: "Open work orders", value: "8", href: "/work-orders/board" },
+    ],
+    quickActions: [
+      { label: "Create Work Order", href: "/work-orders/create", tone: "primary" },
+      { label: "Work Order Board", href: "/work-orders/board", tone: "neutral" },
+    ],
+    recentOperationalActivity: [],
     activeJobSummary: [{ label: "In progress", value: 8, pct: 80 }],
     liveShopLoad: [{ label: "Today", count: 8, pct: 80 }],
     dailySummary: [{ label: "Approval queue", value: "3", tone: "accent" }],
@@ -73,10 +87,10 @@ describe("smoke", () => {
     expect(markup).not.toContain("Open legacy guided review");
     expect(markup).not.toContain("Download migration report");
 
-    expect(markup).toMatch(/Active jobs/i);
-    expect(markup).toContain("Blocked");
-    expect(markup).toContain("Approvals");
-    expect(markup).toMatch(/Waiting parts/i);
+    expect(markup).toMatch(/Open work orders/i);
+    expect(markup).toContain("Immediate Attention");
+    expect(markup).toContain("Waiting for customer approval");
+    expect(markup).toContain("Quick Actions");
     expect(markup).toContain("Live Work Command Surface");
   });
 });

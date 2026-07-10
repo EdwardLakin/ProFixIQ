@@ -136,6 +136,15 @@ export default function WorkOrderBoard(props: {
   );
 
   const completedCount = counts.completed;
+  const queueGroups = [
+    { label: "At Risk", count: rows.filter((row) => row.risk_level === "danger" || row.risk_level === "warn").length },
+    { label: "Blocked", count: rows.filter((row) => row.overall_stage === "on_hold").length },
+    { label: "Ready to Work", count: rows.filter((row) => row.overall_stage === "awaiting").length },
+    { label: "Working", count: rows.filter((row) => row.overall_stage === "in_progress").length },
+    { label: "Awaiting Approval", count: rows.filter((row) => row.overall_stage === "awaiting_approval").length },
+    { label: "Waiting Parts", count: rows.filter((row) => row.overall_stage === "waiting_parts").length },
+    { label: "Completed Today", count: completedCount },
+  ].filter((group) => group.count > 0);
 
   return (
     <section className="rounded-3xl border border-white/10 bg-black/20 p-4 backdrop-blur md:p-5">
@@ -177,6 +186,15 @@ export default function WorkOrderBoard(props: {
         </div>
 
         <div className="flex flex-col gap-2 md:min-w-[380px]">
+          {queueGroups.length > 0 ? (
+            <div data-testid="queue-awareness-groups" className="flex flex-wrap gap-2">
+              {queueGroups.map((group) => (
+                <div key={group.label} className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                  {group.label}: <span className="text-white">{group.count}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}

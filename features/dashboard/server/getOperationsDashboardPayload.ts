@@ -35,7 +35,14 @@ export type OperationsDashboardPayload = {
     blockedJobs: number;
     waitingApprovals: number;
     waitingParts: number;
+    techniciansClockedIn: number;
+    appointmentsToday: number;
+    completedToday: number;
   };
+  immediateAttention: OpSignal[];
+  todayOperations: OpSignal[];
+  quickActions: OpAction[];
+  recentOperationalActivity: OpSignal[];
   activeJobSummary: Array<{ label: string; value: number; pct: number }>;
   liveShopLoad: Array<{ label: string; count: number; pct: number }>;
   dailySummary: OpSignal[];
@@ -101,7 +108,14 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       blockedJobs: 0,
       waitingApprovals: 0,
       waitingParts: 0,
+      techniciansClockedIn: 0,
+      appointmentsToday: 0,
+      completedToday: 0,
     },
+    immediateAttention: [],
+    todayOperations: [],
+    quickActions: [],
+    recentOperationalActivity: [],
     activeJobSummary: [],
     liveShopLoad: [],
     dailySummary: [],
@@ -156,11 +170,13 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     techProfilesResult,
     activeLinesResult,
     bookingsTodayResult,
+    clockedInResult,
+    completedTodayResult,
   ] = await Promise.all([
     supabase
       .from("v_work_order_board_cards_shop")
       .select(
-        "work_order_id,custom_id,display_name,overall_stage,risk_level,priority",
+        "work_order_id,custom_id,display_name,overall_stage,risk_level,priority,is_waiter,time_in_stage_seconds",
       )
       .eq("shop_id", identity.shopId)
       .order("activity_at", { ascending: false })
@@ -178,6 +194,18 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .eq("shop_id", identity.shopId)
       .gte("created_at", todayStart)
       .lte("created_at", todayEnd),
+    supabase
+      .from("tech_shifts")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", identity.shopId)
+      .is("end_time", null),
+    supabase
+      .from("work_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", identity.shopId)
+      .eq("status", "completed")
+      .gte("updated_at", todayStart)
+      .lte("updated_at", todayEnd),
   ]);
 
   const boardRows = boardResult.error ? [] : (boardResult.data ?? []);
@@ -316,6 +344,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     payload.sectionErrors.push("Live work signal is temporarily unavailable.");
   } else {
     payload.topSummary.activeJobs = activeBoardRows.length;
+    payload.topSummary.completedToday = completedTodayResult.error ? 0 : (completedTodayResult.count ?? 0);
     payload.topSummary.blockedJobs = activeBoardRows.filter(
       (row) =>
         row.overall_stage === "waiting_parts" ||
@@ -456,6 +485,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       targetKind: blockedTargetKind,
     },
   ];
+
+  payload.topSummary.appointmentsToday = bookingsTodayResult.error ? 0 : (bookingsTodayResult.count ?? 0);
+  payload.topSummary.techniciansClockedIn = clockedInResult.error ? 0 : (clockedInResult.count ?? 0);
 
   if (bookingsTodayResult.error) {
     console.error("[Dashboard][Operations] daily summary query failed", {
@@ -698,6 +730,58 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           detail: "Review technician assignment and bay balancing.",
         },
       ];
+
+  const waitingApprovalCard = {
+    label: "Waiting for customer approval",
+    value: String(payload.topSummary.waitingApprovals),
+    tone: "accent" as const,
+    href: approvalTargetHref,
+    targetKind: approvalTargetKind,
+  };
+  const waitingPartsCard = {
+    label: "Waiting for parts",
+    value: String(payload.topSummary.waitingParts),
+    tone: "accent" as const,
+    href: waitingPartsTargetHref,
+    targetKind: waitingPartsTargetKind,
+  };
+  const onHoldCount = activeBoardRows.filter((row) => row.overall_stage === "on_hold").length;
+  const waiterCount = activeBoardRows.filter((row) => Boolean(row.is_waiter)).length;
+  const longRunningCount = activeBoardRows.filter((row) => (row.time_in_stage_seconds ?? 0) >= 4 * 60 * 60).length;
+  const idleTechCount = Math.max(0, payload.topSummary.techniciansClockedIn - activeLines.length);
+
+  payload.immediateAttention = [
+    payload.topSummary.waitingApprovals > 0 ? waitingApprovalCard : null,
+    payload.topSummary.waitingParts > 0 ? waitingPartsCard : null,
+    onHoldCount > 0 ? { label: "Jobs on hold", value: String(onHoldCount), tone: "accent" as const, href: "/work-orders/board?stage=on_hold", targetKind: "filtered" as const } : null,
+    idleTechCount > 0 ? { label: "Technician with no active job", value: String(idleTechCount), tone: "accent" as const, href: "/dashboard/workforce/attendance", targetKind: "filtered" as const } : null,
+    longRunningCount > 0 ? { label: "Long-running active jobs", value: String(longRunningCount), tone: "accent" as const, href: "/work-orders/board?stage=in_progress", targetKind: "filtered" as const } : null,
+    waiterCount > 0 ? { label: "Customers currently waiting", value: String(waiterCount), tone: "accent" as const, href: "/work-orders/board", targetKind: "filtered" as const } : null,
+  ].filter(Boolean) as OpSignal[];
+
+  payload.todayOperations = [
+    { label: "Open work orders", value: String(payload.topSummary.activeJobs), href: "/work-orders/board" },
+    { label: "Vehicles in shop", value: String(payload.topSummary.activeJobs), href: "/work-orders/board" },
+    { label: "Technicians clocked in", value: String(payload.topSummary.techniciansClockedIn), href: "/dashboard/workforce/attendance" },
+    { label: "Jobs currently active", value: String(activeLines.length), href: "/work-orders/board?stage=in_progress" },
+    { label: "Appointments today", value: String(payload.topSummary.appointmentsToday), href: "/dashboard/bookings" },
+    { label: "Completed today", value: String(payload.topSummary.completedToday), href: "/work-orders/board?stage=completed" },
+  ];
+
+  payload.quickActions = [
+    { label: "Create Work Order", href: "/work-orders/create", tone: "primary" },
+    { label: "Work Order Board", href: "/work-orders/board", tone: "neutral" },
+    { label: "Attendance", href: "/dashboard/workforce/attendance", tone: "neutral" },
+    { label: "Customers", href: "/customers", tone: "neutral" },
+    { label: "Vehicles", href: "/vehicles", tone: "neutral" },
+    { label: "Schedule", href: "/dashboard/bookings", tone: "neutral" },
+  ];
+
+  payload.recentOperationalActivity = payload.liveWork.slice(0, 5).map((item) => ({
+    label: `${item.label} is ${item.stage}`,
+    value: item.risk === "danger" ? "At risk" : "Updated",
+    href: `/work-orders/${item.id}`,
+  }));
 
   payload.fetchAudit.push(
     "Operations dashboard now renders from one server payload with composed panel data.",

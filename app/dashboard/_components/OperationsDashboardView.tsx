@@ -45,29 +45,45 @@ export default async function OperationsDashboardView() {
 
       <MetricStrip
         className="mb-0"
-        items={[
-          { label: "Active jobs", value: String(payload.topSummary.activeJobs) },
-          {
-            label: "Blocked",
-            value: String(payload.topSummary.blockedJobs),
-            tone: payload.topSummary.blockedJobs > 0 ? "accent" : "default",
-            indicator: payload.topSummary.blockedJobs > 0 ? "red" : undefined,
-            pulse: payload.topSummary.blockedJobs > 0,
-          },
-          {
-            label: "Approvals",
-            value: String(payload.topSummary.waitingApprovals),
-            tone: payload.topSummary.waitingApprovals > 0 ? "accent" : "default",
-            indicator: payload.topSummary.waitingApprovals > 0 ? "accent" : undefined,
-          },
-          {
-            label: "Waiting parts",
-            value: String(payload.topSummary.waitingParts),
-            tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
-            indicator: payload.topSummary.waitingParts > 0 ? "amber" : undefined,
-          },
-        ]}
+        items={payload.todayOperations.map((item) => ({
+          label: item.label,
+          value: item.value,
+          tone: Number(item.value) > 0 && ["Waiting for parts", "Completed today"].includes(item.label) ? "accent" : "default",
+        }))}
       />
+
+      <DashboardPanel
+        title="Immediate Attention"
+        eyebrow="Right now"
+        action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
+        className="border-amber-300/25 bg-[linear-gradient(150deg,rgba(36,22,8,0.34),rgba(8,11,24,0.82))]"
+      >
+        {payload.immediateAttention.length > 0 ? (
+          <div data-testid="immediate-attention" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {payload.immediateAttention.map((item) => (
+              <Link key={item.label} href={item.href ?? "/work-orders/board"} className="group rounded-xl border border-white/10 bg-black/25 p-3 transition hover:border-[var(--brand-accent,#E39A6E)]/50 hover:bg-black/40">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-white">{item.label}</span>
+                  <ChevronRight className="h-4 w-4 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-[var(--brand-accent,#E39A6E)]">{item.value}</div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <EmbeddedEmptyState label="No immediate attention cards" detail="Only active operational issues appear here." />
+        )}
+      </DashboardPanel>
+
+      <DashboardPanel title="Quick Actions" eyebrow="Operational shortcuts">
+        <div data-testid="operations-quick-actions" className="flex flex-wrap gap-2">
+          {payload.quickActions.map((action) => (
+            <Link key={action.href} href={action.href} className={action.tone === "primary" ? "rounded-lg border border-[var(--brand-accent,#E39A6E)]/45 bg-[var(--brand-accent,#E39A6E)]/15 px-3 py-2 text-sm font-semibold text-white" : "rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/40"}>
+              {action.label}
+            </Link>
+          ))}
+        </div>
+      </DashboardPanel>
 
       <div className="grid gap-2 lg:grid-cols-[minmax(0,1.72fr)_minmax(276px,0.9fr)] xl:grid-cols-[minmax(0,1.92fr)_minmax(304px,0.96fr)] 2xl:grid-cols-[minmax(0,2.1fr)_minmax(340px,1fr)]">
         <section className="space-y-2.5">
@@ -188,7 +204,7 @@ export default async function OperationsDashboardView() {
             </DashboardPanel>
 
             <DashboardPanel
-              title={isTechnicianView ? "My daily summary" : "Daily Summary"}
+              title={isTechnicianView ? "My daily summary" : "Today's Operations"}
               className="border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]"
               action={<Link href="/dashboard/bookings" className="text-xs text-neutral-300 hover:text-white">Open</Link>}
             >
@@ -248,6 +264,16 @@ export default async function OperationsDashboardView() {
               </div>
             </DashboardPanel>
           ) : null}
+          <DashboardPanel title="Recent Operational Activity" className="min-h-[180px]">
+            <div className="space-y-1.5">
+              {payload.recentOperationalActivity.length > 0 ? payload.recentOperationalActivity.map((event) => (
+                <Link key={`${event.label}-${event.value}`} href={event.href ?? "/work-orders/board"} className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:border-white/20 hover:bg-black/35">
+                  <span className="text-neutral-200">{event.label}</span>
+                  <span className="inline-flex items-center gap-1 text-neutral-400">{event.value}<ChevronRight className="h-3 w-3" /></span>
+                </Link>
+              )) : <EmbeddedEmptyState label="No operational events" detail="Recent events appear when canonical work activity updates." />}
+            </div>
+          </DashboardPanel>
 
         </section>
 
