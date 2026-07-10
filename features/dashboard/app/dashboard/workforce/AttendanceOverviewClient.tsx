@@ -223,7 +223,7 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
     <div className="space-y-5">
       <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
         <h1 className="text-2xl font-semibold text-white">Attendance Command</h1>
-        <p className="mt-1 text-sm text-neutral-300">Live shop-floor command board for shift posture, active jobs, idle time, and operational exceptions.</p>
+        <p className="mt-1 text-sm text-neutral-300">Live shop-floor command board for shift posture, active jobs, unassigned time, and operational exceptions.</p>
         <p className="mt-2 inline-flex rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-neutral-300">
           {timezone ? `Today based on shop timezone: ${timezone}` : "Today based on shop day window (UTC fallback)"}
         </p>
@@ -259,7 +259,7 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
             {[
               ["Active technicians", String(data?.activitySummary?.activeTechnicians ?? derived.activeNow)],
               ["Working on jobs", String(data?.activitySummary?.workingOnJobs ?? 0)],
-              ["Idle / waiting", String(data?.activitySummary?.idleTechnicians ?? 0)],
+              ["No active job", String(data?.activitySummary?.idleTechnicians ?? 0)],
               ["On break", String(data?.activitySummary?.onBreak ?? derived.onBreak)],
               ["On lunch", String(data?.activitySummary?.onLunch ?? derived.onLunch)],
               ["Ended today", String(data?.activitySummary?.endedToday ?? derived.endedToday)],

@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
     .select("*")
     .eq("shop_id", a.me.shop_id)
     .gte("started_at", from)
-    .lte("started_at", to)
+    .lt("started_at", to)
     .order("started_at", { ascending: false });
 
   if (userId) q = q.eq("user_id", userId);
