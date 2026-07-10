@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ActivitySquare, AlertTriangle, ArrowRight, ChevronRight, TriangleAlert } from "lucide-react";
 
 import { getOperationsDashboardPayload } from "@/features/dashboard/server/getOperationsDashboardPayload";
-import { CompactSignalList, DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
+import { DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
 import { ShopLoadChart } from "./OperationsCharts";
 
 function EmbeddedEmptyState({ label, detail }: { label: string; detail: string }) {
@@ -39,7 +39,7 @@ export default async function OperationsDashboardView() {
         }
         actions={[
           { label: "Create work order", href: "/work-orders/create", tone: "primary" },
-          { label: "Dispatch", href: "/dashboard/manager/dispatch", tone: "secondary" },
+          { label: "Dispatch", href: "/work-orders/board", tone: "secondary" },
         ]}
       />
 
@@ -229,7 +229,7 @@ export default async function OperationsDashboardView() {
                 {payload.technicianActivity.map((tech) => (
                   <Link
                     key={tech.id}
-                    href="/dashboard/manager/dispatch"
+                    href="/work-orders/board"
                     className="group grid grid-cols-[minmax(0,1fr)_76px_auto] items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                   >
                     <div className="min-w-0">
@@ -249,24 +249,6 @@ export default async function OperationsDashboardView() {
             </DashboardPanel>
           ) : null}
 
-          <DashboardPanel
-            title="Revenue & Efficiency Snapshot"
-            action={<Link href="/dashboard/performance" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open <ArrowRight className="h-3 w-3" /></Link>}
-          >
-            <div className="grid gap-2 md:grid-cols-[minmax(180px,0.8fr)_minmax(0,1fr)]">
-              <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
-                <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Revenue (MTD)</div>
-                <div className="mt-1 text-xl font-semibold text-white">${payload.revenueEfficiency.revenue.toLocaleString()}</div>
-              </div>
-              <CompactSignalList
-                items={[
-                  { label: "Profit", value: `$${payload.revenueEfficiency.profit.toLocaleString()}` },
-                  { label: "Efficiency", value: `${payload.revenueEfficiency.efficiencyPct}%` },
-                  { label: "Active lines", value: String(payload.revenueEfficiency.completedLines) },
-                ]}
-              />
-            </div>
-          </DashboardPanel>
         </section>
 
         {hasRightRailSignals ? (

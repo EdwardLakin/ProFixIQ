@@ -23,7 +23,7 @@ const ACTIONS: Record<Role, Action[]> = {
     { label: "📝 Create Work Order", href: "/dashboard/advisor/work-orders/create" },
   ],
   manager: [
-    { label: "📊 Dispatch Board", href: "/dashboard/manager/dispatch" },
+    { label: "📊 Work Order Board", href: "/work-orders/board" },
     { label: "🧾 All Work Orders", href: "/dashboard/manager/work-orders" },
   ],
 };

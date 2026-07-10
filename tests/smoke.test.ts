@@ -47,12 +47,6 @@ vi.mock("@/features/dashboard/server/getOperationsDashboardPayload", () => ({
     alerts: [],
     suggestedActions: [],
     flowMix: [{ label: "In Progress", value: 8 }],
-    revenueEfficiency: {
-      revenue: 12500,
-      profit: 4200,
-      completedLines: 14,
-      efficiencyPct: 92,
-    },
     sectionErrors: [],
     fetchAudit: [],
   })),

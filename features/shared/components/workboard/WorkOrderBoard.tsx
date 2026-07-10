@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import WorkOrderBoardCard from "./WorkOrderBoardCard";
 import { useWorkOrderBoard } from "../../hooks/useWorkOrderBoard";
 import type {
@@ -8,17 +8,12 @@ import type {
   WorkOrderBoardVariant,
 } from "../../lib/workboard/types";
 
-const FILTER_KEYS = [
-  "all",
-  "awaiting",
-  "in_progress",
-  "awaiting_approval",
-  "waiting_parts",
-  "on_hold",
-  "completed",
-] as const;
+import {
+  WORK_ORDER_BOARD_FILTER_KEYS,
+  type WorkOrderBoardFilterKey,
+} from "../../lib/workboard/filters";
 
-type FilterKey = (typeof FILTER_KEYS)[number];
+type FilterKey = WorkOrderBoardFilterKey;
 
 function labelForFilter(key: FilterKey): string {
   if (key === "all") return "All";
@@ -37,14 +32,21 @@ export default function WorkOrderBoard(props: {
   fleetId?: string | null;
   compact?: boolean;
   hrefBuilder?: (row: WorkOrderBoardRow) => string | null;
+  initialStage?: FilterKey;
 }) {
   const { rows, loading, error, refetch } = useWorkOrderBoard(props.variant, {
     limit: props.limit,
     fleetId: props.fleetId,
   });
 
-  const [stageFilter, setStageFilter] = useState<FilterKey>("all");
+  const [stageFilter, setStageFilter] = useState<FilterKey>(
+    props.initialStage ?? "all",
+  );
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    setStageFilter(props.initialStage ?? "all");
+  }, [props.initialStage]);
 
   const searchedRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -183,7 +185,7 @@ export default function WorkOrderBoard(props: {
           />
 
           <div className="flex flex-wrap gap-2">
-            {FILTER_KEYS.map((key) => (
+            {WORK_ORDER_BOARD_FILTER_KEYS.map((key) => (
               <button
                 key={key}
                 type="button"
