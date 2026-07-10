@@ -10,7 +10,7 @@ import {
 } from "@/features/shared/lib/offline/mutations";
 import {
   fetchMobileShiftState,
-  type MobileShiftMode as Mode,
+  type MobileShiftState,
 } from "@/features/mobile/shifts/client";
 
 type PunchEventType =
@@ -23,10 +23,18 @@ type PunchEventType =
 
 type Props = { userId: string };
 
+function modeFromActivity(activity: MobileShiftState["activity"] | undefined, shiftStatus?: MobileShiftState["shiftStatus"]): MobileShiftState["mode"] {
+  if (shiftStatus === "completed") return "ended";
+  if (activity === "working") return "shift";
+  if (activity === "on_break") return "break";
+  if (activity === "on_lunch") return "lunch";
+  return "none";
+}
+
 export default function MobileShiftTracker({ userId }: Props) {
   const [shiftId, setShiftId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
-  const [mode, setMode] = useState<Mode>("none");
+  const [shiftState, setShiftState] = useState<MobileShiftState | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [syncSummary, setSyncSummary] = useState(() => getOfflineSyncSummary());
@@ -86,18 +94,18 @@ export default function MobileShiftTracker({ userId }: Props) {
       if (!shiftState.shiftId) {
         setShiftId(null);
         setStartTime(null);
-        setMode("none");
+        setShiftState(null);
         return;
       }
 
       setShiftId(shiftState.shiftId);
       setStartTime(shiftState.startTime ?? null);
-      setMode(shiftState.mode ?? "shift");
+      setShiftState(shiftState);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Failed to load shift state");
       setShiftId(null);
       setStartTime(null);
-      setMode("none");
+      setShiftState(null);
     }
   }, [userId]);
 
@@ -127,13 +135,13 @@ export default function MobileShiftTracker({ userId }: Props) {
         body: JSON.stringify({ action: "start_shift" }),
       });
       const body = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string; shiftId?: string | null; startTime?: string | null; mode?: Mode }
+        | ({ ok?: boolean; error?: string } & Partial<MobileShiftState>)
         | null;
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? "Failed to start shift");
 
       setShiftId(body.shiftId ?? null);
       setStartTime(body.startTime ?? null);
-      setMode(body.mode ?? "shift");
+      setShiftState({ shiftId: body.shiftId ?? null, shiftStatus: body.shiftStatus ?? null, activity: body.activity ?? "working", startTime: body.startTime ?? null, endTime: body.endTime ?? null, latestEventType: body.latestEventType ?? null, latestEventAt: body.latestEventAt ?? null, mode: body.mode ?? modeFromActivity(body.activity, body.shiftStatus) });
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to start shift"}`);
     } finally {
@@ -153,14 +161,14 @@ export default function MobileShiftTracker({ userId }: Props) {
         body: JSON.stringify({ action: "end_shift" }),
       });
       const body = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string; shiftId?: string | null; startTime?: string | null; mode?: Mode }
+        | ({ ok?: boolean; error?: string } & Partial<MobileShiftState>)
         | null;
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? "Failed to end shift");
       window.dispatchEvent(new CustomEvent("wol:refresh"));
 
       setShiftId(body.shiftId ?? null);
       setStartTime(body.startTime ?? null);
-      setMode(body.mode ?? "ended");
+      setShiftState({ shiftId: body.shiftId ?? null, shiftStatus: body.shiftStatus ?? "completed", activity: body.activity ?? "off_shift", startTime: body.startTime ?? null, endTime: body.endTime ?? null, latestEventType: body.latestEventType ?? "end_shift", latestEventAt: body.latestEventAt ?? null, mode: body.mode ?? modeFromActivity(body.activity, body.shiftStatus) });
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to end shift"}`);
     } finally {
@@ -177,19 +185,19 @@ export default function MobileShiftTracker({ userId }: Props) {
       const res = await fetch("/api/mobile/shifts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle_break" }),
+        body: JSON.stringify({ action: shiftState?.activity === "on_break" ? "end_break" : "start_break" }),
       });
       const body = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string; mode?: Mode }
+        | ({ ok?: boolean; error?: string } & Partial<MobileShiftState>)
         | null;
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? "Failed to toggle break");
-      setMode(body.mode ?? "shift");
+      setShiftState({ shiftId: body.shiftId ?? null, shiftStatus: body.shiftStatus ?? null, activity: body.activity ?? "working", startTime: body.startTime ?? null, endTime: body.endTime ?? null, latestEventType: body.latestEventType ?? null, latestEventAt: body.latestEventAt ?? null, mode: body.mode ?? modeFromActivity(body.activity, body.shiftStatus) });
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle break"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, shiftId]);
+  }, [busy, shiftId, shiftState?.activity]);
 
   const toggleLunch = useCallback(async () => {
     if (busy || !shiftId) return;
@@ -200,22 +208,24 @@ export default function MobileShiftTracker({ userId }: Props) {
       const res = await fetch("/api/mobile/shifts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle_lunch" }),
+        body: JSON.stringify({ action: shiftState?.activity === "on_lunch" ? "end_lunch" : "start_lunch" }),
       });
       const body = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string; mode?: Mode }
+        | ({ ok?: boolean; error?: string } & Partial<MobileShiftState>)
         | null;
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? "Failed to toggle lunch");
-      setMode(body.mode ?? "shift");
+      setShiftState({ shiftId: body.shiftId ?? null, shiftStatus: body.shiftStatus ?? null, activity: body.activity ?? "working", startTime: body.startTime ?? null, endTime: body.endTime ?? null, latestEventType: body.latestEventType ?? null, latestEventAt: body.latestEventAt ?? null, mode: body.mode ?? modeFromActivity(body.activity, body.shiftStatus) });
     } catch (e: any) {
       setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle lunch"}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, shiftId]);
+  }, [busy, shiftId, shiftState?.activity]);
 
+  const activity = shiftState?.activity ?? "off_shift";
+  const mode = shiftState?.mode ?? "none";
   const niceStatus =
-    mode === "none" ? "Off shift" : mode === "ended" ? "Shift ended" : mode;
+    activity === "off_shift" ? "Off shift" : activity === "working" ? "Working" : activity === "on_break" ? "On break" : "On lunch";
 
   const btnBase =
     "rounded-xl px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] transition-colors disabled:opacity-60 disabled:cursor-not-allowed";
@@ -247,12 +257,15 @@ export default function MobileShiftTracker({ userId }: Props) {
       )}
 
       {mode !== "none" && startTime && mode !== "ended" && (
-        <p className="text-[0.65rem] text-neutral-400">
-          Duration{" "}
-          <span className="font-mono text-neutral-100">
-            {formatDistanceToNow(new Date(startTime), { includeSeconds: true })}
-          </span>
-        </p>
+        <div className="space-y-1 text-[0.65rem] text-neutral-400">
+          <p>
+            Started <span className="font-mono text-neutral-100">{new Date(startTime).toLocaleTimeString()}</span>
+          </p>
+          <p>
+            Elapsed <span className="font-mono text-neutral-100">{formatDistanceToNow(new Date(startTime), { includeSeconds: true })}</span>
+          </p>
+          <p>Activity <span className="text-neutral-100">{niceStatus}</span></p>
+        </div>
       )}
 
       {mode === "none" && (
@@ -277,7 +290,7 @@ export default function MobileShiftTracker({ userId }: Props) {
             <button
               type="button"
               onClick={toggleBreak}
-              disabled={busy}
+              disabled={busy || mode === "lunch"}
               className={
                 btnBase +
                 " flex-1 border border-[var(--accent-copper-soft)]/70 " +
@@ -292,7 +305,7 @@ export default function MobileShiftTracker({ userId }: Props) {
             <button
               type="button"
               onClick={toggleLunch}
-              disabled={busy}
+              disabled={busy || mode === "break"}
               className={
                 btnBase +
                 " flex-1 border border-[var(--accent-copper-soft)]/70 " +

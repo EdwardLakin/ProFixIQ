@@ -4,6 +4,7 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { isPunchEventType, type PunchEventType } from "@/features/workforce/lib/shift-status";
 
 type Caller = {
   id: string;
@@ -17,23 +18,10 @@ function isIsoDate(v: unknown): v is string {
   return Number.isFinite(d.getTime());
 }
 
-type PunchEventTypeDb =
-  | "start_shift"
-  | "end_shift"
-  | "break_start"
-  | "break_end"
-  | "lunch_start"
-  | "lunch_end";
+type PunchEventTypeDb = PunchEventType;
 
 function isPunchEventTypeDb(v: unknown): v is PunchEventTypeDb {
-  return (
-    v === "start_shift" ||
-    v === "end_shift" ||
-    v === "break_start" ||
-    v === "break_end" ||
-    v === "lunch_start" ||
-    v === "lunch_end"
-  );
+  return isPunchEventType(v);
 }
 
 async function authz() {
