@@ -14,6 +14,34 @@ type Caller = {
   shop_id: string | null;
 };
 
+type ProfileIdentity = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  role: string | null;
+};
+
+type AttendanceShift = DB["public"]["Tables"]["tech_shifts"]["Row"] & {
+  userId: string | null;
+  employeeName: string;
+  employeeEmail: string | null;
+  employee: {
+    id: string | null;
+    name: string;
+    email: string | null;
+  };
+};
+
+function employeeNameFromProfile(profile: Pick<ProfileIdentity, "full_name" | "email"> | undefined): string {
+  const fullName = profile?.full_name?.trim();
+  if (fullName) return fullName;
+
+  const email = profile?.email?.trim();
+  if (email) return email;
+
+  return "Unknown employee";
+}
+
 async function authz() {
   const supabase = createServerSupabaseRoute();
 
@@ -103,7 +131,49 @@ export async function GET(req: NextRequest) {
   const { data: shifts, error: sErr } = await shiftQ;
   if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 });
 
-  const shiftIds = (shifts ?? []).map((s) => s.id).filter(Boolean) as string[];
+  const shiftRows = (shifts ?? []) as DB["public"]["Tables"]["tech_shifts"]["Row"][];
+  const shiftIds = shiftRows.map((s) => s.id).filter(Boolean) as string[];
+  const shiftUserIds = Array.from(
+    new Set(
+      shiftRows
+        .map((s) => (typeof s.user_id === "string" ? s.user_id : null))
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+
+  const profilesById = new Map<string, ProfileIdentity>();
+  if (shiftUserIds.length > 0) {
+    const { data: profileRows, error: profileErr } = await admin
+      .from("profiles")
+      .select("id, full_name, email, role")
+      .eq("shop_id", a.me.shop_id)
+      .in("id", shiftUserIds);
+
+    if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 });
+
+    for (const profile of (profileRows ?? []) as ProfileIdentity[]) {
+      profilesById.set(profile.id, profile);
+    }
+  }
+
+  const attendanceShifts: AttendanceShift[] = shiftRows.map((shift) => {
+    const userId = typeof shift.user_id === "string" ? shift.user_id : null;
+    const profile = userId ? profilesById.get(userId) : undefined;
+    const employeeName = employeeNameFromProfile(profile);
+    const employeeEmail = profile?.email?.trim() || null;
+
+    return {
+      ...shift,
+      userId,
+      employeeName,
+      employeeEmail,
+      employee: {
+        id: profile?.id ?? null,
+        name: employeeName,
+        email: employeeEmail,
+      },
+    };
+  });
 
   // Punches
   let punches: DB["public"]["Tables"]["punch_events"]["Row"][] = [];
@@ -144,7 +214,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    shifts: shifts ?? [],
+    shifts: attendanceShifts,
     punches,
     billableMinutes,
   });

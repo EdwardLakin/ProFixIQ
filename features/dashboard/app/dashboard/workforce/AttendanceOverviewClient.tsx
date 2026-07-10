@@ -4,9 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkforceQuickLinks } from "./WorkforceQuickLinks";
 
-type ShiftRow = {
+export type ShiftRow = {
   id?: string | null;
   user_id?: string | null;
+  userId?: string | null;
+  employeeName?: string | null;
+  employeeEmail?: string | null;
+  employee?: { id?: string | null; name?: string | null; email?: string | null } | null;
   start_time?: string | null;
   end_time?: string | null;
   type?: string | null;
@@ -14,7 +18,7 @@ type ShiftRow = {
   [key: string]: unknown;
 };
 
-type PunchRow = {
+export type PunchRow = {
   id?: string | null;
   shift_id?: string | null;
   user_id?: string | null;
@@ -39,10 +43,30 @@ function safeDate(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatDateTime(value: string | null | undefined) {
+export function formatDateTime(value: string | null | undefined, timezone?: string | null) {
   const d = safeDate(value);
   if (!d) return "Unknown time";
-  return d.toLocaleString();
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: timezone || undefined,
+  }).format(d);
+}
+
+export function getEmployeeDisplayName(shift: Pick<ShiftRow, "employeeName" | "employeeEmail" | "employee">): string {
+  const employeeName = shift.employeeName?.trim() || shift.employee?.name?.trim();
+  if (employeeName) return employeeName;
+
+  const employeeEmail = shift.employeeEmail?.trim() || shift.employee?.email?.trim();
+  if (employeeEmail) return employeeEmail;
+
+  return "Unknown employee";
+}
+
+export function formatShiftRange(shift: Pick<ShiftRow, "start_time" | "end_time">, timezone?: string | null): string {
+  const start = formatDateTime(shift.start_time, timezone);
+  const end = shift.end_time ? formatDateTime(shift.end_time, timezone) : "In progress";
+  return `${start} → ${end}`;
 }
 
 function normalizeEventType(p: PunchRow): string {
@@ -142,6 +166,7 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
       }
     }
 
+
     const buckets: Record<NowBucket, Array<{ label: string; shiftLabel: string; lastEvent: string }>> = {
       clocked_in: [],
       break: [],
@@ -152,7 +177,7 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
 
     for (const s of shifts) {
       const shiftId = typeof s.id === "string" ? s.id : "";
-      const userId = typeof s.user_id === "string" ? s.user_id : "unknown";
+      const userId = typeof s.user_id === "string" ? s.user_id : typeof s.userId === "string" ? s.userId : "unknown";
       const shiftPunches = punchesByShift.get(shiftId) ?? unlinkedPunchesByUser.get(userId) ?? [];
       const state = shiftStateFromPunches(shiftPunches);
       const sorted = [...shiftPunches].sort((a, b) => {
@@ -163,9 +188,9 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
       const latest = sorted[0];
 
       buckets[state].push({
-        label: userId,
-        shiftLabel: `${formatDateTime(s.start_time)} → ${formatDateTime(s.end_time)}`,
-        lastEvent: latest ? `${displayEventType(normalizeEventType(latest))} • ${formatDateTime(latest.timestamp)}` : "No punches",
+        label: getEmployeeDisplayName(s),
+        shiftLabel: formatShiftRange(s, timezone),
+        lastEvent: latest ? `${displayEventType(normalizeEventType(latest))} · ${formatDateTime(latest.timestamp, timezone)}` : "No punches",
       });
     }
 
@@ -184,7 +209,24 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
       endedToday,
       billableMinutes: typeof data?.billableMinutes === "number" ? Math.max(0, data.billableMinutes) : 0,
     };
-  }, [data?.billableMinutes, punches, shifts]);
+  }, [data?.billableMinutes, punches, shifts, timezone]);
+
+  const employeeNameByShiftId = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const s of shifts) {
+      if (typeof s.id === "string") names.set(s.id, getEmployeeDisplayName(s));
+    }
+    return names;
+  }, [shifts]);
+
+  const employeeNameByUserId = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const s of shifts) {
+      const userId = typeof s.user_id === "string" ? s.user_id : typeof s.userId === "string" ? s.userId : null;
+      if (userId) names.set(userId, getEmployeeDisplayName(s));
+    }
+    return names;
+  }, [shifts]);
 
   const recentPunches = useMemo(() => {
     return [...punches]
@@ -284,8 +326,12 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
                 ) : (
                   recentPunches.map((p, i) => (
                     <div key={p.id ?? i} className="grid grid-cols-4 gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
-                      <div className="text-white">{formatDateTime(p.timestamp)}</div>
-                      <div className="text-neutral-300">{String(p.user_id ?? "Unknown person")}</div>
+                      <div className="text-white">{formatDateTime(p.timestamp, timezone)}</div>
+                      <div className="text-neutral-300">{
+                        (typeof p.shift_id === "string" ? employeeNameByShiftId.get(p.shift_id) : null)
+                          ?? (typeof p.user_id === "string" ? employeeNameByUserId.get(p.user_id) : null)
+                          ?? "Unknown employee"
+                      }</div>
                       <div className="text-neutral-300">{displayEventType(normalizeEventType(p))}</div>
                       <div className="text-neutral-400">{p.note ? String(p.note) : "—"}</div>
                     </div>
