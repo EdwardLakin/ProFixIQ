@@ -26,6 +26,8 @@ export type GuidedOnboardingEvidence = {
   partsMissingVendorCount: number;
   partsWithVendorCount: number;
   partsMissingCategoryCount: number;
+  vendorCount?: number;
+  yearsOfHistory?: number;
   commonServiceCategories: string[];
   commonJobs: string[];
   inspectionTemplateCount: number;
@@ -70,6 +72,23 @@ async function sampleColumn(supabase: SupabaseLike, table: string, shopId: strin
   return (data ?? []) as unknown as Record<string, unknown>[];
 }
 
+function validDate(value: unknown): Date | null {
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function calculateYearsOfHistory(rows: Record<string, unknown>[]): number | undefined {
+  const dates = rows
+    .flatMap((row) => [row.service_date, row.completed_at, row.created_at, row.invoice_date, row.date])
+    .map(validDate)
+    .filter((date): date is Date => date != null)
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (dates.length < 2) return undefined;
+  const years = (dates[dates.length - 1].getTime() - dates[0].getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+  return Math.max(1, Math.round(years * 10) / 10);
+}
+
 function topStrings(rows: Record<string, unknown>[], keys: string[], limit = 5): string[] {
   const counts = new Map<string, number>();
   for (const row of rows) {
@@ -85,7 +104,7 @@ export async function collectGuidedOnboardingEvidence(supabase: SupabaseLike, sh
   const [
     customerCount, vehicleCount, historyCount, invoiceCount, partsCount,
     lowStockPartsCount, zeroStockPartsCount, partsMissingVendorCount, partsWithVendorCount, partsMissingCategoryCount,
-    inspectionTemplateCount, menuItemCount, hoursCount,
+    inspectionTemplateCount, menuItemCount, hoursCount, vendorCount,
   ] = await Promise.all([
     countRows(supabase, "customers", shopId),
     countRows(supabase, "vehicles", shopId),
@@ -100,11 +119,12 @@ export async function collectGuidedOnboardingEvidence(supabase: SupabaseLike, sh
     countRows(supabase, "inspection_templates", shopId),
     countRows(supabase, "menu_items", shopId),
     countRows(supabase, "shop_hours", shopId),
+    countRows(supabase, "vendors", shopId),
   ]);
 
   const [lineSamples, invoiceSamples, shopRows] = await Promise.all([
-    sampleColumn(supabase, "work_order_lines", shopId, "description,name,category,service_category", 200),
-    sampleColumn(supabase, "invoices", shopId, "service_category,category,description", 100),
+    sampleColumn(supabase, "work_order_lines", shopId, "description,name,category,service_category,service_date,completed_at,created_at,date", 200),
+    sampleColumn(supabase, "invoices", shopId, "service_category,category,description,invoice_date,created_at,date", 100),
     sampleColumn(supabase, "shops", shopId, "labor_rate,tax_rate,shop_supplies_enabled,shop_supplies_percent,supplies_percent,workflow_defaults,default_workflow_status", 1),
   ]);
   const shop = shopRows[0] ?? {};
@@ -112,6 +132,8 @@ export async function collectGuidedOnboardingEvidence(supabase: SupabaseLike, sh
   return {
     customerCount, vehicleCount, historyCount, invoiceCount, partsCount,
     lowStockPartsCount, zeroStockPartsCount, partsMissingVendorCount, partsWithVendorCount, partsMissingCategoryCount,
+    vendorCount,
+    yearsOfHistory: calculateYearsOfHistory([...lineSamples, ...invoiceSamples]),
     commonServiceCategories: topStrings([...lineSamples, ...invoiceSamples], ["service_category", "category"], 6),
     commonJobs: topStrings(lineSamples, ["description", "name"], 6),
     inspectionTemplateCount,

@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { GUIDED_ONBOARDING_STEP_KEYS } from "@/features/onboarding-v2/guided/steps";
 import { filterGuidedAnalysisRecommendations } from "@/features/onboarding-v2/analysis/filterGuidedAnalysisRecommendations";
+import { buildExecutiveSummary, calculateLaunchReadinessScore, READINESS_SCORE_WEIGHTS } from "@/features/onboarding-v2/analysis/buildExecutiveSummary";
 import type { AiRecommendationRecord } from "@/features/ai/server/types";
+import type { GuidedOnboardingEvidence } from "@/features/onboarding-v2/analysis/server";
 
 function read(path: string) {
   return readFileSync(join(process.cwd(), path), "utf8");
@@ -47,24 +49,23 @@ function recommendation(overrides: Partial<AiRecommendationRecord>): AiRecommend
 }
 
 describe("guided onboarding AI Business Analysis page", () => {
-  it("renders the static seven guidance categories in order", () => {
+  it("renders a polished executive summary instead of the static category database view", () => {
     const source = read("app/dashboard/onboarding-v2/[sessionId]/summary/page.tsx");
 
-    expect(source).toContain("Inspection templates first");
-    expect(source).toContain("Menu items and canned services second");
-    expect(source).toContain("Inventory improvements");
-    expect(source).toContain("Vendor suggestions");
-    expect(source).toContain("Customer and fleet segments");
-    expect(source).toContain("Maintenance packages");
-    expect(source).toContain("Automation rules");
-    expect(source.indexOf("Inspection templates first")).toBeLessThan(source.indexOf("Menu items and canned services second"));
+    expect(source).toContain("AI Executive Summary");
+    expect(source).toContain("Business snapshot");
+    expect(source).toContain("What ProFixIQ learned");
+    expect(source).toContain("Highest-impact opportunities");
+    expect(source).toContain("Continue to Shop Activation");
+    expect(source).not.toContain("Reviewable AI Business Analysis signals");
   });
 
-  it("renders the empty state when no recommendations exist", () => {
+  it("renders the empty state when no recommendations exist without showing a fake score", () => {
     const source = read("app/dashboard/onboarding-v2/[sessionId]/summary/page.tsx");
 
-    expect(source).toContain("No AI Business Analysis has been generated yet");
-    expect(source).toContain("Your imported onboarding data is ready");
+    expect(source).toContain("What the analysis will review");
+    expect(source).toContain("No launch score, observations, or priorities are shown until recommendations exist");
+    expect(source).toContain("No readiness score is shown until analysis has been run");
   });
 
   it("filters existing shop-scoped recommendations for onboarding before falling back to shop_boost", () => {
@@ -86,20 +87,19 @@ describe("guided onboarding AI Business Analysis page", () => {
     expect(fallback.map((item) => item.id)).toEqual(["shop-boost"]);
   });
 
-  it("renders existing recommendation fields and links to the shared review center", () => {
+  it("does not render raw recommendation metadata on onboarding and links priorities to the shared review center", () => {
     const source = read("app/dashboard/onboarding-v2/[sessionId]/summary/page.tsx");
 
-    expect(source).toContain("Current recommendations");
-    expect(source).toContain("recommendation.title");
-    expect(source).toContain("recommendation.summary");
-    expect(source).toContain("recommendation.domain");
-    expect(source).toContain("recommendation.recommendation_type");
-    expect(source).toContain("recommendation.priority");
-    expect(source).toContain("formatConfidence(recommendation.confidence)");
-    expect(source).toContain("recommendation.risk_tier");
-    expect(source).toContain("recommendation.status");
-    expect(source).toContain("jsonHasContent(recommendation.missing_data)");
+    expect(source).toContain("summary.priorities.map");
+    expect(source).toContain("Review recommendation");
     expect(source).toContain('href="/dashboard/ai-recommendations"');
+    expect(source).not.toContain("recommendation.domain");
+    expect(source).not.toContain("recommendation.recommendation_type");
+    expect(source).not.toContain("recommendation.subject_type");
+    expect(source).not.toContain("recommendation.risk_tier");
+    expect(source).not.toContain("recommendation.status");
+    expect(source).not.toContain("recommended_action");
+    expect(source).not.toContain("guided_onboarding_analysis");
   });
 
   it("keeps recommendation creation out of the server-rendered page", () => {
@@ -185,5 +185,62 @@ describe("guided onboarding deterministic analysis phase 2", () => {
     expect(source).toContain("Customer and fleet segments");
     expect(source).toContain("Maintenance packages");
     expect(source).toContain("Automation rules");
+  });
+});
+
+
+const baseEvidence: GuidedOnboardingEvidence = {
+  customerCount: 42,
+  vehicleCount: 57,
+  historyCount: 88,
+  invoiceCount: 21,
+  partsCount: 130,
+  lowStockPartsCount: 12,
+  zeroStockPartsCount: 4,
+  partsMissingVendorCount: 8,
+  partsWithVendorCount: 80,
+  partsMissingCategoryCount: 9,
+  vendorCount: 6,
+  yearsOfHistory: 3.5,
+  commonServiceCategories: ["Brakes", "Oil service"],
+  commonJobs: ["Brake inspection", "Oil change", "Tire rotation"],
+  inspectionTemplateCount: 1,
+  menuItemCount: 2,
+  shopSettings: { laborRateConfigured: true, hoursConfigured: true, shopSuppliesConfigured: true, taxRateConfigured: true, workflowDefaultsConfigured: false },
+};
+
+describe("guided onboarding executive summary builder", () => {
+  it("uses actual evidence counts in the analyzed snapshot", () => {
+    const summary = buildExecutiveSummary(baseEvidence, [recommendation({ id: "r1", priority: "high", metadata: { category: "Inventory improvements" } })]);
+
+    expect(summary.analyzed).toMatchObject({ customers: 42, vehicles: 57, historyRecords: 88, invoices: 21, parts: 130, vendors: 6, yearsOfHistory: 3.5 });
+  });
+
+  it("uses the documented deterministic readiness weights and clamps the score to 0-100", () => {
+    const score = calculateLaunchReadinessScore(baseEvidence);
+
+    expect(READINESS_SCORE_WEIGHTS.customersImported).toBe(10);
+    expect(score).toBe(92);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
+  });
+
+  it("shows honest fallback language when categorized service evidence is missing", () => {
+    const summary = buildExecutiveSummary({ ...baseEvidence, historyCount: 0, invoiceCount: 0, commonJobs: [], commonServiceCategories: [] }, []);
+
+    expect(summary.observations.some((item) => item.description.includes("There is not yet enough categorized service history"))).toBe(true);
+    expect(summary.priorities).toHaveLength(0);
+  });
+
+  it("limits ranked priorities to three", () => {
+    const summary = buildExecutiveSummary(baseEvidence, [
+      recommendation({ id: "r1", priority: "low" }),
+      recommendation({ id: "r2", priority: "high" }),
+      recommendation({ id: "r3", priority: "normal" }),
+      recommendation({ id: "r4", priority: "urgent" }),
+    ]);
+
+    expect(summary.priorities).toHaveLength(3);
+    expect(summary.priorities.map((item) => item.rank)).toEqual([1, 2, 3]);
   });
 });
