@@ -1,12 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type { Database } from "@shared/types/types/supabase";
 import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-
-type DB = Database;
 
 type Caller = {
   id: string;
@@ -151,12 +148,23 @@ export async function POST(req: NextRequest) {
       ? body.note.trim()
       : null;
 
-  const { error } = await admin.from("punch_events").insert({
+  const payload = {
+    shop_id: a.me.shop_id,
     shift_id: body.shift_id,
+    user_id: shift.user_id ?? a.me.id,
+    profile_id: shift.user_id ?? a.me.id,
     event_type: body.event_type,
     timestamp: body.timestamp,
     note,
-  } satisfies DB["public"]["Tables"]["punch_events"]["Insert"]);
+  };
+  const { error } = await admin.from("punch_events").insert(payload as never);
+  if (error && error.message.includes("shop_id")) {
+    const withoutShopId = { ...payload };
+    delete (withoutShopId as { shop_id?: string | null }).shop_id;
+    const retry = await admin.from("punch_events").insert(withoutShopId as never);
+    if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

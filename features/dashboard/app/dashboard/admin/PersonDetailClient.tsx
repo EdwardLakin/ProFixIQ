@@ -130,6 +130,7 @@ function statusTone(status: "active" | "inactive" | "on_leave") {
 export default function PersonDetailClient({ personId, from }: { personId: string; from?: string | null }) {
   const searchParams = useSearchParams();
   const [detail, setDetail] = useState<PersonDetail | null>(null);
+  const [persistedRole, setPersistedRole] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [certSaving, setCertSaving] = useState(false);
@@ -146,6 +147,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         return;
       }
       setDetail(body as PersonDetail);
+      setPersistedRole((body as PersonDetail).role ?? null);
     })();
   }, [personId]);
 
@@ -193,22 +195,33 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
     if (!detail) return;
     setSaving(true);
     setError(null);
+    const payload: Record<string, unknown> = {
+      full_name: detail.full_name,
+      phone: detail.phone,
+      completed_onboarding: detail.completed_onboarding,
+      workforce_profile: detail.workforce_profile,
+    };
+    if ((detail.role ?? null) !== (persistedRole ?? null)) {
+      payload.role = detail.role;
+    }
     const res = await fetch(`/api/admin/people/${personId}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        full_name: detail.full_name,
-        phone: detail.phone,
-        role: detail.role,
-        completed_onboarding: detail.completed_onboarding,
-        workforce_profile: detail.workforce_profile,
-      }),
+      body: JSON.stringify(payload),
     });
-    setSaving(false);
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       setError(body?.error ?? "Save failed");
+      setSaving(false);
+      return;
     }
+    const refreshed = await fetch(`/api/admin/people/${personId}`, { cache: "no-store" });
+    const body = await refreshed.json().catch(() => null);
+    if (refreshed.ok && body) {
+      setDetail(body as PersonDetail);
+      setPersistedRole((body as PersonDetail).role ?? null);
+    }
+    setSaving(false);
   }
 
   async function addCertification() {
