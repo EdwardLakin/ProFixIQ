@@ -63,4 +63,20 @@ describe("canonical shift lifecycle helpers", () => {
     expect(latest.eventType).toBe(PUNCH_EVENT_TYPES.startShift);
     expect(deriveCurrentShiftActivity([{ event_type: "end_shift", timestamp: "2026-07-10T18:00:00.000Z" }])).toBe(SHIFT_ACTIVITIES.offShift);
   });
+
+  it("orders same-time events deterministically with end_shift winning ties", () => {
+    const sameTime = "2026-07-10T18:00:00.000Z";
+    const latest = latestValidPunchEvent([
+      { id: "z", event_type: "break_start", timestamp: sameTime, created_at: sameTime },
+      { id: "a", event_type: "end_shift", timestamp: sameTime, created_at: sameTime },
+      { id: "y", event_type: "lunch_end", timestamp: sameTime, created_at: sameTime },
+    ]);
+
+    expect(latest.eventType).toBe(PUNCH_EVENT_TYPES.endShift);
+    expect(deriveCurrentShiftActivity([
+      { id: "z", event_type: "break_start", timestamp: sameTime, created_at: sameTime },
+      { id: "a", event_type: "end_shift", timestamp: sameTime, created_at: sameTime },
+    ])).toBe(SHIFT_ACTIVITIES.offShift);
+  });
+
 });
