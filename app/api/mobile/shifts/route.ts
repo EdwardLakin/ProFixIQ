@@ -15,7 +15,8 @@ import {
 type Action = PunchEventType | "start_break" | "end_break" | "start_lunch" | "end_lunch" | "toggle_break" | "toggle_lunch";
 type Caller = { id: string; shop_id: string | null };
 type ActiveShift = { id: string; start_time: string | null; status: string | null; end_time: string | null; shop_id: string | null; user_id: string | null };
-type PunchRow = { event_type: string | null; timestamp: string | null };
+type PunchRow = { id?: string | null; event_type: string | null; timestamp: string | null; created_at?: string | null };
+type ShiftLifecycleRpcRow = ActiveShift & { inserted_events?: PunchRow[] | null };
 
 async function authz() {
   const supabase = createServerSupabaseRoute();
@@ -42,6 +43,8 @@ async function loadActiveShift(admin: ReturnType<typeof createAdminSupabase>, us
     .eq("status", SHIFT_STATUSES.active)
     .is("end_time", null)
     .order("start_time", { ascending: false })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(1)
     .maybeSingle<ActiveShift>();
   if (error) throw new Error(error.message);
@@ -52,9 +55,11 @@ async function loadShiftEvents(admin: ReturnType<typeof createAdminSupabase>, sh
   if (!shiftId) return [] as PunchRow[];
   const { data, error } = await admin
     .from("punch_events")
-    .select("event_type,timestamp")
+    .select("id,event_type,timestamp,created_at")
     .eq("shift_id", shiftId)
-    .order("timestamp", { ascending: true });
+    .order("timestamp", { ascending: true })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as PunchRow[];
 }
@@ -91,6 +96,17 @@ function actionToEvent(action: Action): PunchEventType | null {
   }
 }
 
+function rpcShift(row: ShiftLifecycleRpcRow): ActiveShift {
+  return {
+    id: row.id,
+    start_time: row.start_time,
+    status: row.status,
+    end_time: row.end_time,
+    shop_id: row.shop_id,
+    user_id: row.user_id,
+  };
+}
+
 export async function GET() {
   const a = await authz();
   if (!a.ok) return a.res;
@@ -117,10 +133,10 @@ export async function POST(req: NextRequest) {
   const shopId = a.me.shop_id as string;
 
   const insertPunch = async (shiftId: string, userId: string, type: PunchEventType) => {
-    const payload = { shop_id: shopId, shift_id: shiftId, user_id: userId, profile_id: userId, event_type: type, timestamp: now };
-    const { data, error } = await admin.from("punch_events").insert(payload as never).select("id").single<{ id: string }>();
+    const payload = { shift_id: shiftId, user_id: userId, profile_id: userId, event_type: type, timestamp: now };
+    const { data, error } = await admin.from("punch_events").insert(payload as never).select("id,event_type,timestamp,created_at").single<PunchRow>();
     if (error || !data) throw new Error(`Punch event insert failed: ${error?.message ?? "missing inserted row"}`);
-    return data.id;
+    return data;
   };
 
   try {
@@ -130,16 +146,19 @@ export async function POST(req: NextRequest) {
     const activity = deriveCurrentShiftActivity(events, Boolean(current));
 
     if (eventType === PUNCH_EVENT_TYPES.startShift) {
-      if (current) return NextResponse.json({ error: "Active shift already exists" }, { status: 409 });
-      const { data, error } = await admin.from("tech_shifts").insert({ shop_id: shopId, user_id: a.me.id, start_time: now, end_time: null, type: "shift", status: SHIFT_STATUSES.active }).select("id,start_time,status,end_time,shop_id,user_id").single<ActiveShift>();
-      if (error || !data) return NextResponse.json({ error: error?.message ?? "Failed to start shift" }, { status: 500 });
-      try {
-        await insertPunch(data.id, a.me.id, PUNCH_EVENT_TYPES.startShift);
-      } catch (punchError) {
-        await admin.from("tech_shifts").delete().eq("id", data.id).eq("shop_id", shopId).eq("user_id", a.me.id);
-        return NextResponse.json({ error: punchError instanceof Error ? punchError.message : "Punch event insert failed" }, { status: 500 });
+      const { data, error } = await (admin as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: ShiftLifecycleRpcRow[] | null; error: { message: string } | null }> }).rpc("start_canonical_shift", {
+        p_shop_id: shopId,
+        p_user_id: a.me.id,
+        p_profile_id: a.me.id,
+        p_timestamp: now,
+      });
+      const row = data?.[0] ?? null;
+      if (error || !row) {
+        const message = error?.message ?? "Start shift RPC returned no row";
+        const status = message.toLowerCase().includes("active shift already exists") ? 409 : 500;
+        return NextResponse.json({ error: `start_canonical_shift failed: ${message}` }, { status });
       }
-      return NextResponse.json({ ok: true, ...toDto(data, [{ event_type: PUNCH_EVENT_TYPES.startShift, timestamp: now }]) });
+      return NextResponse.json({ ok: true, ...toDto(rpcShift(row), row.inserted_events ?? []) });
     }
 
     if (!current) return NextResponse.json({ error: "No active shift" }, { status: 409 });
@@ -150,25 +169,24 @@ export async function POST(req: NextRequest) {
     if (eventType === PUNCH_EVENT_TYPES.lunchEnd && activity !== SHIFT_ACTIVITIES.onLunch) return NextResponse.json({ error: "Cannot end lunch when not on lunch" }, { status: 409 });
 
     if (eventType === PUNCH_EVENT_TYPES.endShift) {
-      const insertedPunchIds: string[] = [];
-      if (activity === SHIFT_ACTIVITIES.onBreak) insertedPunchIds.push(await insertPunch(current.id, activeShiftUserId, PUNCH_EVENT_TYPES.breakEnd));
-      if (activity === SHIFT_ACTIVITIES.onLunch) insertedPunchIds.push(await insertPunch(current.id, activeShiftUserId, PUNCH_EVENT_TYPES.lunchEnd));
-      insertedPunchIds.push(await insertPunch(current.id, activeShiftUserId, PUNCH_EVENT_TYPES.endShift));
-      const { data, error } = await admin.from("tech_shifts").update({ end_time: now, status: SHIFT_STATUSES.completed, type: "shift" }).eq("id", current.id).eq("shop_id", shopId).eq("user_id", activeShiftUserId).eq("status", SHIFT_STATUSES.active).select("id,start_time,status,end_time,shop_id,user_id").maybeSingle<ActiveShift>();
-      if (error || !data) {
-        await admin.from("punch_events").delete().in("id", insertedPunchIds).eq("shift_id", current.id);
-        return NextResponse.json({ error: error?.message ?? "Shift close failed: no matching active shift in this shop" }, { status: error ? 500 : 409 });
+      const { data, error } = await (admin as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: ShiftLifecycleRpcRow[] | null; error: { message: string } | null }> }).rpc("complete_canonical_shift", {
+        p_shift_id: current.id,
+        p_shop_id: shopId,
+        p_user_id: activeShiftUserId,
+        p_profile_id: activeShiftUserId,
+        p_timestamp: now,
+      });
+      const row = data?.[0] ?? null;
+      if (error || !row) {
+        const message = error?.message ?? "Complete shift RPC returned no row";
+        const status = message.toLowerCase().includes("no matching active shift") ? 409 : 500;
+        return NextResponse.json({ error: `complete_canonical_shift failed: ${message}` }, { status });
       }
-      const closingEvents = insertedPunchIds.length === 2 && activity === SHIFT_ACTIVITIES.onBreak
-        ? [{ event_type: PUNCH_EVENT_TYPES.breakEnd, timestamp: now }, { event_type: eventType, timestamp: now }]
-        : insertedPunchIds.length === 2 && activity === SHIFT_ACTIVITIES.onLunch
-          ? [{ event_type: PUNCH_EVENT_TYPES.lunchEnd, timestamp: now }, { event_type: eventType, timestamp: now }]
-          : [{ event_type: eventType, timestamp: now }];
-      return NextResponse.json({ ok: true, ...toDto(data, [...events, ...closingEvents]) });
+      return NextResponse.json({ ok: true, ...toDto(rpcShift(row), [...events, ...(row.inserted_events ?? [])]) });
     }
 
-    await insertPunch(current.id, activeShiftUserId, eventType);
-    return NextResponse.json({ ok: true, ...toDto(current, [...events, { event_type: eventType, timestamp: now }]) });
+    const inserted = await insertPunch(current.id, activeShiftUserId, eventType);
+    return NextResponse.json({ ok: true, ...toDto(current, [...events, inserted]) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Shift punch failed" }, { status: 500 });
   }

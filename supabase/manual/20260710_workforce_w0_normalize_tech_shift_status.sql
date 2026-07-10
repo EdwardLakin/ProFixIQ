@@ -3,6 +3,9 @@
 
 begin;
 
+alter table public.tech_shifts
+  drop constraint if exists tech_shifts_status_check;
+
 update public.tech_shifts
 set status = case
   when status = 'open' then 'active'
@@ -12,10 +15,10 @@ end
 where status in ('open', 'closed', 'ended');
 
 alter table public.tech_shifts
-  drop constraint if exists tech_shifts_status_check;
+  add constraint tech_shifts_status_check
+  check (status = any (array['active'::text, 'completed'::text])) not valid;
 
 alter table public.tech_shifts
-  add constraint tech_shifts_status_check
-  check (status = any (array['active'::text, 'completed'::text]));
+  validate constraint tech_shifts_status_check;
 
 commit;

@@ -29,6 +29,7 @@ export const SHIFT_ACTIVITIES = {
 export type ShiftActivity = (typeof SHIFT_ACTIVITIES)[keyof typeof SHIFT_ACTIVITIES];
 
 export type ShiftEventLike = {
+  id?: string | null;
   event_type?: string | null;
   timestamp?: string | null;
   created_at?: string | null;
@@ -45,6 +46,14 @@ export type ShiftStateDto = {
 };
 
 const EVENT_TYPE_VALUES = new Set<string>(Object.values(PUNCH_EVENT_TYPES));
+const EVENT_TYPE_PRIORITY: Record<PunchEventType, number> = {
+  [PUNCH_EVENT_TYPES.startShift]: 0,
+  [PUNCH_EVENT_TYPES.breakStart]: 1,
+  [PUNCH_EVENT_TYPES.lunchStart]: 1,
+  [PUNCH_EVENT_TYPES.breakEnd]: 2,
+  [PUNCH_EVENT_TYPES.lunchEnd]: 2,
+  [PUNCH_EVENT_TYPES.endShift]: 3,
+};
 
 export function isActiveShiftStatus(status: string | null | undefined): status is "active" {
   return status === SHIFT_STATUSES.active;
@@ -73,13 +82,30 @@ function eventTime(event: ShiftEventLike): string {
   return event.timestamp ?? event.created_at ?? "";
 }
 
+function eventCreatedAt(event: ShiftEventLike): string {
+  return event.created_at ?? "";
+}
+
+function eventPriority(event: ShiftEventLike): number {
+  return isPunchEventType(event.event_type) ? EVENT_TYPE_PRIORITY[event.event_type] : -1;
+}
+
+function compareShiftEvents(a: ShiftEventLike, b: ShiftEventLike): number {
+  return (
+    eventTime(a).localeCompare(eventTime(b)) ||
+    eventCreatedAt(a).localeCompare(eventCreatedAt(b)) ||
+    eventPriority(a) - eventPriority(b) ||
+    (a.id ?? "").localeCompare(b.id ?? "")
+  );
+}
+
 export function latestValidPunchEvent(events: readonly ShiftEventLike[] | null | undefined): {
   eventType: PunchEventType | null;
   eventAt: string | null;
 } {
   const latest = [...(events ?? [])]
     .filter((event) => isPunchEventType(event.event_type))
-    .sort((a, b) => eventTime(a).localeCompare(eventTime(b)))
+    .sort(compareShiftEvents)
     .at(-1);
 
   return {
