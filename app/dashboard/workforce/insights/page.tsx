@@ -23,7 +23,7 @@ export default async function WorkforceInsightsPage() {
         <p className="text-sm text-neutral-200">Use Scheduling, Attendance, and Payroll Review today for immediate decisions and exception handling.</p>
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
           <Link href="/dashboard/workforce/scheduling" className="rounded border border-white/15 px-2 py-1 text-orange-300">Scheduling Command</Link>
-          <Link href="/dashboard/workforce/attendance" className="rounded border border-white/15 px-2 py-1 text-orange-300">Attendance Command</Link>
+          <Link href="/dashboard/workforce/attendance" className="rounded border border-white/15 px-2 py-1 text-orange-300">Attendance & Activity</Link>
           <Link href="/dashboard/workforce/payroll-review" className="rounded border border-white/15 px-2 py-1 text-orange-300">Payroll Review</Link>
         </div>
       </div>

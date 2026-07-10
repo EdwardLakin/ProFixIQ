@@ -4,6 +4,7 @@ import { ActivitySquare, AlertTriangle, ArrowRight, ChevronRight, TriangleAlert 
 import { getOperationsDashboardPayload } from "@/features/dashboard/server/getOperationsDashboardPayload";
 import { DashboardPanel, DashboardShell, DashboardTopStrip, MetricStrip } from "./DashboardPrimitives";
 import { ShopLoadChart } from "./OperationsCharts";
+import { OperationalViewSwitcher } from "@/features/dashboard/components/OperationalViewSwitcher";
 
 function EmbeddedEmptyState({ label, detail }: { label: string; detail: string }) {
   return (
@@ -28,6 +29,7 @@ export default async function OperationsDashboardView() {
   const hasRightRailSignals = payload.blockerStack.length > 0 || payload.alerts.length > 0 || payload.suggestedActions.length > 0;
   return (
     <DashboardShell>
+      <OperationalViewSwitcher role={payload.identity.role} />
       <DashboardTopStrip
         view="operations"
         title={isTechnicianView ? "Technician Dashboard" : "Operations Dashboard"}
@@ -39,7 +41,7 @@ export default async function OperationsDashboardView() {
         }
         actions={[
           { label: "Create work order", href: "/work-orders/create", tone: "primary" },
-          { label: "Dispatch", href: "/work-orders/board", tone: "secondary" },
+          { label: "Work Order Board", href: "/work-orders/board", tone: "secondary" },
         ]}
       />
 

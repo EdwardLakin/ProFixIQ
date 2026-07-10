@@ -17,6 +17,7 @@ export type MobileRole = Extract<
 >;
 
 export type MobileScope =
+  | "dashboard"
   | "home"
   | "jobs"
   | "inspect"
@@ -39,6 +40,27 @@ export type MobileTile = {
 };
 
 export const MOBILE_TILES: MobileTile[] = [
+  {
+    href: "/dashboard",
+    title: "Shop Overview",
+    subtitle: "Today at a glance",
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman", "parts", "dispatcher", "fleet_manager", "driver"],
+    scopes: ["dashboard", "home", "all"],
+  },
+  {
+    href: "/work-orders/board",
+    title: "Work Order Board",
+    subtitle: "Live work flow",
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
+    scopes: ["dashboard", "home", "jobs", "work_orders", "all"],
+  },
+  {
+    href: "/dashboard/workforce/attendance",
+    title: "Attendance & Activity",
+    subtitle: "Live staff and job time",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["dashboard", "home", "work_orders", "all"],
+  },
   {
     href: "/mobile/tech/queue",
     title: "My Jobs",

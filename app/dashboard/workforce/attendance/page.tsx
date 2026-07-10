@@ -20,6 +20,7 @@ export default async function WorkforceAttendancePage() {
       from={shopDay.start}
       to={shopDay.end}
       timezone={shop?.timezone ?? null}
+      role={profile.role}
     />
   );
 }

@@ -38,7 +38,7 @@ const PERSIST_DEFAULTS: PersistMeta = { scroll: true, inputs: true };
 const ALL_ROLES: UserRole[] | undefined = undefined;
 
 export const ROUTE_META: Record<string, RouteMeta> = {
-  "/dashboard": { title: () => "Dashboard", icon: "🏠", roles: ALL_ROLES },
+  "/dashboard": { title: () => "Shop Overview", icon: "🏠", roles: ALL_ROLES },
   // ----------------------------------------------------------------
   // Work Orders
   // ----------------------------------------------------------------
@@ -56,6 +56,11 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     title: () => "New Work Order",
     icon: "➕",
     roles: ["owner", "admin", "manager", "advisor", "service"],
+  },
+  "/work-orders/board": {
+    title: () => "Work Order Board",
+    icon: "📊",
+    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
   },
   "/work-orders/queue": {
     title: () => "Job Queue",
@@ -267,7 +272,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
   },
   "/fleet/dispatch": {
-    title: () => "Dispatch Board",
+    title: () => "Fleet Dispatch",
     icon: "📍",
     roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
   },
@@ -290,6 +295,11 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   // ----------------------------------------------------------------
   // Admin / Management
   // ----------------------------------------------------------------
+  "/dashboard/performance": {
+    title: () => "Performance",
+    icon: "📈",
+    roles: ["owner", "admin", "manager"],
+  },
   "/dashboard/owner/create-user": {
     title: () => "Create User",
     icon: "➕",
@@ -343,7 +353,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager"],
   },
   "/dashboard/workforce/attendance": {
-    title: () => "Attendance",
+    title: () => "Attendance & Activity",
     icon: "🕒",
     roles: ["owner", "admin", "manager"],
   },

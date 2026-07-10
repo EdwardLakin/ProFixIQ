@@ -19,6 +19,9 @@ export const OWNER_GROUP_ORDER = [
 const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/dashboard/owner/reports": "Dashboard",
+  "/dashboard/performance": "Dashboard",
+  "/work-orders/board": "Dashboard",
+  "/dashboard/workforce/attendance": "Dashboard",
   "/work-orders/create?autostart=1": "Operations",
   "/work-orders/view": "Operations",
   "/work-orders/quote-review": "Operations",
@@ -54,7 +57,6 @@ const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/dashboard/workforce/people": "Workforce",
   "/dashboard/workforce/scheduling": "Workforce",
   "/dashboard/workforce/time-off": "Workforce",
-  "/dashboard/workforce/attendance": "Workforce",
   "/dashboard/workforce/payroll-review": "Workforce",
   "/dashboard/workforce/documents": "Workforce",
   "/dashboard/workforce/certifications": "Workforce",

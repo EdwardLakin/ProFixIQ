@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkforceQuickLinks } from "./WorkforceQuickLinks";
+import { OperationalViewSwitcher } from "@/features/dashboard/components/OperationalViewSwitcher";
 import { TechnicianActivityCard } from "@/features/workforce/components/TechnicianActivityCard";
 import { WorkforceActivityFeed } from "@/features/workforce/components/WorkforceActivityFeed";
 import type { WorkforceActivityResponse } from "@/features/workforce/lib/activityTypes";
@@ -116,9 +117,10 @@ type AttendanceOverviewClientProps = {
   from: string;
   to: string;
   timezone?: string | null;
+  role?: string | null;
 };
 
-export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverviewClientProps) {
+export function AttendanceOverviewClient({ from, to, timezone, role }: AttendanceOverviewClientProps) {
   const [data, setData] = useState<AttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -221,8 +223,9 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
 
   return (
     <div className="space-y-5">
+      <OperationalViewSwitcher role={role} />
       <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
-        <h1 className="text-2xl font-semibold text-white">Attendance Command</h1>
+        <h1 className="text-2xl font-semibold text-white">Attendance & Activity</h1>
         <p className="mt-1 text-sm text-neutral-300">Live shop-floor command board for shift posture, active jobs, unassigned time, and operational exceptions.</p>
         <p className="mt-2 inline-flex rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-neutral-300">
           {timezone ? `Today based on shop timezone: ${timezone}` : "Today based on shop day window (UTC fallback)"}
