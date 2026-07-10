@@ -48,6 +48,8 @@ export default function WorkOrderBoardCard(props: {
   const stageLabel = formatStageLabel(row, variant);
   const progressWidth = Math.max(0, Math.min(100, row.progress_pct));
   const priority = priorityLabel(row.priority);
+  const technicianCount = row.tech_names?.length ?? row.assigned_tech_count ?? (row.first_tech_name ? 1 : 0);
+  const laborStatus = row.overall_stage === "in_progress" ? "Active labor" : row.overall_stage === "awaiting" ? "Ready to dispatch" : formatStageLabel(row, variant);
 
   const techLabel =
     row.tech_names && row.tech_names.length > 0
@@ -83,8 +85,24 @@ export default function WorkOrderBoardCard(props: {
 
             {row.is_waiter ? (
               <div className="rounded-full border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-100">
-                Waiting
+                Customer Waiting
               </div>
+            ) : null}
+
+            {row.overall_stage === "waiting_parts" ? (
+              <div className="rounded-full border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-100">Waiting Parts</div>
+            ) : null}
+            {row.overall_stage === "awaiting_approval" ? (
+              <div className="rounded-full border border-sky-400/50 bg-sky-500/15 px-2 py-0.5 text-[11px] font-bold text-sky-100">Waiting Approval</div>
+            ) : null}
+            {row.overall_stage === "on_hold" ? (
+              <div className="rounded-full border border-red-400/50 bg-red-500/15 px-2 py-0.5 text-[11px] font-bold text-red-100">On Hold</div>
+            ) : null}
+            {row.overall_stage === "completed" ? (
+              <div className="rounded-full border border-emerald-400/50 bg-emerald-500/15 px-2 py-0.5 text-[11px] font-bold text-emerald-100">Ready to Invoice</div>
+            ) : null}
+            {technicianCount > 1 ? (
+              <div className="rounded-full border border-violet-400/50 bg-violet-500/15 px-2 py-0.5 text-[11px] font-bold text-violet-100">Multiple Technicians</div>
             ) : null}
 
             {priority ? (
@@ -116,10 +134,17 @@ export default function WorkOrderBoardCard(props: {
                 </span>
               ) : null}
               {techLabel ? (
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
-                  Tech: {techLabel}
+                <span data-testid="technician-assignment-badge" className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+                  Assigned: {techLabel}
                 </span>
-              ) : null}
+              ) : (
+                <span data-testid="technician-assignment-badge" className="rounded-full border border-amber-400/25 bg-amber-500/10 px-2 py-0.5 text-amber-100">
+                  Unassigned
+                </span>
+              )}
+              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+                Labor: {laborStatus}
+              </span>
             </div>
           ) : null}
         </div>
