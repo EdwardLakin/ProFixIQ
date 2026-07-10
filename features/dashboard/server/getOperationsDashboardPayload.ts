@@ -1,4 +1,4 @@
-import { endOfDay, startOfDay, startOfMonth } from "date-fns";
+import { endOfDay, startOfDay } from "date-fns";
 
 import {
   createDashboardServerClient,
@@ -64,12 +64,6 @@ export type OperationsDashboardPayload = {
   }>;
   suggestedActions: OpAction[];
   flowMix: Array<{ label: string; value: number }>;
-  revenueEfficiency: {
-    revenue: number;
-    profit: number;
-    completedLines: number;
-    efficiencyPct: number;
-  };
   sectionErrors: string[];
   fetchAudit: string[];
 };
@@ -117,12 +111,6 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     alerts: [],
     suggestedActions: [],
     flowMix: [],
-    revenueEfficiency: {
-      revenue: 0,
-      profit: 0,
-      completedLines: 0,
-      efficiencyPct: 0,
-    },
     sectionErrors: [],
     fetchAudit: [],
   };
@@ -134,7 +122,6 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
 
   const todayStart = startOfDay(new Date()).toISOString();
   const todayEnd = endOfDay(new Date()).toISOString();
-  const monthStart = startOfMonth(new Date()).toISOString();
 
   const approvalsQuery = supabase
     .from("work_order_lines")
@@ -168,7 +155,6 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     approvalsResult,
     techProfilesResult,
     activeLinesResult,
-    invoicesMonthResult,
     bookingsTodayResult,
   ] = await Promise.all([
     supabase
@@ -186,11 +172,6 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .eq("shop_id", identity.shopId)
       .in("role", ["tech", "mechanic", "technician"]),
     scopedActiveLinesQuery,
-    supabase
-      .from("invoices")
-      .select("total,labor_cost,created_at")
-      .eq("shop_id", identity.shopId)
-      .gte("created_at", monthStart),
     supabase
       .from("bookings")
       .select("id", { count: "exact", head: true })
@@ -678,7 +659,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
             },
         {
           label: "Check dispatch notes",
-          href: "/dashboard/manager/dispatch",
+          href: "/work-orders/board",
           tone: "neutral",
           detail: "Confirm assignment updates and immediate next actions.",
         },
@@ -712,41 +693,11 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
             },
         {
           label: "Open dispatch view",
-          href: "/dashboard/manager/dispatch",
+          href: "/work-orders/board",
           tone: "neutral",
           detail: "Review technician assignment and bay balancing.",
         },
       ];
-
-  if (invoicesMonthResult.error) {
-    console.error("[Dashboard][Operations] revenue snapshot query failed", {
-      shopId: identity.shopId,
-      userId: identity.userId,
-      error: invoicesMonthResult.error.message,
-    });
-    payload.sectionErrors.push("Revenue snapshot is temporarily unavailable.");
-  } else {
-    const invoices = invoicesMonthResult.data ?? [];
-    const revenue = invoices.reduce(
-      (sum, invoice) => sum + Number(invoice.total ?? 0),
-      0,
-    );
-    const profit = invoices.reduce(
-      (sum, invoice) =>
-        sum + Number(invoice.total ?? 0) - Number(invoice.labor_cost ?? 0),
-      0,
-    );
-
-    payload.revenueEfficiency = {
-      revenue: Math.round(revenue),
-      profit: Math.round(profit),
-      completedLines: payload.technicianActivity.reduce(
-        (sum, tech) => sum + tech.activeLines,
-        0,
-      ),
-      efficiencyPct: revenue > 0 ? Math.round((profit / revenue) * 100) : 0,
-    };
-  }
 
   payload.fetchAudit.push(
     "Operations dashboard now renders from one server payload with composed panel data.",
