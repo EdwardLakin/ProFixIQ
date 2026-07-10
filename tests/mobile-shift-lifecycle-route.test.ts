@@ -90,3 +90,37 @@ describe("mobile shift lifecycle hardening", () => {
     expect(sql).toContain("when 'end_shift' then 3");
   });
 });
+
+describe("canonical tech_shifts write routing", () => {
+  const read = (path: string) => readFileSync(path, "utf8");
+
+  it("keeps technician shift controls routed through /api/mobile/shifts", () => {
+    for (const path of [
+      "features/shared/components/ShiftTracker.tsx",
+      "features/mobile/components/MobileShiftTracker.tsx",
+      "features/shared/components/ui/PunchController.tsx",
+    ]) {
+      const source = read(path);
+      expect(source).toContain('/api/mobile/shifts');
+      expect(source).not.toContain('.from("tech_shifts")');
+      expect(source).not.toContain(".from('tech_shifts')");
+    }
+  });
+
+  it("prevents admin scheduling shift endpoints from writing tech_shifts directly", () => {
+    for (const path of [
+      "app/api/scheduling/shifts/route.ts",
+      "app/api/scheduling/shifts/[id]/route.ts",
+    ]) {
+      const source = read(path);
+      expect(source).toContain("Shift lifecycle writes must use the canonical shift API.");
+      expect(source).not.toMatch(/from\(["']tech_shifts["']\)\.(insert|update|upsert|delete)\b/);
+    }
+  });
+
+  it("keeps legacy time shift end completion on the canonical RPC", () => {
+    const source = read("app/api/time/shift/end/route.ts");
+    expect(source).toContain('.rpc("complete_canonical_shift"');
+    expect(source).not.toMatch(/from\(["']tech_shifts["']\)\.(insert|update|upsert|delete)\b/);
+  });
+});

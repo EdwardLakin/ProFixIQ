@@ -5,7 +5,6 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
 
 type DB = Database;
 
@@ -154,49 +153,9 @@ export async function GET(req: NextRequest) {
 /* --------------------------------------------------------- */
 /* POST /api/scheduling/shifts                               */
 /* --------------------------------------------------------- */
-export async function POST(req: NextRequest) {
-  const a = await authz();
-  if (!a.ok) return a.res;
-  if (!a.isAdmin) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const body = (await req.json().catch(() => null)) as
-    | Partial<DB["public"]["Tables"]["tech_shifts"]["Insert"]>
-    | null;
-
-  if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-
-  if (!body.user_id || !body.start_time) {
-    return NextResponse.json(
-      { error: "Missing user_id or start_time" },
-      { status: 400 },
-    );
-  }
-
-  const admin = createAdminSupabase();
-  const requestedStatus = String(body.status ?? SHIFT_STATUSES.active);
-  const status = requestedStatus === "closed"
-    ? SHIFT_STATUSES.completed
-    : requestedStatus === "open"
-      ? SHIFT_STATUSES.active
-      : requestedStatus;
-  if (status !== SHIFT_STATUSES.active && status !== SHIFT_STATUSES.completed) {
-    return NextResponse.json({ error: "Invalid shift status" }, { status: 400 });
-  }
-
-  // Force shop scope + ensure required columns are satisfied
-  const insert: DB["public"]["Tables"]["tech_shifts"]["Insert"] = {
-    user_id: body.user_id,
-    shop_id: a.me.shop_id,
-    start_time: body.start_time,
-    end_time: body.end_time ?? null,
-    type: (body.type ?? "shift") as DB["public"]["Tables"]["tech_shifts"]["Insert"]["type"],
-    status: status as DB["public"]["Tables"]["tech_shifts"]["Insert"]["status"],
-  };
-
-  const { error } = await admin.from("tech_shifts").insert(insert);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ ok: true });
+export async function POST() {
+  return NextResponse.json(
+    { error: "Shift lifecycle writes must use the canonical shift API." },
+    { status: 410 },
+  );
 }
