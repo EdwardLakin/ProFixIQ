@@ -22,6 +22,7 @@ type DB = Database;
 type Shift = DB["public"]["Tables"]["tech_shifts"]["Row"];
 type Punch = DB["public"]["Tables"]["punch_events"]["Row"];
 type Segment = DB["public"]["Tables"]["work_order_line_labor_segments"]["Row"];
+type OperationalLog = DB["public"]["Tables"]["activity_logs"]["Row"];
 type Profile = {
   id: string;
   full_name: string | null;
@@ -41,6 +42,7 @@ type Line = {
   shop_id: string;
   updated_at: string | null;
   punched_out_at: string | null;
+  hold_reason?: string | null;
 };
 type WO = {
   id: string;
@@ -122,7 +124,8 @@ function latestPunch(events: Punch[]) {
   return (
     [...events].sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime() ||
+        a.id.localeCompare(b.id),
     )[0] ?? null
   );
 }
@@ -159,6 +162,84 @@ function soldLaborHoursForSegments(
     0,
   );
 }
+type LaborSegmentFeedAction =
+  | "started_job"
+  | "resumed_job"
+  | "placed_on_hold"
+  | "paused_job"
+  | "completed_job"
+  | "stopped_at_shift_end"
+  | "stopped_job_time";
+
+function normalizeToken(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll(" ", "_");
+}
+
+function eventNear(log: OperationalLog, at: string): boolean {
+  if (!log.timestamp) return false;
+  return (
+    Math.abs(new Date(log.timestamp).getTime() - new Date(at).getTime()) <= 5000
+  );
+}
+
+function logsForLineAt(
+  logsByLine: Map<string, OperationalLog[]>,
+  lineId: string,
+  at: string,
+): OperationalLog[] {
+  return (logsByLine.get(lineId) ?? []).filter((log) => eventNear(log, at));
+}
+
+export function resolveLaborSegmentFeedAction(params: {
+  segment: Segment;
+  sameLineEarlierSegments: Segment[];
+  logsAtTimestamp?: OperationalLog[];
+}): LaborSegmentFeedAction {
+  const { segment, sameLineEarlierSegments, logsAtTimestamp = [] } = params;
+  if (!segment.ended_at) {
+    return sameLineEarlierSegments.some(
+      (s) =>
+        s.id !== segment.id &&
+        new Date(s.started_at).getTime() <
+          new Date(segment.started_at).getTime(),
+    )
+      ? "resumed_job"
+      : "started_job";
+  }
+  const closeReason = [segment.pause_reason, segment.source]
+    .map(normalizeToken)
+    .filter(Boolean)
+    .join(" ");
+  const logEvents = logsAtTimestamp.map((log) => normalizeToken(log.action));
+  if (logEvents.includes("pause") || closeReason.includes("hold"))
+    return "placed_on_hold";
+  if (closeReason.includes("pause")) return "paused_job";
+  if (
+    logEvents.includes("finish") ||
+    logEvents.includes("complete") ||
+    closeReason.includes("finish") ||
+    closeReason.includes("complete")
+  )
+    return "completed_job";
+  if (closeReason.includes("shift_end") || closeReason.includes("end_shift"))
+    return "stopped_at_shift_end";
+  return "stopped_job_time";
+}
+
+function actionCopy(action: LaborSegmentFeedAction, line?: Line): string {
+  if (action === "started_job") return "started job";
+  if (action === "resumed_job") return "resumed job";
+  if (action === "completed_job") return "completed job";
+  if (action === "stopped_at_shift_end") return "job time stopped at shift end";
+  if (action === "stopped_job_time") return "stopped job time";
+  if (action === "paused_job") return "paused job";
+  const reason = line?.hold_reason?.trim();
+  return reason ? `placed job on hold — ${reason}` : "placed job on hold";
+}
+
 function activityFromEvents(shift: Shift | null, events: Punch[]) {
   const latest = latestPunch(events);
   const t = latest?.event_type?.toLowerCase();
@@ -232,7 +313,7 @@ export async function buildWorkforceActivity(params: {
       ? admin
           .from("work_order_lines")
           .select(
-            "id,work_order_id,description,job_type,assigned_tech_id,labor_time,status,line_status,line_type,shop_id,updated_at,punched_out_at",
+            "id,work_order_id,description,job_type,assigned_tech_id,labor_time,status,line_status,line_type,shop_id,updated_at,punched_out_at,hold_reason",
           )
           .eq("shop_id", params.shopId)
           .in("id", lineIds)
@@ -250,6 +331,16 @@ export async function buildWorkforceActivity(params: {
   if (linesRes.error || woRes.error) throw linesRes.error || woRes.error;
   const lines = (linesRes.data ?? []) as Line[];
   const wos = (woRes.data ?? []) as WO[];
+  const operationalLogsRes = lineIds.length
+    ? await admin
+        .from("activity_logs")
+        .select("*")
+        .eq("target_table", "work_order_line")
+        .in("target_id", lineIds)
+        .gte("timestamp", from)
+        .lte("timestamp", to)
+    : { data: [], error: null };
+  if (operationalLogsRes.error) throw operationalLogsRes.error;
   const customerIds = [
     ...new Set(wos.map((w) => w.customer_id).filter(Boolean)),
   ] as string[];
@@ -287,6 +378,7 @@ export async function buildWorkforceActivity(params: {
     workOrders: wos,
     customers: (customersRes.data ?? []) as Customer[],
     vehicles: (vehiclesRes.data ?? []) as Vehicle[],
+    operationalLogs: (operationalLogsRes.data ?? []) as OperationalLog[],
   });
 }
 
@@ -303,6 +395,7 @@ export function composeWorkforceActivity(input: {
   workOrders: WO[];
   customers: Customer[];
   vehicles: Vehicle[];
+  operationalLogs?: OperationalLog[];
 }): WorkforceActivityResponse {
   const profiles = new Map(input.profiles.map((p) => [p.id, p]));
   const lines = new Map(
@@ -601,6 +694,22 @@ export function composeWorkforceActivity(input: {
       exceptions,
     });
   }
+  const logsByLine = new Map<string, OperationalLog[]>();
+  for (const log of input.operationalLogs ?? []) {
+    if (log.target_table === "work_order_line" && log.target_id) {
+      logsByLine.set(log.target_id, [
+        ...(logsByLine.get(log.target_id) ?? []),
+        log,
+      ]);
+    }
+  }
+  const segmentsByLine = new Map<string, Segment[]>();
+  for (const segment of input.segments) {
+    segmentsByLine.set(segment.work_order_line_id, [
+      ...(segmentsByLine.get(segment.work_order_line_id) ?? []),
+      segment,
+    ]);
+  }
   const feed: WorkforceActivityFeedItem[] = [
     ...input.punches.map((p) => ({
       id: p.id,
@@ -611,12 +720,18 @@ export function composeWorkforceActivity(input: {
     ...input.segments.flatMap((s) => {
       const l = lines.get(s.work_order_line_id);
       const w = wos.get(s.work_order_id);
+      const sameLineEarlierSegments =
+        segmentsByLine.get(s.work_order_line_id) ?? [];
+      const startAction = resolveLaborSegmentFeedAction({
+        segment: { ...s, ended_at: null },
+        sameLineEarlierSegments,
+      });
       return [
         {
           id: `${s.id}:start`,
           timestamp: s.started_at,
           employeeName: name(profiles.get(s.technician_id)),
-          action: "started job",
+          action: actionCopy(startAction, l),
           workOrderNumber: woNum(w),
           lineDescription: l?.description ?? null,
           workOrderId: s.work_order_id,
@@ -628,7 +743,18 @@ export function composeWorkforceActivity(input: {
                 id: `${s.id}:end`,
                 timestamp: s.ended_at,
                 employeeName: name(profiles.get(s.technician_id)),
-                action: "finished job",
+                action: actionCopy(
+                  resolveLaborSegmentFeedAction({
+                    segment: s,
+                    sameLineEarlierSegments,
+                    logsAtTimestamp: logsForLineAt(
+                      logsByLine,
+                      s.work_order_line_id,
+                      s.ended_at,
+                    ),
+                  }),
+                  l,
+                ),
                 workOrderNumber: woNum(w),
                 lineDescription: l?.description ?? null,
                 workOrderId: s.work_order_id,
@@ -638,10 +764,42 @@ export function composeWorkforceActivity(input: {
           : []),
       ];
     }),
+    ...(input.operationalLogs ?? [])
+      .filter((log) => {
+        if (
+          log.action !== "resume" ||
+          log.target_table !== "work_order_line" ||
+          !log.timestamp ||
+          !log.target_id
+        )
+          return false;
+        return !(segmentsByLine.get(log.target_id) ?? []).some(
+          (segment) =>
+            Math.abs(
+              new Date(segment.started_at).getTime() -
+                new Date(log.timestamp!).getTime(),
+            ) <= 5000,
+        );
+      })
+      .map((log) => {
+        const l = log.target_id ? lines.get(log.target_id) : undefined;
+        const w = l ? wos.get(l.work_order_id) : undefined;
+        return {
+          id: `${log.id}:release`,
+          timestamp: log.timestamp!,
+          employeeName: name(profiles.get(log.user_id ?? "")),
+          action: "released hold on job",
+          workOrderNumber: woNum(w),
+          lineDescription: l?.description ?? null,
+          workOrderId: l?.work_order_id ?? null,
+          lineId: l?.id ?? null,
+        };
+      }),
   ]
     .sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime() ||
+        a.id.localeCompare(b.id),
     )
     .slice(0, 50);
   const worked = activities.reduce(
@@ -689,7 +847,7 @@ export function composeWorkforceActivity(input: {
     sourceMap: {
       shiftState: "tech_shifts + punch_events",
       jobActivity:
-        "work_order_line_labor_segments + work_order_lines + work_orders",
+        "work_order_line_labor_segments + activity_logs + work_order_lines + work_orders",
       identity: "profiles scoped by shop_id",
       customerVehicle: "customers + vehicles scoped by shop_id",
     },

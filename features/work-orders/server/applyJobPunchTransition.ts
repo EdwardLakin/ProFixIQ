@@ -100,12 +100,14 @@ export async function applyJobPunchTransition({
   }
 
   if (!line) return err(404, "Line not found");
-  if ((line.line_type ?? "job") === "info") return err(409, "Info lines are non-actionable.");
+  if ((line.line_type ?? "job") === "info")
+    return err(409, "Info lines are non-actionable.");
 
   const status = normalizeWorkOrderLineStatus(line.status);
 
   if (action === "start" || action === "resume") {
-    const resumeToAwaiting = action === "resume" && options?.resume?.toAwaiting === true;
+    const resumeToAwaiting =
+      action === "resume" && options?.resume?.toAwaiting === true;
 
     if (resumeToAwaiting) {
       if (status === "completed" || status === "invoiced") {
@@ -144,14 +146,23 @@ export async function applyJobPunchTransition({
     const punchable = Boolean(line.punchable);
 
     if (status === "completed" || status === "invoiced") {
-      return err(409, action === "start" ? "Cannot start a closed line." : "Cannot resume a closed line.");
+      return err(
+        409,
+        action === "start"
+          ? "Cannot start a closed line."
+          : "Cannot resume a closed line.",
+      );
     }
 
     if (!canTransitionWorkOrderLineStatus(status, "in_progress")) {
       return err(409, getWorkOrderLineTransitionError(status, "in_progress"));
     }
 
-    if (status === "awaiting_approval" && approvalState !== "approved" && !punchable) {
+    if (
+      status === "awaiting_approval" &&
+      approvalState !== "approved" &&
+      !punchable
+    ) {
       return err(
         409,
         action === "start"
@@ -182,7 +193,8 @@ export async function applyJobPunchTransition({
       end_time: string | null;
     } | null = null;
 
-    const { data: firstOpenShift, error: firstOpenShiftErr } = await openShiftQuery.maybeSingle();
+    const { data: firstOpenShift, error: firstOpenShiftErr } =
+      await openShiftQuery.maybeSingle();
 
     if (firstOpenShiftErr) return err(400, firstOpenShiftErr.message);
     openShift = firstOpenShift;
@@ -200,36 +212,40 @@ export async function applyJobPunchTransition({
         fallbackQuery = fallbackQuery.eq("shop_id", line.shop_id);
       }
 
-      const { data: fallbackOpenShift, error: fallbackOpenShiftErr } = await fallbackQuery.maybeSingle();
+      const { data: fallbackOpenShift, error: fallbackOpenShiftErr } =
+        await fallbackQuery.maybeSingle();
       if (fallbackOpenShiftErr) return err(400, fallbackOpenShiftErr.message);
       openShift = fallbackOpenShift;
     }
 
     if (!openShift) {
-      const { data: anyShopOpenShift, error: anyShopOpenShiftErr } = await supabase
-        .from("tech_shifts")
-        .select("id, shop_id, status, start_time, end_time")
-        .eq("user_id", lineTechId)
-        .eq("status", SHIFT_STATUSES.active)
-        .order("start_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: anyShopOpenShift, error: anyShopOpenShiftErr } =
+        await supabase
+          .from("tech_shifts")
+          .select("id, shop_id, status, start_time, end_time")
+          .eq("user_id", lineTechId)
+          .eq("status", SHIFT_STATUSES.active)
+          .order("start_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
       if (anyShopOpenShiftErr) return err(400, anyShopOpenShiftErr.message);
       openShift = anyShopOpenShift;
     }
 
     if (!openShift) {
-      const { data: anyShopLegacyOpenShift, error: anyShopLegacyOpenShiftErr } = await supabase
-        .from("tech_shifts")
-        .select("id, shop_id, status, start_time, end_time")
-        .eq("user_id", lineTechId)
-        .is("end_time", null)
-        .order("start_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: anyShopLegacyOpenShift, error: anyShopLegacyOpenShiftErr } =
+        await supabase
+          .from("tech_shifts")
+          .select("id, shop_id, status, start_time, end_time")
+          .eq("user_id", lineTechId)
+          .is("end_time", null)
+          .order("start_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (anyShopLegacyOpenShiftErr) return err(400, anyShopLegacyOpenShiftErr.message);
+      if (anyShopLegacyOpenShiftErr)
+        return err(400, anyShopLegacyOpenShiftErr.message);
       openShift = anyShopLegacyOpenShift;
     }
 
@@ -274,7 +290,8 @@ export async function applyJobPunchTransition({
         activeSegmentQuery = activeSegmentQuery.eq("shop_id", line.shop_id);
       }
 
-      const { data: activeSegments, error: activeSegmentErr } = await activeSegmentQuery;
+      const { data: activeSegments, error: activeSegmentErr } =
+        await activeSegmentQuery;
 
       if (activeSegmentErr) return err(400, activeSegmentErr.message);
 
@@ -288,10 +305,15 @@ export async function applyJobPunchTransition({
 
     const now = new Date().toISOString();
     const shouldResetPunchClock =
-      action === "start" || status === "on_hold" || Boolean(line.punched_out_at);
+      action === "start" ||
+      status === "on_hold" ||
+      Boolean(line.punched_out_at);
 
     if (!line.shop_id || !line.work_order_id) {
-      return err(409, "Cannot start labor segment until line has shop_id and work_order_id.");
+      return err(
+        409,
+        "Cannot start labor segment until line has shop_id and work_order_id.",
+      );
     }
 
     const { error: updateErr } = await supabase
@@ -324,8 +346,14 @@ export async function applyJobPunchTransition({
 
     if (segmentErr) {
       const message = segmentErr.message.toLowerCase();
-      if (message.includes("uq_wolls_active_by_tech") || message.includes("ex_wolls_no_overlap")) {
-        return err(409, "Technician already has overlapping active labor. Pause/finish current job first.");
+      if (
+        message.includes("uq_wolls_active_by_tech") ||
+        message.includes("ex_wolls_no_overlap")
+      ) {
+        return err(
+          409,
+          "Technician already has overlapping active labor. Pause/finish current job first.",
+        );
       }
       return err(400, segmentErr.message);
     }
@@ -359,13 +387,15 @@ export async function applyJobPunchTransition({
     }
 
     const now = new Date().toISOString();
-    const shouldCloseActivePunch = Boolean(line.punched_in_at) && !line.punched_out_at;
+    const shouldCloseActivePunch =
+      Boolean(line.punched_in_at) && !line.punched_out_at;
 
     const { error: updateErr } = await supabase
       .from("work_order_lines")
       .update({
         status: "on_hold",
-        hold_reason: cleanString(options?.pause?.holdReason) ?? "Paused by technician",
+        hold_reason:
+          cleanString(options?.pause?.holdReason) ?? "Paused by technician",
         notes: options?.pause?.notes ?? undefined,
         ...(shouldCloseActivePunch ? { punched_out_at: now } : {}),
       } as DB["public"]["Tables"]["work_order_lines"]["Update"])
@@ -380,11 +410,17 @@ export async function applyJobPunchTransition({
       workOrderLineId: lineId,
       technicianId: pauseTechId,
       endedAtIso: now,
+      pauseReason: cleanString(options?.pause?.holdReason)
+        ? `hold:${cleanString(options?.pause?.holdReason)}`
+        : "hold",
     });
 
     if (closeErr) return err(400, closeErr.message);
 
-    const { error: syncErr } = await syncLinePunchMirrorFromSegments({ supabase, workOrderLineId: lineId });
+    const { error: syncErr } = await syncLinePunchMirrorFromSegments({
+      supabase,
+      workOrderLineId: lineId,
+    });
     if (syncErr) return err(400, syncErr.message);
 
     await logOperationalEvent({
@@ -419,7 +455,10 @@ export async function applyJobPunchTransition({
   }
 
   if (laborTime <= 0) {
-    return err(400, "Labor time must be greater than 0 before finishing this job.");
+    return err(
+      400,
+      "Labor time must be greater than 0 before finishing this job.",
+    );
   }
 
   const nowIso = new Date().toISOString();
@@ -430,11 +469,15 @@ export async function applyJobPunchTransition({
     workOrderLineId: lineId,
     technicianId: finishTechId,
     endedAtIso: nowIso,
+    pauseReason: "completed",
   });
 
   if (closeErr) return err(400, closeErr.message);
 
-  const { error: syncErr } = await syncLinePunchMirrorFromSegments({ supabase, workOrderLineId: lineId });
+  const { error: syncErr } = await syncLinePunchMirrorFromSegments({
+    supabase,
+    workOrderLineId: lineId,
+  });
   if (syncErr) return err(400, syncErr.message);
 
   const updatePayload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
@@ -472,7 +515,10 @@ export async function applyJobPunchTransition({
     .eq("work_order_line_id", lineId);
 
   if (inspectionErr) {
-    console.warn("[finish] inspections finalize failed:", inspectionErr.message);
+    console.warn(
+      "[finish] inspections finalize failed:",
+      inspectionErr.message,
+    );
   }
 
   try {
