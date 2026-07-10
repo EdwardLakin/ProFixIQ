@@ -5,6 +5,7 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { buildWorkforceActivity } from "@/features/workforce/server/buildWorkforceActivity";
 
 type DB = Database;
 
@@ -188,6 +189,10 @@ export async function GET(req: NextRequest) {
     punches = (pRows ?? []) as typeof punches;
   }
 
+  const shopRes = await admin.from("shops").select("timezone").eq("id", a.me.shop_id).maybeSingle();
+  if (shopRes.error) return NextResponse.json({ error: shopRes.error.message }, { status: 500 });
+  const activity = await buildWorkforceActivity({ shopId: a.me.shop_id!, timezone: shopRes.data?.timezone ?? null });
+
   // Billable minutes (work_order_lines)
   let woQ = admin
     .from("work_order_lines")
@@ -217,6 +222,11 @@ export async function GET(req: NextRequest) {
     shifts: attendanceShifts,
     punches,
     billableMinutes,
+    activity,
+    activities: activity.activities,
+    activityFeed: activity.feed,
+    activitySummary: activity.summary,
+    sourceMap: activity.sourceMap,
   });
 }
 

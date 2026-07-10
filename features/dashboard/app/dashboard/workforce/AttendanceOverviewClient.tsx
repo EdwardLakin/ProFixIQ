@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkforceQuickLinks } from "./WorkforceQuickLinks";
+import { TechnicianActivityCard } from "@/features/workforce/components/TechnicianActivityCard";
+import { WorkforceActivityFeed } from "@/features/workforce/components/WorkforceActivityFeed";
+import type { WorkforceActivityResponse } from "@/features/workforce/lib/activityTypes";
 
 export type ShiftRow = {
   id?: string | null;
@@ -33,6 +36,10 @@ type AttendanceResponse = {
   shifts?: ShiftRow[];
   punches?: PunchRow[];
   billableMinutes?: number;
+  activity?: WorkforceActivityResponse;
+  activities?: WorkforceActivityResponse["activities"];
+  activityFeed?: WorkforceActivityResponse["feed"];
+  activitySummary?: WorkforceActivityResponse["summary"];
 };
 
 type NowBucket = "clocked_in" | "break" | "lunch" | "ended" | "no_activity";
@@ -211,34 +218,12 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
     };
   }, [data?.billableMinutes, punches, shifts, timezone]);
 
-  const employeeNameByShiftId = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const s of shifts) {
-      if (typeof s.id === "string") names.set(s.id, getEmployeeDisplayName(s));
-    }
-    return names;
-  }, [shifts]);
-
-  const employeeNameByUserId = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const s of shifts) {
-      const userId = typeof s.user_id === "string" ? s.user_id : typeof s.userId === "string" ? s.userId : null;
-      if (userId) names.set(userId, getEmployeeDisplayName(s));
-    }
-    return names;
-  }, [shifts]);
-
-  const recentPunches = useMemo(() => {
-    return [...punches]
-      .sort((a, b) => (safeDate(b.timestamp)?.getTime() ?? 0) - (safeDate(a.timestamp)?.getTime() ?? 0))
-      .slice(0, 20);
-  }, [punches]);
 
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
         <h1 className="text-2xl font-semibold text-white">Attendance Command</h1>
-        <p className="mt-1 text-sm text-neutral-300">Live shift posture, break states, and payroll handoff for today.</p>
+        <p className="mt-1 text-sm text-neutral-300">Live shop-floor command board for shift posture, active jobs, idle time, and operational exceptions.</p>
         <p className="mt-2 inline-flex rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-neutral-300">
           {timezone ? `Today based on shop timezone: ${timezone}` : "Today based on shop day window (UTC fallback)"}
         </p>
@@ -270,14 +255,16 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
 
       {!loading && !error && (shifts.length > 0 || punches.length > 0) && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Active now", String(derived.activeNow)],
-              ["On break", String(derived.onBreak)],
-              ["On lunch", String(derived.onLunch)],
-              ["Ended today", String(derived.endedToday)],
-              ["Total punch events", String(derived.totalPunchEvents)],
-              ["Billable", `${derived.billableMinutes} min (${(derived.billableMinutes / 60).toFixed(1)}h)`],
+              ["Active technicians", String(data?.activitySummary?.activeTechnicians ?? derived.activeNow)],
+              ["Working on jobs", String(data?.activitySummary?.workingOnJobs ?? 0)],
+              ["Idle / waiting", String(data?.activitySummary?.idleTechnicians ?? 0)],
+              ["On break", String(data?.activitySummary?.onBreak ?? derived.onBreak)],
+              ["On lunch", String(data?.activitySummary?.onLunch ?? derived.onLunch)],
+              ["Ended today", String(data?.activitySummary?.endedToday ?? derived.endedToday)],
+              ["Job time today", `${data?.activitySummary?.jobMinutesToday ?? 0} min`],
+              ["Utilization %", `${data?.activitySummary?.utilizationPct ?? 0}%`],
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl border border-white/10 bg-black/25 p-4">
                 <div className="text-xs uppercase tracking-wide text-neutral-400">{label}</div>
@@ -287,58 +274,22 @@ export function AttendanceOverviewClient({ from, to, timezone }: AttendanceOverv
           </section>
 
           <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <h2 className="text-lg font-semibold text-white">Now board</h2>
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              {([
-                ["Clocked in now", derived.buckets.clocked_in],
-                ["On break", derived.buckets.break],
-                ["On lunch", derived.buckets.lunch],
-                ["Ended today", derived.buckets.ended],
-                ["No active shift / no activity", derived.buckets.no_activity],
-              ] as const).map(([label, items]) => (
-                <div key={label} className="rounded-xl border border-white/10 bg-black/30 p-4">
-                  <h3 className="text-sm font-semibold text-orange-200">{label} ({items.length})</h3>
-                  <div className="mt-3 space-y-2">
-                    {items.length === 0 ? (
-                      <p className="text-sm text-neutral-400">None</p>
-                    ) : (
-                      items.map((item, idx) => (
-                        <div key={`${item.label}-${idx}`} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
-                          <p className="font-medium text-white">{item.label}</p>
-                          <p className="text-neutral-300">{item.shiftLabel}</p>
-                          <p className="text-neutral-400">{item.lastEvent}</p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ))}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Live technician operations</h2>
+                <p className="mt-1 text-sm text-neutral-300">Current job state is resolved from canonical labor segments, not line punch timestamps.</p>
+              </div>
+              {(data?.activitySummary?.activeExceptionCount ?? 0) > 0 ? <span className="rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-sm text-red-100">{data?.activitySummary?.activeExceptionCount} active exception(s)</span> : null}
+            </div>
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              {(data?.activities ?? []).length === 0 ? <p className="text-sm text-neutral-400">No employees or active labor segments found for today.</p> : (data?.activities ?? []).map((activity) => <TechnicianActivityCard key={activity.userId} activity={activity} timezone={timezone} />)}
             </div>
           </section>
 
           <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <h2 className="text-lg font-semibold text-white">Today&apos;s punch activity</h2>
-            <p className="mt-1 text-xs text-neutral-400">Newest first (up to 20 events)</p>
-            <div className="mt-4 overflow-x-auto">
-              <div className="min-w-[640px] space-y-2">
-                {recentPunches.length === 0 ? (
-                  <p className="text-sm text-neutral-400">No punch events available.</p>
-                ) : (
-                  recentPunches.map((p, i) => (
-                    <div key={p.id ?? i} className="grid grid-cols-4 gap-2 rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
-                      <div className="text-white">{formatDateTime(p.timestamp, timezone)}</div>
-                      <div className="text-neutral-300">{
-                        (typeof p.shift_id === "string" ? employeeNameByShiftId.get(p.shift_id) : null)
-                          ?? (typeof p.user_id === "string" ? employeeNameByUserId.get(p.user_id) : null)
-                          ?? "Unknown employee"
-                      }</div>
-                      <div className="text-neutral-300">{displayEventType(normalizeEventType(p))}</div>
-                      <div className="text-neutral-400">{p.note ? String(p.note) : "—"}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+            <h2 className="text-lg font-semibold text-white">Operational activity feed</h2>
+            <p className="mt-1 text-xs text-neutral-400">Newest first from shift punches and labor segments. No timeline events are fabricated.</p>
+            <div className="mt-4"><WorkforceActivityFeed items={data?.activityFeed ?? []} timezone={timezone} /></div>
           </section>
 
           <section className="rounded-2xl border border-white/10 bg-black/25 p-5">

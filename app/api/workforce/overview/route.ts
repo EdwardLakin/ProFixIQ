@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getShopTodayTomorrowRanges } from "@/features/shared/lib/utils/shopDayWindow";
+import { buildWorkforceActivity } from "@/features/workforce/server/buildWorkforceActivity";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 type Severity = "blocking" | "warning" | "info";
@@ -20,6 +21,9 @@ type WorkforceOverviewResponse = {
     unassignedJobs: number;
     assignedToUnavailable: number;
     overloadedTechs: number;
+    workingOnJobs: number;
+    idleTechnicians: number;
+    activeAttendanceExceptions: number;
   };
   inbox: WorkforceInboxItem[];
   sections: Record<string, WorkforceInboxItem[]>;
@@ -52,7 +56,7 @@ export async function GET() {
   if (!access.ok) return access.response;
   const canAccessPeople = access.profile.role === "owner" || access.profile.role === "admin";
   const admin: AdminClient = createAdminSupabase();
-  const shopId = access.profile.shop_id;
+  const shopId = access.profile.shop_id!;
   const now = new Date();
   const in30 = new Date(now); in30.setDate(in30.getDate() + 30);
   const shopRes = await admin.from("shops").select("timezone").eq("id", shopId).maybeSingle();
@@ -63,7 +67,8 @@ export async function GET() {
   const todayEndIso = dayRanges.today.end;
   const tomorrowEndIso = dayRanges.tomorrow.end;
 
-  const [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes] = await Promise.all([
+  const [activity, profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes] = await Promise.all([
+    buildWorkforceActivity({ shopId, timezone: shopRes.data?.timezone ?? null }),
     admin.from("profiles").select("id, full_name").eq("shop_id", shopId),
     admin.from("people_workforce_profiles").select("user_id, employment_status").eq("shop_id", shopId),
     admin.from("staff_time_off_requests").select("id, created_at").eq("shop_id", shopId).eq("status", "pending").order("created_at", { ascending: true }),
@@ -141,6 +146,7 @@ export async function GET() {
     id: "unassigned-jobs", type: "unassigned_jobs", severity: "warning", title: "Unassigned active jobs", description: `${unassignedJobs} active job line${unassignedJobs > 1 ? "s" : ""} without technician assignment.`, count: unassignedJobs, href: "/work-orders/view?assignment=unassigned&status=active&source=workforce",
   });
   if (assignedToUnavailable > 0) add("operations", { id: "jobs-unavailable-tech", type: "assigned_to_unavailable", severity: "blocking", title: "Jobs assigned to unavailable techs", description: `${assignedToUnavailable} active assignment${assignedToUnavailable > 1 ? "s" : ""} conflict with time away today.`, count: assignedToUnavailable, href: "/dashboard/workforce/scheduling?focus=conflicts&type=assigned_to_unavailable" });
+  if (activity.summary.activeExceptionCount > 0) add("operations", { id: "attendance-active-exceptions", type: "attendance_exceptions", severity: "blocking", title: "Live attendance exceptions", description: `${activity.summary.activeExceptionCount} active shop-floor exception${activity.summary.activeExceptionCount > 1 ? "s" : ""} need review.`, count: activity.summary.activeExceptionCount, href: "/dashboard/workforce/attendance?filter=exceptions" });
   for (const [personId, count] of overloaded.slice(0, OVERLOADED_INBOX_CAP)) add("operations", { id: `overloaded-${personId}`, type: "overloaded_tech", severity: "warning", title: "Technician workload is high", description: `${profileName.get(personId) ?? "A technician"} has ${count} active assigned jobs.`, count, personId, personName: profileName.get(personId) ?? undefined, href: canAccessPeople ? `/dashboard/workforce/people/${personId}?focus=workload&from=workforce-overview` : `/dashboard/workforce/scheduling?focus=workload&person_id=${personId}` });
 
   const severityOrder: Record<Severity, number> = { blocking: 0, warning: 1, info: 2 };
@@ -170,6 +176,9 @@ export async function GET() {
       unassignedJobs,
       assignedToUnavailable,
       overloadedTechs: overloaded.length,
+      workingOnJobs: activity.summary.workingOnJobs,
+      idleTechnicians: activity.summary.idleTechnicians,
+      activeAttendanceExceptions: activity.summary.activeExceptionCount,
     },
     inbox,
     sections,
