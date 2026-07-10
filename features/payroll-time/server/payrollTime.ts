@@ -153,8 +153,9 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
   const [{ data: shifts, error: shiftsErr }, { data: jobSegments, error: jobsErr }] = await Promise.all([
     admin
       .from("tech_shifts")
-      .select("id, user_id, type, status, start_time, end_time")
+      .select("id, user_id, type, status, start_time, end_time, excluded_from_payroll")
       .eq("shop_id", shopId)
+      .neq("excluded_from_payroll", true)
       .gte("start_time", rangeStart)
       .lte("start_time", rangeEnd),
     admin
