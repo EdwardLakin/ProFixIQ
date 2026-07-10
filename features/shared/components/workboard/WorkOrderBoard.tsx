@@ -14,6 +14,7 @@ import {
 } from "../../lib/workboard/filters";
 
 type FilterKey = WorkOrderBoardFilterKey;
+type WorkOrderBoardHrefMode = "none" | "shop-work-order";
 
 function labelForFilter(key: FilterKey): string {
   if (key === "all") return "All";
@@ -24,6 +25,23 @@ function isCompletedStage(row: WorkOrderBoardRow): boolean {
   return row.overall_stage === "completed";
 }
 
+function defaultHrefModeForVariant(
+  variant: WorkOrderBoardVariant,
+): WorkOrderBoardHrefMode {
+  return variant === "shop" ? "shop-work-order" : "none";
+}
+
+function resolveWorkOrderBoardHref(
+  row: WorkOrderBoardRow,
+  mode: WorkOrderBoardHrefMode,
+): string | null {
+  if (mode === "shop-work-order") {
+    return `/work-orders/${row.work_order_id}`;
+  }
+
+  return null;
+}
+
 export default function WorkOrderBoard(props: {
   variant: WorkOrderBoardVariant;
   title: string;
@@ -31,6 +49,11 @@ export default function WorkOrderBoard(props: {
   limit?: number;
   fleetId?: string | null;
   compact?: boolean;
+  /**
+   * Serializable href behavior for Server Component callers. Client Component
+   * callers can still use hrefBuilder when they need custom in-client links.
+   */
+  hrefMode?: WorkOrderBoardHrefMode;
   hrefBuilder?: (row: WorkOrderBoardRow) => string | null;
   initialStage?: FilterKey;
 }) {
@@ -108,6 +131,11 @@ export default function WorkOrderBoard(props: {
 
   const showCompletedSection =
     !props.compact && (stageFilter === "all" || stageFilter === "completed");
+  const hrefMode = props.hrefMode ?? defaultHrefModeForVariant(props.variant);
+  const buildRowHref = (row: WorkOrderBoardRow) =>
+    props.hrefBuilder
+      ? props.hrefBuilder(row)
+      : resolveWorkOrderBoardHref(row, hrefMode);
 
   const activeCount = useMemo(
     () => rows.filter((row) => !isCompletedStage(row)).length,
@@ -137,12 +165,33 @@ export default function WorkOrderBoard(props: {
 
   const completedCount = counts.completed;
   const queueGroups = [
-    { label: "At Risk", count: rows.filter((row) => row.risk_level === "danger" || row.risk_level === "warn").length },
-    { label: "Blocked", count: rows.filter((row) => row.overall_stage === "on_hold").length },
-    { label: "Ready to Work", count: rows.filter((row) => row.overall_stage === "awaiting").length },
-    { label: "Working", count: rows.filter((row) => row.overall_stage === "in_progress").length },
-    { label: "Awaiting Approval", count: rows.filter((row) => row.overall_stage === "awaiting_approval").length },
-    { label: "Waiting Parts", count: rows.filter((row) => row.overall_stage === "waiting_parts").length },
+    {
+      label: "At Risk",
+      count: rows.filter(
+        (row) => row.risk_level === "danger" || row.risk_level === "warn",
+      ).length,
+    },
+    {
+      label: "Blocked",
+      count: rows.filter((row) => row.overall_stage === "on_hold").length,
+    },
+    {
+      label: "Ready to Work",
+      count: rows.filter((row) => row.overall_stage === "awaiting").length,
+    },
+    {
+      label: "Working",
+      count: rows.filter((row) => row.overall_stage === "in_progress").length,
+    },
+    {
+      label: "Awaiting Approval",
+      count: rows.filter((row) => row.overall_stage === "awaiting_approval")
+        .length,
+    },
+    {
+      label: "Waiting Parts",
+      count: rows.filter((row) => row.overall_stage === "waiting_parts").length,
+    },
     { label: "Completed Today", count: completedCount },
   ].filter((group) => group.count > 0);
 
@@ -170,7 +219,8 @@ export default function WorkOrderBoard(props: {
                 Active: <span className="text-white">{activeCount}</span>
               </div>
               <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                Needs attention: <span className="text-white">{stalledCount}</span>
+                Needs attention:{" "}
+                <span className="text-white">{stalledCount}</span>
               </div>
               <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
                 Waiters: <span className="text-white">{waiterCount}</span>
@@ -187,10 +237,17 @@ export default function WorkOrderBoard(props: {
 
         <div className="flex flex-col gap-2 md:min-w-[380px]">
           {queueGroups.length > 0 ? (
-            <div data-testid="queue-awareness-groups" className="flex flex-wrap gap-2">
+            <div
+              data-testid="queue-awareness-groups"
+              className="flex flex-wrap gap-2"
+            >
               {queueGroups.map((group) => (
-                <div key={group.label} className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                  {group.label}: <span className="text-white">{group.count}</span>
+                <div
+                  key={group.label}
+                  className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200"
+                >
+                  {group.label}:{" "}
+                  <span className="text-white">{group.count}</span>
                 </div>
               ))}
             </div>
@@ -216,7 +273,9 @@ export default function WorkOrderBoard(props: {
                 ].join(" ")}
               >
                 {labelForFilter(key)}{" "}
-                <span className="ml-1 text-[10px] opacity-80">{counts[key]}</span>
+                <span className="ml-1 text-[10px] opacity-80">
+                  {counts[key]}
+                </span>
               </button>
             ))}
 
@@ -270,7 +329,9 @@ export default function WorkOrderBoard(props: {
               <div
                 className={[
                   "grid gap-3",
-                  props.compact ? "grid-cols-1" : "md:grid-cols-2 xl:grid-cols-3",
+                  props.compact
+                    ? "grid-cols-1"
+                    : "md:grid-cols-2 xl:grid-cols-3",
                 ].join(" ")}
               >
                 {activeRows.map((row) => (
@@ -279,7 +340,7 @@ export default function WorkOrderBoard(props: {
                     row={row}
                     variant={props.variant}
                     compact={props.compact}
-                    href={props.hrefBuilder ? props.hrefBuilder(row) : null}
+                    href={buildRowHref(row)}
                   />
                 ))}
               </div>
@@ -309,7 +370,7 @@ export default function WorkOrderBoard(props: {
                       row={row}
                       variant={props.variant}
                       compact={false}
-                      href={props.hrefBuilder ? props.hrefBuilder(row) : null}
+                      href={buildRowHref(row)}
                     />
                   ))}
                 </div>

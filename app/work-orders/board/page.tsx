@@ -10,7 +10,9 @@ export default async function WorkOrderBoardPage({
 }) {
   const identity = await getDashboardIdentity();
   const params = await searchParams;
-  const rawStage = Array.isArray(params?.stage) ? params?.stage[0] : params?.stage;
+  const rawStage = Array.isArray(params?.stage)
+    ? params?.stage[0]
+    : params?.stage;
   const initialStage = parseWorkOrderBoardStageFilter(rawStage);
   return (
     <main className="min-h-screen px-4 py-6 text-white md:px-6">
@@ -20,7 +22,6 @@ export default async function WorkOrderBoardPage({
           variant="shop"
           title="Shop work order board"
           subtitle="Read-only board for real-time workflow visibility across active work orders."
-          hrefBuilder={(row) => `/work-orders/${row.work_order_id}`}
           initialStage={initialStage}
         />
       </div>
