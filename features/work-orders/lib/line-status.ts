@@ -26,7 +26,7 @@ export const WORK_ORDER_LINE_ALLOWED_TRANSITIONS: Record<
   awaiting_approval: ["awaiting_approval", "approved", "in_progress", "on_hold", "completed", "declined", "deferred"],
   in_progress: ["in_progress", "on_hold", "waiting_parts", "completed", "awaiting_approval", "declined", "deferred"],
   waiting_parts: ["waiting_parts", "in_progress", "completed", "declined", "deferred"],
-  on_hold: ["on_hold", "in_progress", "waiting_parts", "completed", "awaiting_approval"],
+  on_hold: ["on_hold", "awaiting", "in_progress", "waiting_parts", "completed", "awaiting_approval"],
   completed: ["completed", "ready_to_invoice", "invoiced"],
   ready_to_invoice: ["ready_to_invoice", "invoiced"],
   invoiced: ["invoiced"],
