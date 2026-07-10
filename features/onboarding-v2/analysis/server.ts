@@ -27,6 +27,7 @@ export type GuidedOnboardingEvidence = {
   partsWithVendorCount: number;
   partsMissingCategoryCount: number;
   vendorCount?: number;
+  evidenceWarnings?: string[];
   yearsOfHistory?: number;
   commonServiceCategories: string[];
   commonJobs: string[];
@@ -58,18 +59,36 @@ type RunInput = {
   sessionId: string;
 };
 
-async function countRows(supabase: SupabaseLike, table: string, shopId: string, build?: (query: GuidedQuery) => GuidedQuery): Promise<number> {
+type EvidenceQueryResult<T> = { value: T; reliable: boolean; warning?: string };
+
+function warnEvidenceQuery(warning: string, error?: unknown) {
+  if (process.env.NODE_ENV !== "production") console.warn(`[guided-onboarding-evidence] ${warning}`, error);
+}
+
+function queryWarning(table: string, purpose: string): string {
+  return `${purpose} could not be verified from ${table}`;
+}
+
+async function countRows(supabase: SupabaseLike, table: string, shopId: string, build?: (query: GuidedQuery) => GuidedQuery, purpose = `${table} count`): Promise<EvidenceQueryResult<number>> {
   let query = supabase.from(table).select("id", { count: "exact", head: true }).eq("shop_id", shopId);
   if (build) query = build(query);
   const { count, error } = await query;
-  if (error) return 0;
-  return count ?? 0;
+  if (error) {
+    const warning = queryWarning(table, purpose);
+    warnEvidenceQuery(warning, error);
+    return { value: 0, reliable: false, warning };
+  }
+  return { value: count ?? 0, reliable: true };
 }
 
-async function sampleColumn(supabase: SupabaseLike, table: string, shopId: string, columns: string, limit = 100): Promise<Record<string, unknown>[]> {
+async function sampleColumn(supabase: SupabaseLike, table: string, shopId: string, columns: string, limit = 100, purpose = `${table} sample`): Promise<EvidenceQueryResult<Record<string, unknown>[]>> {
   const { data, error } = await supabase.from(table).select(columns).eq("shop_id", shopId).limit(limit);
-  if (error) return [];
-  return (data ?? []) as unknown as Record<string, unknown>[];
+  if (error) {
+    const warning = queryWarning(table, purpose);
+    warnEvidenceQuery(warning, error);
+    return { value: [], reliable: false, warning };
+  }
+  return { value: (data ?? []) as unknown as Record<string, unknown>[], reliable: true };
 }
 
 function validDate(value: unknown): Date | null {
@@ -102,45 +121,58 @@ function topStrings(rows: Record<string, unknown>[], keys: string[], limit = 5):
 
 export async function collectGuidedOnboardingEvidence(supabase: SupabaseLike, shopId: string): Promise<GuidedOnboardingEvidence> {
   const [
-    customerCount, vehicleCount, historyCount, invoiceCount, partsCount,
-    lowStockPartsCount, zeroStockPartsCount, partsMissingVendorCount, partsWithVendorCount, partsMissingCategoryCount,
-    inspectionTemplateCount, menuItemCount, hoursCount, vendorCount,
+    customerRows, vehicleRows, historyRows, invoiceRows, partsRows,
+    inspectionTemplateRows, menuItemRows, hoursRows, vendorRows,
   ] = await Promise.all([
-    countRows(supabase, "customers", shopId),
-    countRows(supabase, "vehicles", shopId),
-    countRows(supabase, "work_order_lines", shopId),
-    countRows(supabase, "invoices", shopId),
-    countRows(supabase, "parts", shopId),
-    countRows(supabase, "parts", shopId, (q) => q.lt("quantity_on_hand", 3)),
-    countRows(supabase, "parts", shopId, (q) => q.lte("quantity_on_hand", 0)),
-    countRows(supabase, "parts", shopId, (q) => q.or("vendor.is.null,vendor.eq.")),
-    countRows(supabase, "parts", shopId, (q) => q.not("vendor", "is", null)),
-    countRows(supabase, "parts", shopId, (q) => q.or("category.is.null,category.eq.")),
+    countRows(supabase, "customers", shopId, undefined, "shop-scoped customer count"),
+    countRows(supabase, "vehicles", shopId, undefined, "shop-scoped vehicle count"),
+    countRows(supabase, "history", shopId, undefined, "canonical service-history count"),
+    countRows(supabase, "invoices", shopId, (q) => q.contains("metadata", { import_type: "invoice_csv" }), "historical invoice_csv count"),
+    countRows(supabase, "parts", shopId, undefined, "canonical inventory part count"),
     countRows(supabase, "inspection_templates", shopId),
     countRows(supabase, "menu_items", shopId),
     countRows(supabase, "shop_hours", shopId),
-    countRows(supabase, "vendors", shopId),
+    countRows(supabase, "vendors", shopId, undefined, "canonical vendor-record count"),
   ]);
 
-  const [lineSamples, invoiceSamples, shopRows] = await Promise.all([
-    sampleColumn(supabase, "work_order_lines", shopId, "description,name,category,service_category,service_date,completed_at,created_at,date", 200),
-    sampleColumn(supabase, "invoices", shopId, "service_category,category,description,invoice_date,created_at,date", 100),
+  const [historySamplesRes, invoiceSamplesRes, partsRes, stockMovesRes, shopRowsRes] = await Promise.all([
+    sampleColumn(supabase, "history", shopId, "description,service_date,created_at,historical_status,source_payload", 500, "canonical service-history samples"),
+    sampleColumn(supabase, "invoices", shopId, "metadata,issued_at,created_at", 100, "historical invoice_csv samples"),
+    sampleColumn(supabase, "parts", shopId, "id,name,category,supplier,low_stock_threshold", 10000, "canonical inventory parts"),
+    sampleColumn(supabase, "stock_moves", shopId, "part_id,qty_change", 10000, "inventory stock movement totals"),
     sampleColumn(supabase, "shops", shopId, "labor_rate,tax_rate,shop_supplies_enabled,shop_supplies_percent,supplies_percent,workflow_defaults,default_workflow_status", 1),
   ]);
-  const shop = shopRows[0] ?? {};
+  const warnings = [customerRows, vehicleRows, historyRows, invoiceRows, partsRows, inspectionTemplateRows, menuItemRows, hoursRows, vendorRows, historySamplesRes, invoiceSamplesRes, partsRes, stockMovesRes, shopRowsRes].flatMap((r) => r.warning ? [r.warning] : []);
+  const historySamples = historySamplesRes.value;
+  const parts = partsRes.value;
+  const stockByPart = new Map<string, number>();
+  for (const move of stockMovesRes.value) {
+    const partId = typeof move.part_id === "string" ? move.part_id : "";
+    if (!partId) continue;
+    stockByPart.set(partId, (stockByPart.get(partId) ?? 0) + Number(move.qty_change ?? 0));
+  }
+  const normalizedVendors = new Set(parts.map((p) => typeof p.supplier === "string" ? p.supplier.trim().toLowerCase() : "").filter(Boolean));
+  const partsMissingVendorCount = partsRes.reliable ? parts.filter((p) => !(typeof p.supplier === "string" && p.supplier.trim())).length : 0;
+  const partsWithVendorCount = partsRes.reliable ? parts.length - partsMissingVendorCount : 0;
+  const partsMissingCategoryCount = partsRes.reliable ? parts.filter((p) => !(typeof p.category === "string" && p.category.trim())).length : 0;
+  const lowStockPartsCount = partsRes.reliable && stockMovesRes.reliable ? parts.filter((p) => (stockByPart.get(String(p.id)) ?? 0) > 0 && (stockByPart.get(String(p.id)) ?? 0) < Number(p.low_stock_threshold ?? 3)).length : 0;
+  const zeroStockPartsCount = partsRes.reliable && stockMovesRes.reliable ? parts.filter((p) => (stockByPart.get(String(p.id)) ?? 0) <= 0).length : 0;
+  const vendorCount = vendorRows.value > 0 ? vendorRows.value : normalizedVendors.size > 0 ? normalizedVendors.size : vendorRows.reliable ? 0 : undefined;
+  const shop = shopRowsRes.value[0] ?? {};
 
   return {
-    customerCount, vehicleCount, historyCount, invoiceCount, partsCount,
+    customerCount: customerRows.value, vehicleCount: vehicleRows.value, historyCount: historyRows.value, invoiceCount: invoiceRows.value, partsCount: partsRows.value,
     lowStockPartsCount, zeroStockPartsCount, partsMissingVendorCount, partsWithVendorCount, partsMissingCategoryCount,
     vendorCount,
-    yearsOfHistory: calculateYearsOfHistory([...lineSamples, ...invoiceSamples]),
-    commonServiceCategories: topStrings([...lineSamples, ...invoiceSamples], ["service_category", "category"], 6),
-    commonJobs: topStrings(lineSamples, ["description", "name"], 6),
-    inspectionTemplateCount,
-    menuItemCount,
+    evidenceWarnings: warnings,
+    yearsOfHistory: calculateYearsOfHistory(historySamples),
+    commonServiceCategories: topStrings(historySamples.map((row) => ({ ...row, service_category: typeof row.source_payload === "object" && row.source_payload ? (row.source_payload as Record<string, unknown>).service_category : undefined })), ["service_category"], 6),
+    commonJobs: topStrings(historySamples, ["description"], 6),
+    inspectionTemplateCount: inspectionTemplateRows.value,
+    menuItemCount: menuItemRows.value,
     shopSettings: {
       laborRateConfigured: typeof shop.labor_rate === "number" && shop.labor_rate > 0,
-      hoursConfigured: hoursCount > 0,
+      hoursConfigured: hoursRows.value > 0,
       shopSuppliesConfigured: Boolean(shop.shop_supplies_enabled) || Number(shop.shop_supplies_percent ?? shop.supplies_percent ?? 0) > 0,
       taxRateConfigured: typeof shop.tax_rate === "number" && shop.tax_rate >= 0,
       workflowDefaultsConfigured: Boolean(shop.workflow_defaults) || Boolean(shop.default_workflow_status),
