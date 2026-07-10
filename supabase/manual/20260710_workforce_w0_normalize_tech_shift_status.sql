@@ -15,6 +15,9 @@ end
 where status in ('open', 'closed', 'ended');
 
 alter table public.tech_shifts
+  alter column status set default 'active';
+
+alter table public.tech_shifts
   add constraint tech_shifts_status_check
   check (status = any (array['active'::text, 'completed'::text])) not valid;
 

@@ -11,6 +11,7 @@ import {
   syncLinePunchMirrorFromSegments,
 } from "@/features/work-orders/server/laborSegments";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
+import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
 
 type DB = Database;
 
@@ -165,7 +166,7 @@ export async function applyJobPunchTransition({
       .from("tech_shifts")
       .select("id, shop_id, status, start_time, end_time")
       .eq("user_id", lineTechId)
-      .eq("status", "open")
+      .eq("status", SHIFT_STATUSES.active)
       .order("start_time", { ascending: false })
       .limit(1);
 
@@ -209,7 +210,7 @@ export async function applyJobPunchTransition({
         .from("tech_shifts")
         .select("id, shop_id, status, start_time, end_time")
         .eq("user_id", lineTechId)
-        .eq("status", "open")
+        .eq("status", SHIFT_STATUSES.active)
         .order("start_time", { ascending: false })
         .limit(1)
         .maybeSingle();
