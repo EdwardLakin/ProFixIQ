@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
+
+type Caller = { id: string; shop_id: string | null };
+type ShiftRow = { id: string; shop_id: string | null; user_id: string | null; start_time: string | null };
+type ShiftLifecycleRpcRow = ShiftRow & { status: string | null; end_time: string | null; inserted_events?: unknown[] | null };
 
 export async function POST() {
   const supabase = createServerSupabaseRoute();
@@ -11,11 +16,19 @@ export async function POST() {
   if (userErr) return NextResponse.json({ error: userErr.message }, { status: 500 });
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: me } = await supabase
+  let { data: me } = await supabase
     .from("profiles")
     .select("id, shop_id")
     .eq("id", user.id)
-    .maybeSingle();
+    .maybeSingle<Caller>();
+  if (!me) {
+    const byUser = await supabase
+      .from("profiles")
+      .select("id, shop_id")
+      .eq("user_id", user.id)
+      .maybeSingle<Caller>();
+    me = byUser.data ?? null;
+  }
 
   if (!me?.shop_id) return NextResponse.json({ error: "Missing shop" }, { status: 403 });
 
@@ -24,7 +37,7 @@ export async function POST() {
   const { data: activeJobs, error: activeJobsErr } = await admin
     .from("work_order_line_labor_segments")
     .select("id")
-    .eq("technician_id", user.id)
+    .eq("technician_id", me.id)
     .is("ended_at", null)
     .limit(2);
 
@@ -38,16 +51,17 @@ export async function POST() {
 
   const { data: shifts, error: shiftErr } = await admin
     .from("tech_shifts")
-    .select("id, shop_id, start_time")
-    .eq("user_id", user.id)
-    .eq("status", "open")
+    .select("id, shop_id, user_id, start_time")
+    .eq("user_id", me.id)
+    .eq("status", SHIFT_STATUSES.active)
+    .is("end_time", null)
     .order("start_time", { ascending: false })
     .limit(5);
 
   if (shiftErr) return NextResponse.json({ error: shiftErr.message }, { status: 500 });
   const shift =
-    (shifts ?? []).find((s) => s.shop_id === me.shop_id) ??
-    (shifts ?? []).find((s) => s.shop_id == null) ??
+    ((shifts ?? []) as ShiftRow[]).find((s) => s.shop_id === me.shop_id) ??
+    ((shifts ?? []) as ShiftRow[]).find((s) => s.shop_id == null) ??
     null;
   if (!shift) {
     return NextResponse.json(
@@ -60,20 +74,20 @@ export async function POST() {
   }
 
   const now = new Date().toISOString();
-  const { error: updErr } = await admin
-    .from("tech_shifts")
-    .update({ end_time: now, status: "closed", type: "shift" })
-    .eq("id", shift.id);
-
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
-
-  await admin.from("punch_events").insert({
-    shift_id: shift.id,
-    user_id: user.id,
-    profile_id: user.id,
-    event_type: "end_shift",
-    timestamp: now,
+  const { data, error } = await (admin as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: ShiftLifecycleRpcRow[] | null; error: { message: string } | null }> }).rpc("complete_canonical_shift", {
+    p_shift_id: shift.id,
+    p_shop_id: me.shop_id,
+    p_user_id: shift.user_id ?? me.id,
+    p_profile_id: shift.user_id ?? me.id,
+    p_timestamp: now,
   });
 
-  return NextResponse.json({ ok: true, shiftId: shift.id, endedAt: now });
+  const row = data?.[0] ?? null;
+  if (error || !row) {
+    const message = error?.message ?? "Complete shift RPC returned no row";
+    const status = message.toLowerCase().includes("no matching active shift") ? 409 : 500;
+    return NextResponse.json({ error: `complete_canonical_shift failed: ${message}` }, { status });
+  }
+
+  return NextResponse.json({ ok: true, shiftId: row.id, endedAt: row.end_time ?? now });
 }

@@ -5,6 +5,26 @@ const routeSource = () => readFileSync("app/api/mobile/shifts/route.ts", "utf8")
 const rpcMigration = () => readFileSync("supabase/manual/20260710_workforce_w0_transactional_shift_lifecycle.sql", "utf8");
 
 describe("mobile shift lifecycle hardening", () => {
+
+  it("routes the visible desktop Start Shift button through /api/mobile/shifts without legacy tech_shifts status inserts", () => {
+    const source = readFileSync("features/shared/components/ShiftTracker.tsx", "utf8");
+
+    expect(source).toContain('fetch("/api/mobile/shifts"');
+    expect(source).toContain('body: JSON.stringify({ action })');
+    expect(source).not.toContain('.from("tech_shifts")');
+    expect(source).not.toContain('status: "open"');
+    expect(source).not.toContain('.eq("status", "open")');
+    expect(source).not.toContain('/api/time/shift/end');
+  });
+
+  it("normalizes the tech_shifts status default to active", () => {
+    const sql = readFileSync("supabase/manual/20260710_workforce_w0_normalize_tech_shift_status.sql", "utf8");
+
+    expect(sql).toContain("alter column status set default 'active'");
+    expect(sql).toContain("when status = 'open' then 'active'");
+    expect(sql).toContain("when status in ('closed', 'ended') then 'completed'");
+  });
+
   it("starts shifts through the transactional RPC instead of manual insert/delete compensation", () => {
     const source = routeSource();
 
