@@ -51,11 +51,27 @@ export const TILES: Tile[] = [
   /* ---------------------------------------------------------------------- */
   {
     href: "/dashboard",
-    title: "Dashboard",
+    title: "Shop Overview",
     subtitle: "Today at a glance",
-    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver"],
+    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"],
     scopes: ["all"],
-    section: "Tech",
+    section: "Dashboard",
+  },
+  {
+    href: "/work-orders/board",
+    title: "Work Order Board",
+    subtitle: "Live work flow and dispatch visibility",
+    roles: ["advisor", "manager", "owner", "admin", "mechanic", "lead_hand", "foreman"],
+    scopes: ["work_orders", "all"],
+    section: "Dashboard",
+  },
+  {
+    href: "/dashboard/workforce/attendance",
+    title: "Attendance & Activity",
+    subtitle: "Live staff, job time, and attendance",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["management", "all"],
+    section: "Dashboard",
   },
   {
     href: "/tech/queue",
@@ -310,7 +326,7 @@ export const TILES: Tile[] = [
   },
   {
     href: "/fleet/dispatch",
-    title: "Dispatch Board",
+    title: "Fleet Dispatch",
     subtitle: "Assign units & routes",
     roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
     scopes: ["management", "work_orders", "all"],
@@ -367,12 +383,20 @@ export const TILES: Tile[] = [
   /* TOOLS                                                                   */
   /* ---------------------------------------------------------------------- */
   {
+    href: "/dashboard/performance",
+    title: "Performance",
+    subtitle: "Financial and operational performance",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["management", "all"],
+    section: "Dashboard",
+  },
+  {
     href: "/dashboard/owner/reports",
     title: "Shop Health",
     subtitle: "AI snapshot & readiness",
     roles: ["owner", "admin", "manager"],
     scopes: ["management", "all"],
-    section: "Tools",
+    section: "Dashboard",
   },
   {
   href: "/tech/performance",
@@ -415,14 +439,6 @@ export const TILES: Tile[] = [
     href: "/dashboard/workforce/time-off",
     title: "Time Off",
     subtitle: "Requests, balances, and approval workflow",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Workforce",
-  },
-  {
-    href: "/dashboard/workforce/attendance",
-    title: "Attendance",
-    subtitle: "Daily attendance and exception review",
     roles: ["owner", "admin", "manager"],
     scopes: ["management", "all"],
     section: "Workforce",

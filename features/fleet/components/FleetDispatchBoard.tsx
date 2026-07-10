@@ -120,7 +120,7 @@ export default function FleetDispatchBoard({
                 className="text-xl font-bold tracking-[0.22em] text-sky-300 md:text-2xl uppercase"
                 style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
               >
-                Dispatch Board
+                Fleet Dispatch
               </h1>
               <p className="mt-1 text-xs text-neutral-300">
                 Assign units, drivers and routes. Dispatch, shop and drivers

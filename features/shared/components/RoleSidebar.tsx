@@ -19,6 +19,7 @@ import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 const GROUP_ORDER = [
+  "Dashboard",
   "Tech",
   "Operations",
   "Parts",

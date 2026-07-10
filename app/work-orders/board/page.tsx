@@ -1,4 +1,6 @@
 import WorkOrderBoard from "@shared/components/workboard/WorkOrderBoard";
+import { OperationalViewSwitcher } from "@/features/dashboard/components/OperationalViewSwitcher";
+import { getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
 import { parseWorkOrderBoardStageFilter } from "@shared/lib/workboard/filters";
 
 export default async function WorkOrderBoardPage({
@@ -6,12 +8,14 @@ export default async function WorkOrderBoardPage({
 }: {
   searchParams?: Promise<{ stage?: string | string[] }>;
 }) {
+  const identity = await getDashboardIdentity();
   const params = await searchParams;
   const rawStage = Array.isArray(params?.stage) ? params?.stage[0] : params?.stage;
   const initialStage = parseWorkOrderBoardStageFilter(rawStage);
   return (
     <main className="min-h-screen px-4 py-6 text-white md:px-6">
-      <div className="mx-auto max-w-[1500px]">
+      <div className="mx-auto max-w-[1500px] space-y-4">
+        <OperationalViewSwitcher role={identity.role} />
         <WorkOrderBoard
           variant="shop"
           title="Shop work order board"

@@ -771,7 +771,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
   payload.quickActions = [
     { label: "Create Work Order", href: "/work-orders/create", tone: "primary" },
     { label: "Work Order Board", href: "/work-orders/board", tone: "neutral" },
-    { label: "Attendance", href: "/dashboard/workforce/attendance", tone: "neutral" },
+    { label: "Attendance & Activity", href: "/dashboard/workforce/attendance", tone: "neutral" },
     { label: "Customers", href: "/customers", tone: "neutral" },
     { label: "Vehicles", href: "/vehicles", tone: "neutral" },
     { label: "Schedule", href: "/dashboard/bookings", tone: "neutral" },
