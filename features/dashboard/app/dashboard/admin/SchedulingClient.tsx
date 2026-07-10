@@ -9,7 +9,6 @@ import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
 
 type DB = Database;
 
@@ -200,6 +199,8 @@ function hoursMinutesLabel(mins: number): string {
   const m = mins % 60;
   return `${h}h ${m}m`;
 }
+
+type ShiftCorrectionResponse = { ok: true; correction: { id: string; shift_id: string; corrected_by: string; corrected_at: string; reason: string; payroll_rebuild_status: string } };
 
 type SchedulingContext = {
   me: UserLite;
@@ -813,25 +814,28 @@ export default function SchedulingClient(): JSX.Element {
       return;
     }
 
-    setCreatingShift(true);
     setErr(null);
 
-    const payload: Partial<ShiftRow> = {
-      user_id: uid,
-      shop_id: currentShopId,
-      start_time: startIso,
-      end_time: endIso,
-      // IMPORTANT: satisfy tech_shifts constraints
-      type: "shift",
-      status: SHIFT_STATUSES.open,
-    };
+    const reason = window.prompt("Reason for adding this missing worked shift (required):")?.trim();
+    if (!reason) {
+      setErr("A correction reason is required.");
+      return;
+    }
 
+    setCreatingShift(true);
     try {
-      await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
+      const result = await fetchJson<ShiftCorrectionResponse>("/api/workforce/attendance/corrections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          correction_type: "create_missing_shift",
+          target_user_id: uid,
+          corrected_start_time: startIso,
+          corrected_end_time: endIso,
+          reason,
+        }),
       });
+      setErr(`Correction applied. Payroll status: ${result.correction.payroll_rebuild_status}.`);
       await loadShifts();
     } catch (e) {
       setErr(safeMsg(e, "Failed to create shift."));
@@ -840,8 +844,8 @@ export default function SchedulingClient(): JSX.Element {
     }
   }
 
-  async function updateShiftTime(
-    shiftId: string,
+  async function correctShiftTime(
+    shift: ShiftRow,
     field: "start_time" | "end_time",
     value: string,
   ): Promise<void> {
@@ -850,65 +854,62 @@ export default function SchedulingClient(): JSX.Element {
       setErr("Invalid shift time.");
       return;
     }
-
-    setErr(null);
-    try {
-      await fetchJson<{ ok: true }>(`/api/scheduling/shifts/${shiftId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: iso }),
-      });
-      await loadShifts();
-    } catch (e) {
-      setErr(safeMsg(e, "Failed to update shift."));
+    if (!shift.user_id) {
+      setErr("Shift is missing an employee.");
+      return;
     }
-  }
-
-  async function deleteShift(shiftId: string): Promise<void> {
-    setErr(null);
-    try {
-      await fetchJson<{ ok: true }>(`/api/scheduling/shifts/${shiftId}`, {
-        method: "DELETE",
-      });
-      await loadShifts();
-    } catch (e) {
-      setErr(safeMsg(e, "Failed to delete shift."));
-    }
-  }
-
-  async function duplicateShift(shift: ShiftRow): Promise<void> {
-    if (!currentShopId) return;
-    if (!shift.user_id || !shift.start_time) return;
-
-    // hard-lock: shifts are admin-created only
-    if (!canEditAll) {
-      setErr("Forbidden");
+    const reason = window.prompt(`Reason for correcting ${field === "start_time" ? "start" : "end"} time (required):`)?.trim();
+    if (!reason) {
+      setErr("A correction reason is required.");
       return;
     }
 
     setErr(null);
-    setCreatingShift(true);
     try {
-      const payload: Partial<ShiftRow> = {
-        user_id: shift.user_id,
-        shop_id: currentShopId,
-        start_time: shift.start_time,
-        end_time: shift.end_time ?? null,
-        type: (shift.type ?? "shift") as ShiftRow["type"],
-        status: (shift.status ?? "open") as ShiftRow["status"],
-      };
-
-      await fetchJson<{ ok: true }>("/api/scheduling/shifts", {
+      const result = await fetchJson<ShiftCorrectionResponse>("/api/workforce/attendance/corrections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          correction_type: field === "start_time" ? "adjust_start" : "adjust_end",
+          target_user_id: shift.user_id,
+          shift_id: shift.id,
+          [field === "start_time" ? "corrected_start_time" : "corrected_end_time"]: iso,
+          reason,
+        }),
       });
-
+      setErr(`Correction applied. Payroll status: ${result.correction.payroll_rebuild_status}.`);
       await loadShifts();
     } catch (e) {
-      setErr(safeMsg(e, "Failed to duplicate shift."));
-    } finally {
-      setCreatingShift(false);
+      setErr(safeMsg(e, "Failed to correct shift."));
+    }
+  }
+
+  async function voidShift(shift: ShiftRow): Promise<void> {
+    if (!shift.user_id) {
+      setErr("Shift is missing an employee.");
+      return;
+    }
+    const reason = window.prompt("Reason for voiding this worked shift (required):")?.trim();
+    if (!reason) {
+      setErr("A correction reason is required.");
+      return;
+    }
+    setErr(null);
+    try {
+      const result = await fetchJson<ShiftCorrectionResponse>("/api/workforce/attendance/corrections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          correction_type: "void_shift",
+          target_user_id: shift.user_id,
+          shift_id: shift.id,
+          reason,
+        }),
+      });
+      setErr(`Shift voided without deleting evidence. Payroll status: ${result.correction.payroll_rebuild_status}.`);
+      await loadShifts();
+    } catch (e) {
+      setErr(safeMsg(e, "Failed to void shift."));
     }
   }
 
@@ -1149,7 +1150,7 @@ export default function SchedulingClient(): JSX.Element {
   return (
     <PageShell
       title="Scheduling & Time"
-      description="Shifts, punches, and job-time sessions for your shop (all roles)."
+      description="Actual worked shifts, punches, and job-time sessions for your shop. Planned schedules live in Workforce Scheduling."
     >
       <div className="space-y-5">
         {/* Top controls */}
@@ -1309,10 +1310,10 @@ export default function SchedulingClient(): JSX.Element {
                 Scheduling
               </div>
               <div className="mt-1 text-sm font-semibold text-neutral-100">
-                Create a shift
+                Add missing worked shift
               </div>
               <div className="mt-1 text-xs text-neutral-400">
-                Shifts are shop-scoped. Punches belong to the shift owner (Rule A).
+                Actual worked-time corrections are audited and shop-scoped. Planned schedules belong in Workforce Scheduling templates/overrides.
               </div>
             </div>
 
@@ -1370,13 +1371,13 @@ export default function SchedulingClient(): JSX.Element {
                 disabled={!canEditAll || creatingShift}
                 onClick={() => void createShift()}
               >
-                {creatingShift ? "Creating…" : "Create shift"}
+                {creatingShift ? "Applying…" : "Add missing worked shift"}
               </Button>
             </div>
 
             {!canEditAll && (
               <div className="mt-3 text-xs text-neutral-500">
-                You can view your own shifts here. Managers/Admins can create schedules for all staff.
+                You can view your own shifts here. Managers/Admins can add audited missing worked shifts. Planned schedules live in Workforce Scheduling.
               </div>
             )}
           </div>
@@ -1514,9 +1515,8 @@ export default function SchedulingClient(): JSX.Element {
             punchesByShift={punchesByShift}
             canEditAll={canEditAll}
             userName={userName}
-            onUpdateShiftTime={updateShiftTime}
-            onDeleteShift={deleteShift}
-            onDuplicateShift={duplicateShift}
+            onCorrectShiftTime={correctShiftTime}
+            onVoidShift={voidShift}
             onAddPunch={addPunch}
             onUpdatePunch={updatePunch}
             onDeletePunch={deletePunch}
@@ -1551,13 +1551,12 @@ function ShiftsView(props: {
   canEditAll: boolean;
   userName: (id: string | null) => string;
 
-  onUpdateShiftTime: (
-    shiftId: string,
+  onCorrectShiftTime: (
+    shift: ShiftRow,
     field: "start_time" | "end_time",
     value: string,
   ) => Promise<void>;
-  onDeleteShift: (shiftId: string) => Promise<void>;
-  onDuplicateShift: (shift: ShiftRow) => Promise<void>;
+  onVoidShift: (shift: ShiftRow) => Promise<void>;
 
   onAddPunch: (shiftId: string, type: PunchType, when: string) => Promise<void>;
   onUpdatePunch: (punchId: string, when: string, type?: PunchType) => Promise<void>;
@@ -1572,9 +1571,8 @@ function ShiftsView(props: {
     punchesByShift,
     canEditAll,
     userName,
-    onUpdateShiftTime,
-    onDeleteShift,
-    onDuplicateShift,
+    onCorrectShiftTime,
+    onVoidShift,
     onAddPunch,
     onUpdatePunch,
     onDeletePunch,
@@ -1625,7 +1623,7 @@ function ShiftsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.start_time)}
-                  onChange={(e) => void onUpdateShiftTime(s.id, "start_time", e.target.value)}
+                  onChange={(e) => void onCorrectShiftTime(s, "start_time", e.target.value)}
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1636,7 +1634,7 @@ function ShiftsView(props: {
                 <input
                   type="datetime-local"
                   value={isoToLocalInput(s.end_time ?? null)}
-                  onChange={(e) => void onUpdateShiftTime(s.id, "end_time", e.target.value)}
+                  onChange={(e) => void onCorrectShiftTime(s, "end_time", e.target.value)}
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
@@ -1654,10 +1652,11 @@ function ShiftsView(props: {
                     size="xs"
                     variant="outline"
                     className="text-[0.7rem]"
-                    disabled={!canEditAll}
-                    onClick={() => void onDuplicateShift(s)}
+                    disabled={true}
+                    onClick={() => undefined}
+                    title="Duplicate actual shifts is disabled; duplicate planned schedules in Workforce Scheduling templates/overrides."
                   >
-                    Duplicate
+                    Duplicate disabled
                   </Button>
                   <Button
                     type="button"
@@ -1665,9 +1664,9 @@ function ShiftsView(props: {
                     variant="ghost"
                     className="text-[0.7rem] text-red-300 hover:bg-red-900/20"
                     disabled={!canEditAll}
-                    onClick={() => void onDeleteShift(s.id)}
+                    onClick={() => void onVoidShift(s)}
                   >
-                    Delete
+                    Void shift
                   </Button>
                 </div>
               </div>
