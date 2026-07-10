@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
     .select("*")
     .eq("shop_id", a.me.shop_id)
     .gte("start_time", from)
-    .lte("start_time", to)
+    .lt("start_time", to)
     .order("start_time", { ascending: false });
 
   if (userId) shiftQ = shiftQ.eq("user_id", userId);

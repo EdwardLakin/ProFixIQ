@@ -197,13 +197,6 @@ export const TILES: Tile[] = [
 
   // --- Management ---
   {
-    href: "/dashboard/owner/create-user",
-    title: "Create User",
-    subtitle: "Add team members",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-  },
-  {
     href: "/dashboard/appointments",
     title: "Scheduling",
     subtitle: "Calendar & bookings",
@@ -221,27 +214,6 @@ export const TILES: Tile[] = [
     href: "/dashboard/admin",
     title: "Admin Dashboard",
     subtitle: "Governance and workforce command hub",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-  },
-  {
-    href: "/dashboard/admin/people",
-    title: "People & Staff",
-    subtitle: "Canonical people records, access, workforce, and readiness",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-  },
-  {
-    href: "/dashboard/admin/employees",
-    title: "Workforce View",
-    subtitle: "Filtered workforce readiness from People records",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-  },
-  {
-    href: "/dashboard/admin/payroll-time",
-    title: "Payroll Time",
-    subtitle: "Pay-period review, exceptions, and export",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
   },

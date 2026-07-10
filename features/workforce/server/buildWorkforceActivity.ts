@@ -272,24 +272,18 @@ export async function buildWorkforceActivity(params: {
   const ranges = getShopTodayTomorrowRanges(params.timezone, now);
   const from = ranges.today.start;
   const to = ranges.today.end;
-  const [shiftsRes, profilesRes, punchesRes, segmentsRes] = await Promise.all([
+  const [shiftsRes, profilesRes, segmentsRes] = await Promise.all([
     admin
       .from("tech_shifts")
       .select("*")
       .eq("shop_id", params.shopId)
       .gte("start_time", from)
-      .lte("start_time", to)
+      .lt("start_time", to)
       .order("start_time", { ascending: false }),
     admin
       .from("profiles")
       .select("id, full_name, email, role")
       .eq("shop_id", params.shopId),
-    admin
-      .from("punch_events")
-      .select("*")
-      .gte("timestamp", from)
-      .lte("timestamp", to)
-      .order("timestamp", { ascending: true }),
     admin
       .from("work_order_line_labor_segments")
       .select("*")
@@ -298,14 +292,25 @@ export async function buildWorkforceActivity(params: {
       .or(`ended_at.is.null,ended_at.gte.${from}`)
       .order("started_at", { ascending: false }),
   ]);
-  const err = [shiftsRes, profilesRes, punchesRes, segmentsRes].find(
+  const err = [shiftsRes, profilesRes, segmentsRes].find(
     (r) => r.error,
   )?.error;
   if (err) throw err;
   const shifts = (shiftsRes.data ?? []) as Shift[];
   const profiles = (profilesRes.data ?? []) as Profile[];
-  const punches = (punchesRes.data ?? []) as Punch[];
   const segments = (segmentsRes.data ?? []) as Segment[];
+  const shiftIds = shifts.map((shift) => shift.id).filter(Boolean);
+  const punchesScopedRes = shiftIds.length
+    ? await admin
+        .from("punch_events")
+        .select("*")
+        .in("shift_id", shiftIds)
+        .gte("timestamp", from)
+        .lt("timestamp", to)
+        .order("timestamp", { ascending: true })
+    : { data: [], error: null };
+  if (punchesScopedRes.error) throw punchesScopedRes.error;
+  const punches = (punchesScopedRes.data ?? []) as Punch[];
   const lineIds = [...new Set(segments.map((s) => s.work_order_line_id))];
   const woIds = [...new Set(segments.map((s) => s.work_order_id))];
   const [linesRes, woRes] = await Promise.all([
@@ -338,7 +343,7 @@ export async function buildWorkforceActivity(params: {
         .eq("target_table", "work_order_line")
         .in("target_id", lineIds)
         .gte("timestamp", from)
-        .lte("timestamp", to)
+        .lt("timestamp", to)
     : { data: [], error: null };
   if (operationalLogsRes.error) throw operationalLogsRes.error;
   const customerIds = [
@@ -397,6 +402,10 @@ export function composeWorkforceActivity(input: {
   vehicles: Vehicle[];
   operationalLogs?: OperationalLog[];
 }): WorkforceActivityResponse {
+  const scopedShifts = input.shifts.filter((s) => s.shop_id === input.shopId);
+  const scopedSegments = input.segments.filter((s) => s.shop_id === input.shopId);
+  const scopedShiftIds = new Set(scopedShifts.map((s) => s.id));
+  const scopedPunches = input.punches.filter((p) => p.shift_id && scopedShiftIds.has(p.shift_id));
   const profiles = new Map(input.profiles.map((p) => [p.id, p]));
   const lines = new Map(
     input.lines.filter((l) => l.shop_id === input.shopId).map((l) => [l.id, l]),
@@ -409,11 +418,11 @@ export function composeWorkforceActivity(input: {
   const customers = new Map(input.customers.map((c) => [c.id, c]));
   const vehicles = new Map(input.vehicles.map((v) => [v.id, v]));
   const users = new Set<string>([
-    ...(input.shifts.map((s) => s.user_id).filter(Boolean) as string[]),
-    ...input.segments.map((s) => s.technician_id),
+    ...(scopedShifts.map((s) => s.user_id).filter(Boolean) as string[]),
+    ...scopedSegments.map((s) => s.technician_id),
   ]);
   const punchesByShift = new Map<string, Punch[]>();
-  input.punches.forEach((p) => {
+  scopedPunches.forEach((p) => {
     if (p.shift_id)
       punchesByShift.set(p.shift_id, [
         ...(punchesByShift.get(p.shift_id) ?? []),
@@ -421,7 +430,7 @@ export function composeWorkforceActivity(input: {
       ]);
   });
   const shiftsByUser = new Map<string, Shift>();
-  input.shifts.forEach((s) => {
+  scopedShifts.forEach((s) => {
     if (
       s.user_id &&
       (!shiftsByUser.get(s.user_id) ||
@@ -431,7 +440,7 @@ export function composeWorkforceActivity(input: {
       shiftsByUser.set(s.user_id, s);
   });
   const segsByUser = new Map<string, Segment[]>();
-  input.segments.forEach((s) =>
+  scopedSegments.forEach((s) =>
     segsByUser.set(s.technician_id, [
       ...(segsByUser.get(s.technician_id) ?? []),
       s,
@@ -558,7 +567,7 @@ export function composeWorkforceActivity(input: {
         exception({
           code: "clocked_in_no_active_job",
           severity: "warning",
-          message: `Clocked in with no active job for ${idleMinutes} min.`,
+          message: `Clocked in — no active job for ${idleMinutes} min.`,
           recommendedAction: "Assign work or confirm waiting state.",
           relatedEmployeeId: userId,
         }),

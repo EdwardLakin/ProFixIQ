@@ -17,7 +17,7 @@ type InboxItem = {
   href: string;
 };
 type OverviewPayload = {
-  summary: Record<string, number>;
+  summary: Record<string, number | null>;
   inbox: InboxItem[];
   sections: Record<string, InboxItem[]>;
   generatedAt: string | null;
@@ -56,8 +56,12 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function num(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function metric(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metricDisplay(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "—";
 }
 
 function normalizeSeverity(value: unknown): InboxSeverity {
@@ -129,10 +133,12 @@ export default function WorkforceOverviewClient() {
   const [data, setData] = useState<OverviewPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadWarning, setLoadWarning] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setLoadWarning(null);
     try {
       const res = await fetch("/api/workforce/overview", { cache: "no-store" });
       if (!res.ok) {
@@ -148,8 +154,15 @@ export default function WorkforceOverviewClient() {
       const generatedAt = isRecord(json) && typeof json.generatedAt === "string" ? json.generatedAt : null;
       const permissions = isRecord(json) && isRecord(json.permissions) ? json.permissions : {};
 
+      const malformedMetrics = Object.entries(summary).filter(([, value]) => metric(value) === null);
+      if (!isRecord(json) || !isRecord(json.summary)) {
+        setLoadWarning("Workforce overview metrics are unavailable.");
+      } else if (malformedMetrics.length > 0) {
+        setLoadWarning("Some workforce overview metrics were unavailable or malformed.");
+      }
+
       const normalizedData: OverviewPayload = {
-        summary: Object.fromEntries(Object.entries(summary).map(([key, value]) => [key, num(value)])),
+        summary: Object.fromEntries(Object.entries(summary).map(([key, value]) => [key, metric(value)])),
         inbox: inbox
           .map((item, index) => buildInboxItem(item, `inbox-${index}`))
           .filter((item): item is InboxItem => item !== null),
@@ -242,7 +255,7 @@ export default function WorkforceOverviewClient() {
       items: [
         { label: "Working today", value: data.summary.workingToday, tone: "border-sky-400/30" },
         { label: "Working on jobs", value: data.summary.workingOnJobs ?? 0, tone: "border-emerald-400/30" },
-        { label: "Idle techs", value: data.summary.idleTechnicians ?? 0, tone: "border-orange-400/30" },
+        { label: "No active job", value: data.summary.idleTechnicians ?? 0, tone: "border-orange-400/30" },
         { label: "Away today", value: data.summary.awayToday, tone: "border-sky-500/20" },
         { label: "Away tomorrow", value: data.summary.awayTomorrow, tone: "border-sky-500/20" },
       ],
@@ -285,6 +298,8 @@ export default function WorkforceOverviewClient() {
         />
       </header>
 
+      {loadWarning ? <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">{loadWarning}</div> : null}
+
       <section className="overflow-x-auto pb-1" aria-label="Workforce key metrics">
         <div className="grid min-w-[680px] gap-3 md:grid-cols-2 lg:min-w-0 lg:grid-cols-3">
           {kpiGroups.map((group) => (
@@ -294,7 +309,7 @@ export default function WorkforceOverviewClient() {
                 {group.items.map((item) => (
                   <div key={item.label} className={`rounded-lg border bg-black/25 p-3 ${item.tone}`}>
                     <p className="text-xs text-neutral-400">{item.label}</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">{num(item.value)}</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">{metricDisplay(item.value)}</p>
                   </div>
                 ))}
               </div>

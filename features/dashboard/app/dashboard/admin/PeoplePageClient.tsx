@@ -134,11 +134,16 @@ export default function PeoplePageClient() {
 
   return (
     <AdminPageShell>
-      <AdminPageHeader
-        eyebrow="Canonical Staff System"
-        title="People & Staff"
-        subtitle="People is the canonical admin directory for identity governance, workforce posture, certifications/licensing readiness, and payroll-time follow-up."
-      />
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <AdminPageHeader
+          eyebrow="Canonical Staff System"
+          title="People & Staff"
+          subtitle="People is the canonical admin directory for identity governance, workforce posture, certifications/licensing readiness, and payroll-time follow-up."
+        />
+        <Link href="/dashboard/owner/create-user" className="inline-flex items-center justify-center rounded-lg border border-orange-300/40 bg-orange-500/15 px-4 py-2 text-sm font-medium text-orange-100 hover:border-orange-300/70 hover:bg-orange-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
+          Add person
+        </Link>
+      </div>
       {workforceAction ? (
         <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">
           <span>Filtered from Workforce Overview: {workforceAction === "cert_expired" ? "Expired certifications" : workforceAction === "cert_expiring" ? "Expiring certifications" : "Missing schedule templates"}</span>
@@ -168,7 +173,7 @@ export default function PeoplePageClient() {
           description="Search by person identity, role, workforce category, or contact details."
           action={
             <div className="flex items-center gap-3 text-xs">
-              <Link href="/dashboard/admin/payroll-time" className="font-medium text-orange-300 hover:text-orange-200">Payroll Time →</Link>
+              <Link href="/dashboard/workforce/payroll-review" className="font-medium text-orange-300 hover:text-orange-200">Payroll Time →</Link>
               <Link href="/dashboard/admin/audit" className="font-medium text-orange-300 hover:text-orange-200">Audit →</Link>
             </div>
           }

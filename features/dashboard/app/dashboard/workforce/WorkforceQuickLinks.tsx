@@ -9,6 +9,7 @@ type WorkforceLink = { href: string; label: string };
 
 const ownerAdminLinks: WorkforceLink[] = [
   { href: "/dashboard/workforce/overview", label: "Overview" },
+  { href: "/dashboard/workforce/people", label: "People" },
   { href: "/dashboard/workforce/scheduling", label: "Scheduling" },
   { href: "/dashboard/workforce/time-off", label: "Time Off" },
   { href: "/dashboard/workforce/attendance", label: "Attendance" },
