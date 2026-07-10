@@ -170,8 +170,7 @@ export async function runGuidedOnboardingAnalysis({ supabase, actor, sessionId }
       requiresApproval: false,
       requiresOwnerPin: false,
       source: GUIDED_ANALYSIS_SOURCE,
-      sourceRunId,
-      metadata: { guidedSessionId: sessionId, sessionId, evidence, category: draft.category, deterministic: true, noAutoCreate: true },
+      metadata: { guidedSessionId: sessionId, sessionId, sourceRunId, evidence, category: draft.category, deterministic: true, noAutoCreate: true },
     }));
   }
   return { createdCount: created.length, skippedCount: skipped.length, recommendations: [...created, ...skipped], evidence, categories: drafts.map((d) => d.category) };
