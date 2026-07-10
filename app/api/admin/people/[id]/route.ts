@@ -240,19 +240,6 @@ export async function PUT(req: NextRequest, context: unknown) {
     return NextResponse.json({ error: "Invalid role value" }, { status: 400 });
   }
 
-  if (roleProvided && params.id === access.profile.id) {
-    return NextResponse.json({ error: "You cannot change your own role" }, { status: 403 });
-  }
-
-  if (
-    roleProvided &&
-    canonicalRole !== null &&
-    (canonicalRole === "owner" || canonicalRole === "admin") &&
-    access.canonicalRole !== "owner"
-  ) {
-    return NextResponse.json({ error: "Only owners can assign owner/admin roles" }, { status: 403 });
-  }
-
   const { data: currentProfile, error: currentProfileErr } = await admin
     .from("profiles")
     .select("role")
@@ -262,15 +249,31 @@ export async function PUT(req: NextRequest, context: unknown) {
 
   if (currentProfileErr) return NextResponse.json({ error: currentProfileErr.message }, { status: 500 });
 
+  const accessRoleChanged = roleProvided && canonicalRole !== null && canonicalRole !== (currentProfile?.role ?? null);
+
+  if (accessRoleChanged && params.id === access.profile.id) {
+    return NextResponse.json({ error: "You cannot change your own role" }, { status: 403 });
+  }
+
+  if (
+    accessRoleChanged &&
+    (canonicalRole === "owner" || canonicalRole === "admin") &&
+    access.canonicalRole !== "owner"
+  ) {
+    return NextResponse.json({ error: "Only owners can assign owner/admin roles" }, { status: 403 });
+  }
+
+  const profilePatch = { full_name, phone, completed_onboarding, ...(accessRoleChanged ? { role: canonicalRole } : {}) };
+
   const { error: pErr } = await admin
     .from("profiles")
-    .update({ full_name, phone, role: canonicalRole ?? undefined, completed_onboarding })
+    .update(profilePatch)
     .eq("id", params.id)
     .eq("shop_id", access.profile.shop_id);
 
   if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
 
-  if (roleProvided && canonicalRole !== null) {
+  if (accessRoleChanged && canonicalRole !== null) {
     const { error: authErr } = await admin.auth.admin.updateUserById(params.id, {
       user_metadata: { role: canonicalRole },
     });
@@ -294,18 +297,31 @@ export async function PUT(req: NextRequest, context: unknown) {
     if (wErr) return NextResponse.json({ error: wErr.message }, { status: 500 });
   }
 
-  await admin.from("audit_logs").insert({
+  if (accessRoleChanged) await admin.from("audit_logs").insert({
     actor_id: access.profile.id,
-    action: "people.profile.updated",
+    action: "people.access_role.updated",
     target: params.id,
     metadata: {
       shop_id: access.profile.shop_id,
       person_id: params.id,
       updated_workforce: Boolean(workforce_profile),
       employment_status: workforce_profile?.employment_status ?? null,
-      role_changed: roleProvided && canonicalRole !== null && canonicalRole !== (currentProfile?.role ?? null),
+      role_changed: accessRoleChanged,
       previous_role: currentProfile?.role ?? null,
       new_role: roleProvided ? canonicalRole : null,
+    },
+  });
+
+  if (workforce_profile) await admin.from("audit_logs").insert({
+    actor_id: access.profile.id,
+    action: "people.workforce_profile.updated",
+    target: params.id,
+    metadata: {
+      shop_id: access.profile.shop_id,
+      person_id: params.id,
+      employment_status: workforce_profile.employment_status ?? null,
+      workforce_role: workforce_profile.workforce_role ?? null,
+      payroll_ready: Boolean(workforce_profile.payroll_ready),
     },
   });
 

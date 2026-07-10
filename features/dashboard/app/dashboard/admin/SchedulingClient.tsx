@@ -9,6 +9,7 @@ import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
 
 type DB = Database;
 
@@ -822,7 +823,7 @@ export default function SchedulingClient(): JSX.Element {
       end_time: endIso,
       // IMPORTANT: satisfy tech_shifts constraints
       type: "shift",
-      status: "open",
+      status: SHIFT_STATUSES.open,
     };
 
     try {

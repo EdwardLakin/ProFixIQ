@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
 
 type Action = "start_shift" | "end_shift" | "toggle_break" | "toggle_lunch";
 
@@ -61,7 +62,7 @@ async function loadOpenShift(admin: ReturnType<typeof createAdminSupabase>, user
     .select(baseColumns)
     .eq("shop_id", shopId)
     .in("user_id", cleanUserIds)
-    .eq("status", "open")
+    .eq("status", SHIFT_STATUSES.open)
     .is("end_time", null)
     .order("start_time", { ascending: false })
     .limit(1)
@@ -86,7 +87,7 @@ async function loadOpenShift(admin: ReturnType<typeof createAdminSupabase>, user
     .select(baseColumns)
     .is("shop_id", null)
     .in("user_id", cleanUserIds)
-    .eq("status", "open")
+    .eq("status", SHIFT_STATUSES.open)
     .is("end_time", null)
     .order("start_time", { ascending: false })
     .limit(1)
@@ -155,11 +156,23 @@ export async function POST(req: NextRequest) {
 
   const insertPunch = async (shiftId: string, eventType: Action | "break_end" | "lunch_end") => {
     const mapped = eventType === "toggle_break" ? "break_start" : eventType === "toggle_lunch" ? "lunch_start" : eventType;
-    await admin.from("punch_events").insert({
+    const payload = {
+      shop_id: shopId,
       shift_id: shiftId,
+      user_id: activeShiftUserId,
+      profile_id: activeShiftUserId,
       event_type: mapped,
       timestamp: now,
-    });
+    };
+    const { error } = await admin.from("punch_events").insert(payload as never);
+    if (error && error.message.includes("shop_id")) {
+      const withoutShopId = { ...payload };
+      delete (withoutShopId as { shop_id?: string | null }).shop_id;
+      const retry = await admin.from("punch_events").insert(withoutShopId as never);
+      if (!retry.error) return;
+      throw new Error(`Punch event insert failed: ${retry.error.message}`);
+    }
+    if (error) throw new Error(`Punch event insert failed: ${error.message}`);
   };
 
   if (body.action === "start_shift") {
@@ -175,7 +188,7 @@ export async function POST(req: NextRequest) {
         start_time: now,
         end_time: null,
         type: "shift",
-        status: "open",
+        status: SHIFT_STATUSES.open,
       })
       .select("id,start_time")
       .single();
@@ -184,7 +197,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error?.message ?? "Failed to start shift" }, { status: 500 });
     }
 
-    await insertPunch(data.id, "start_shift");
+    try {
+      await insertPunch(data.id, "start_shift");
+    } catch (punchError) {
+      await admin.from("tech_shifts").delete().eq("id", data.id).eq("shop_id", shopId);
+      return NextResponse.json({ error: punchError instanceof Error ? punchError.message : "Punch event insert failed", partialFailure: { shiftWritten: true, compensated: true, shiftId: data.id } }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, shiftId: data.id, startTime: data.start_time, mode: "shift" as ShiftMode });
   }
 
@@ -202,52 +220,79 @@ export async function POST(req: NextRequest) {
       .is("punched_out_at", null)
       .neq("status", "completed");
 
-    const { error } = await admin
+    const { data, error } = await admin
       .from("tech_shifts")
-      .update({ end_time: now, status: "closed", type: "shift" })
+      .update({ end_time: now, status: SHIFT_STATUSES.closed, type: "shift" })
       .eq("id", current.id)
       .eq("shop_id", shopId)
-      .eq("user_id", activeShiftUserId);
+      .eq("user_id", activeShiftUserId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    if (!data) {
+      return NextResponse.json({ error: "Shift close failed: no matching open shift in this shop", shiftId: current.id }, { status: 409 });
+    }
 
-    await insertPunch(current.id, "end_shift");
+    try {
+      await insertPunch(current.id, "end_shift");
+    } catch (punchError) {
+      return NextResponse.json({ error: punchError instanceof Error ? punchError.message : "Punch event insert failed", partialFailure: { shiftClosed: true, shiftId: current.id } }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, shiftId: null, startTime: null, mode: "ended" as ShiftMode });
   }
 
   if (body.action === "toggle_break") {
     const isEnding = current.type === "break";
-    const { error } = await admin
+    const { data, error } = await admin
       .from("tech_shifts")
-      .update({ type: isEnding ? "shift" : "break", status: "open" })
+      .update({ type: isEnding ? "shift" : "break", status: SHIFT_STATUSES.open })
       .eq("id", current.id)
       .eq("shop_id", shopId)
-      .eq("user_id", activeShiftUserId);
+      .eq("user_id", activeShiftUserId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    if (!data) {
+      return NextResponse.json({ error: "Shift update failed: no matching open shift in this shop", shiftId: current.id }, { status: 409 });
+    }
 
-    await insertPunch(current.id, isEnding ? "break_end" : "toggle_break");
+    try {
+      await insertPunch(current.id, isEnding ? "break_end" : "toggle_break");
+    } catch (punchError) {
+      return NextResponse.json({ error: punchError instanceof Error ? punchError.message : "Punch event insert failed", partialFailure: { shiftUpdated: true, shiftId: current.id } }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, shiftId: current.id, startTime: current.start_time, mode: (isEnding ? "shift" : "break") as ShiftMode });
   }
 
   if (body.action === "toggle_lunch") {
     const isEnding = current.type === "lunch";
-    const { error } = await admin
+    const { data, error } = await admin
       .from("tech_shifts")
-      .update({ type: isEnding ? "shift" : "lunch", status: "open" })
+      .update({ type: isEnding ? "shift" : "lunch", status: SHIFT_STATUSES.open })
       .eq("id", current.id)
       .eq("shop_id", shopId)
-      .eq("user_id", activeShiftUserId);
+      .eq("user_id", activeShiftUserId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    if (!data) {
+      return NextResponse.json({ error: "Shift update failed: no matching open shift in this shop", shiftId: current.id }, { status: 409 });
+    }
 
-    await insertPunch(current.id, isEnding ? "lunch_end" : "toggle_lunch");
+    try {
+      await insertPunch(current.id, isEnding ? "lunch_end" : "toggle_lunch");
+    } catch (punchError) {
+      return NextResponse.json({ error: punchError instanceof Error ? punchError.message : "Punch event insert failed", partialFailure: { shiftUpdated: true, shiftId: current.id } }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, shiftId: current.id, startTime: current.start_time, mode: (isEnding ? "shift" : "lunch") as ShiftMode });
   }
 
