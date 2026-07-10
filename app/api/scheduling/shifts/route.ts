@@ -5,6 +5,7 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
 
 type DB = Database;
 
@@ -174,6 +175,15 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminSupabase();
+  const requestedStatus = String(body.status ?? SHIFT_STATUSES.active);
+  const status = requestedStatus === "closed"
+    ? SHIFT_STATUSES.completed
+    : requestedStatus === "open"
+      ? SHIFT_STATUSES.active
+      : requestedStatus;
+  if (status !== SHIFT_STATUSES.active && status !== SHIFT_STATUSES.completed) {
+    return NextResponse.json({ error: "Invalid shift status" }, { status: 400 });
+  }
 
   // Force shop scope + ensure required columns are satisfied
   const insert: DB["public"]["Tables"]["tech_shifts"]["Insert"] = {
@@ -182,7 +192,7 @@ export async function POST(req: NextRequest) {
     start_time: body.start_time,
     end_time: body.end_time ?? null,
     type: (body.type ?? "shift") as DB["public"]["Tables"]["tech_shifts"]["Insert"]["type"],
-    status: (body.status ?? "open") as DB["public"]["Tables"]["tech_shifts"]["Insert"]["status"],
+    status: status as DB["public"]["Tables"]["tech_shifts"]["Insert"]["status"],
   };
 
   const { error } = await admin.from("tech_shifts").insert(insert);
