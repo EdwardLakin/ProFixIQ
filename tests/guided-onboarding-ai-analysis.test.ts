@@ -151,11 +151,11 @@ describe("guided onboarding deterministic analysis phase 2", () => {
   it("collects bounded deterministic shop evidence and never calls an AI provider", () => {
     const source = read("features/onboarding-v2/analysis/server.ts");
 
-    for (const table of ["customers", "vehicles", "work_order_lines", "invoices", "parts", "inspection_templates", "menu_items", "shop_hours", "shops"]) {
+    for (const table of ["customers", "vehicles", "history", "invoices", "parts", "stock_moves", "inspection_templates", "menu_items", "shop_hours", "shops"]) {
       expect(source).toContain(`\"${table}\"`);
     }
     expect(source).toContain('select("id", { count: "exact", head: true })');
-    expect(source).toContain(", 200)");
+    expect(source).toContain(", 500,");
     expect(source).toContain("deterministic: true");
     expect(source).toContain("noAutoCreate: true");
     expect(source).not.toMatch(/openai|anthropic|chat\.completions|responses\.create|generateText/i);
@@ -242,5 +242,57 @@ describe("guided onboarding executive summary builder", () => {
 
     expect(summary.priorities).toHaveLength(3);
     expect(summary.priorities.map((item) => item.rank)).toEqual([1, 2, 3]);
+  });
+});
+
+describe("guided onboarding evidence canonical sources", () => {
+  it("uses history as the canonical service-history source instead of active work_order_lines", () => {
+    const source = read("features/onboarding-v2/analysis/server.ts");
+
+    expect(source).toContain('countRows(supabase, "history", shopId');
+    expect(source).toContain('sampleColumn(supabase, "history", shopId');
+    expect(source).not.toContain('countRows(supabase, "work_order_lines"');
+    expect(source).not.toContain('sampleColumn(supabase, "work_order_lines"');
+  });
+
+  it("counts only historical invoice CSV imports for the onboarding invoice snapshot", () => {
+    const source = read("features/onboarding-v2/analysis/server.ts");
+
+    expect(source).toContain('countRows(supabase, "invoices", shopId, (q) => q.contains("metadata", { import_type: "invoice_csv" })');
+    expect(source).toContain('"historical invoice_csv count"');
+  });
+
+  it("uses canonical parts rows and stock movement totals without counting stock-location joins as parts", () => {
+    const source = read("features/onboarding-v2/analysis/server.ts");
+
+    expect(source).toContain('countRows(supabase, "parts", shopId, undefined, "canonical inventory part count")');
+    expect(source).toContain('sampleColumn(supabase, "stock_moves", shopId, "part_id,qty_change"');
+    expect(source).toContain('stockByPart.set(partId, (stockByPart.get(partId) ?? 0) + Number(move.qty_change ?? 0))');
+    expect(source).not.toContain('countRows(supabase, "v_part_stock"');
+    expect(source).not.toContain('countRows(supabase, "stock_locations"');
+  });
+
+  it("derives vendor coverage from imported part supplier strings before showing zero vendors", () => {
+    const source = read("features/onboarding-v2/analysis/server.ts");
+
+    expect(source).toContain('normalizedVendors.size > 0 ? normalizedVendors.size');
+    expect(source).toContain('typeof p.supplier === "string"');
+    expect(source).not.toContain('q.or("vendor.is.null,vendor.eq.")');
+  });
+
+  it("keeps failed optional evidence queries from becoming silent confident zeroes", () => {
+    const source = read("features/onboarding-v2/analysis/server.ts");
+
+    expect(source).toContain('EvidenceQueryResult');
+    expect(source).toContain('evidenceWarnings');
+    expect(source).toContain('warnEvidenceQuery');
+    expect(source).toContain('reliable: false');
+  });
+
+  it("readiness naturally increases when canonical history and parts are present", () => {
+    const suppressed = calculateLaunchReadinessScore({ ...baseEvidence, historyCount: 0, partsCount: 0 });
+    const corrected = calculateLaunchReadinessScore({ ...baseEvidence, historyCount: 7343, partsCount: 228 });
+
+    expect(corrected - suppressed).toBe(READINESS_SCORE_WEIGHTS.serviceHistoryPresent + READINESS_SCORE_WEIGHTS.partsPresent);
   });
 });
