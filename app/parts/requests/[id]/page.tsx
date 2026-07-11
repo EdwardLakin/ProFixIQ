@@ -44,6 +44,10 @@ import {
   type DeterministicSupplierSuggestion,
 } from "@/features/parts/lib/parts/deterministicSupplierMatcher";
 import { getStockSuggestionDisplay } from "@/features/parts/lib/parts/suggestionDisplay";
+import {
+  loadStockOnHandByPartId,
+  toStockSummaryRowsFromOnHand,
+} from "@/features/parts/lib/stock-on-hand";
 
 type DB = Database;
 
@@ -456,7 +460,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     const shopId = woRow.shop_id ?? null;
     if (shopId) {
-      const [{ data: ps }, { data: locs }, { data: poRows }, { data: supRows }, { data: stockRows }, { data: vendorRows }] =
+      const [{ data: ps }, { data: locs }, { data: poRows }, { data: supRows }, { data: vendorRows }] =
         await Promise.all([
           supabase
             .from("parts")
@@ -481,10 +485,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             .eq("shop_id", shopId)
             .order("name", { ascending: true })
             .limit(500),
-          supabase
-            .from("part_stock_summary")
-            .select("part_id, shop_id, on_hand, qty_available")
-            .eq("shop_id", shopId),
           supabase
             .from("vendor_part_numbers")
             .select("id, part_id, shop_id, supplier_id, vendor_sku")
@@ -536,16 +536,19 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
       const suggestions: Record<string, DeterministicStockSuggestion[]> = {};
       const supplierSuggestions: Record<string, DeterministicSupplierSuggestion[]> = {};
-      const stockSummaryRows = (((stockRows ?? []) as unknown) as DB["public"]["Views"]["part_stock_summary"]["Row"][]);
-      const stockAvailableMap = new Map<string, number>();
-      const stockAvailableRecord: Record<string, number> = {};
-      for (const stockRow of stockSummaryRows) {
-        if (!stockRow.part_id) continue;
-        const qty = Number((stockRow as { qty_available?: number | null }).qty_available ?? stockRow.on_hand ?? 0);
-        const safeQty = Number.isFinite(qty) ? qty : 0;
-        stockAvailableMap.set(String(stockRow.part_id), safeQty);
-        stockAvailableRecord[String(stockRow.part_id)] = safeQty;
+      let stockAvailableRecord: Record<string, number> = {};
+      try {
+        stockAvailableRecord = await loadStockOnHandByPartId(
+          supabase,
+          shopId,
+          partRows.map((part) => String(part.id)),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to load inventory stock.";
+        toast.error(`Inventory stock could not be loaded: ${message}`);
       }
+      const stockSummaryRows = toStockSummaryRowsFromOnHand(stockAvailableRecord);
+      const stockAvailableMap = new Map<string, number>(Object.entries(stockAvailableRecord));
       setStockAvailableByPartId(stockAvailableRecord);
       for (const req of uiRequests) {
         for (const item of req.items) {
@@ -557,7 +560,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             requestedManufacturer: item.requested_manufacturer,
             requestedQty: toNum(item.qty, 1),
             parts: partRows,
-            stockSummaries: ((stockRows ?? []) as unknown) as DB["public"]["Views"]["part_stock_summary"]["Row"][],
+            stockSummaries: stockSummaryRows,
             vendorPartNumbers: ((vendorRows ?? []) as unknown) as DB["public"]["Tables"]["vendor_part_numbers"]["Row"][],
             limit: 2,
           });

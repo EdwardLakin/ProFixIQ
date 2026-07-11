@@ -20,6 +20,7 @@ import { GuidedImportSummary } from "@/features/shared/components/import/GuidedI
 import { GuidedImportCardLayout } from "@/features/shared/components/import/GuidedImportCardLayout";
 import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
+import { loadStockOnHandByPartId } from "@/features/parts/lib/stock-on-hand";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -28,7 +29,7 @@ type Part = DB["public"]["Tables"]["parts"]["Row"];
 type PartInsert = DB["public"]["Tables"]["parts"]["Insert"];
 type PartUpdate = DB["public"]["Tables"]["parts"]["Update"];
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
-type StockMove = DB["public"]["Tables"]["stock_moves"]["Row"];
+type StockMove = Pick<DB["public"]["Tables"]["stock_moves"]["Row"], "location_id" | "qty_change">;
 type AliasRow = {
   part_id: string;
   alias_type: string | null;
@@ -524,23 +525,11 @@ export default function InventoryPage(): JSX.Element {
         setOnHand({});
         return;
       }
-      const { data, error } = await supabase
-        .from("stock_moves")
-        .select("part_id, qty_change")
-        .in("part_id", partIds)
-        .eq("shop_id", sid);
-
-      if (error || !data) {
+      try {
+        setOnHand(await loadStockOnHandByPartId(supabase, sid, partIds));
+      } catch {
         setOnHand({});
-        return;
       }
-
-      const totals: Record<string, number> = {};
-      (data as StockMove[]).forEach((m) => {
-        const delta = Number(m.qty_change) || 0;
-        totals[m.part_id] = (totals[m.part_id] ?? 0) + delta;
-      });
-      setOnHand(totals);
     },
     [supabase],
   );

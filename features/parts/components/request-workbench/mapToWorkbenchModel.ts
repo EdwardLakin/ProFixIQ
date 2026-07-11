@@ -100,7 +100,9 @@ export function mapRequestToWorkbenchModel(input: {
         sku: nullableText(part.sku),
         partNumber: nullableText(part.part_number),
         manufacturer: nullableText(part.manufacturer ?? part.supplier),
-        onHandQty: input.stockAvailableByPartId?.[partId] ?? 0,
+        onHandQty: Object.prototype.hasOwnProperty.call(input.stockAvailableByPartId ?? {}, partId)
+          ? input.stockAvailableByPartId?.[partId]
+          : null,
       };
     }),
     items: input.items.map((item) => {
