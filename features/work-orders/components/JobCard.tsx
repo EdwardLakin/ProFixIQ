@@ -44,6 +44,9 @@ type JobCardProps = {
   canAssign: boolean;
   canDelete?: boolean;
   isPunchedIn: boolean;
+  isCurrentUserWorkingThisLine?: boolean;
+  activeTechnicianNames?: string[];
+  isSelectedForPanel?: boolean;
   onOpen: () => void;
   onAssign?: (techId: string) => void;
   onPriorityChange?: (priority: JobLinePriority) => void;
@@ -61,10 +64,9 @@ type JobCardProps = {
 type JobLinePriority = "low" | "normal" | "high" | "urgent";
 
 type StatusVisual = {
-  label: string;
+  label: string | null;
   railClass: string;
   chipClass: string;
-  orbClass: string;
   borderClass: string;
   glowClass: string;
   muted: boolean;
@@ -105,18 +107,17 @@ function statusLabelFromKey(status: string): string {
   return status.replaceAll("_", " ").replace(/\b\w/g, (x) => x.toUpperCase());
 }
 
-function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boolean): StatusVisual {
+function resolveStatusVisual(status: string | null | undefined): StatusVisual {
   const raw = norm(status).replaceAll("-", "_");
   const normalized = normalizeWorkOrderLineStatus(status);
 
-  if (isPunchedIn || normalized === "in_progress" || raw === "active") {
+  if (normalized === "in_progress" || raw === "active") {
     return {
-      label: "Active",
-      railClass: "bg-cyan-400/90",
-      chipClass: "border-cyan-300/65 bg-cyan-500/14 text-cyan-100",
-      orbClass: "bg-cyan-300",
-      borderClass: "border-cyan-400/45",
-      glowClass: "shadow-[0_0_22px_rgba(34,211,238,0.25)]",
+      label: null,
+      railClass: "bg-slate-500/60",
+      chipClass: "border-white/12 bg-white/5 text-neutral-200",
+      borderClass: "border-white/10",
+      glowClass: "",
       muted: false,
     };
   }
@@ -126,7 +127,6 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
       label: statusLabelFromKey(normalized),
       railClass: "bg-slate-400/75",
       chipClass: "border-slate-400/55 bg-slate-500/10 text-slate-200",
-      orbClass: "bg-slate-300",
       borderClass: "border-slate-500/45",
       glowClass: "",
       muted: true,
@@ -138,7 +138,6 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
       label: "On Hold",
       railClass: "bg-amber-400/90",
       chipClass: "border-amber-300/60 bg-amber-500/12 text-amber-100",
-      orbClass: "bg-amber-300",
       borderClass: "border-amber-400/45",
       glowClass: "shadow-[0_0_20px_rgba(251,191,36,0.18)]",
       muted: false,
@@ -150,7 +149,6 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
       label: "Waiting Parts",
       railClass: "bg-indigo-400/90",
       chipClass: "border-indigo-300/60 bg-indigo-500/14 text-indigo-100",
-      orbClass: "bg-indigo-300",
       borderClass: "border-indigo-400/45",
       glowClass: "shadow-[0_0_20px_rgba(129,140,248,0.18)]",
       muted: false,
@@ -162,7 +160,6 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
       label: "Awaiting Approval",
       railClass: "bg-amber-500/90",
       chipClass: "border-amber-300/60 bg-amber-500/14 text-amber-100",
-      orbClass: "bg-amber-300",
       borderClass: "border-amber-500/45",
       glowClass: "shadow-[0_0_20px_rgba(245,158,11,0.2)]",
       muted: false,
@@ -174,7 +171,6 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
       label: normalized === "deferred" ? "Deferred" : normalized === "declined" ? "Declined" : "Blocked",
       railClass: "bg-red-400/90",
       chipClass: "border-red-300/60 bg-red-500/12 text-red-100",
-      orbClass: "bg-red-300",
       borderClass: "border-red-400/45",
       glowClass: "shadow-[0_0_22px_rgba(248,113,113,0.2)]",
       muted: false,
@@ -186,7 +182,6 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
       label: normalized === "approved" ? "Ready" : statusLabelFromKey(raw),
       railClass: "bg-sky-400/90",
       chipClass: "border-sky-300/60 bg-sky-500/12 text-sky-100",
-      orbClass: "bg-sky-300",
       borderClass: "border-sky-400/45",
       glowClass: "shadow-[0_0_20px_rgba(56,189,248,0.16)]",
       muted: false,
@@ -197,7 +192,6 @@ function resolveStatusVisual(status: string | null | undefined, isPunchedIn: boo
     label: normalized === "pending" ? "Awaiting" : raw ? statusLabelFromKey(raw) : "Awaiting",
     railClass: "bg-sky-500/80",
     chipClass: "border-sky-400/55 bg-sky-500/10 text-sky-100",
-    orbClass: "bg-sky-300",
     borderClass: "border-sky-500/40",
     glowClass: "",
     muted: false,
@@ -306,6 +300,9 @@ export function JobCard({
   canAssign,
   canDelete,
   isPunchedIn,
+  isCurrentUserWorkingThisLine = false,
+  activeTechnicianNames = [],
+  isSelectedForPanel,
   onOpen,
   onAssign,
   onPriorityChange,
@@ -322,12 +319,23 @@ export function JobCard({
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
   const statusVisual = useMemo(
-    () => resolveStatusVisual(line.status, isPunchedIn),
-    [line.status, isPunchedIn],
+    () => resolveStatusVisual(line.status),
+    [line.status],
   );
 
   const isCompletedLike = statusVisual.muted;
-  const isActiveLine = statusVisual.label === "Active";
+  const isSelected = isSelectedForPanel ?? selected;
+  const activeTechCount = activeTechnicianNames.length;
+  const activeTechName = activeTechnicianNames[0] ?? null;
+  const liveMarkerLabel = isPunchedIn
+    ? isCurrentUserWorkingThisLine
+      ? "WORKING NOW"
+      : activeTechCount > 1
+        ? `${activeTechCount} TECHS ACTIVE`
+        : activeTechName
+          ? `TECH ACTIVE · ${activeTechName}`
+          : "TECH ACTIVE"
+    : null;
 
   useEffect(() => {
     setCollapsed(isCompletedLike);
@@ -338,7 +346,7 @@ export function JobCard({
     const techId = line.assigned_tech_id;
     const profile = technicians.find((tech) => tech.id === techId) ?? null;
     return resolvePrimaryTechDisplay(line, profile ? { ...profile, role: "tech" } : null);
-  }, [line.assigned_tech_id, technicians]);
+  }, [line, technicians]);
 
   const linePriority = toLinePriority(line);
   const quietPriority = linePriority === "urgent" || linePriority === "high" ? linePriority : null;
@@ -383,21 +391,23 @@ export function JobCard({
       }}
       className="outline-none"
       aria-label={`Open job ${index + 1}: ${jobLabel}`}
-      aria-pressed={selected}
+      aria-pressed={isSelected}
     >
       <Card
         className={cn(
           "relative overflow-hidden border p-0 transition",
           METALLIC_CARD_SURFACE,
-          statusVisual.borderClass,
-          statusVisual.glowClass,
+          isPunchedIn ? "border-cyan-300/70 shadow-[0_0_28px_rgba(34,211,238,0.24)]" : statusVisual.borderClass,
+          !isPunchedIn && statusVisual.glowClass,
+          isPunchedIn && "[animation:pulse_3.2s_ease-in-out_infinite]",
           statusVisual.muted && "border-slate-600/35 opacity-[0.74] saturate-[0.56] contrast-[0.9]",
           "hover:-translate-y-[1px] hover:border-white/25",
           "focus-within:border-white/35",
-          selected && "border-white/35 shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
+          isSelected && !isPunchedIn && "border-white/35 shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
+          isSelected && isPunchedIn && "shadow-[0_0_0_1px_rgba(226,232,240,0.38),0_0_28px_rgba(34,211,238,0.24)]",
         )}
       >
-        <div className={cn("absolute inset-y-0 left-0 w-1.5", statusVisual.railClass, statusVisual.muted && "opacity-75")} />
+        <div className={cn("absolute inset-y-0 left-0", isPunchedIn ? "w-2 bg-cyan-300" : "w-1.5", !isPunchedIn && statusVisual.railClass, statusVisual.muted && "opacity-75")} />
 
         <div className={cn("relative pl-5", compact ? "p-3" : "p-4")}>
           <div className={cn("flex flex-col", compact ? "gap-2" : "gap-3")}>
@@ -410,25 +420,24 @@ export function JobCard({
                   <h3 className={cn("truncate font-semibold text-white", compact ? "text-sm sm:text-[15px]" : "text-[15px] sm:text-base")}>
                     {jobLabel}
                   </h3>
-                  <span
-                    className={cn(
-                      "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
-                      statusVisual.chipClass,
-                      isActiveLine &&
-                        "shadow-[0_0_18px_rgba(103,232,249,0.28)] [animation:pulse_2.6s_ease-in-out_infinite]",
-                      statusVisual.muted && "text-slate-300",
-                    )}
-                  >
-                    {statusVisual.label}
-                  </span>
-                  {isPunchedIn ? (
+                  {statusVisual.label ? (
                     <span
                       className={cn(
-                        "inline-flex h-2.5 w-2.5 animate-pulse rounded-full",
-                        statusVisual.orbClass,
+                        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
+                        statusVisual.chipClass,
+                        statusVisual.muted && "text-slate-300",
                       )}
+                    >
+                      {statusVisual.label}
+                    </span>
+                  ) : null}
+                  {liveMarkerLabel ? (
+                    <span
+                      className="inline-flex items-center rounded-full border border-cyan-200/70 bg-cyan-400/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-50 shadow-[0_0_18px_rgba(103,232,249,0.28)]"
                       title="Active labor session"
-                    />
+                    >
+                      {liveMarkerLabel}
+                    </span>
                   ) : null}
                   {quietPriority ? (
                     <span
@@ -448,7 +457,7 @@ export function JobCard({
               </div>
 
               <div className={cn("flex flex-wrap items-center", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-80")}>
-                <Button type="button" variant={selected ? "secondary" : "outline"} size="sm" onClick={onOpen}>
+                <Button type="button" variant={isSelected ? "secondary" : "outline"} size="sm" onClick={onOpen}>
                   Open
                 </Button>
 
