@@ -424,12 +424,12 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const allocs = Array.isArray(allocRaw) ? allocRaw : [];
   const { data: stagedPartsRaw } = await supabase
     .from("work_order_parts")
-    .select("id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price")
+    .select("id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_consumed, quantity_returned, quantity_cancelled, unit_sell_price_snapshot, lifecycle_status")
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .returns<
       Array<
-        Pick<WorkOrderPartRow, "id" | "shop_id" | "work_order_line_id" | "part_id" | "quantity" | "unit_price" | "total_price">
+        Pick<WorkOrderPartRow, "id" | "shop_id" | "work_order_line_id" | "part_id" | "quantity" | "unit_price" | "total_price"> & Record<string, unknown>
       >
     >();
   const stagedParts = Array.isArray(stagedPartsRaw) ? stagedPartsRaw : [];
@@ -618,10 +618,14 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const stagedInvoiceParts: InvoiceSnapshotPart[] = stagedParts.map((part) => {
     const p = isNonEmptyString(part.part_id) ? partsMap.get(part.part_id) : undefined;
-    const qtyRaw = safeNumber(part.quantity);
-    const qty = qtyRaw > 0 ? qtyRaw : 1;
+    const partRecord = part as Record<string, unknown>;
+    const consumed = safeNumber(partRecord.quantity_consumed);
+    const returned = safeNumber(partRecord.quantity_returned);
+    const cancelled = safeNumber(partRecord.quantity_cancelled);
+    const qtyRaw = consumed > 0 ? Math.max(0, consumed - returned) : Math.max(0, safeNumber(part.quantity) - cancelled);
+    const qty = qtyRaw > 0 ? qtyRaw : 0;
     const totalRaw = safeNumber(part.total_price);
-    const unitPrice = safeNumber(part.unit_price);
+    const unitPrice = safeNumber(partRecord.unit_sell_price_snapshot) || safeNumber(part.unit_price);
     const totalPrice = totalRaw > 0 ? totalRaw : Math.max(0, qty * unitPrice);
     const lineId = isNonEmptyString(part.work_order_line_id)
       ? part.work_order_line_id.trim()
@@ -630,12 +634,12 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     return {
       id: String(part.id),
       lineId,
-      name: (p?.name ?? "Part").trim() || "Part",
+      name: (String(partRecord.description_snapshot ?? "").trim() || (p?.name ?? "Part")).trim() || "Part",
       qty,
       unitPrice,
       totalPrice,
       sku: (p?.sku ?? "").trim() || undefined,
-      partNumber: (p?.part_number ?? "").trim() || undefined,
+      partNumber: (String(partRecord.part_number_snapshot ?? "").trim() || (p?.part_number ?? "")).trim() || undefined,
       unit: (p?.unit ?? "").trim() || undefined,
       source: "work_order_part",
     };

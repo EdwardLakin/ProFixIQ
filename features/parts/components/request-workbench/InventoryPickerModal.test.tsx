@@ -7,8 +7,8 @@ import { sumStockMovesByPartId } from "@/features/parts/lib/stock-on-hand";
 describe("InventoryPickerModal", () => {
   it("renders physical on-hand totals calculated from stock moves", () => {
     const stockByPartId = sumStockMovesByPartId([
-      { part_id: "part-1", qty_change: 60 },
-      { part_id: "part-1", qty_change: 40 },
+      { part_id: "part-1", qty_change: 60, reason: "receive" },
+      { part_id: "part-1", qty_change: 40, reason: "receive" },
     ]);
 
     render(

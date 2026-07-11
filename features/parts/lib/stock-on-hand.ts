@@ -2,7 +2,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 type StockMoveQuantityRow = Pick<
   Database["public"]["Tables"]["stock_moves"]["Row"],
-  "part_id" | "qty_change"
+  "part_id" | "qty_change" | "reason"
 >;
 
 type StockMoveQueryResult = {
@@ -12,7 +12,7 @@ type StockMoveQueryResult = {
 
 type SupabaseStockMoveClient = {
   from: (table: "stock_moves") => {
-    select: (columns: "part_id, qty_change") => {
+    select: (columns: "part_id, qty_change, reason") => {
       eq: (column: "shop_id", value: string) => {
         in: (column: "part_id", values: string[]) => PromiseLike<StockMoveQueryResult>;
       };
@@ -23,11 +23,12 @@ type SupabaseStockMoveClient = {
 export type StockOnHandByPartId = Record<string, number>;
 
 export function sumStockMovesByPartId(
-  moves: readonly Pick<StockMoveQuantityRow, "part_id" | "qty_change">[],
+  moves: readonly Pick<StockMoveQuantityRow, "part_id" | "qty_change" | "reason">[],
 ): StockOnHandByPartId {
   const totals: StockOnHandByPartId = {};
 
   for (const move of moves) {
+    if (move.reason === "wo_allocate" || move.reason === "wo_release") continue;
     const partId = String(move.part_id ?? "").trim();
     if (!partId) continue;
 
@@ -48,7 +49,7 @@ export async function loadStockOnHandByPartId(
 
   const { data, error } = await supabase
     .from("stock_moves")
-    .select("part_id, qty_change")
+    .select("part_id, qty_change, reason")
     .eq("shop_id", shopId)
     .in("part_id", uniquePartIds);
 
