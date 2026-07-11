@@ -1114,15 +1114,13 @@ export default function MobileWorkOrderClient({
                   <span className={chip(canonicalHeaderStatus)}>
                     {canonicalHeaderStatus.replaceAll("_", " ")}
                   </span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  Created {createdAtText}
                   {isWaiter ? (
-                    <span className="ml-2 rounded-full border border-red-400/65 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200">
+                    <span className="rounded-full border border-red-400/65 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200">
                       Waiter
                     </span>
                   ) : null}
-                </p>
+                </div>
+                <p className="text-[11px] text-slate-400">Created {createdAtText}</p>
               </div>
             </div>
             <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">

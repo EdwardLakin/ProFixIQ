@@ -1448,6 +1448,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <StatusBadge variant={formatDecisionStatus({ workStatus: wo.status }).variant} size="sm">
                   {formatDecisionStatus({ workStatus: wo.status }).label}
                 </StatusBadge>
+                {isWaiter ? (
+                  <StatusBadge variant="danger" size="sm">
+                    Waiter
+                  </StatusBadge>
+                ) : null}
                 {hasAnyApprovalItems ? (
                   <StatusBadge variant="warning" size="sm">
                     {approvalPending.length + approvalPendingQuotes.length} awaiting approval
@@ -1507,11 +1512,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                       >
                         {formatDecisionStatus({ workStatus: wo.status }).label}
                       </StatusBadge>
-                      {isWaiter && (
-                        <StatusBadge variant="danger" size="sm">
-                          Waiter
-                        </StatusBadge>
-                      )}
                     </div>
                   </div>
                   <div className={cn(cardInner, "p-2")}>
