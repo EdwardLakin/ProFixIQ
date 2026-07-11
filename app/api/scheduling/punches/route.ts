@@ -4,7 +4,11 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-import { isPunchEventType, type PunchEventType } from "@/features/workforce/lib/shift-status";
+import {
+  isPunchEventType,
+  type PunchEventType,
+} from "@/features/workforce/lib/shift-status";
+import { closeAllActiveTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
 
 type Caller = {
   id: string;
@@ -69,22 +73,17 @@ export async function POST(req: NextRequest) {
   if (!a.ok) return a.res;
 
   const body = (await req.json().catch(() => null)) as PunchCreateBody | null;
-  if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  if (!body)
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
 
   if (!body.shift_id) {
     return NextResponse.json({ error: "Missing shift_id" }, { status: 400 });
   }
   if (!isPunchEventTypeDb(body.event_type)) {
-    return NextResponse.json(
-      { error: "Invalid event_type" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid event_type" }, { status: 400 });
   }
   if (!isIsoDate(body.timestamp)) {
-    return NextResponse.json(
-      { error: "Invalid timestamp" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid timestamp" }, { status: 400 });
   }
 
   const admin = createAdminSupabase();
@@ -94,10 +93,15 @@ export async function POST(req: NextRequest) {
     .from("tech_shifts")
     .select("id, shop_id, user_id")
     .eq("id", body.shift_id)
-    .maybeSingle<{ id: string; shop_id: string | null; user_id: string | null }>();
+    .maybeSingle<{
+      id: string;
+      shop_id: string | null;
+      user_id: string | null;
+    }>();
 
   if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 });
-  if (!shift) return NextResponse.json({ error: "Shift not found" }, { status: 404 });
+  if (!shift)
+    return NextResponse.json({ error: "Shift not found" }, { status: 404 });
   if (shift.shop_id !== a.me.shop_id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -108,25 +112,21 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.event_type === "end_shift" && shift.user_id) {
-    const { data: activeJobPunches, error: activeJobsErr } = await admin
-      .from("work_order_line_labor_segments")
-      .select("id")
-      .eq("shop_id", a.me.shop_id)
-      .eq("technician_id", shift.user_id)
-      .is("ended_at", null);
+    const closed = await closeAllActiveTechnicianJobLabor({
+      supabase: admin,
+      shopId: a.me.shop_id as string,
+      technicianId: shift.user_id,
+      endedAtIso: body.timestamp,
+      reason: "shift_end",
+      event: "job_stopped_at_end_day",
+    });
 
-    if (activeJobsErr) {
-      return NextResponse.json({ error: activeJobsErr.message }, { status: 500 });
-    }
-
-    if ((activeJobPunches?.length ?? 0) > 0) {
+    if (!closed.ok) {
       return NextResponse.json(
         {
-          error:
-            "Cannot clock out while a job is still active. Pause or finish active jobs first.",
-          activeJobCount: activeJobPunches?.length ?? 0,
+          error: `Unable to stop active job timers before ending shift: ${closed.error}`,
         },
-        { status: 409 },
+        { status: closed.status },
       );
     }
   }
@@ -149,8 +149,11 @@ export async function POST(req: NextRequest) {
   if (error && error.message.includes("shop_id")) {
     const withoutShopId = { ...payload };
     delete (withoutShopId as { shop_id?: string | null }).shop_id;
-    const retry = await admin.from("punch_events").insert(withoutShopId as never);
-    if (retry.error) return NextResponse.json({ error: retry.error.message }, { status: 500 });
+    const retry = await admin
+      .from("punch_events")
+      .insert(withoutShopId as never);
+    if (retry.error)
+      return NextResponse.json({ error: retry.error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
 

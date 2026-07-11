@@ -2,10 +2,12 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
+import { stopTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
 
 function getId(req: NextRequest) {
-  const m = req.nextUrl.pathname.match(/\/api\/work-orders\/lines\/([^/]+)\/pause$/);
+  const m = req.nextUrl.pathname.match(
+    /\/api\/work-orders\/lines\/([^/]+)\/pause$/,
+  );
   return m?.[1] ?? null;
 }
 
@@ -15,28 +17,28 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServerSupabaseRoute();
   const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
-  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (authErr)
+    return NextResponse.json({ error: authErr.message }, { status: 500 });
+  if (!auth?.user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await req.json().catch(() => null)) as
-    | { holdReason?: string; notes?: string | null }
-    | null;
+  const body = (await req.json().catch(() => null)) as {
+    holdReason?: string;
+    notes?: string | null;
+  } | null;
 
-  const result = await applyJobPunchTransition({
+  const result = await stopTechnicianJobLabor({
     supabase,
     lineId: id,
-    action: "pause",
     technicianId: auth.user.id,
-    options: {
-      pause: {
-        holdReason: body?.holdReason,
-        notes: body?.notes ?? null,
-      },
-    },
+    reason: body?.holdReason,
   });
 
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json(
+      { error: result.error },
+      { status: result.status },
+    );
   }
 
   return NextResponse.json(result.payload ?? { ok: true });

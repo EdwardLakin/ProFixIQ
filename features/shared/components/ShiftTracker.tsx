@@ -9,9 +9,18 @@ import {
 
 type ShiftType = "shift" | "break" | "lunch";
 type Mode = "none" | "shift" | "break" | "lunch" | "ended";
-type ShiftAction = "start_shift" | "end_shift" | "start_break" | "end_break" | "start_lunch" | "end_lunch";
+type ShiftAction =
+  | "start_shift"
+  | "end_shift"
+  | "start_break"
+  | "end_break"
+  | "start_lunch"
+  | "end_lunch";
 
-function modeFromActivity(activity: MobileShiftState["activity"] | undefined, shiftStatus?: MobileShiftState["shiftStatus"]): Mode {
+function modeFromActivity(
+  activity: MobileShiftState["activity"] | undefined,
+  shiftStatus?: MobileShiftState["shiftStatus"],
+): Mode {
   if (shiftStatus === "completed") return "ended";
   if (activity === "working") return "shift";
   if (activity === "on_break") return "break";
@@ -34,6 +43,7 @@ export default function ShiftTracker({
   const [shiftState, setShiftState] = useState<MobileShiftState | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const shiftId = shiftState?.shiftId ?? null;
   const startTime = shiftState?.startTime ?? null;
@@ -64,6 +74,7 @@ export default function ShiftTracker({
       if (busy || !userId) return;
       setBusy(true);
       setErr(null);
+      setNotice(null);
 
       try {
         const res = await fetch("/api/mobile/shifts", {
@@ -72,7 +83,12 @@ export default function ShiftTracker({
           body: JSON.stringify({ action }),
         });
         const body = (await res.json().catch(() => null)) as
-          | ({ ok?: boolean; error?: string } & Partial<MobileShiftState>)
+          | ({
+              ok?: boolean;
+              error?: string;
+              message?: string;
+              resumeMessage?: string;
+            } & Partial<MobileShiftState>)
           | null;
         if (!res.ok || !body?.ok) throw new Error(body?.error ?? fallback);
 
@@ -88,7 +104,19 @@ export default function ShiftTracker({
           mode: body.mode ?? modeFromActivity(activity, body.shiftStatus),
         });
 
-        if (action === "end_shift") {
+        if (body.message || body.resumeMessage) {
+          setNotice(body.message ?? body.resumeMessage ?? null);
+        }
+
+        if (
+          [
+            "end_shift",
+            "start_break",
+            "end_break",
+            "start_lunch",
+            "end_lunch",
+          ].includes(action)
+        ) {
           window.dispatchEvent(new CustomEvent("wol:refresh"));
         }
       } catch (error) {
@@ -112,12 +140,20 @@ export default function ShiftTracker({
   );
 
   const toggleBreak = useCallback(
-    () => postShiftAction(mode === "break" ? "end_break" : "start_break", "Failed to toggle break"),
+    () =>
+      postShiftAction(
+        mode === "break" ? "end_break" : "start_break",
+        "Failed to toggle break",
+      ),
     [mode, postShiftAction],
   );
 
   const toggleLunch = useCallback(
-    () => postShiftAction(mode === "lunch" ? "end_lunch" : "start_lunch", "Failed to toggle lunch"),
+    () =>
+      postShiftAction(
+        mode === "lunch" ? "end_lunch" : "start_lunch",
+        "Failed to toggle lunch",
+      ),
     [mode, postShiftAction],
   );
 
@@ -132,13 +168,20 @@ export default function ShiftTracker({
     [],
   );
 
-  const niceStatus = mode === "none" ? "Off shift" : mode === "ended" ? "Shift ended" : mode;
+  const niceStatus =
+    mode === "none" ? "Off shift" : mode === "ended" ? "Shift ended" : mode;
 
   return (
     <div className="text-sm mt-4 space-y-2">
       {err && (
         <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-red-300">
           {err}
+        </div>
+      )}
+
+      {notice && (
+        <div className="rounded border border-emerald-500/40 bg-emerald-500/10 p-2 text-emerald-200">
+          {notice}
         </div>
       )}
 

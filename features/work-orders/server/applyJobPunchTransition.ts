@@ -25,6 +25,9 @@ type FinishOptions = {
 type PauseOptions = {
   holdReason?: string | null;
   notes?: string | null;
+  preserveLineStatus?: boolean;
+  event?: string;
+  details?: DB["public"]["Tables"]["activity_logs"]["Insert"]["context"];
 };
 
 type ResumeOptions = {
@@ -33,6 +36,8 @@ type ResumeOptions = {
 
 type TransitionOptions = {
   allowConcurrentJobPunches?: boolean;
+  nowIso?: string;
+  startSource?: string;
   pause?: PauseOptions;
   resume?: ResumeOptions;
   finish?: FinishOptions;
@@ -303,7 +308,7 @@ export async function applyJobPunchTransition({
       }
     }
 
-    const now = new Date().toISOString();
+    const now = options?.nowIso ?? new Date().toISOString();
     const shouldResetPunchClock =
       action === "start" ||
       status === "on_hold" ||
@@ -341,7 +346,9 @@ export async function applyJobPunchTransition({
       technicianId: lineTechId,
       actorId: technicianId,
       startedAtIso: now,
-      source: action === "start" ? "job_start" : "job_resume",
+      source:
+        options?.startSource ??
+        (action === "start" ? "job_start" : "job_resume"),
     });
 
     if (segmentErr) {
@@ -386,17 +393,23 @@ export async function applyJobPunchTransition({
       return err(409, getWorkOrderLineTransitionError(status, "on_hold"));
     }
 
-    const now = new Date().toISOString();
+    const now = options?.nowIso ?? new Date().toISOString();
     const shouldCloseActivePunch =
       Boolean(line.punched_in_at) && !line.punched_out_at;
 
+    const preserveLineStatus = options?.pause?.preserveLineStatus === true;
     const { error: updateErr } = await supabase
       .from("work_order_lines")
       .update({
-        status: "on_hold",
-        hold_reason:
-          cleanString(options?.pause?.holdReason) ?? "Paused by technician",
-        notes: options?.pause?.notes ?? undefined,
+        ...(preserveLineStatus
+          ? {}
+          : {
+              status: "on_hold",
+              hold_reason:
+                cleanString(options?.pause?.holdReason) ??
+                "Paused by technician",
+              notes: options?.pause?.notes ?? undefined,
+            }),
         ...(shouldCloseActivePunch ? { punched_out_at: now } : {}),
       } as DB["public"]["Tables"]["work_order_lines"]["Update"])
       .eq("id", lineId)
@@ -410,9 +423,11 @@ export async function applyJobPunchTransition({
       workOrderLineId: lineId,
       technicianId: pauseTechId,
       endedAtIso: now,
-      pauseReason: cleanString(options?.pause?.holdReason)
-        ? `hold:${cleanString(options?.pause?.holdReason)}`
-        : "hold",
+      pauseReason: preserveLineStatus
+        ? (cleanString(options?.pause?.holdReason) ?? "labor_pause")
+        : cleanString(options?.pause?.holdReason)
+          ? `hold:${cleanString(options?.pause?.holdReason)}`
+          : "hold",
     });
 
     if (closeErr) return err(400, closeErr.message);
@@ -425,10 +440,11 @@ export async function applyJobPunchTransition({
 
     await logOperationalEvent({
       supabase,
-      event: "pause",
+      event: options?.pause?.event ?? "pause",
       actorId: technicianId,
       entityType: "work_order_line",
       entityId: lineId,
+      details: options?.pause?.details,
       at: now,
     });
 
