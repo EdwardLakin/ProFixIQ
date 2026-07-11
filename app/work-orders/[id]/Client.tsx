@@ -1894,6 +1894,23 @@ export default function WorkOrderIdClient(): JSX.Element {
                       if (!orderedTechIds.includes(tid)) orderedTechIds.push(tid);
                     });
 
+                    const isPunchedIn = punchedIn;
+                    const isCurrentUserWorkingThisLine = Boolean(
+                      isPunchedIn &&
+                        currentUserId &&
+                        (primaryId === currentUserId || lineTechIds.includes(currentUserId)),
+                    );
+                    const activeTechnicianNames = isPunchedIn
+                      ? orderedTechIds
+                          .map(
+                            (techId) =>
+                              assignables.find((tech) => tech.id === techId)?.full_name?.trim() ??
+                              null,
+                          )
+                          .filter((name): name is string => Boolean(name))
+                      : [];
+                    const isSelectedForPanel = panelLineId === ln.id;
+
                     return (
                       <JobCard
                         key={ln.id}
@@ -1902,7 +1919,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                         parts={partsForLine}
                         technicians={assignables}
                         canAssign={canAssign}
-                        isPunchedIn={punchedIn}
+                        isPunchedIn={isPunchedIn}
+                        isCurrentUserWorkingThisLine={isCurrentUserWorkingThisLine}
+                        activeTechnicianNames={activeTechnicianNames}
+                        isSelectedForPanel={isSelectedForPanel}
                         onOpen={() => openFocusedJob(ln.id)}
                         onAssign={
                           canAssign
@@ -1963,7 +1983,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         canDelete={canDeleteLine}
                         onDelete={() => openDeleteForLine(ln.id)}
                         compact={showPanel}
-                        selected={panelLineId === ln.id}
+                        selected={isSelectedForPanel}
                         hideExecutionStageCompletenessPills
                       />
                     );
