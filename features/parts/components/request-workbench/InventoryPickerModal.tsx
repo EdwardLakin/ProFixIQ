@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { WorkbenchOption } from "./types";
 import { WorkbenchModalFrame, modalButton, modalInput, modalPrimaryButton } from "./WorkbenchModalFrame";
 
@@ -37,8 +38,10 @@ export function InventoryPickerModal({
   onClose?: () => void;
 }): JSX.Element | null {
   const selected = results.find((result) => result.value === selectedPartId) ?? null;
-  const onHand = Number(selected?.onHandQty ?? 0);
-  const zeroStock = !!selected && onHand <= 0;
+  const selectedOnHand = selected?.onHandQty;
+  const onHand = Number(selectedOnHand ?? 0);
+  const stockUnknown = selectedOnHand == null;
+  const zeroStock = !!selected && !stockUnknown && onHand <= 0;
 
   return (
     <WorkbenchModalFrame
@@ -88,7 +91,9 @@ export function InventoryPickerModal({
                   <div className="mt-1 text-xs text-neutral-400">
                     {[result.sku, result.partNumber, result.manufacturer].filter(Boolean).join(" • ") || "No part metadata"}
                   </div>
-                  <div className="mt-1 text-xs text-neutral-300">On hand: {Number(result.onHandQty ?? 0)}</div>
+                  <div className="mt-1 text-xs text-neutral-300">
+                    On hand: {result.onHandQty == null ? "Unavailable" : Number(result.onHandQty)}
+                  </div>
                 </div>
               </div>
             </label>
