@@ -79,7 +79,7 @@ describe("PartsRequestWorkbench mismatch override flow", () => {
     expect(onAddToJob).toHaveBeenCalledTimes(1);
     expect(conflictConfirmed).toBe(false);
 
-    await user.click(screen.getByRole("button", { name: "Confirm match" }));
+    await user.click(screen.getByRole("button", { name: "Attach anyway" }));
     expect(screen.getByText("Requested brake pad")).toBeInTheDocument();
     expect(screen.getByText("Fleetguard oil filter")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Use selected part anyway" }));

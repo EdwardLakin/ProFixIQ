@@ -111,7 +111,7 @@ export function PartsRequestWorkbenchRow({
           <SmartInsightBadges insights={item.insights} onOpenInsight={onOpenInsight} />
           {hasPossibleMismatch ? (
             <div className="rounded-xl border border-amber-400/30 bg-amber-950/20 p-2 text-xs text-amber-100">
-              <div className="font-medium">Review selected match before adding.</div>
+              <div className="font-medium">Advisory mismatch: review differences before attaching.</div>
               <div className="mt-1 text-amber-100/80">
                 Selected: {selectedPart?.label ?? "Unknown part"}
                 {selectedPart?.partNumber || selectedPart?.sku ? ` • ${selectedPart.partNumber || selectedPart.sku}` : ""}
@@ -121,7 +121,7 @@ export function PartsRequestWorkbenchRow({
                 className="mt-2 rounded-lg border border-amber-300/40 bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-50 hover:bg-amber-500/25"
                 onClick={() => onConfirmConflict?.(item.id)}
               >
-                Confirm match
+                Attach anyway
               </button>
             </div>
           ) : null}
@@ -156,7 +156,7 @@ export function PartsRequestWorkbenchRow({
             <option value="delete">Delete</option>
           </select>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex min-w-[12rem] flex-wrap gap-1.5">
             <button type="button" className={action} onClick={() => onSave?.(item.id)}>Save</button>
             <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>Use Inventory</button>
             <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button>

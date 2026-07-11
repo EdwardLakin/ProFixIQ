@@ -23,6 +23,8 @@ type Body = {
   poId?: string | null;
   locationId?: string | null;
   createAllocation?: boolean;
+  warningAccepted?: boolean;
+  warningReason?: string | null;
 };
 
 function cleanString(value: unknown): string | null {
@@ -161,6 +163,9 @@ export async function POST(
     if (!po) return NextResponse.json({ ok: false, error: "Purchase order is not available for this shop." }, { status: 403 });
   }
 
+  const warningAccepted = body.warningAccepted === true;
+  const warningReason = cleanString(body.warningReason);
+
   const update: ItemUpdate = {
     part_id: partId,
     description: cleanString(body.description) ?? item.description ?? "Part",
@@ -189,17 +194,29 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Update did not apply. The item may have changed or your shop access was blocked." }, { status: 409 });
   }
 
-  let allocation: { ok: true } | { ok: false; error: string } | null = null;
+  let allocation: { ok: true; result?: unknown } | { ok: false; error: string } | null = null;
   if (body.createAllocation && locationId) {
-    const { error: allocationError } = await supabase.rpc("upsert_part_allocation_from_request_item", {
+    const { data: allocationResult, error: allocationError } = await supabase.rpc("upsert_part_allocation_from_request_item", {
       p_request_item_id: itemId,
       p_location_id: locationId,
       p_create_stock_move: true,
     });
-    allocation = allocationError ? { ok: false, error: allocationError.message } : { ok: true };
+    allocation = allocationError ? { ok: false, error: allocationError.message } : { ok: true, result: allocationResult };
     if (allocationError) {
       return NextResponse.json({ ok: false, item: updatedItem, allocation, error: allocationError.message }, { status: 500 });
     }
+  }
+
+  if (warningAccepted && warningReason) {
+    await supabase
+      .from("work_order_parts")
+      .update({
+        mismatch_acknowledged_at: new Date().toISOString(),
+        mismatch_acknowledged_by: access.profile.id,
+        mismatch_warning_reason: warningReason,
+      } as never)
+      .eq("source_parts_request_item_id", itemId)
+      .eq("shop_id", shopId);
   }
 
   return NextResponse.json({ ok: true, item: updatedItem, allocation });
