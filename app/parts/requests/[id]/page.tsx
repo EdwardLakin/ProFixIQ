@@ -230,6 +230,25 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [supplierSuggestionAppliedByItemId, setSupplierSuggestionAppliedByItemId] = useState<Record<string, boolean>>({});
   const [conflictWarningByItemId, setConflictWarningByItemId] = useState<Record<string, string>>({});
   const [conflictOverrideByItemId, setConflictOverrideByItemId] = useState<Record<string, boolean>>({});
+
+  function clearConflictOverride(itemId: string): void {
+    setConflictOverrideByItemId((prev) => {
+      if (!prev[itemId]) return prev;
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+    setConflictWarningByItemId((prev) => {
+      if (!prev[itemId]) return prev;
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
+  }
+
+  function confirmConflictOverride(itemId: string): void {
+    setConflictOverrideByItemId((prev) => ({ ...prev, [itemId]: true }));
+  }
   const [createInventoryDraft, setCreateInventoryDraft] = useState<CreateInventoryDraft | null>(null);
 
   const [pos, setPOs] = useState<PurchaseOrderRow[]>([]);
@@ -1883,6 +1902,15 @@ if (!lineId || !isUuid(lineId)) {
                             return;
                           }
 
+                          const existingItem = r.items.find((candidate) => String(candidate.id) === String(input.itemId));
+                          if (
+                            existingItem &&
+                            (existingItem.description !== input.description ||
+                              (existingItem.requested_part_number ?? "") !== (input.requestedPartNumber ?? ""))
+                          ) {
+                            clearConflictOverride(input.itemId);
+                          }
+
                           updateItem(r.req.id, input.itemId, {
                             description: input.description,
                             requested_part_number: input.requestedPartNumber ?? null,
@@ -1914,6 +1942,8 @@ if (!lineId || !isUuid(lineId)) {
                         onAttachInventory={async (input) => {
                           const selectedPart = parts.find((part) => String(part.id) === String(input.partId)) ?? null;
                           const selectedRecord = selectedPart as unknown as Record<string, unknown> | null;
+
+                          clearConflictOverride(input.itemId);
 
                           updateItem(r.req.id, input.itemId, {
                             ui_part_id: input.partId,
@@ -2000,7 +2030,14 @@ if (!lineId || !isUuid(lineId)) {
                           if (item) openReceiveFor(r.req.id, item);
                         }}
                         onClearMatch={async (itemId) => {
+                          clearConflictOverride(itemId);
                           updateItem(r.req.id, itemId, { ui_part_id: null });
+                        }}
+                        onConfirmConflict={(itemId) => {
+                          confirmConflictOverride(itemId);
+                        }}
+                        onResetConflictOverride={(itemId) => {
+                          clearConflictOverride(itemId);
                         }}
                         onDeleteItem={async (itemId) => {
                           await deleteLine(r.req.id, itemId);

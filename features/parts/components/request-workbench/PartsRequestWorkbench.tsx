@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PartsRequestWorkbenchHeader } from "./PartsRequestWorkbenchHeader";
@@ -12,13 +13,14 @@ import { ReceivePartModal } from "./ReceivePartModal";
 import type { CreateInventoryItemInput } from "./CreateInventoryItemModal";
 import type { OrderPartInput } from "./OrderPartModal";
 import { createInventoryDraftFromItem, createOrderDraftFromItem } from "./createWorkbenchDrafts";
-import type { AttachInventoryInput, PartsRequestWorkbenchItem, PartsRequestWorkbenchModel, SaveItemInput } from "./types";
+import type { AttachInventoryInput, PartsRequestInventoryResult, PartsRequestWorkbenchItem, PartsRequestWorkbenchModel, SaveItemInput } from "./types";
 
 type ActiveModal =
   | { type: "inventory"; itemId: string }
   | { type: "stock"; itemId: string }
   | { type: "order"; itemId: string }
   | { type: "receive"; itemId: string }
+  | { type: "confirmConflict"; itemId: string }
   | null;
 
 export function PartsRequestWorkbench({
@@ -34,6 +36,8 @@ export function PartsRequestWorkbench({
   onAddToStock,
   onCreateInventoryItem,
   onClearMatch,
+  onConfirmConflict,
+  onResetConflictOverride,
   onDeleteItem,
 }: {
   model: PartsRequestWorkbenchModel;
@@ -48,6 +52,8 @@ export function PartsRequestWorkbench({
   onAddToStock?: (itemId: string) => Promise<void> | void;
   onCreateInventoryItem?: (itemId: string, input: CreateInventoryItemInput) => Promise<void> | void;
   onClearMatch?: (itemId: string) => Promise<void> | void;
+  onConfirmConflict?: (itemId: string) => Promise<void> | void;
+  onResetConflictOverride?: (itemId: string) => Promise<void> | void;
   onDeleteItem?: (itemId: string) => Promise<void> | void;
 }): JSX.Element {
   const [items, setItems] = useState<PartsRequestWorkbenchItem[]>(model.items);
@@ -80,6 +86,10 @@ export function PartsRequestWorkbench({
     : null;
 
   const inventoryResults = model.inventoryResults ?? [];
+  const conflictConfirmItem = activeModal?.type === "confirmConflict" ? activeItem : null;
+  const conflictConfirmPart = conflictConfirmItem?.partId
+    ? inventoryResults.find((part) => part.value === conflictConfirmItem.partId) ?? null
+    : null;
 
   useEffect(() => {
     setItems(model.items);
@@ -157,6 +167,7 @@ export function PartsRequestWorkbench({
 
       <PartsRequestWorkbenchTable
         items={items}
+        inventoryResults={inventoryResults}
         onItemsChange={setItems}
         onSave={saveItem}
         onUseInventory={async (itemId) => {
@@ -164,6 +175,8 @@ export function PartsRequestWorkbench({
           await onUseInventory?.(itemId);
         }}
         onAddToJob={onAddToJob}
+        onConfirmConflict={(itemId) => setActiveModal({ type: "confirmConflict", itemId })}
+        onResetConflictOverride={onResetConflictOverride}
         onOrder={async (itemId) => {
           const item = items.find((candidate) => candidate.id === itemId) ?? null;
           setOrderDraft(createOrderDraftFromItem(item, defaultSupplierId));
@@ -180,8 +193,23 @@ export function PartsRequestWorkbench({
           setActiveModal({ type: "stock", itemId });
           await onAddToStock?.(itemId);
         }}
-        onClearMatch={onClearMatch}
+        onClearMatch={async (itemId) => {
+          await onResetConflictOverride?.(itemId);
+          await onClearMatch?.(itemId);
+        }}
         onDelete={onDeleteItem}
+      />
+
+      <ConfirmConflictDialog
+        item={conflictConfirmItem}
+        selectedPart={conflictConfirmPart}
+        onCancel={() => setActiveModal(null)}
+        onConfirm={async () => {
+          if (!conflictConfirmItem) return;
+          await onConfirmConflict?.(conflictConfirmItem.id);
+          setActiveModal(null);
+          toast.success("Mismatch acknowledged. You can add the selected part now.");
+        }}
       />
 
       <InventoryPickerModal
@@ -222,6 +250,8 @@ export function PartsRequestWorkbench({
                 : item,
             ),
           );
+
+          await onResetConflictOverride?.(activeItem.id);
 
           await onAttachInventory?.({
             itemId: activeItem.id,
@@ -291,6 +321,54 @@ export function PartsRequestWorkbench({
         }}
         onClose={() => setActiveModal(null)}
       />
+    </div>
+  );
+}
+
+
+function ConfirmConflictDialog({
+  item,
+  selectedPart,
+  onCancel,
+  onConfirm,
+}: {
+  item: PartsRequestWorkbenchItem | null;
+  selectedPart: PartsRequestInventoryResult | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}): JSX.Element | null {
+  if (!item) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl border border-amber-400/30 bg-neutral-950 p-5 text-white shadow-2xl">
+        <div className="text-lg font-semibold text-amber-100">Confirm possible mismatch</div>
+        <p className="mt-2 text-sm text-neutral-300">
+          The requested part and selected inventory part may not match. Confirm only if you reviewed both values.
+        </p>
+        <div className="mt-4 grid gap-3 text-sm">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-neutral-500">Requested</div>
+            <div className="mt-1 font-medium">{item.description || "—"}</div>
+            <div className="mt-1 text-xs text-neutral-400">Part #: {item.requestedPartNumber || "—"}</div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-neutral-500">Selected inventory part</div>
+            <div className="mt-1 font-medium">{selectedPart?.label ?? "Unknown selected part"}</div>
+            <div className="mt-1 text-xs text-neutral-400">
+              Part #: {selectedPart?.partNumber || selectedPart?.sku || "—"}
+            </div>
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="rounded-lg border border-white/10 px-3 py-2 text-sm text-neutral-200 hover:bg-white/5" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="rounded-lg border border-amber-300/40 bg-amber-500/15 px-3 py-2 text-sm font-medium text-amber-100 hover:bg-amber-500/25" onClick={onConfirm}>
+            Use selected part anyway
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

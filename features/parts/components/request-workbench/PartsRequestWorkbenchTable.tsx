@@ -1,15 +1,19 @@
 "use client";
 
+import React from "react";
 import { PartsRequestWorkbenchRow } from "./PartsRequestWorkbenchRow";
-import type { PartsRequestWorkbenchItem, SmartInsight } from "./types";
+import type { PartsRequestInventoryResult, PartsRequestWorkbenchItem, SmartInsight } from "./types";
 
 export function PartsRequestWorkbenchTable({
   items,
+  inventoryResults = [],
   onItemsChange,
   onSave,
   onUseInventory,
   onOrder,
   onAddToJob,
+  onConfirmConflict,
+  onResetConflictOverride,
   onReceive,
   onAddToStock,
   onClearMatch,
@@ -17,11 +21,14 @@ export function PartsRequestWorkbenchTable({
   onOpenInsight,
 }: {
   items: PartsRequestWorkbenchItem[];
+  inventoryResults?: PartsRequestInventoryResult[];
   onItemsChange?: (items: PartsRequestWorkbenchItem[]) => void;
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
   onOrder?: (itemId: string) => void;
   onAddToJob?: (item: PartsRequestWorkbenchItem) => void;
+  onConfirmConflict?: (itemId: string) => void;
+  onResetConflictOverride?: (itemId: string) => void;
   onReceive?: (itemId: string) => void;
   onAddToStock?: (itemId: string) => void;
   onClearMatch?: (itemId: string) => void;
@@ -29,6 +36,14 @@ export function PartsRequestWorkbenchTable({
   onOpenInsight?: (insight: SmartInsight) => void;
 }): JSX.Element {
   function updateItem(next: PartsRequestWorkbenchItem): void {
+    const previous = items.find((item) => item.id === next.id);
+    if (previous && (
+      previous.partId !== next.partId ||
+      previous.description !== next.description ||
+      (previous.requestedPartNumber ?? "") !== (next.requestedPartNumber ?? "")
+    )) {
+      onResetConflictOverride?.(next.id);
+    }
     onItemsChange?.(items.map((item) => (item.id === next.id ? next : item)));
   }
 
@@ -53,11 +68,13 @@ export function PartsRequestWorkbenchTable({
             <PartsRequestWorkbenchRow
               key={item.id}
               item={item}
+              selectedPart={inventoryResults.find((part) => part.value === item.partId) ?? null}
               onChange={updateItem}
               onSave={onSave}
               onUseInventory={onUseInventory}
               onOrder={onOrder}
               onAddToJob={onAddToJob}
+              onConfirmConflict={onConfirmConflict}
               onReceive={onReceive}
               onAddToStock={onAddToStock}
               onClearMatch={onClearMatch}
