@@ -287,6 +287,20 @@ export default function OwnerSettingsPage() {
   const [newOffEnd, setNewOffEnd] = useState("");
   const [newOffReason, setNewOffReason] = useState("");
 
+  const [payrollSettings, setPayrollSettings] = useState({
+    paid_breaks_per_day: 2,
+    paid_break_duration_minutes: 15,
+    breaks_are_paid: true,
+    lunch_is_paid: false,
+    default_lunch_duration_minutes: 30,
+    lunch_required_after_minutes: 300,
+    daily_overtime_after_minutes: 480,
+    suspicious_shift_minutes: 960,
+    cadence: "biweekly",
+    week_starts_on: 1,
+  });
+  const [payrollSettingsSaving, setPayrollSettingsSaving] = useState(false);
+
   const [emailLogs, setEmailLogs] = useState<EmailLogRow[]>([]);
   const [emailLogsLoading, setEmailLogsLoading] = useState(false);
 
@@ -338,6 +352,24 @@ export default function OwnerSettingsPage() {
     }
     return true;
   };
+
+  async function savePayrollSettings() {
+    if (!guardUnlock()) return;
+    setPayrollSettingsSaving(true);
+    const res = await fetch("/api/payroll-time/settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payrollSettings),
+    });
+    const body = await res.json().catch(() => null);
+    setPayrollSettingsSaving(false);
+    if (!res.ok) {
+      toast.error(body?.error || "Failed to save payroll settings");
+      return;
+    }
+    setPayrollSettings((prev) => ({ ...prev, ...(body?.settings ?? {}) }));
+    toast.success("Payroll & timekeeping settings saved.");
+  }
 
   const maybeToastSeatInfo = (used: number, limit: number | null, p: PlanName) => {
     if (limit == null) return;
@@ -589,6 +621,16 @@ try {
       // ignore
     } finally {
       setPricingValidDaysLoading(false);
+    }
+
+    try {
+      const payrollRes = await fetch("/api/payroll-time/settings", { cache: "no-store" });
+      if (payrollRes.ok) {
+        const payrollJson = await payrollRes.json();
+        if (payrollJson?.settings) setPayrollSettings((prev) => ({ ...prev, ...payrollJson.settings }));
+      }
+    } catch {
+      // ignore payroll settings bootstrap failures; section can be reloaded independently
     }
 
     // Organization + Locations
@@ -1290,6 +1332,7 @@ try {
           <a href="#workflow-automation" className={navChipClass}>Workflow</a>
           <a href="#hours-settings" className={navChipClass}>Hours</a>
           <a href="#timeoff-settings" className={navChipClass}>Time off</a>
+          <a href="#payroll-timekeeping" className={navChipClass}>Payroll</a>
           <a href="#billing-stripe" className={navChipClass}>Billing</a>
           <Link href="/dashboard/owner/branding" className={navChipClass}>Brand Studio</Link>
           <a href="#quickbooks-integration" className={navChipClass}>QuickBooks</a>
@@ -1299,6 +1342,32 @@ try {
 
       <div className="grid gap-5 lg:grid-cols-[1.7fr_0.95fr] lg:items-start">
         <div className="space-y-5">
+
+          <OwnerSettingsPanel
+            id="payroll-timekeeping"
+            title="Payroll & Timekeeping"
+            description="Owner-controlled payroll attendance policy. Regular break counts are compliance expectations; payroll calculations use actual punches."
+          >
+            <div className="grid gap-4 p-4 md:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className={labelClass}>Paid breaks per day</span>
+                <select className={selectClass} value={payrollSettings.paid_breaks_per_day} onChange={(e) => setPayrollSettings((p) => ({ ...p, paid_breaks_per_day: Number(e.target.value) }))}>
+                  <option value={0}>0</option><option value={1}>1</option><option value={2}>2</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-sm"><span className={labelClass}>Paid break duration (minutes)</span><Input type="number" min={0} max={120} value={payrollSettings.paid_break_duration_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, paid_break_duration_minutes: Number(e.target.value) }))} /></label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payrollSettings.breaks_are_paid} onChange={(e) => setPayrollSettings((p) => ({ ...p, breaks_are_paid: e.target.checked }))} /> Breaks are paid</label>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payrollSettings.lunch_is_paid} onChange={(e) => setPayrollSettings((p) => ({ ...p, lunch_is_paid: e.target.checked }))} /> Lunch is paid</label>
+              <label className="space-y-1 text-sm"><span className={labelClass}>Expected lunch duration (minutes)</span><Input type="number" min={0} max={240} value={payrollSettings.default_lunch_duration_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, default_lunch_duration_minutes: Number(e.target.value) }))} /></label>
+              <label className="space-y-1 text-sm"><span className={labelClass}>Lunch required after shift length (minutes)</span><Input type="number" min={0} max={1440} value={payrollSettings.lunch_required_after_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, lunch_required_after_minutes: Number(e.target.value) }))} /></label>
+              <label className="space-y-1 text-sm"><span className={labelClass}>Daily overtime threshold (minutes)</span><Input type="number" min={0} max={1440} value={payrollSettings.daily_overtime_after_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, daily_overtime_after_minutes: Number(e.target.value) }))} /></label>
+              <label className="space-y-1 text-sm"><span className={labelClass}>Suspicious shift threshold (minutes)</span><Input type="number" min={60} max={2880} value={payrollSettings.suspicious_shift_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, suspicious_shift_minutes: Number(e.target.value) }))} /></label>
+              <label className="space-y-1 text-sm"><span className={labelClass}>Pay cadence</span><select className={selectClass} value={payrollSettings.cadence} onChange={(e) => setPayrollSettings((p) => ({ ...p, cadence: e.target.value }))}><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="semimonthly">Semi-monthly</option></select></label>
+              <label className="space-y-1 text-sm"><span className={labelClass}>Week starts on</span><select className={selectClass} value={payrollSettings.week_starts_on} onChange={(e) => setPayrollSettings((p) => ({ ...p, week_starts_on: Number(e.target.value) }))}><option value={0}>Sunday</option><option value={1}>Monday</option><option value={2}>Tuesday</option><option value={3}>Wednesday</option><option value={4}>Thursday</option><option value={5}>Friday</option><option value={6}>Saturday</option></select></label>
+            </div>
+            <div className="border-t border-white/10 p-4"><Button onClick={() => void savePayrollSettings()} disabled={payrollSettingsSaving || !isUnlocked}>{payrollSettingsSaving ? "Saving…" : "Save payroll settings"}</Button></div>
+          </OwnerSettingsPanel>
+
           <OwnerSettingsSectionIntro
             title="Primary configuration"
             description="Core identity and experience controls for your operational cockpit."

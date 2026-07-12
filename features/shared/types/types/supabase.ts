@@ -14981,8 +14981,14 @@ export type Database = {
           cadence: string
           created_at: string
           daily_overtime_after_minutes: number
+          default_lunch_duration_minutes: number
           enabled: boolean
           id: string
+          lunch_is_paid: boolean
+          lunch_required_after_minutes: number
+          paid_break_duration_minutes: number
+          paid_breaks_per_day: number
+          breaks_are_paid: boolean
           shop_id: string
           suspicious_shift_minutes: number
           updated_at: string
@@ -14993,8 +14999,14 @@ export type Database = {
           cadence?: string
           created_at?: string
           daily_overtime_after_minutes?: number
+          default_lunch_duration_minutes?: number
           enabled?: boolean
           id?: string
+          lunch_is_paid?: boolean
+          lunch_required_after_minutes?: number
+          paid_break_duration_minutes?: number
+          paid_breaks_per_day?: number
+          breaks_are_paid?: boolean
           shop_id: string
           suspicious_shift_minutes?: number
           updated_at?: string
@@ -15005,8 +15017,14 @@ export type Database = {
           cadence?: string
           created_at?: string
           daily_overtime_after_minutes?: number
+          default_lunch_duration_minutes?: number
           enabled?: boolean
           id?: string
+          lunch_is_paid?: boolean
+          lunch_required_after_minutes?: number
+          paid_break_duration_minutes?: number
+          paid_breaks_per_day?: number
+          breaks_are_paid?: boolean
           shop_id?: string
           suspicious_shift_minutes?: number
           updated_at?: string

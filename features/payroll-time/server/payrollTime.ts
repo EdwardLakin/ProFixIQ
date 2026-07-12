@@ -44,6 +44,91 @@ function dateDiffMinutes(start: string, end: string): number {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
 }
 
+
+export type PayrollPolicySnapshot = {
+  paid_breaks_per_day: number;
+  paid_break_duration_minutes: number;
+  breaks_are_paid: boolean;
+  lunch_is_paid: boolean;
+  default_lunch_duration_minutes: number;
+  lunch_required_after_minutes: number;
+  daily_overtime_after_minutes: number;
+  suspicious_shift_minutes: number;
+};
+
+function resolvePayrollPolicy(settings: any): PayrollPolicySnapshot {
+  return {
+    paid_breaks_per_day: Math.min(2, Math.max(0, Number(settings?.paid_breaks_per_day ?? 2))),
+    paid_break_duration_minutes: Math.max(0, Number(settings?.paid_break_duration_minutes ?? 15)),
+    breaks_are_paid: settings?.breaks_are_paid !== false,
+    lunch_is_paid: settings?.lunch_is_paid === true,
+    default_lunch_duration_minutes: Math.max(0, Number(settings?.default_lunch_duration_minutes ?? 30)),
+    lunch_required_after_minutes: Math.max(0, Number(settings?.lunch_required_after_minutes ?? 300)),
+    daily_overtime_after_minutes: Math.max(0, Number(settings?.daily_overtime_after_minutes ?? 480)),
+    suspicious_shift_minutes: Math.max(60, Number(settings?.suspicious_shift_minutes ?? 960)),
+  };
+}
+
+type PunchLike = { id?: string | null; event_type: string | null; timestamp: string | null };
+type RestParseWarning = { code: string; message: string; event_id?: string | null; event_type?: string | null };
+
+export function parsePayrollRestEvents(args: {
+  events: PunchLike[];
+  shiftStart: string;
+  shiftEnd: string;
+  policy: PayrollPolicySnapshot;
+}) {
+  let activeBreakStart: { ts: string; id?: string | null } | null = null;
+  let activeLunchStart: { ts: string; id?: string | null } | null = null;
+  const breakPairs: Array<{ start: string; end: string; minutes: number; start_event_id?: string | null; end_event_id?: string | null }> = [];
+  const lunchPairs: Array<{ start: string; end: string; minutes: number; start_event_id?: string | null; end_event_id?: string | null }> = [];
+  const warnings: RestParseWarning[] = [];
+  const seen = new Set<string>();
+
+  for (const event of [...args.events].sort((a,b)=>String(a.timestamp ?? '').localeCompare(String(b.timestamp ?? '')))) {
+    const eventType = String(event.event_type ?? '').toLowerCase();
+    if (!event.timestamp) continue;
+    const eventTs = clampIso(event.timestamp, args.shiftStart, args.shiftEnd);
+    const dedupeKey = `${eventType}|${eventTs}|${event.id ?? ''}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    if (eventType === 'break_start') {
+      if (activeLunchStart) warnings.push({ code: 'overlapping_rest_events', message: 'Regular break started while lunch was open.', event_id: event.id, event_type: eventType });
+      if (activeBreakStart) warnings.push({ code: 'unclosed_break', message: 'Previous regular break was not closed before another break started.', event_id: event.id, event_type: eventType });
+      activeBreakStart = { ts: eventTs, id: event.id };
+    } else if (eventType === 'break_end') {
+      if (!activeBreakStart) { warnings.push({ code: 'unclosed_break', message: 'Regular break end has no matching break start.', event_id: event.id, event_type: eventType }); continue; }
+      breakPairs.push({ start: activeBreakStart.ts, end: eventTs, minutes: dateDiffMinutes(activeBreakStart.ts, eventTs), start_event_id: activeBreakStart.id, end_event_id: event.id });
+      activeBreakStart = null;
+    } else if (eventType === 'lunch_start') {
+      if (activeBreakStart) warnings.push({ code: 'overlapping_rest_events', message: 'Lunch started while a regular break was open.', event_id: event.id, event_type: eventType });
+      if (activeLunchStart) warnings.push({ code: 'unclosed_lunch', message: 'Previous lunch was not closed before another lunch started.', event_id: event.id, event_type: eventType });
+      activeLunchStart = { ts: eventTs, id: event.id };
+    } else if (eventType === 'lunch_end') {
+      if (!activeLunchStart) { warnings.push({ code: 'unclosed_lunch', message: 'Lunch end has no matching lunch start.', event_id: event.id, event_type: eventType }); continue; }
+      lunchPairs.push({ start: activeLunchStart.ts, end: eventTs, minutes: dateDiffMinutes(activeLunchStart.ts, eventTs), start_event_id: activeLunchStart.id, end_event_id: event.id });
+      activeLunchStart = null;
+    }
+  }
+
+  if (activeBreakStart) {
+    breakPairs.push({ start: activeBreakStart.ts, end: args.shiftEnd, minutes: dateDiffMinutes(activeBreakStart.ts, args.shiftEnd), start_event_id: activeBreakStart.id, end_event_id: 'auto_closed_shift_end' });
+    warnings.push({ code: 'unclosed_break', message: 'Regular break was auto-closed at shift end.', event_id: activeBreakStart.id, event_type: 'break_start' });
+  }
+  if (activeLunchStart) {
+    lunchPairs.push({ start: activeLunchStart.ts, end: args.shiftEnd, minutes: dateDiffMinutes(activeLunchStart.ts, args.shiftEnd), start_event_id: activeLunchStart.id, end_event_id: 'auto_closed_shift_end' });
+    warnings.push({ code: 'unclosed_lunch', message: 'Lunch was auto-closed at shift end.', event_id: activeLunchStart.id, event_type: 'lunch_start' });
+  }
+
+  const regularBreakMinutes = breakPairs.reduce((a,p)=>a+p.minutes,0);
+  const lunchMinutes = lunchPairs.reduce((a,p)=>a+p.minutes,0);
+  const paidBreakMinutes = args.policy.breaks_are_paid ? regularBreakMinutes : (args.policy.lunch_is_paid ? lunchMinutes : 0);
+  const unpaidBreakMinutes = (args.policy.breaks_are_paid ? 0 : regularBreakMinutes) + (args.policy.lunch_is_paid ? 0 : lunchMinutes);
+
+  return { breakPairs, lunchPairs, warnings, regularBreakMinutes, lunchMinutes, paidBreakMinutes, unpaidBreakMinutes };
+}
+
 function clampIso(iso: string, minIso: string, maxIso: string): string {
   const v = new Date(iso).getTime();
   const min = new Date(minIso).getTime();
@@ -144,8 +229,9 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     .eq("shop_id", shopId)
     .maybeSingle();
 
-  const dailyOvertimeAfter = Number(settings?.daily_overtime_after_minutes ?? 480);
-  const suspiciousShiftMinutes = Number(settings?.suspicious_shift_minutes ?? 960);
+  const policy = resolvePayrollPolicy(settings);
+  const dailyOvertimeAfter = policy.daily_overtime_after_minutes;
+  const suspiciousShiftMinutes = policy.suspicious_shift_minutes;
 
   const rangeStart = `${period.period_start}T00:00:00.000Z`;
   const rangeEnd = `${period.period_end}T23:59:59.999Z`;
@@ -173,7 +259,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
   const { data: punchEvents, error: punchEventsErr } = shiftIds.length
     ? await admin
         .from("punch_events")
-        .select("shift_id, event_type, timestamp")
+        .select("id, shift_id, event_type, timestamp")
         .in("shift_id", shiftIds)
         .order("timestamp", { ascending: true })
     : { data: [], error: null };
@@ -182,13 +268,14 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
 
   const punchEventsByShift = new Map<
     string,
-    Array<{ event_type: string | null; timestamp: string | null }>
+    Array<{ id?: string | null; event_type: string | null; timestamp: string | null }>
   >();
   for (const event of punchEvents ?? []) {
     const sid = event.shift_id as string | null;
     if (!sid) continue;
     const current = punchEventsByShift.get(sid) ?? [];
     current.push({
+      id: (event.id as string | null) ?? null,
       event_type: (event.event_type as string | null) ?? null,
       timestamp: (event.timestamp as string | null) ?? null,
     });
@@ -231,35 +318,34 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     row.attendance_minutes += duration;
 
     const events = punchEventsByShift.get(shift.id) ?? [];
-    if (events.length > 0) {
-      let activeBreakStart: string | null = null;
+    const rest = parsePayrollRestEvents({ events, shiftStart: shift.start_time, shiftEnd: endTime, policy });
+    row.unpaid_break_minutes += rest.unpaidBreakMinutes;
+    row.paid_break_minutes += rest.paidBreakMinutes;
 
-      for (const event of events) {
-        const eventType = String(event.event_type ?? "").toLowerCase();
-        if (!event.timestamp) continue;
-        const eventTs = clampIso(event.timestamp, shift.start_time, endTime);
+    const snapshot = row.source_snapshot as Record<string, unknown>;
+    const parserWarnings = Array.isArray(snapshot.parser_warnings) ? (snapshot.parser_warnings as unknown[]) : [];
+    parserWarnings.push(...rest.warnings);
+    snapshot.parser_warnings = parserWarnings;
 
-        if (eventType === "break_start" || eventType === "lunch_start") {
-          if (activeBreakStart) {
-            row.unpaid_break_minutes += dateDiffMinutes(activeBreakStart, eventTs);
-          }
-          activeBreakStart = eventTs;
-          continue;
-        }
+    const addWarning = (code: string, message: string, sourceRef: Record<string, unknown>) => {
+      row.warnings += 1;
+      exceptions.push({ user_id: shift.user_id, work_date: workDate, severity: "warning", code, message, source_type: "attendance", source_ref: sourceRef });
+    };
 
-        if (eventType === "break_end" || eventType === "lunch_end") {
-          if (activeBreakStart) {
-            row.unpaid_break_minutes += dateDiffMinutes(activeBreakStart, eventTs);
-            activeBreakStart = null;
-          }
-        }
-      }
-
-      if (activeBreakStart) {
-        row.unpaid_break_minutes += dateDiffMinutes(activeBreakStart, endTime);
-      }
+    for (const warning of rest.warnings) addWarning(warning.code, warning.message, { shift_id: shift.id, ...warning });
+    if (rest.breakPairs.length < policy.paid_breaks_per_day) {
+      addWarning("missing_expected_break", `Recorded ${rest.breakPairs.length} regular breaks; policy expects ${policy.paid_breaks_per_day}.`, { shift_id: shift.id, break_count: rest.breakPairs.length, expected_breaks: policy.paid_breaks_per_day });
     }
-
+    if (rest.breakPairs.length > policy.paid_breaks_per_day) {
+      addWarning("excess_break_count", `Recorded ${rest.breakPairs.length} regular breaks; policy expects ${policy.paid_breaks_per_day}.`, { shift_id: shift.id, break_count: rest.breakPairs.length, expected_breaks: policy.paid_breaks_per_day });
+    }
+    if (duration >= policy.lunch_required_after_minutes && rest.lunchPairs.length === 0) {
+      addWarning("missing_lunch", `Shift exceeded ${policy.lunch_required_after_minutes} minutes with no lunch punch.`, { shift_id: shift.id, duration, threshold: policy.lunch_required_after_minutes });
+    }
+    const longLunchThreshold = policy.default_lunch_duration_minutes + 15;
+    for (const lunch of rest.lunchPairs) {
+      if (lunch.minutes > longLunchThreshold) addWarning("long_lunch", `Lunch length ${lunch.minutes} minutes exceeds expected ${policy.default_lunch_duration_minutes} minutes.`, { shift_id: shift.id, lunch });
+    }
     const ids = Array.isArray(row.source_snapshot.shift_ids)
       ? (row.source_snapshot.shift_ids as string[])
       : [];
@@ -269,6 +355,13 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       ...row.source_snapshot,
       break_source: events.length > 0 ? "punch_events" : "none_recorded",
       punch_event_count: events.length,
+      break_count: rest.breakPairs.length,
+      lunch_count: rest.lunchPairs.length,
+      break_pairs: rest.breakPairs,
+      lunch_pairs: rest.lunchPairs,
+      paid_break_minutes: row.paid_break_minutes,
+      unpaid_lunch_minutes: policy.lunch_is_paid ? 0 : rest.lunchMinutes,
+      policy_snapshot: policy,
     };
 
     if (!shift.end_time) {
@@ -282,7 +375,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
         user_id: shift.user_id,
         work_date: workDate,
         severity: "blocking",
-        code: "open_punch",
+        code: "open_shift",
         message: "Shift is still open and missing clock-out.",
         source_type: "attendance",
         source_ref: { shift_id: shift.id },
@@ -358,8 +451,22 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     rowsByKey.set(key, row);
   }
 
+
+  const { data: existingEntries } = await admin.from("payroll_time_entries").select("user_id, work_date, adjustment_minutes, approval_state").eq("shop_id", shopId).eq("period_id", periodId);
+  const adjustmentByKey = new Map((existingEntries ?? []).map((e: any) => [`${e.user_id}:${e.work_date}`, Number(e.adjustment_minutes ?? 0)]));
+  for (const row of rowsByKey.values()) { (row.source_snapshot as any).preserved_adjustment_minutes = adjustmentByKey.get(`${row.user_id}:${row.work_date}`) ?? 0; }
+
   const upserts = Array.from(rowsByKey.values()).map((row) => {
-    const netWorked = Math.max(0, row.attendance_minutes - row.unpaid_break_minutes);
+    if (row.job_minutes > row.attendance_minutes - row.unpaid_break_minutes) {
+      row.warnings += 1;
+      exceptions.push({ user_id: row.user_id, work_date: row.work_date, severity: "warning", code: "job_time_exceeds_worked_time", message: "Productive job time exceeds payroll worked time.", source_type: "job_time", source_ref: { job_minutes: row.job_minutes, worked_minutes: row.attendance_minutes - row.unpaid_break_minutes } });
+    }
+    if (row.attendance_minutes > 0 && row.job_minutes === 0) {
+      row.warnings += 1;
+      exceptions.push({ user_id: row.user_id, work_date: row.work_date, severity: "warning", code: "attendance_without_job_time", message: "Attendance was recorded with no completed job labor segments.", source_type: "job_time", source_ref: { attendance_minutes: row.attendance_minutes } });
+    }
+    const adjustment = Number((row.source_snapshot as any).preserved_adjustment_minutes ?? 0);
+    const netWorked = Math.max(0, row.attendance_minutes - row.unpaid_break_minutes + adjustment);
     const overtime = Math.max(0, netWorked - dailyOvertimeAfter);
     const regular = Math.max(0, netWorked - overtime);
 
@@ -375,7 +482,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       regular_minutes: regular,
       overtime_minutes: overtime,
       job_minutes: row.job_minutes,
-      adjustment_minutes: 0,
+      adjustment_minutes: adjustment,
       has_exceptions: row.warnings + row.blocking > 0,
       warning_exception_count: row.warnings,
       blocking_exception_count: row.blocking,
