@@ -48,12 +48,12 @@ export function mapRequestItemToWorkbenchItem(input: {
     qtyReceived,
     qtyApproved,
     insights: buildWorkbenchInsights({
-      hasSuggestedMatch: input.hasStockSuggestion,
-      noStock: Boolean(input.hasStockSuggestion && num(input.availableStock, 0) <= 0),
+      hasSuggestedMatch: false,
+      noStock: Boolean(nullableText(item.ui_part_id ?? item.part_id) && input.availableStock != null && num(input.availableStock, 0) <= 0),
       possibleMismatch: input.conflictWarning,
       onPo: Boolean(nullableText(item.ui_po_id ?? item.po_id)),
       partial: qtyReceived > 0 && qtyReceived < qtyApproved,
-      noPreferredSupplier: (input.supplierSuggestionCount ?? 0) === 0,
+      noPreferredSupplier: false,
     }),
   };
 }

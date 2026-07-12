@@ -108,6 +108,21 @@ export function PartsRequestWorkbenchRow({
       </td>
       <td className="p-2">
         <div className="space-y-2">
+          {selectedPart ? (
+            <div className="rounded-xl border border-emerald-400/25 bg-emerald-950/15 p-2 text-xs text-emerald-100">
+              <div className="font-medium">Attached: {selectedPart.label}</div>
+              <div className="mt-1 text-emerald-100/80">
+                {[selectedPart.partNumber || selectedPart.sku, selectedPart.manufacturer].filter(Boolean).join(" • ") || "No part metadata"}
+              </div>
+              <div className="mt-1 text-emerald-100/80">
+                {selectedPart.onHandQty == null
+                  ? "Stock unavailable"
+                  : Number(selectedPart.onHandQty) > 0
+                    ? `${Number(selectedPart.onHandQty)} on hand`
+                    : "No stock"}
+              </div>
+            </div>
+          ) : null}
           <SmartInsightBadges insights={item.insights} onOpenInsight={onOpenInsight} />
           {hasPossibleMismatch ? (
             <div className="rounded-xl border border-amber-400/30 bg-amber-950/20 p-2 text-xs text-amber-100">
@@ -147,9 +162,9 @@ export function PartsRequestWorkbenchRow({
           >
             <option value="">Actions</option>
             <option value="save">Save</option>
-            <option value="inventory">Use Inventory</option>
+            <option value="inventory">Attach Part</option>
             <option value="order">Order</option>
-            <option value="receive">Receive</option>
+            {item.poId || item.qtyReceived ? <option value="receive">Receive</option> : null}
             <option value="stock">Add to Stock</option>
             {hasPossibleMismatch ? <option value="confirm">Confirm Match</option> : null}
             <option value="clear">Clear Match</option>
@@ -158,10 +173,10 @@ export function PartsRequestWorkbenchRow({
         ) : (
           <div className="flex min-w-[12rem] flex-wrap gap-1.5">
             <button type="button" className={action} onClick={() => onSave?.(item.id)}>Save</button>
-            <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>Use Inventory</button>
+            <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>Attach Part</button>
             <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button>
-            <button type="button" className={action} onClick={() => onAddToJob?.(item)}>Add to Job</button>
-            <button type="button" className={action} onClick={() => onReceive?.(item.id)}>Receive</button>
+            {item.partId ? <button type="button" className={action} onClick={() => onAddToJob?.(item)}>Add to Job</button> : null}
+            {item.poId || item.qtyReceived ? <button type="button" className={action} onClick={() => onReceive?.(item.id)}>Receive</button> : null}
             <select
               className={action}
               defaultValue=""

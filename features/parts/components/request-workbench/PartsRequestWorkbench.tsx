@@ -20,7 +20,7 @@ type ActiveModal =
   | { type: "stock"; itemId: string }
   | { type: "order"; itemId: string }
   | { type: "receive"; itemId: string }
-  | { type: "confirmConflict"; itemId: string }
+  | { type: "confirmConflict"; itemId: string; partId?: string | null }
   | null;
 
 export function PartsRequestWorkbench({
@@ -87,8 +87,11 @@ export function PartsRequestWorkbench({
 
   const inventoryResults = model.inventoryResults ?? [];
   const conflictConfirmItem = activeModal?.type === "confirmConflict" ? activeItem : null;
-  const conflictConfirmPart = conflictConfirmItem?.partId
-    ? inventoryResults.find((part) => part.value === conflictConfirmItem.partId) ?? null
+  const conflictConfirmPartId = activeModal?.type === "confirmConflict"
+    ? activeModal.partId ?? conflictConfirmItem?.partId ?? null
+    : null;
+  const conflictConfirmPart = conflictConfirmPartId
+    ? inventoryResults.find((part) => part.value === conflictConfirmPartId) ?? null
     : null;
 
   useEffect(() => {
@@ -214,7 +217,7 @@ export function PartsRequestWorkbench({
 
       <InventoryPickerModal
         open={activeModal?.type === "inventory"}
-        title={`Use Inventory${activeItem ? ` — ${activeItem.description}` : ""}`}
+        title={`Attach Part${activeItem ? ` — ${activeItem.description}` : ""}`}
         results={inventoryResults.filter((part) => {
           const q = inventoryQuery.trim().toLowerCase();
           if (!q) return true;
@@ -229,23 +232,12 @@ export function PartsRequestWorkbench({
         onAttach={async (result) => {
           if (!activeItem) return;
 
-          const selectedPart = inventoryResults.find((part) => part.value === result.partId) ?? null;
-
           setItems((current) =>
             current.map((item) =>
               item.id === activeItem.id
                 ? {
                     ...item,
                     partId: result.partId,
-                    requestedPartNumber:
-                      selectedPart?.partNumber ??
-                      selectedPart?.sku ??
-                      item.requestedPartNumber ??
-                      "",
-                    requestedManufacturer:
-                      selectedPart?.manufacturer ??
-                      item.requestedManufacturer ??
-                      "",
                   }
                 : item,
             ),
@@ -259,6 +251,8 @@ export function PartsRequestWorkbench({
             warningAccepted: result.warningAccepted,
           });
 
+          setSelectedInventoryPartId("");
+          setInventoryQuery("");
           setActiveModal(null);
         }}
         onClose={() => setActiveModal(null)}
@@ -365,7 +359,7 @@ function ConfirmConflictDialog({
             Cancel
           </button>
           <button type="button" className="rounded-lg border border-amber-300/40 bg-amber-500/15 px-3 py-2 text-sm font-medium text-amber-100 hover:bg-amber-500/25" onClick={onConfirm}>
-            Use selected part anyway
+            Attach anyway
           </button>
         </div>
       </div>
