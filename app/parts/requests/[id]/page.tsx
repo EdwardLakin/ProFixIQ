@@ -1545,7 +1545,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     });
     if (conflict && !conflictOverrideByItemId[itemId]) {
       setConflictWarningByItemId((prev) => ({ ...prev, [itemId]: conflict.message }));
-      toast.warning("Possible mismatch. Review the warning before adding.");
       return;
     }
 
@@ -1612,6 +1611,8 @@ if (!lineId || !isUuid(lineId)) {
           poId,
           locationId: shouldAllocateFromStock ? locId : null,
           createAllocation: shouldAllocateFromStock,
+          warningAccepted: Boolean(conflictOverrideByItemId[itemId]),
+          warningReason: conflictOverrideByItemId[itemId] ? conflict?.message ?? null : null,
         }),
       });
       const body = (await res.json().catch(() => null)) as

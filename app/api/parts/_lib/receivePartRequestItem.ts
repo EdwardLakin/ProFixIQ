@@ -10,6 +10,7 @@ type ReceivePayload = {
   locationId: string;
   qty: number;
   poId?: string | null;
+  idempotencyKey?: string | null;
 };
 
 type LegacyBody = {
@@ -17,10 +18,12 @@ type LegacyBody = {
   location_id?: unknown;
   qty?: unknown;
   po_id?: unknown;
+  idempotencyKey?: unknown;
+  idempotency_key?: unknown;
 };
 
 function isUuid(v: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(v);
 }
 
 function normalizeBody(input: LegacyBody | null): Omit<ReceivePayload, "itemId"> | null {
@@ -34,7 +37,8 @@ function normalizeBody(input: LegacyBody | null): Omit<ReceivePayload, "itemId">
   if (!Number.isFinite(qty) || qty <= 0) return null;
   if (poId && !isUuid(poId)) return null;
 
-  return { locationId, qty, poId };
+  const idempotencyKey = typeof input.idempotencyKey === "string" && input.idempotencyKey.trim() ? input.idempotencyKey.trim() : typeof input.idempotency_key === "string" && input.idempotency_key.trim() ? input.idempotency_key.trim() : null;
+  return { locationId, qty, poId, idempotencyKey };
 }
 
 export async function receivePartRequestItem(payload: ReceivePayload): Promise<NextResponse> {
@@ -72,7 +76,8 @@ export async function receivePartRequestItem(payload: ReceivePayload): Promise<N
       p_location_id: payload.locationId,
       p_qty: payload.qty,
       ...(payload.poId ? { p_po_id: payload.poId } : {}),
-    };
+      ...(payload.idempotencyKey ? { p_idempotency_key: payload.idempotencyKey } : {}),
+    } as RpcArgs;
 
     const { data, error } = await supabase.rpc("receive_part_request_item", args);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
