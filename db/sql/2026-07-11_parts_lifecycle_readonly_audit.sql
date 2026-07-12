@@ -1,5 +1,5 @@
 -- Read-only parts lifecycle audit. This script intentionally performs no writes.
-with stock_balances as (
+with recursive stock_balances as (
   select p.shop_id, p.id as part_id,
     coalesce(sum(sm.qty_change) filter (where sm.reason not in ('wo_allocate','wo_release')),0) as on_hand,
     coalesce((select sum(a.qty) from public.work_order_part_allocations a where a.shop_id=p.shop_id and a.part_id=p.id),0) as allocated
