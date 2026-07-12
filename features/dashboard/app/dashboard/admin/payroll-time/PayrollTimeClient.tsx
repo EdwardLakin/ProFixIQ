@@ -35,6 +35,7 @@ type Entry = {
   paid_break_minutes: number;
   attendance_minutes: number;
   job_minutes: number;
+  source_snapshot?: { shifts?: Array<{ start_time?: string | null; end_time?: string | null }> } | null;
   roster_only?: boolean;
   payroll_status_label?: string;
   has_exceptions: boolean;
@@ -95,6 +96,8 @@ export default function PayrollTimeClient() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [csvPreview, setCsvPreview] = useState<string | null>(null);
   const [exportHistory, setExportHistory] = useState<ExportBatch[]>([]);
+  const [zeroState, setZeroState] = useState<{ trueZero?: boolean; message?: string | null } | null>(null);
+  const [refreshState, setRefreshState] = useState<{ reason?: string; refreshError?: string | null; hasSourceTime?: boolean } | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState("");
@@ -155,6 +158,8 @@ export default function PayrollTimeClient() {
     setActivePeriodId((body?.activePeriodId as string | null) ?? null);
     setEntries((body?.entries ?? []) as Entry[]);
     setExceptions((body?.exceptions ?? []) as Exception[]);
+    setZeroState(body?.zeroState ?? null);
+    setRefreshState(body?.refresh ?? null);
     setLoading(false);
   }, []);
 
@@ -196,6 +201,8 @@ export default function PayrollTimeClient() {
 
   async function handleApprove() {
     if (!activePeriodId) return;
+    const confirmed = window.confirm(`Approve Payroll?\n\nEmployees: ${summary.employees}\nPayroll hours: ${summary.totalHours}\nOvertime hours: ${summary.overtimeHours}\nUnresolved blocking issues: ${summary.blocking}\nAdvisory warnings: ${summary.warnings}\n\nAdvisory warnings can be acknowledged without changing valid hours. Only blocking integrity issues prevent approval.`);
+    if (!confirmed) return;
     const result = await runAction("/api/payroll-time/approve", "approve", { period_id: activePeriodId });
     if (result) await load(activePeriodId);
   }
@@ -251,9 +258,9 @@ export default function PayrollTimeClient() {
   return (
     <AdminPageShell>
       <AdminPageHeader
-        eyebrow="Workforce Payroll-Ready Time"
-        title="Payroll Time Tracking"
-        subtitle="Attendance-first payroll-hour review and export readiness by pay period with exception triage, approval locking, and export snapshots."
+        eyebrow="Payroll"
+        title="Payroll Time"
+        subtitle="Review employee hours for the current pay period."
       />
       {workforceSeverity ? (
         <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">
@@ -264,39 +271,34 @@ export default function PayrollTimeClient() {
 
       <AdminPanel>
         <AdminPanelTitle
-          title="Current Period Signals"
-          description="Trust posture before approval/export. Blocking exceptions should be cleared before lock."
+          title="Current-period summary"
+          description="Recorded attendance is refreshed automatically for open periods. Overtime and warnings are advisory unless a blocking integrity issue remains."
         />
         <AdminStatGrid>
-          <AdminStatCard label="Employees in period" value={summary.employees} />
-          <AdminStatCard label="Worked hours" value={summary.totalHours} />
-          <AdminStatCard label="Overtime-ready hours" value={summary.overtimeHours} />
-          <AdminStatCard label="Blocking exceptions" value={summary.blocking} />
-          <AdminStatCard label="Warnings" value={summary.warnings} />
+          <AdminStatCard label="Employees" value={summary.employees} />
+          <AdminStatCard label="Payroll hours" value={summary.totalHours} />
+          <AdminStatCard label="Regular hours" value={fmtHours(entries.reduce((acc, entry) => acc + Number(entry.regular_minutes ?? 0), 0))} />
+          <AdminStatCard label="Overtime" value={summary.overtimeHours} />
+          <AdminStatCard label="Needs review" value={summary.blocking + summary.warnings} />
         </AdminStatGrid>
       </AdminPanel>
 
       <AdminPanel>
         <AdminPanelTitle
-          title="Connected Workforce Context"
-          description="Payroll review stays aligned with employee identity/workforce posture."
+          title="Payroll Assistant"
+          description="Deterministic review aid only. It cannot change payroll records, approval state, or blocking status."
         />
-        <div className="flex flex-wrap items-center gap-3 p-4 text-xs">
-          <Link href="/dashboard/admin/employees" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
-            Open People & Staff
-          </Link>
-          <Link href="/dashboard/admin/people" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
-            Open People Directory
-          </Link>
-          <Link href="/dashboard/admin/scheduling" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">
-            Open Scheduling Board
-          </Link>
-          <span className="text-neutral-400">Use People for all person-level governance, certifications, profile setup, and workforce updates.</span>
+        <div className="space-y-2 p-4 text-sm text-neutral-200">
+          {summary.blocking > 0 ? <p>{summary.blocking} blocking integrity issue{summary.blocking === 1 ? "" : "s"} must be resolved before payroll can be finalized.</p> : null}
+          {Number(summary.overtimeHours) > 0 ? <p>{entries.filter((entry) => entry.overtime_minutes > 0).length} employee day{entries.filter((entry) => entry.overtime_minutes > 0).length === 1 ? "" : "s"} recorded overtime this period.</p> : null}
+          {summary.warnings > 0 ? <p>{summary.warnings} advisory warning{summary.warnings === 1 ? "" : "s"} may need owner review, but do not remove recorded payable hours.</p> : null}
+          {summary.blocking === 0 && summary.warnings === 0 ? <p>Payroll totals are ready for review.</p> : null}
+          <p className="text-xs text-neutral-500">Overtime, long shifts, missing lunch, and job-time ratio flags are advisory. Valid recorded attendance remains visible and payable for owner/admin decisions.</p>
         </div>
       </AdminPanel>
 
       <AdminPanel>
-        <AdminPanelTitle title="Pay Period Review" description="Rebuild while open, approve to lock, then export to a payroll-provider-ready CSV snapshot." />
+        <AdminPanelTitle title="Pay Period Review" description="Open periods refresh from time records automatically. Approved, locked, and exported periods show their durable snapshot." />
         <AdminToolbar>
           <select
             className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-80"
@@ -314,21 +316,21 @@ export default function PayrollTimeClient() {
             onClick={() => void handleRebuild()}
             disabled={!activePeriodId || busyAction !== null || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
           >
-            {busyAction === "rebuild" ? "Rebuilding…" : "Rebuild from source"}
+            {busyAction === "rebuild" ? "Recalculating…" : "Recalculate"}
           </button>
           <button
             className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-emerald-200 disabled:opacity-50"
             onClick={() => void handleApprove()}
             disabled={!activePeriodId || busyAction !== null || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
           >
-            {busyAction === "approve" ? "Approving…" : "Approve + lock"}
+            {busyAction === "approve" ? "Approving…" : "Approve Payroll"}
           </button>
           <button
             className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-sky-200 disabled:opacity-50"
             onClick={() => void handleExport()}
             disabled={!activePeriodId || busyAction !== null || activePeriod?.status !== "approved"}
           >
-            {busyAction === "export" ? "Exporting…" : "Export CSV snapshot"}
+            {busyAction === "export" ? "Exporting…" : "Export Payroll"}
           </button>
         </AdminToolbar>
 
@@ -342,12 +344,18 @@ export default function PayrollTimeClient() {
         ) : null}
 
         {error ? <p className="px-4 pb-4 text-xs text-red-300">{error}</p> : null}
+        {refreshState?.refreshError ? (
+          <div className="mx-4 mb-4 rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
+            <p>Time records exist, but payroll totals could not be refreshed.</p>
+            <button className="mt-2 rounded-lg border border-red-300/40 px-3 py-1 text-xs" onClick={() => void handleRebuild()}>Retry refresh</button>
+          </div>
+        ) : null}
       </AdminPanel>
 
       <AdminPanel>
         <AdminPanelTitle
-          title="Employee Daily Payroll Entries"
-          description="Attendance is payroll base truth; job time is supplemental visibility for productivity context."
+          title="Employee hours"
+          description="Attendance determines payroll hours; productive job time is shown separately from other paid shop time."
         />
         <AdminToolbar>
           {personIdFilter ? <p className="text-xs text-orange-300">Filtered to person: {personIdFilter.slice(0, 8)}</p> : null}
@@ -359,16 +367,16 @@ export default function PayrollTimeClient() {
           />
         </AdminToolbar>
         {loading ? (
-          <AdminEmptyState title="Loading payroll period" body="Collecting derived payroll-ready rows." />
+          <AdminEmptyState title="Loading payroll period" body="Refreshing employee time records." />
         ) : filteredEntries.length === 0 ? (
-          <AdminEmptyState title="No derived entries" body="Payroll-eligible employees appear here even before recorded shifts; open periods can be rebuilt from attendance and job source layers." />
+          <AdminEmptyState title={zeroState?.message ?? "No employee time has been recorded for this pay period."} body={activePeriod ? `${activePeriod.period_start} → ${activePeriod.period_end}` : "Open Attendance or Scheduling to record employee time."} />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Employee</th>
-                  <th className="px-4 py-2.5 text-left">Date</th>
+                  <th className="px-4 py-2.5 text-left">Date / clock</th>
                   <th className="px-4 py-2.5 text-right">Shift duration</th>
                   <th className="px-4 py-2.5 text-right">Paid breaks</th>
                   <th className="px-4 py-2.5 text-right">Unpaid lunch</th>
@@ -379,7 +387,8 @@ export default function PayrollTimeClient() {
                   <th className="px-4 py-2.5 text-right">Other paid shop time</th>
                   <th className="px-4 py-2.5 text-right">Scheduled</th>
                   <th className="px-4 py-2.5 text-right">Approved away</th>
-                  <th className="px-4 py-2.5 text-left">Exceptions</th>
+                  <th className="px-4 py-2.5 text-left">Status</th>
+                  <th className="px-4 py-2.5 text-left">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -389,7 +398,10 @@ export default function PayrollTimeClient() {
                       <p className="font-medium text-neutral-100"><Link href={`/dashboard/admin/people/${entry.user_id}`} className="font-medium text-neutral-100 hover:text-orange-300">{entry.profiles?.full_name ?? entry.user_id}</Link></p>
                       <p className="text-xs text-neutral-500">{entry.profiles?.email ?? ""}</p>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-2.5">{entry.work_date}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5">
+                      <p>{entry.work_date}</p>
+                      <p className="text-xs text-neutral-500">{entry.source_snapshot?.shifts?.[0]?.start_time ? new Date(entry.source_snapshot.shifts[0].start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"} → {entry.source_snapshot?.shifts?.[0]?.end_time ? new Date(entry.source_snapshot.shifts[0].end_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "In progress"}</p>
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.attendance_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.paid_break_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.unpaid_break_minutes)}h</td>
@@ -402,13 +414,14 @@ export default function PayrollTimeClient() {
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.approved_time_away_minutes_in_period ?? 0)}h</td>
                     <td className="px-4 py-2.5">
                       {entry.blocking_exception_count > 0 ? (
-                        <AdminBadge>{entry.blocking_exception_count} blocking</AdminBadge>
+                        <AdminBadge>Shift still open</AdminBadge>
                       ) : entry.warning_exception_count > 0 ? (
-                        <AdminBadge>{entry.warning_exception_count} warning</AdminBadge>
+                        <AdminBadge>Needs review</AdminBadge>
                       ) : (
-                        <span className="text-xs text-neutral-500">{entry.payroll_status_label ?? "Clean"}</span>
+                        <span className="text-xs text-emerald-300">{entry.payroll_status_label ?? "Ready"}</span>
                       )}
                     </td>
+                    <td className="px-4 py-2.5"><Link className="text-xs font-medium text-orange-300 hover:text-orange-200" href={`/dashboard/workforce/attendance?person_id=${entry.user_id}`}>Review time</Link></td>
                   </tr>
                 ))}
               </tbody>
@@ -417,8 +430,10 @@ export default function PayrollTimeClient() {
         )}
       </AdminPanel>
 
+      <details className="rounded-2xl border border-white/10 bg-black/20">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-neutral-100">Advanced: exceptions, exports, source details</summary>
       <AdminPanel>
-        <AdminPanelTitle title="Exception Queue" description="Exceptions keep traceability; unresolved blocking exceptions prevent period approval." />
+        <AdminPanelTitle title="Exceptions" description="Only unresolved blocking integrity exceptions prevent final approval. Advisory warnings can be acknowledged by owner/admin decision." />
         <AdminToolbar>
           <select
             className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-64"
@@ -509,6 +524,7 @@ export default function PayrollTimeClient() {
           </div>
         )}
       </AdminPanel>
+      </details>
 
       {csvPreview ? (
         <AdminPanel>

@@ -1,5 +1,6 @@
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { createHash } from "crypto";
+import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
 
 export type PayrollPeriodStatus = "draft" | "open" | "approved" | "exported";
 
@@ -32,6 +33,19 @@ function startOfUtcDay(dateIso: string): Date {
 
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+export function toShopDate(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+export function localDateToUtcBoundary(dateKey: string, timezone: string): string {
+  return getShopDayRange(timezone, new Date(`${dateKey}T12:00:00.000Z`)).start;
 }
 
 function addDays(d: Date, days: number): Date {
@@ -143,6 +157,9 @@ export async function getOrCreateCurrentPeriod(shopId: string, actorId: string) 
   const admin = createAdminSupabase() as any;
   const today = new Date();
 
+  const { data: shop } = await admin.from("shops").select("timezone").eq("id", shopId).maybeSingle();
+  const timezone = shop?.timezone ?? "UTC";
+
   const { data: settings } = await admin
     .from("shop_payroll_settings")
     .select("*")
@@ -162,7 +179,7 @@ export async function getOrCreateCurrentPeriod(shopId: string, actorId: string) 
   const cadence = payrollSettings?.cadence ?? "biweekly";
   const weekStartsOn = Number(payrollSettings?.week_starts_on ?? 1);
 
-  const todayUtc = startOfUtcDay(today.toISOString());
+  const todayUtc = startOfUtcDay(`${toShopDate(today.toISOString(), timezone)}T00:00:00.000Z`);
   const day = todayUtc.getUTCDay();
   const diffToWeekStart = (day - weekStartsOn + 7) % 7;
   const currentWeekStart = addDays(todayUtc, -diffToWeekStart);
@@ -207,6 +224,58 @@ export async function getOrCreateCurrentPeriod(shopId: string, actorId: string) 
   return { settings: payrollSettings, period: created.data };
 }
 
+async function getPeriodSourceState(admin: any, shopId: string, period: any, timezone: string) {
+  const rangeStart = localDateToUtcBoundary(period.period_start, timezone);
+  const rangeEnd = localDateToUtcBoundary(toIsoDate(addDays(startOfUtcDay(`${period.period_end}T00:00:00.000Z`), 1)), timezone);
+  const [{ data: shifts }, { data: jobs }, { data: settings }, { count: entriesCount }] = await Promise.all([
+    admin.from("tech_shifts").select("id, start_time, end_time, created_at").eq("shop_id", shopId).neq("excluded_from_payroll", true).gte("start_time", rangeStart).lt("start_time", rangeEnd),
+    admin.from("work_order_line_labor_segments").select("id, started_at, ended_at, updated_at, created_at").eq("shop_id", shopId).gte("started_at", rangeStart).lt("started_at", rangeEnd),
+    admin.from("shop_payroll_settings").select("updated_at").eq("shop_id", shopId).maybeSingle(),
+    admin.from("payroll_time_entries").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("period_id", period.id),
+  ]);
+  const shiftIds = (shifts ?? []).map((s: any) => s.id).filter(Boolean);
+  const { data: punches } = shiftIds.length
+    ? await admin.from("punch_events").select("id, timestamp, created_at").in("shift_id", shiftIds)
+    : { data: [] };
+  const candidates = [
+    period.created_at,
+    settings?.updated_at,
+    ...(shifts ?? []).flatMap((s: any) => [s.created_at, s.start_time, s.end_time]),
+    ...(jobs ?? []).flatMap((j: any) => [j.created_at, j.updated_at, j.started_at, j.ended_at]),
+    ...(punches ?? []).flatMap((p: any) => [p.created_at, p.timestamp]),
+  ].filter(Boolean).map((v) => new Date(v).getTime()).filter(Number.isFinite);
+  return {
+    entriesCount: entriesCount ?? 0,
+    sourceCount: (shifts?.length ?? 0) + (jobs?.length ?? 0),
+    sourceFreshAt: candidates.length ? new Date(Math.max(...candidates)).toISOString() : null,
+    rangeStart,
+    rangeEnd,
+  };
+}
+
+export async function refreshOpenPeriodIfStale(params: { shopId: string; actorId: string; periodId: string }) {
+  const admin = createAdminSupabase() as any;
+  const { data: period, error } = await admin.from("payroll_pay_periods").select("*").eq("shop_id", params.shopId).eq("id", params.periodId).maybeSingle();
+  if (error || !period) throw new Error(error?.message ?? "Pay period not found");
+  if (!["draft", "open"].includes(String(period.status))) {
+    return { refreshed: false, reason: "locked", hasSourceTime: false, refreshError: null };
+  }
+  const { data: shop } = await admin.from("shops").select("timezone").eq("id", params.shopId).maybeSingle();
+  const state = await getPeriodSourceState(admin, params.shopId, period, shop?.timezone ?? "UTC");
+  const periodUpdated = period.updated_at ? new Date(period.updated_at).getTime() : 0;
+  const sourceUpdated = state.sourceFreshAt ? new Date(state.sourceFreshAt).getTime() : 0;
+  if (state.entriesCount === 0 || sourceUpdated > periodUpdated) {
+    try {
+      await rebuildPeriod(params);
+      return { refreshed: true, reason: state.entriesCount === 0 ? "empty" : "stale", hasSourceTime: state.sourceCount > 0, refreshError: null };
+    } catch (err) {
+      console.error("payroll open-period auto-refresh failed", err);
+      return { refreshed: false, reason: "refresh_failed", hasSourceTime: state.sourceCount > 0, refreshError: err instanceof Error ? err.message : "Payroll refresh failed" };
+    }
+  }
+  return { refreshed: false, reason: "fresh", hasSourceTime: state.sourceCount > 0, refreshError: null };
+}
+
 export async function rebuildPeriod(params: { shopId: string; actorId: string; periodId: string }) {
   const { shopId, periodId } = params;
   const admin = createAdminSupabase() as any;
@@ -233,8 +302,10 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
   const dailyOvertimeAfter = policy.daily_overtime_after_minutes;
   const suspiciousShiftMinutes = policy.suspicious_shift_minutes;
 
-  const rangeStart = `${period.period_start}T00:00:00.000Z`;
-  const rangeEnd = `${period.period_end}T23:59:59.999Z`;
+  const { data: shop } = await admin.from("shops").select("timezone").eq("id", shopId).maybeSingle();
+  const timezone = shop?.timezone ?? "UTC";
+  const rangeStart = localDateToUtcBoundary(period.period_start, timezone);
+  const rangeEnd = localDateToUtcBoundary(toIsoDate(addDays(startOfUtcDay(`${period.period_end}T00:00:00.000Z`), 1)), timezone);
 
   const [{ data: shifts, error: shiftsErr }, { data: jobSegments, error: jobsErr }] = await Promise.all([
     admin
@@ -243,13 +314,13 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       .eq("shop_id", shopId)
       .neq("excluded_from_payroll", true)
       .gte("start_time", rangeStart)
-      .lte("start_time", rangeEnd),
+      .lt("start_time", rangeEnd),
     admin
       .from("work_order_line_labor_segments")
       .select("id, technician_id, started_at, ended_at")
       .eq("shop_id", shopId)
       .gte("started_at", rangeStart)
-      .lte("started_at", rangeEnd),
+      .lt("started_at", rangeEnd),
   ]);
 
   if (shiftsErr) throw new Error(shiftsErr.message);
@@ -298,7 +369,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
 
   for (const shift of shifts ?? []) {
     if (!shift.user_id) continue;
-    const workDate = toIsoDate(startOfUtcDay(shift.start_time));
+    const workDate = toShopDate(shift.start_time, timezone);
     const key = `${shift.user_id}:${workDate}`;
     const row = rowsByKey.get(key) ?? {
       user_id: shift.user_id,
@@ -309,7 +380,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       job_minutes: 0,
       warnings: 0,
       blocking: 0,
-      source_snapshot: { shift_ids: [], open_shift_ids: [] },
+      source_snapshot: { shift_ids: [], open_shift_ids: [], shifts: [] },
     };
 
     const endTime = shift.end_time ?? new Date().toISOString();
@@ -351,6 +422,11 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       : [];
     ids.push(shift.id);
     row.source_snapshot.shift_ids = ids;
+    const shiftSummaries = Array.isArray(row.source_snapshot.shifts)
+      ? (row.source_snapshot.shifts as Array<Record<string, unknown>>)
+      : [];
+    shiftSummaries.push({ id: shift.id, start_time: shift.start_time, end_time: shift.end_time, status: shift.status });
+    row.source_snapshot.shifts = shiftSummaries;
     row.source_snapshot = {
       ...row.source_snapshot,
       break_source: events.length > 0 ? "punch_events" : "none_recorded",
@@ -413,7 +489,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
 
   for (const seg of jobSegments ?? []) {
     if (!seg.technician_id || !seg.started_at) continue;
-    const workDate = toIsoDate(startOfUtcDay(seg.started_at));
+    const workDate = toShopDate(seg.started_at, timezone);
     const key = `${seg.technician_id}:${workDate}`;
     const row = rowsByKey.get(key) ?? {
       user_id: seg.technician_id,
@@ -424,7 +500,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       job_minutes: 0,
       warnings: 0,
       blocking: 0,
-      source_snapshot: { shift_ids: [], open_shift_ids: [], job_segment_ids: [] },
+      source_snapshot: { shift_ids: [], open_shift_ids: [], shifts: [], job_segment_ids: [] },
     };
 
     if (!seg.ended_at) {
@@ -519,7 +595,7 @@ export async function approvePeriod(params: { shopId: string; periodId: string; 
   const admin = createAdminSupabase() as any;
   const { shopId, periodId, actorId } = params;
 
-  const { data: blocking } = await admin
+  const { count: blockingCount, error: blockingErr } = await admin
     .from("payroll_time_exceptions")
     .select("id", { count: "exact", head: true })
     .eq("shop_id", shopId)
@@ -527,7 +603,8 @@ export async function approvePeriod(params: { shopId: string; periodId: string; 
     .eq("severity", "blocking")
     .eq("resolved", false);
 
-  if ((blocking?.length ?? 0) > 0) {
+  if (blockingErr) throw new Error(blockingErr.message);
+  if ((blockingCount ?? 0) > 0) {
     throw new Error("Cannot approve period with unresolved blocking exceptions.");
   }
 

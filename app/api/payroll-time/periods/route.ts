@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { getOrCreateCurrentPeriod } from "@/features/payroll-time/server/payrollTime";
+import { getOrCreateCurrentPeriod, refreshOpenPeriodIfStale } from "@/features/payroll-time/server/payrollTime";
 import { requirePayrollReviewer } from "../_lib/auth";
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const periodId = url.searchParams.get("period_id");
 
-  await getOrCreateCurrentPeriod(me.shop_id!, me.id);
+  const current = await getOrCreateCurrentPeriod(me.shop_id!, me.id);
 
   const { data: periods, error: periodErr } = await admin
     .from("payroll_pay_periods")
@@ -24,8 +24,10 @@ export async function GET(req: NextRequest) {
 
   if (periodErr) return NextResponse.json({ error: periodErr.message }, { status: 500 });
 
-  const activePeriodId = periodId ?? periods?.[0]?.id ?? null;
+  const activePeriodId = periodId ?? current.period?.id ?? periods?.[0]?.id ?? null;
   if (!activePeriodId) return NextResponse.json({ periods: [], entries: [], exceptions: [] });
+
+  const refreshState = await refreshOpenPeriodIfStale({ shopId: me.shop_id!, actorId: me.id, periodId: activePeriodId });
 
   const [{ data: entries, error: entriesErr }, { data: exceptions, error: exErr }, { data: roster }] = await Promise.all([
     admin
@@ -110,11 +112,35 @@ export async function GET(req: NextRequest) {
       payroll_status_label: "No recorded shifts",
     }));
 
+  const missingProfileUserIds = entryRows
+    .filter((entry) => entry.user_id && !entry.profiles)
+    .map((entry) => entry.user_id);
+  const { data: fallbackProfiles } = missingProfileUserIds.length
+    ? await admin.from("profiles").select("id, full_name, email").eq("shop_id", me.shop_id).in("id", missingProfileUserIds)
+    : { data: [] };
+  const fallbackProfileById = new Map((fallbackProfiles ?? []).map((profile: any) => [profile.id, profile]));
+
   const enrichedEntries = [...entryRows, ...rosterEntries].map((entry) => ({
     ...entry,
+    profiles: entry.profiles ?? fallbackProfileById.get(entry.user_id) ?? null,
     scheduled_minutes: scheduleMap.get(`${entry.user_id}|${entry.work_date}`) ?? 0,
     approved_time_away_minutes_in_period: awayMap.get(entry.user_id) ?? 0,
   }));
 
-  return NextResponse.json({ periods: periods ?? [], activePeriodId, entries: enrichedEntries, exceptions: exceptions ?? [] });
+  const trueZero = enrichedEntries.length === 0 && !refreshState.hasSourceTime;
+  return NextResponse.json({
+    periods: periods ?? [],
+    activePeriodId,
+    entries: enrichedEntries,
+    exceptions: exceptions ?? [],
+    refresh: refreshState,
+    zeroState: {
+      trueZero,
+      message: trueZero
+        ? "No employee time has been recorded for this pay period."
+        : refreshState.refreshError
+          ? "Time records exist, but payroll totals could not be refreshed."
+          : null,
+    },
+  });
 }
