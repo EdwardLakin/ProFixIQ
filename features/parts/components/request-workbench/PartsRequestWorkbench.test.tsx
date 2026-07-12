@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PartsRequestWorkbench } from "./PartsRequestWorkbench";
+import { mapRequestToWorkbenchModel } from "./mapToWorkbenchModel";
 import type { PartsRequestWorkbenchModel } from "./types";
 
 vi.mock("sonner", () => ({
@@ -14,7 +15,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-function model(partId = "part-1"): PartsRequestWorkbenchModel {
+function model(partId: string | null = "part-1"): PartsRequestWorkbenchModel {
   return {
     requestId: "request-1",
     requestLabel: "Request 1",
@@ -22,84 +23,97 @@ function model(partId = "part-1"): PartsRequestWorkbenchModel {
     poOptions: [],
     locationOptions: [],
     inventoryResults: [
-      { value: "part-1", label: "Fleetguard oil filter", partNumber: "FG-100" },
-      { value: "part-2", label: "Baldwin air filter", partNumber: "BA-200" },
+      { value: "part-1", label: "Fleetguard oil filter", partNumber: "FG-100", onHandQty: 0 },
+      { value: "part-2", label: "ACDelco Oil Filter", partNumber: "OIL-FILTER-5", manufacturer: "ACDelco", onHandQty: 79 },
     ],
     items: [
       {
         id: "item-1",
-        description: "Requested brake pad",
-        requestedPartNumber: "REQ-123",
+        description: "Oil filter",
+        requestedPartNumber: null,
+        requestedManufacturer: null,
         qty: 1,
         sellPrice: 25,
         status: "requested",
         partId,
-        insights: [
-          {
-            id: "mismatch-item-1",
-            kind: "possible_mismatch",
-            label: "Possible mismatch",
-            detail: "Requested brake pad does not look like the selected oil filter.",
-          },
-        ],
+        insights: partId
+          ? []
+          : [],
       },
     ],
   };
 }
 
-describe("PartsRequestWorkbench mismatch override flow", () => {
-  it("blocks the first Add attempt, confirms the mismatch override, and resets when the selected part changes", async () => {
+describe("PartsRequestWorkbench inventory attach flow", () => {
+  it("uses Attach Part as the primary unattached action and does not show no-stock or permanent suggestion warnings", () => {
+    render(<PartsRequestWorkbench model={model(null)} />);
+
+    expect(screen.getByRole("button", { name: "Attach Part" })).toBeInTheDocument();
+    expect(screen.queryByText("Use Inventory")).not.toBeInTheDocument();
+    expect(screen.queryByText("No stock")).not.toBeInTheDocument();
+    expect(screen.queryByText("Suggested match")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add to Job" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Receive" })).not.toBeInTheDocument();
+  });
+
+  it("attaches a generic oil-filter request without contaminating requested intent", async () => {
     const user = userEvent.setup();
-    let conflictConfirmed = false;
-    const onAddToJob = vi.fn((item) => {
-      if (!conflictConfirmed) return;
-      return item;
-    });
-    const onConfirmConflict = vi.fn((itemId: string) => {
-      if (itemId === "item-1") conflictConfirmed = true;
-    });
-    const onResetConflictOverride = vi.fn((itemId: string) => {
-      if (itemId === "item-1") conflictConfirmed = false;
-    });
     const onAttachInventory = vi.fn();
 
-    render(
-      <PartsRequestWorkbench
-        model={model()}
-        onAddToJob={onAddToJob}
-        onConfirmConflict={onConfirmConflict}
-        onResetConflictOverride={onResetConflictOverride}
-        onAttachInventory={onAttachInventory}
-      />,
-    );
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
 
-    expect(screen.getByText("Possible mismatch")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Add to Job" }));
-    expect(onAddToJob).toHaveBeenCalledTimes(1);
-    expect(conflictConfirmed).toBe(false);
-
-    await user.click(screen.getByRole("button", { name: "Attach anyway" }));
-    expect(screen.getByText("Requested brake pad")).toBeInTheDocument();
-    expect(screen.getByText("Fleetguard oil filter")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Use selected part anyway" }));
-    expect(onConfirmConflict).toHaveBeenCalledWith("item-1");
-    expect(conflictConfirmed).toBe(true);
-
-    await user.click(screen.getByRole("button", { name: "Add to Job" }));
-    expect(onAddToJob).toHaveBeenCalledTimes(2);
-    expect(onAddToJob).toHaveLastReturnedWith(expect.objectContaining({ id: "item-1" }));
-
-    await user.click(screen.getByRole("button", { name: "Use Inventory" }));
-    await user.click(screen.getByLabelText(/Baldwin air filter/i));
-    await user.click(screen.getByRole("button", { name: "Attach inventory part" }));
+    await user.click(screen.getByRole("button", { name: "Attach Part" }));
+    await user.click(screen.getByLabelText(/ACDelco Oil Filter/i));
+    await user.click(screen.getAllByRole("button", { name: "Attach Part" }).at(-1)!);
 
     await waitFor(() => expect(onAttachInventory).toHaveBeenCalledWith({
       itemId: "item-1",
       partId: "part-2",
       warningAccepted: false,
     }));
-    expect(onResetConflictOverride).toHaveBeenCalledWith("item-1");
-    expect(conflictConfirmed).toBe(false);
+
+    expect(screen.getByDisplayValue("Oil filter")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Part #")).toHaveValue("");
+    expect(screen.getByText("Attached: ACDelco Oil Filter")).toBeInTheDocument();
+    expect(screen.getByText("79 on hand")).toBeInTheDocument();
+    expect(screen.queryByText("Possible mismatch")).not.toBeInTheDocument();
+  });
+
+  it("shows exact selected part metadata in mismatch confirmation", async () => {
+    const user = userEvent.setup();
+    const conflictModel = model("part-2");
+    conflictModel.items[0] = {
+      ...conflictModel.items[0],
+      requestedPartNumber: "BRAKE-123",
+      insights: [{ id: "mismatch", kind: "possible_mismatch", label: "Possible mismatch" }],
+    };
+
+    render(<PartsRequestWorkbench model={conflictModel} />);
+
+    await user.click(screen.getByRole("button", { name: "Attach anyway" }));
+
+    const dialog = screen.getByText("Confirm possible mismatch").closest("div")?.parentElement;
+    expect(dialog).toBeTruthy();
+    expect(screen.queryByText("Unknown selected part")).not.toBeInTheDocument();
+    expect(screen.getByText("ACDelco Oil Filter")).toBeInTheDocument();
+    expect(screen.getByText("Part #: OIL-FILTER-5")).toBeInTheDocument();
+  });
+
+  it("maps no-stock insight only for an attached exact part", () => {
+    const unattached = mapRequestToWorkbenchModel({
+      request: { id: "request-1" },
+      items: [{ id: "item-1", description: "Oil filter", qty: 1 }],
+      stockSuggestionCountByItemId: { "item-1": 1 },
+      availableStockByItemId: { "item-1": 0 },
+    });
+    expect(unattached.items[0]?.insights?.some((insight) => insight.kind === "no_stock")).toBe(false);
+    expect(unattached.items[0]?.insights?.some((insight) => insight.kind === "suggested_match")).toBe(false);
+
+    const attached = mapRequestToWorkbenchModel({
+      request: { id: "request-1" },
+      items: [{ id: "item-1", description: "Oil filter", qty: 1, part_id: "part-1" }],
+      availableStockByItemId: { "item-1": 0 },
+    });
+    expect(attached.items[0]?.insights?.some((insight) => insight.kind === "no_stock")).toBe(true);
   });
 });

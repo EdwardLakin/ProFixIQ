@@ -18,7 +18,7 @@ export type InventorySearchResult = WorkbenchOption & {
 
 export function InventoryPickerModal({
   open,
-  title = "Use Inventory",
+  title = "Attach Part",
   results = [],
   query,
   onQueryChange,
@@ -57,7 +57,7 @@ export function InventoryPickerModal({
             disabled={!selectedPartId}
             onClick={() => selectedPartId && onAttach?.({ partId: selectedPartId, warningAccepted: zeroStock })}
           >
-            Attach inventory part
+            Attach Part
           </button>
         </div>
       }

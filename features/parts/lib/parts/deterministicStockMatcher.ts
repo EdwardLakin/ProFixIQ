@@ -100,6 +100,7 @@ type ConflictCandidatePart = {
   name?: string | null;
   sku?: string | null;
   part_number?: string | null;
+  manufacturer?: string | null;
   category?: string | null;
   description?: string | null;
 };
@@ -118,10 +119,12 @@ function humanPartKind(partText: string): string {
 export function detectPartDescriptionConflict(args: {
   requestedDescription?: string | null;
   requestedPartNumber?: string | null;
+  requestedManufacturer?: string | null;
   matchedPart?: ConflictCandidatePart | null;
 }): PartDescriptionConflict | null {
   const requestedDescription = String(args.requestedDescription ?? "").trim();
   const requestedPartNumber = String(args.requestedPartNumber ?? "").trim();
+  const requestedManufacturer = String(args.requestedManufacturer ?? "").trim();
   const matchedPart = args.matchedPart;
   if (!requestedDescription || !matchedPart) return null;
 
@@ -139,13 +142,37 @@ export function detectPartDescriptionConflict(args: {
   const requestLooksFilter = containsAnyToken(requestedDescription, FILTER_TOKENS);
   const partLooksFluid = containsAnyToken(partText, OIL_FLUID_TOKENS);
   const partLooksFilter = containsAnyToken(partText, FILTER_TOKENS);
+  const selectedPartNumbers = [matchedPart.sku, matchedPart.part_number]
+    .map((value) => normalizePartNumber(value))
+    .filter(Boolean);
+  const requestedPartNumberNormalized = normalizePartNumber(requestedPartNumber);
   const partNumberExact =
-    !!requestedPartNumber &&
-    [matchedPart.sku, matchedPart.part_number].some(
-      (value) => normalizePartNumber(value) === normalizePartNumber(requestedPartNumber),
-    );
+    !!requestedPartNumberNormalized &&
+    selectedPartNumbers.some((value) => value === requestedPartNumberNormalized);
+  const partNumberConflict =
+    !!requestedPartNumberNormalized &&
+    selectedPartNumbers.length > 0 &&
+    !partNumberExact;
 
-  if (requestLooksFluid && partLooksFilter) {
+  if (partNumberConflict) {
+    return {
+      title: "Possible mismatch",
+      message: `Requested part # ${requestedPartNumber} does not match selected part # ${matchedPart.part_number || matchedPart.sku || "—"}.`,
+    };
+  }
+
+  if (requestedManufacturer) {
+    const selectedManufacturer = normalize(String(matchedPart.manufacturer ?? ""));
+    const requestedManufacturerNormalized = normalize(requestedManufacturer);
+    if (selectedManufacturer && requestedManufacturerNormalized && selectedManufacturer !== requestedManufacturerNormalized) {
+      return {
+        title: "Possible mismatch",
+        message: `Requested manufacturer ${requestedManufacturer} does not match selected manufacturer ${matchedPart.manufacturer}.`,
+      };
+    }
+  }
+
+  if (requestLooksFluid && !requestLooksFilter && partLooksFilter) {
     return {
       title: "Possible mismatch",
       message: `Description says ${requestedDescription}, but part # ${requestedPartNumber || matchedPart.sku || matchedPart.part_number || "selected"} matches ${humanPartKind(partText)}.`,

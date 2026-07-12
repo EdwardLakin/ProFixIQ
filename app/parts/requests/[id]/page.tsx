@@ -886,21 +886,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const selectedPart = partId
       ? parts.find((part) => String(part.id) === String(partId)) ?? null
       : null;
-    const partNumber = selectedPart
-      ? String(selectedPart.part_number ?? selectedPart.sku ?? "").trim()
-      : "";
-    const manufacturer = selectedPart
-      ? String(selectedPart.supplier ?? "").trim()
-      : "";
     const currentDesc = String(item.description ?? "").trim();
 
     updateItem(reqId, String(item.id), {
       ui_part_id: partId,
-      requested_part_number: partNumber || item.requested_part_number,
-      requested_manufacturer: manufacturer || item.requested_manufacturer,
-      description: currentDesc
-        ? item.description
-        : (selectedPart?.name ?? item.description ?? "").trim(),
+      description: currentDesc ? item.description : (selectedPart?.name ?? item.description ?? "").trim(),
       ui_price:
         item.ui_price ??
         (selectedPart?.price == null ? undefined : toNum(selectedPart.price, 0)),
@@ -1946,20 +1936,16 @@ if (!lineId || !isUuid(lineId)) {
 
                           clearConflictOverride(input.itemId);
 
+                          const existingItem = r.items.find((candidate) => String(candidate.id) === String(input.itemId));
+                          const conflict = detectPartDescriptionConflict({
+                            requestedDescription: existingItem?.description,
+                            requestedPartNumber: existingItem?.requested_part_number,
+                            requestedManufacturer: existingItem?.requested_manufacturer,
+                            matchedPart: selectedPart,
+                          });
+
                           updateItem(r.req.id, input.itemId, {
                             ui_part_id: input.partId,
-                            requested_part_number:
-                              typeof selectedRecord?.part_number === "string" && selectedRecord.part_number.trim()
-                                ? selectedRecord.part_number.trim()
-                                : typeof selectedRecord?.sku === "string" && selectedRecord.sku.trim()
-                                  ? selectedRecord.sku.trim()
-                                  : null,
-                            requested_manufacturer:
-                              typeof selectedRecord?.manufacturer === "string" && selectedRecord.manufacturer.trim()
-                                ? selectedRecord.manufacturer.trim()
-                                : typeof selectedRecord?.supplier === "string" && selectedRecord.supplier.trim()
-                                  ? selectedRecord.supplier.trim()
-                                  : null,
                             ui_price:
                               typeof selectedRecord?.price === "number"
                                 ? selectedRecord.price
@@ -1968,11 +1954,25 @@ if (!lineId || !isUuid(lineId)) {
                                   : Number(selectedRecord.price),
                           });
 
-                          toast.success(
-                            input.warningAccepted
-                              ? "Zero-stock inventory part selected."
-                              : "Inventory part selected.",
-                          );
+                          if (conflict && !input.warningAccepted) {
+                            setConflictWarningByItemId((prev) => ({ ...prev, [input.itemId]: conflict.message }));
+                            toast.warning("Possible mismatch. Review the selected inventory part before attaching.");
+                            return;
+                          }
+
+                          const res = await fetch(`/api/parts/requests/items/${input.itemId}/inventory`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ mode: "attach", partId: input.partId }),
+                          });
+                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+                          if (!res.ok || !body?.ok) {
+                            toast.error(body?.error || "Could not attach inventory part.");
+                            return;
+                          }
+
+                          toast.success("Inventory part attached.");
+                          await load();
                         }}
                         onCreateInventoryItem={async (itemId, input) => {
                           const res = await fetch(`/api/parts/requests/items/${itemId}/inventory`, {
