@@ -532,3 +532,7 @@ Ask a question only when missing information creates a meaningful risk of implem
 If the repository can answer the question, inspect the repository instead of asking the user.
 
 Prefer exact fixes over theory, durable relationships over copied state, canonical paths over compatibility drift, and evidence-backed completion over confident claims.
+
+Before reviewing a pull request, read and follow `docs/code-review.md`.
+
+Treat `docs/code-review.md` as the repository-specific review policy. Use it to determine review method, severity, required lifecycle checks, and the standard for filing findings.
