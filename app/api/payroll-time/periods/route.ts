@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   const activePeriodId = periodId ?? periods?.[0]?.id ?? null;
   if (!activePeriodId) return NextResponse.json({ periods: [], entries: [], exceptions: [] });
 
-  const [{ data: entries, error: entriesErr }, { data: exceptions, error: exErr }] = await Promise.all([
+  const [{ data: entries, error: entriesErr }, { data: exceptions, error: exErr }, { data: roster }] = await Promise.all([
     admin
       .from("payroll_time_entries")
       .select("*, profiles:user_id(full_name, email)")
@@ -40,6 +40,12 @@ export async function GET(req: NextRequest) {
       .eq("shop_id", me.shop_id)
       .eq("period_id", activePeriodId)
       .order("work_date", { ascending: true }),
+    admin
+      .from("people_workforce_profiles")
+      .select("user_id, payroll_ready, employment_status, profiles:user_id(full_name, email)")
+      .eq("shop_id", me.shop_id)
+      .eq("payroll_ready", true)
+      .eq("employment_status", "active"),
   ]);
 
   if (entriesErr) return NextResponse.json({ error: entriesErr.message }, { status: 500 });
@@ -76,7 +82,35 @@ export async function GET(req: NextRequest) {
     awayMap.set(row.user_id, (awayMap.get(row.user_id) ?? 0) + minutes);
   }
 
-  const enrichedEntries = (entries ?? []).map((entry) => ({
+  const entryRows = (entries ?? []) as any[];
+  const entryUsers = new Set(entryRows.map((entry) => entry.user_id));
+  const rosterEntries = ((roster ?? []) as any[])
+    .filter((person) => person.user_id && !entryUsers.has(person.user_id))
+    .map((person) => ({
+      id: `roster-${activePeriodId}-${person.user_id}`,
+      shop_id: me.shop_id,
+      period_id: activePeriodId,
+      user_id: person.user_id,
+      work_date: selectedPeriod?.period_start ?? new Date().toISOString().slice(0, 10),
+      worked_minutes: 0,
+      regular_minutes: 0,
+      overtime_minutes: 0,
+      unpaid_break_minutes: 0,
+      paid_break_minutes: 0,
+      attendance_minutes: 0,
+      job_minutes: 0,
+      adjustment_minutes: 0,
+      has_exceptions: false,
+      blocking_exception_count: 0,
+      warning_exception_count: 0,
+      approval_state: "draft",
+      source_snapshot: { source: "payroll_eligible_roster", note: "No recorded shifts" },
+      profiles: person.profiles ?? null,
+      roster_only: true,
+      payroll_status_label: "No recorded shifts",
+    }));
+
+  const enrichedEntries = [...entryRows, ...rosterEntries].map((entry) => ({
     ...entry,
     scheduled_minutes: scheduleMap.get(`${entry.user_id}|${entry.work_date}`) ?? 0,
     approved_time_away_minutes_in_period: awayMap.get(entry.user_id) ?? 0,

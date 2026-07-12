@@ -32,7 +32,11 @@ type Entry = {
   regular_minutes: number;
   overtime_minutes: number;
   unpaid_break_minutes: number;
+  paid_break_minutes: number;
+  attendance_minutes: number;
   job_minutes: number;
+  roster_only?: boolean;
+  payroll_status_label?: string;
   has_exceptions: boolean;
   blocking_exception_count: number;
   warning_exception_count: number;
@@ -357,7 +361,7 @@ export default function PayrollTimeClient() {
         {loading ? (
           <AdminEmptyState title="Loading payroll period" body="Collecting derived payroll-ready rows." />
         ) : filteredEntries.length === 0 ? (
-          <AdminEmptyState title="No derived entries" body="Run rebuild to derive payroll-ready entries from attendance and job source layers." />
+          <AdminEmptyState title="No derived entries" body="Payroll-eligible employees appear here even before recorded shifts; open periods can be rebuilt from attendance and job source layers." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -365,11 +369,14 @@ export default function PayrollTimeClient() {
                 <tr>
                   <th className="px-4 py-2.5 text-left">Employee</th>
                   <th className="px-4 py-2.5 text-left">Date</th>
-                  <th className="px-4 py-2.5 text-right">Worked</th>
+                  <th className="px-4 py-2.5 text-right">Shift duration</th>
+                  <th className="px-4 py-2.5 text-right">Paid breaks</th>
+                  <th className="px-4 py-2.5 text-right">Unpaid lunch</th>
+                  <th className="px-4 py-2.5 text-right">Payroll hours</th>
                   <th className="px-4 py-2.5 text-right">Regular</th>
-                  <th className="px-4 py-2.5 text-right">OT-ready</th>
-                  <th className="px-4 py-2.5 text-right">Unpaid break</th>
-                  <th className="px-4 py-2.5 text-right">Job context</th>
+                  <th className="px-4 py-2.5 text-right">Overtime</th>
+                  <th className="px-4 py-2.5 text-right">Job time</th>
+                  <th className="px-4 py-2.5 text-right">Other paid shop time</th>
                   <th className="px-4 py-2.5 text-right">Scheduled</th>
                   <th className="px-4 py-2.5 text-right">Approved away</th>
                   <th className="px-4 py-2.5 text-left">Exceptions</th>
@@ -383,11 +390,14 @@ export default function PayrollTimeClient() {
                       <p className="text-xs text-neutral-500">{entry.profiles?.email ?? ""}</p>
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">{entry.work_date}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.attendance_minutes)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.paid_break_minutes)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.unpaid_break_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.worked_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.regular_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.overtime_minutes)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.unpaid_break_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.job_minutes)}h</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(Math.max(0, Number(entry.worked_minutes ?? 0) - Number(entry.job_minutes ?? 0)))}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.scheduled_minutes ?? 0)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.approved_time_away_minutes_in_period ?? 0)}h</td>
                     <td className="px-4 py-2.5">
@@ -396,7 +406,7 @@ export default function PayrollTimeClient() {
                       ) : entry.warning_exception_count > 0 ? (
                         <AdminBadge>{entry.warning_exception_count} warning</AdminBadge>
                       ) : (
-                        <span className="text-xs text-neutral-500">Clean</span>
+                        <span className="text-xs text-neutral-500">{entry.payroll_status_label ?? "Clean"}</span>
                       )}
                     </td>
                   </tr>

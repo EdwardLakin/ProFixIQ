@@ -5,6 +5,7 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import { SHIFT_STATUSES } from "@/features/workforce/lib/shift-status";
 import { closeAllActiveTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
+import { getOrCreateCurrentPeriod, rebuildPeriod } from "@/features/payroll-time/server/payrollTime";
 
 type Caller = { id: string; shop_id: string | null };
 type ShiftRow = {
@@ -121,6 +122,15 @@ export async function POST() {
       { error: `complete_canonical_shift failed: ${message}` },
       { status },
     );
+  }
+
+  try {
+    const { period } = await getOrCreateCurrentPeriod(me.shop_id, me.id);
+    if (period?.id && (period.status === "open" || period.status === "draft")) {
+      await rebuildPeriod({ shopId: me.shop_id, actorId: me.id, periodId: period.id });
+    }
+  } catch (payrollRefreshError) {
+    console.error("payroll open-period refresh failed after shift end", payrollRefreshError);
   }
 
   return NextResponse.json({
