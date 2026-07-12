@@ -230,6 +230,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [supplierSuggestionAppliedByItemId, setSupplierSuggestionAppliedByItemId] = useState<Record<string, boolean>>({});
   const [conflictWarningByItemId, setConflictWarningByItemId] = useState<Record<string, string>>({});
   const [conflictOverrideByItemId, setConflictOverrideByItemId] = useState<Record<string, boolean>>({});
+  const [addedToWorkOrderByItemId, setAddedToWorkOrderByItemId] = useState<Record<string, boolean>>({});
 
   function clearConflictOverride(itemId: string): void {
     setConflictOverrideByItemId((prev) => {
@@ -404,6 +405,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       setStockAvailableByPartId({});
       setSupplierSuggestionsByItemId({});
       setSupplierSuggestionAppliedByItemId({});
+      setAddedToWorkOrderByItemId({});
       setLoading(false);
       return;
     }
@@ -457,6 +459,27 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     });
 
     setRequests(uiRequests);
+
+    const requestItemIds = uiRequests.flatMap((request) => request.items.map((item) => String(item.id)));
+    if (requestItemIds.length > 0) {
+      const { data: attachedRows, error: attachedError } = await supabase
+        .from("work_order_parts")
+        .select("source_parts_request_item_id")
+        .in("source_parts_request_item_id", requestItemIds)
+        .eq("is_active", true);
+      if (attachedError) {
+        toast.warning(attachedError.message);
+        setAddedToWorkOrderByItemId({});
+      } else {
+        setAddedToWorkOrderByItemId(Object.fromEntries(
+          ((attachedRows ?? []) as Array<{ source_parts_request_item_id: string | null }>).flatMap((row) =>
+            row.source_parts_request_item_id ? [[String(row.source_parts_request_item_id), true] as const] : [],
+          ),
+        ));
+      }
+    } else {
+      setAddedToWorkOrderByItemId({});
+    }
 
     // ✅ Load all line complaint/description for this work order (used for UI + fallback linking)
     {
@@ -1709,7 +1732,8 @@ if (!lineId || !isUuid(lineId)) {
         // ignore
       }
 
-      toast.success("Added to the work order line.");
+      setAddedToWorkOrderByItemId((prev) => ({ ...prev, [itemId]: true }));
+      toast.success("Part added to work order.");
       setConflictWarningByItemId((prev) => {
         const next = { ...prev };
         delete next[itemId];
@@ -1873,6 +1897,7 @@ if (!lineId || !isUuid(lineId)) {
                       ]),
                     ),
                     conflictWarningByItemId,
+                    addedToWorkOrderByItemId,
                   });
 
                   return (
@@ -1965,14 +1990,47 @@ if (!lineId || !isUuid(lineId)) {
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ mode: "attach", partId: input.partId }),
                           });
-                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string; item?: ItemRow } | null;
                           if (!res.ok || !body?.ok) {
                             toast.error(body?.error || "Could not attach inventory part.");
                             return;
                           }
 
-                          toast.success("Inventory part attached.");
-                          await load();
+                          if (body.item) {
+                            updateItem(r.req.id, input.itemId, {
+                              ...body.item,
+                              ui_part_id: body.item.part_id ?? input.partId,
+                              ui_price:
+                                typeof selectedRecord?.price === "number"
+                                  ? selectedRecord.price
+                                  : selectedRecord?.price == null
+                                    ? undefined
+                                    : Number(selectedRecord.price),
+                              ui_added: false,
+                            } as Partial<UiItem>);
+                          }
+                          setAddedToWorkOrderByItemId((prev) => {
+                            const next = { ...prev };
+                            delete next[input.itemId];
+                            return next;
+                          });
+                          toast.success("Inventory part selected.");
+                          void load();
+                          return body.item
+                            ? {
+                                partId: body.item.part_id ?? input.partId,
+                                description: body.item.description ?? existingItem?.description ?? "Part",
+                                requestedPartNumber: body.item.requested_part_number ?? null,
+                                requestedManufacturer: body.item.requested_manufacturer ?? null,
+                                qty: toNum(body.item.qty, existingItem?.ui_qty ?? 1),
+                                sellPrice: body.item.quoted_price == null ? null : toNum(body.item.quoted_price, 0),
+                                status: body.item.status ?? null,
+                                poId: ((body.item as unknown) as { po_id?: string | null }).po_id ?? null,
+                                qtyReceived: toNum(((body.item as unknown) as { qty_received?: unknown }).qty_received, 0),
+                                qtyApproved: toNum(((body.item as unknown) as { qty_approved?: unknown }).qty_approved, 0),
+                                addedToWorkOrder: false,
+                              }
+                            : { partId: input.partId, addedToWorkOrder: false };
                         }}
                         onCreateInventoryItem={async (itemId, input) => {
                           const res = await fetch(`/api/parts/requests/items/${itemId}/inventory`, {
@@ -1990,7 +2048,7 @@ if (!lineId || !isUuid(lineId)) {
                               locationId: resolvedDefaultLocId || defaultLocationId || null,
                             }),
                           });
-                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string } | null;
+                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string; item?: ItemRow } | null;
                           if (!res.ok || !body?.ok) {
                             toast.error(body?.error || "Could not create inventory item.");
                             return;

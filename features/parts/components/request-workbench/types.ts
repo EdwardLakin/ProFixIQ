@@ -41,6 +41,7 @@ export type PartsRequestWorkbenchItem = {
   poId?: string | null;
   qtyReceived?: number | null;
   qtyApproved?: number | null;
+  addedToWorkOrder?: boolean;
   insights?: SmartInsight[];
 };
 
@@ -49,6 +50,7 @@ export type PartsRequestInventoryResult = WorkbenchOption & {
   partNumber?: string | null;
   manufacturer?: string | null;
   onHandQty?: number | null;
+  sellPrice?: number | null;
 };
 
 export type PartsRequestWorkbenchModel = {

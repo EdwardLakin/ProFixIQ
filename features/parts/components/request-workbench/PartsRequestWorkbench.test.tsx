@@ -2,8 +2,9 @@ import React from "react";
 (globalThis as unknown as { React: typeof React }).React = React;
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PartsRequestWorkbench } from "./PartsRequestWorkbench";
+import { toast } from "sonner";
 import { mapRequestToWorkbenchModel } from "./mapToWorkbenchModel";
 import type { PartsRequestWorkbenchModel } from "./types";
 
@@ -45,6 +46,9 @@ function model(partId: string | null = "part-1"): PartsRequestWorkbenchModel {
 }
 
 describe("PartsRequestWorkbench inventory attach flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
   it("uses Attach Part as the primary unattached action and does not show no-stock or permanent suggestion warnings", () => {
     render(<PartsRequestWorkbench model={model(null)} />);
 
@@ -52,7 +56,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     expect(screen.queryByText("Use Inventory")).not.toBeInTheDocument();
     expect(screen.queryByText("No stock")).not.toBeInTheDocument();
     expect(screen.queryByText("Suggested match")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add to Job" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add to Work Order" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Receive" })).not.toBeInTheDocument();
   });
 
@@ -74,9 +78,63 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
 
     expect(screen.getByDisplayValue("Oil filter")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Part #")).toHaveValue("");
-    expect(screen.getByText("Attached: ACDelco Oil Filter")).toBeInTheDocument();
+    expect(screen.getByText("Selected: ACDelco Oil Filter")).toBeInTheDocument();
     expect(screen.getByText("79 on hand")).toBeInTheDocument();
     expect(screen.queryByText("Possible mismatch")).not.toBeInTheDocument();
+  });
+
+
+  it("separates inventory selection from Add to Work Order", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi.fn(async () => ({ partId: "part-2", addedToWorkOrder: false }));
+    const onAddToJob = vi.fn();
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} onAddToJob={onAddToJob} />);
+
+    await user.click(screen.getByRole("button", { name: "Attach Part" }));
+    await user.click(screen.getByLabelText(/ACDelco Oil Filter/i));
+    await user.click(screen.getAllByRole("button", { name: "Attach Part" }).at(-1)!);
+
+    await waitFor(() => expect(onAttachInventory).toHaveBeenCalledTimes(1));
+    expect(onAddToJob).not.toHaveBeenCalled();
+    expect(screen.getByText("Selected: ACDelco Oil Filter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to Work Order" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change Part" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add to Work Order" }));
+    expect(onAddToJob).toHaveBeenCalledWith(expect.objectContaining({ id: "item-1", partId: "part-2", addedToWorkOrder: false }));
+  });
+
+  it("hides Add to Work Order after the durable add state is loaded", () => {
+    const attachedModel = model("part-2");
+    attachedModel.items[0] = { ...attachedModel.items[0], addedToWorkOrder: true };
+
+    render(<PartsRequestWorkbench model={attachedModel} />);
+
+    expect(screen.getByText("Added to work order")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add to Work Order" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change Part" })).not.toBeInTheDocument();
+  });
+
+  it("does not perform Add to Work Order when mismatch acknowledgement is confirmed", async () => {
+    const user = userEvent.setup();
+    const onConfirmConflict = vi.fn();
+    const onAddToJob = vi.fn();
+    const conflictModel = model("part-2");
+    conflictModel.items[0] = {
+      ...conflictModel.items[0],
+      requestedPartNumber: "BRAKE-123",
+      insights: [{ id: "mismatch", kind: "possible_mismatch", label: "Possible mismatch" }],
+    };
+
+    render(<PartsRequestWorkbench model={conflictModel} onConfirmConflict={onConfirmConflict} onAddToJob={onAddToJob} />);
+
+    await user.click(screen.getByRole("button", { name: "Attach anyway" }));
+    await user.click(screen.getAllByRole("button", { name: "Attach anyway" }).at(-1)!);
+
+    expect(onConfirmConflict).toHaveBeenCalledWith("item-1");
+    expect(onAddToJob).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("Mismatch acknowledged. You can add the selected part now.");
   });
 
   it("shows exact selected part metadata in mismatch confirmation", async () => {

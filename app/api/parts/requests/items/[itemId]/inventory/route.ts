@@ -56,6 +56,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   if (!item) return NextResponse.json({ ok: false, error: "Request item not found." }, { status: 404 });
 
   let partId: string;
+  let selectedPart: DB["public"]["Tables"]["parts"]["Row"] | null = null;
   if (body.mode === "attach") {
     if (!isUuid(body.partId)) return NextResponse.json({ ok: false, error: "Invalid partId." }, { status: 400 });
 
@@ -69,6 +70,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     if (partError) return NextResponse.json({ ok: false, error: partError.message }, { status: 500 });
     if (!part) return NextResponse.json({ ok: false, error: "Inventory part not found." }, { status: 404 });
     partId = part.id;
+    selectedPart = part as DB["public"]["Tables"]["parts"]["Row"];
   } else {
     const name = clean(body.name);
     if (!name) return NextResponse.json({ ok: false, error: "Name is required." }, { status: 400 });
@@ -97,6 +99,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
 
     if (partError) return NextResponse.json({ ok: false, error: partError.message }, { status: 500 });
     partId = part.id;
+    selectedPart = part as DB["public"]["Tables"]["parts"]["Row"];
 
     const initialQty = num(body.initialQty) ?? 0;
     const locationId = clean(body.locationId);
@@ -129,5 +132,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
 
   if (updateError) return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
 
-  return NextResponse.json({ ok: true, item: updatedItem, partId });
+  return NextResponse.json({
+    ok: true,
+    item: updatedItem,
+    partId,
+    part: selectedPart
+      ? {
+          id: selectedPart.id,
+          name: selectedPart.name,
+          sku: selectedPart.sku,
+          part_number: selectedPart.part_number,
+          manufacturer: selectedPart.supplier,
+          sell_price: selectedPart.price ?? selectedPart.default_price ?? null,
+        }
+      : null,
+  });
 }

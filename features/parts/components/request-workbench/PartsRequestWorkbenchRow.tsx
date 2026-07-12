@@ -49,6 +49,8 @@ export function PartsRequestWorkbenchRow({
     "rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2.5 py-2 text-xs text-neutral-100 hover:bg-white/5";
 
   const hasPossibleMismatch = item.insights?.some((insight) => insight.kind === "possible_mismatch") ?? false;
+  const hasSelectedPart = !!item.partId && !!selectedPart;
+  const isAddedToWorkOrder = item.addedToWorkOrder === true;
 
   return (
     <tr className="border-t border-[color:var(--desktop-border)] align-top">
@@ -110,7 +112,7 @@ export function PartsRequestWorkbenchRow({
         <div className="space-y-2">
           {selectedPart ? (
             <div className="rounded-xl border border-emerald-400/25 bg-emerald-950/15 p-2 text-xs text-emerald-100">
-              <div className="font-medium">Attached: {selectedPart.label}</div>
+              <div className="font-medium">Selected: {selectedPart.label}</div>
               <div className="mt-1 text-emerald-100/80">
                 {[selectedPart.partNumber || selectedPart.sku, selectedPart.manufacturer].filter(Boolean).join(" • ") || "No part metadata"}
               </div>
@@ -120,6 +122,7 @@ export function PartsRequestWorkbenchRow({
                   : Number(selectedPart.onHandQty) > 0
                     ? `${Number(selectedPart.onHandQty)} on hand`
                     : "No stock"}
+                {selectedPart.sellPrice != null ? ` • Sell price ${money(selectedPart.sellPrice)}` : ""}
               </div>
             </div>
           ) : null}
@@ -152,6 +155,7 @@ export function PartsRequestWorkbenchRow({
               event.currentTarget.value = "";
               if (value === "save") onSave?.(item.id);
               if (value === "inventory") onUseInventory?.(item.id);
+              if (value === "add") onAddToJob?.(item);
               if (value === "order") onOrder?.(item.id);
               if (value === "receive") onReceive?.(item.id);
               if (value === "stock") onAddToStock?.(item.id);
@@ -162,7 +166,8 @@ export function PartsRequestWorkbenchRow({
           >
             <option value="">Actions</option>
             <option value="save">Save</option>
-            <option value="inventory">Attach Part</option>
+            {hasSelectedPart && !isAddedToWorkOrder ? <option value="add">Add to Work Order</option> : null}
+            <option value="inventory">{hasSelectedPart ? "Change Part" : "Attach Part"}</option>
             <option value="order">Order</option>
             {item.poId || item.qtyReceived ? <option value="receive">Receive</option> : null}
             <option value="stock">Add to Stock</option>
@@ -173,9 +178,10 @@ export function PartsRequestWorkbenchRow({
         ) : (
           <div className="flex min-w-[12rem] flex-wrap gap-1.5">
             <button type="button" className={action} onClick={() => onSave?.(item.id)}>Save</button>
-            <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>Attach Part</button>
-            <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button>
-            {item.partId ? <button type="button" className={action} onClick={() => onAddToJob?.(item)}>Add to Job</button> : null}
+            {hasSelectedPart && !isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onAddToJob?.(item)}>Add to Work Order</button> : null}
+            {!isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>{hasSelectedPart ? "Change Part" : "Attach Part"}</button> : null}
+            {!isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button> : null}
+            {isAddedToWorkOrder ? <span className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-100">Added to work order</span> : null}
             {item.poId || item.qtyReceived ? <button type="button" className={action} onClick={() => onReceive?.(item.id)}>Receive</button> : null}
             <select
               className={action}

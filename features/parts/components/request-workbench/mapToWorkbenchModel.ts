@@ -27,6 +27,7 @@ export function mapRequestItemToWorkbenchItem(input: {
   availableStock?: number | null;
   supplierSuggestionCount?: number;
   conflictWarning?: string | null;
+  addedToWorkOrder?: boolean;
 }): PartsRequestWorkbenchItem {
   const item = input.item;
   const qty = num(item.ui_qty ?? item.qty ?? item.qty_requested, 1);
@@ -47,6 +48,7 @@ export function mapRequestItemToWorkbenchItem(input: {
     poId: nullableText(item.ui_po_id ?? item.po_id),
     qtyReceived,
     qtyApproved,
+    addedToWorkOrder: input.addedToWorkOrder === true,
     insights: buildWorkbenchInsights({
       hasSuggestedMatch: false,
       noStock: Boolean(nullableText(item.ui_part_id ?? item.part_id) && input.availableStock != null && num(input.availableStock, 0) <= 0),
@@ -75,6 +77,7 @@ export function mapRequestToWorkbenchModel(input: {
   availableStockByItemId?: Record<string, number>;
   supplierSuggestionCountByItemId?: Record<string, number>;
   conflictWarningByItemId?: Record<string, string>;
+  addedToWorkOrderByItemId?: Record<string, boolean>;
 }): PartsRequestWorkbenchModel {
   const requestId = text(input.request.id);
   const requestLabel = text(input.request.custom_id, requestId ? requestId.slice(0, 8) : "Request");
@@ -100,6 +103,7 @@ export function mapRequestToWorkbenchModel(input: {
         sku: nullableText(part.sku),
         partNumber: nullableText(part.part_number),
         manufacturer: nullableText(part.manufacturer ?? part.supplier),
+        sellPrice: part.price == null && part.default_price == null ? null : num(part.price ?? part.default_price, 0),
         onHandQty: Object.prototype.hasOwnProperty.call(input.stockAvailableByPartId ?? {}, partId)
           ? input.stockAvailableByPartId?.[partId]
           : null,
@@ -113,6 +117,7 @@ export function mapRequestToWorkbenchModel(input: {
         availableStock: input.availableStockByItemId?.[itemId] ?? null,
         supplierSuggestionCount: input.supplierSuggestionCountByItemId?.[itemId] ?? 0,
         conflictWarning: input.conflictWarningByItemId?.[itemId] ?? null,
+        addedToWorkOrder: input.addedToWorkOrderByItemId?.[itemId] ?? false,
       });
     }),
   };
