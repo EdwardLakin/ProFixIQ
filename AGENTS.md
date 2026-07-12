@@ -1,262 +1,534 @@
-# CODEX.md
+# AGENTS.md
 
-## Project
-ProFixIQ is an AI-native shop operating system for automotive, heavy-duty, and fleet repair shops.
+## Mission
 
-Core areas:
-- work orders
-- inspections
-- technician workflows
-- customer approvals
-- fleet workflows
-- parts / quotes / invoices
-- portals
-- branding
-- dashboard widgets
-- AI-assisted service operations
+ProFixIQ is an AI-native shop operating system for automotive, heavy-duty, and fleet repair operations.
 
-Tech stack:
+Treat this repository as a production multi-tenant system. Changes may affect work orders, inspections, technicians, parts, approvals, customer and fleet portals, invoicing, billing, AI processing, reporting, and historical business data.
+
+The objective is not merely to make code compile. The objective is to make the smallest complete production-quality change that preserves tenant isolation, data integrity, canonical architecture, and the intended end-to-end workflow.
+
+## Stack
+
 - Next.js App Router
-- TypeScript
-- Supabase (Postgres, Auth, Storage, RLS)
+- React
+- TypeScript with strict typing expectations
+- Supabase: Postgres, Auth, Storage, and Row Level Security
 - Vercel
 - Stripe
-- SendGrid
+- SendGrid / email infrastructure
+- Vitest
+- ESLint
+- pnpm
 
-This is a multi-tenant app.
-`shop_id` is a core boundary and must be preserved.
+Use the versions and dependencies already declared in `package.json`. Do not assume current framework documentation matches the installed version.
 
----
+## Repository Commands
 
-## Primary Operating Rules
+Prefer the repository's existing scripts.
 
-1. Do not make broad architectural rewrites unless explicitly asked.
-2. Prefer incremental, non-breaking changes.
-3. Preserve existing business flows unless the task explicitly changes them.
-4. Do not remove multi-tenant protections.
-5. Do not weaken or bypass RLS patterns.
-6. Do not casually change auth, billing, portals, or approval flows.
-7. Do not rename large groups of files unless explicitly requested.
-8. Prefer existing feature-based organization over introducing a new structure.
-9. Keep patches focused on the requested scope.
-10. When touching database behavior, assume existing live data may be imperfect.
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm check
+pnpm build
+pnpm audit:api-routes
+```
 
----
+Additional database and QA scripts exist in `package.json`. Inspect them before use.
 
-## Database Rules
+Do not claim a command passed unless it was actually executed successfully.
 
-1. Prefer SQL migrations that are:
-   - additive
-   - reversible where practical
-   - safe for existing production-like data
+## Core Operating Rules
 
-2. Before adding:
-   - `NOT NULL`
-   - foreign keys
-   - check constraints
-   - unique constraints
+1. Inspect before editing.
+2. Find the root cause before choosing the fix.
+3. Reuse canonical code, tables, routes, services, helpers, types, and UI patterns.
+4. Make the smallest complete change that solves the underlying problem.
+5. Preserve existing behavior unless the task explicitly requires changing it.
+6. Do not perform broad architectural rewrites unless explicitly requested.
+7. Do not modify unrelated files "while here."
+8. Do not create parallel systems to avoid understanding the existing one.
+9. Distinguish confirmed repository facts from assumptions.
+10. If an assumption materially affects correctness, verify it in code, schema, migrations, tests, or call sites before implementation.
+11. Prefer durable fixes over UI-only symptom suppression.
+12. Treat live data as potentially imperfect and historically inconsistent.
+13. Never weaken security, authorization, validation, RLS, constraints, or auditability merely to make a test pass.
+14. Never expose secret values, service-role keys, tokens, or sensitive environment-variable contents.
+15. Do not mutate production data or external production systems unless explicitly requested.
 
-   always:
-   - inspect for violating existing rows
-   - provide backfill SQL first if needed
-   - avoid breaking current flows
+## Investigation Requirements
 
-3. Do not redesign the schema unless explicitly asked.
-4. Preserve current tenant shape and `shop_id` propagation.
-5. For RLS-sensitive tables, be conservative.
-6. If a migration is risky, explain the risk clearly before applying it.
+Before changing code, inspect the relevant portions of the complete flow.
 
-When doing DB work, output in this order:
-1. explanation of issue
-2. exact SQL migration
-3. any required backfill SQL
-4. affected app files
-5. validation steps
+Depending on the task, this includes:
 
----
+- user-facing component or page
+- event handler or server action
+- API route
+- authorization helper
+- domain/service logic
+- Supabase query or RPC
+- table definitions and generated database types
+- migrations
+- RLS policies
+- storage policies
+- downstream consumers
+- exports and reports
+- tests
+- all meaningful call sites
 
-## Frontend / UI Rules
+Search for existing implementations before creating a new abstraction.
 
-1. Preserve the ProFixIQ premium dark industrial/glass direction.
-2. Respect the branding system and active brand variables.
-3. Do not hardcode colors if brand/theme variables already exist.
-4. Prefer reusable shells, cards, and shared UI primitives over one-off styling.
-5. Keep desktop, tablet, and mobile usability in mind.
-6. For dashboard work, prefer widget-based architecture over hardcoded layouts.
-7. New UI should feel cohesive with the rest of ProFixIQ, not like a separate product.
-8. Avoid introducing visually inconsistent components.
+For bugs, explicitly determine:
 
-When changing UI:
-- keep existing behavior unless requested otherwise
-- remove dead imports/components if they become unused
-- prefer simple, maintainable implementations
+- where the incorrect state originates
+- whether the failure is UI, API, domain logic, persistence, authorization, schema, or lifecycle related
+- whether the visible symptom is duplicated elsewhere
+- whether multiple entry points can create the same state
+- whether retries or replays can repeat the mutation
+- whether the proposed fix changes historical or downstream behavior
 
----
+Do not patch the first visible conditional until the data flow has been traced far enough to explain the root cause.
 
-## Dashboard-Specific Rules
+## Multi-Tenant and Authorization Rules
 
-The dashboard is moving toward a customizable widget system.
+ProFixIQ is multi-tenant. Tenant isolation is a non-negotiable system invariant.
 
-When working on dashboard features:
-1. Treat widgets as first-class modules.
-2. Support default layouts plus user customization.
-3. Prefer move/resize/persist architecture over hardcoded card placement.
-4. Ensure branding/theme support applies to widgets.
-5. Keep mobile usable even if desktop becomes more advanced.
-6. Do not bake business logic directly into layout containers.
-7. Prefer a widget registry pattern if adding multiple widgets.
+`shop_id` and organization/location scope are security boundaries, not convenience fields.
 
-If persistence is needed:
-- prefer a non-breaking schema addition
-- keep user/shop scoping explicit
-- do not assume a single device size
+When touching tenant-scoped behavior:
 
----
+1. Verify authentication.
+2. Verify authorization.
+3. Verify the acting user's relationship to the target shop or organization.
+4. Verify every read and write is scoped correctly.
+5. Verify IDs supplied by the client cannot be used to cross tenant boundaries.
+6. Verify service-role usage does not bypass application authorization.
+7. Verify RLS assumptions against actual policies or migrations.
+8. Preserve audit context for privileged or exceptional actions.
 
-## Work Order / Inspection Rules
+Never trust a client-provided `shop_id` as authorization.
 
-These flows are critical.
+Do not remove tenant predicates because RLS "should handle it." Application authorization and database policy should reinforce each other.
 
-Preserve the intended ProFixIQ flow:
-- advisor creates work order
-- technician inspects / builds recommendations
-- parts and labor are attached correctly
+Do not use service-role access as a shortcut around broken RLS or authorization.
+
+Staff seat and billing ownership is location/shop scoped. Multi-location viewing or active-location context must not be implemented by casually mutating a staff member's canonical home `shop_id`.
+
+Transfers, privileged cross-location operations, and owner/admin actions require explicit authorization, seat/capacity checks where applicable, and auditability.
+
+## Database and Migration Rules
+
+The database is part of the product contract.
+
+Before writing a migration:
+
+1. Inspect existing migrations for the table, column, index, constraint, trigger, function, RPC, and policy involved.
+2. Inspect generated Supabase types, but do not treat TypeScript types as proof that live schema exists.
+3. Search application reads and writes.
+4. Identify existing rows that could violate the proposed change.
+5. Determine deployment ordering between schema and application code.
+
+Prefer migrations that are:
+
+- additive where practical
+- idempotent or replay-safe where practical
+- safe for existing data
+- explicit about backfills
+- explicit about constraints and indexes
+- compatible with rolling deployment where practical
+
+Before adding `NOT NULL`, foreign keys, check constraints, exclusion constraints, or unique indexes:
+
+- inspect for violating rows
+- define a deterministic backfill or cleanup strategy
+- preserve valid historical data
+- do not silently delete ambiguous business data
+- add focused validation for the invariant
+
+Use canonical tables and durable foreign-key relationships when a canonical model already exists.
+
+Do not introduce a second table, event system, status model, or relationship merely because it is easier than integrating with the existing model.
+
+When a mutation can be retried, replayed, webhook-driven, worker-driven, or double-clicked, evaluate idempotency explicitly.
+
+When changing schema, update generated database types if required by the repository workflow.
+
+Never edit an old production migration to simulate a new migration unless the repository explicitly treats migrations as disposable. Create a new migration for production schema evolution.
+
+## RLS and Security Review
+
+For any new or changed table, RPC, storage path, or privileged API:
+
+- identify the tenant anchor
+- identify allowed roles
+- verify SELECT, INSERT, UPDATE, and DELETE behavior separately
+- verify cross-shop access is denied
+- verify owner/admin access is intentional
+- verify service-role callers perform explicit authorization before privileged access
+- verify storage object paths cannot be forged across organizations or sessions
+- verify public or anonymous access is intentionally limited
+
+Security review is required for changes involving:
+
+- authentication
+- user creation
+- owner PIN behavior
+- memberships
+- active shop/location context
+- billing
+- Stripe
+- customer portals
+- fleet portals
+- approvals
+- internal worker routes
+- service-role Supabase clients
+- storage
+- AI ingestion or document processing
+
+## Canonical Architecture Rules
+
+Before adding a route, table, service, event type, or helper, search for the existing canonical implementation.
+
+Prefer delegation or consolidation over duplicate implementations.
+
+If a legacy route must remain for compatibility:
+
+- delegate or redirect to the canonical implementation when technically appropriate
+- do not duplicate side effects
+- preserve expected HTTP semantics
+- add tests proving the legacy path and canonical path cannot drift silently
+
+Do not create parallel:
+
+- Stripe webhook handlers
+- checkout flows
+- approval side-effect pipelines
+- event systems
+- work-order status models
+- inspection models
+- asset models
+- AI provider call paths
+- tenant context systems
+
+If two existing systems appear duplicative, investigate ownership and consumers before deleting or merging either one.
+
+## Work Order and Inspection Invariants
+
+These are critical workflows.
+
+The intended high-level lifecycle is:
+
+- advisor or authorized user creates work
+- technician performs inspection or service workflow
+- findings and recommendations are captured
+- labor and parts are attached to the correct repair/work-order context
 - advisor reviews
-- customer or fleet approves
-- downstream parts / invoice / portal state stays consistent
+- customer or fleet approval is recorded
+- approved work progresses through downstream parts and service workflows
+- completion and invoicing states remain consistent
+- evidence and audit history remain attached to the correct durable records
 
-When editing work order or inspection code:
-1. Do not break line creation paths.
-2. Keep inserts consistent across all entry points.
-3. Respect status normalization and existing enums.
-4. Be careful with completion flows, approvals, and evidence/media handling.
-5. Remove duplicated logic only when safe and well-scoped.
+When touching work orders, work-order lines, inspections, recommendations, quotes, or approvals:
 
----
+1. Search all creation and mutation entry points.
+2. Preserve canonical status values and normalized transitions.
+3. Do not conflate distinct domain states.
+4. Keep work-order and line-level state responsibilities clear.
+5. Verify downstream portal, parts, invoice, analytics, export, and report consumers.
+6. Preserve evidence/media relationships.
+7. Evaluate partial failure and retry behavior.
+8. Add focused regression coverage.
 
-## Branding Rules
+Examples of distinct states that must not be casually conflated include stock availability, part-number/description compatibility, approval state, work status, and processing lifecycle.
 
-Branding is a first-class system.
+A warning shown inline and a toast for the same condition may create duplicate UX. Prefer one clear visible advisory path unless multiple surfaces serve materially different purposes.
 
-1. Respect active brand assets and brand profile settings.
-2. New surfaces should read from branding/theme variables where possible.
-3. Do not introduce parallel branding logic unless explicitly requested.
-4. If working on PDFs, invoices, inspections, or dashboard rendering, check whether branding should apply.
-5. Prefer one source of truth for logo/brand colors.
+## Parts Lifecycle Rules
 
----
+Parts behavior can affect technician, parts, advisor, work-order, quote, and invoice flows.
 
-## Code Quality Rules
+When changing parts behavior:
 
-After making changes, always run relevant validation.
+- identify the canonical part/request/line relationships
+- preserve durable links rather than relying on copied display text
+- distinguish availability from compatibility or mismatch detection
+- preserve deliberate override acknowledgements and their audit reason when overrides are allowed
+- verify duplicate attachment and replay behavior
+- verify parts request, receiving, quote, and work-order consumers
+- do not treat "no stock" as equivalent to a compatibility mismatch
+- do not block a valid override only in the client if the server must persist the acknowledgement
 
-Minimum validation:
-- `npx tsc --noEmit`
+## Approval and Portal Rules
 
-When applicable also run:
-- repo lint command
-- targeted tests for touched areas
+Approval is a business and audit event.
 
-If validation fails:
-- fix the failure if it is within scope
-- otherwise clearly report:
-  - what failed
-  - where it failed
-  - whether it was pre-existing or introduced
+When changing approval behavior:
 
-Do not claim success if validation was not run.
+- identify the canonical approval entry point
+- preserve line decisions
+- preserve work-order approval stamps and timestamps
+- preserve actor and source context where available
+- ensure status transitions occur once
+- make replay behavior safe
+- verify customer and fleet portal behavior separately where they differ
+- verify downstream parts and invoice effects
 
----
+Do not duplicate approval side effects across legacy and canonical endpoints.
 
-## Output Format for Tasks
+Do not trust a portal-supplied tenant or record ID without validating its authorized relationship.
 
-Unless told otherwise, respond with:
+## Stripe and Billing Rules
 
-1. Summary of what was changed
-2. Exact files changed
-3. Full SQL migration first, when DB changes are involved
-4. Patch or full file replacements
-5. Validation commands run
-6. Result of validation
-7. Risks / follow-up items
+Stripe changes require conservative handling.
 
-For code patches:
-- prefer complete, usable code
-- avoid pseudo-code
-- avoid vague guidance
+Before changing billing:
 
----
+- inspect the canonical checkout route
+- inspect the canonical webhook
+- inspect subscription synchronization
+- inspect metadata keys already accepted
+- inspect webhook idempotency
+- inspect plan and seat-limit mapping
+- inspect portal/session behavior
 
-## What to Avoid
+Do not create a second Stripe webhook pipeline.
 
-Do not:
-- break auth persistence
-- weaken tenant isolation
-- remove `shop_id` logic
-- casually alter Stripe flows
-- casually alter portal approval logic
-- silently change schema assumptions
-- introduce duplicate systems when one already exists
-- over-engineer abstractions for simple tasks
-- rewrite unrelated files “while here”
+Do not casually change price mapping, subscription status interpretation, seat caps, or metadata keys.
 
----
+Webhook handlers must be replay-safe.
 
-## Task Prioritization Heuristic
+Never log Stripe secrets or full sensitive payloads unnecessarily.
 
-When multiple approaches are possible, prefer this order:
+Changes that require Stripe dashboard configuration, webhook configuration, price IDs, or environment variables must be explicitly reported as manual actions.
 
-1. safest non-breaking fix
-2. consistency with existing ProFixIQ architecture
-3. maintainability
-4. UX quality
-5. deeper refactor only if clearly justified
+## AI and Background Processing Rules
 
----
+AI is assistive infrastructure, not permission to bypass domain integrity.
 
-## Preferred Working Style
+Route provider calls through the existing provider abstraction when one exists.
 
-For ProFixIQ, prefer:
-- exact fixes over theory
-- one-shot patches where practical
-- concrete file edits
-- SQL first for schema work
-- minimal blast radius
-- honest reporting of uncertainty or risk
+For AI or worker-driven processing:
 
-If something is unclear, infer from the existing codebase patterns instead of inventing a parallel system.
+- preserve deterministic lifecycle state
+- make retries and stale locks safe
+- record failures without blocking manual workflows where the product supports manual fallback
+- record usage/cost through canonical usage infrastructure when applicable
+- avoid provider-specific logic in feature code when an abstraction exists
+- never treat model output as trusted authorization or tenant scope
+- validate structured AI output before persistence
+- preserve source capture/evidence relationships
 
----
+Do not make user uploads wait synchronously for long-running AI work if the existing architecture queues processing.
 
-## Good Example Tasks
+## API and Server Mutation Rules
 
-- Fix TypeScript errors in dashboard widgets without changing behavior
-- Audit all `work_order_lines` insert paths and normalize them safely
-- Add a non-breaking migration for widget layout persistence
-- Remove obsolete inspection UI panels and dead imports
-- Apply branding variables to invoice or dashboard rendering
-- Refactor hardcoded dashboard cards into a widget registry
+For new or changed API routes and server actions:
 
-## Bad Example Tasks
+- validate input
+- authenticate the caller
+- authorize the resource
+- scope database access
+- return intentional status codes
+- handle expected conflicts explicitly
+- avoid leaking internal errors or sensitive data
+- evaluate idempotency
+- preserve audit events where required
+- test failure paths, not only success paths
 
-- Redesign the whole app
-- Make the database perfect
-- Rewrite the architecture
-- Replace all styling systems
-- Remove old code without checking dependencies
+Do not rely solely on hidden UI controls for authorization.
 
----
+If a client check prevents a request, determine whether the server must also enforce or persist the rule.
 
-## Model / Execution Guidance
+## Frontend and UX Rules
 
-Use the strongest coding/reasoning mode available for:
-- architecture-sensitive refactors
-- multi-file feature work
-- database + app coordination
-- debugging complex regressions
+Preserve the ProFixIQ premium dark industrial/glass visual direction and existing branding system.
 
-Use faster/lighter modes for:
-- repetitive cleanup
-- dead import removal
-- simple typing fixes
-- low-risk formatting or consistency tasks
+- Reuse shared shells, cards, controls, dialogs, and primitives.
+- Use existing theme or brand variables instead of hardcoded colors where available.
+- Keep new surfaces visually cohesive with ProFixIQ.
+- Preserve keyboard and touch usability.
+- Test desktop, tablet, and mobile implications.
+- Avoid forced table widths that create unnecessary tablet overflow.
+- Ensure action areas wrap predictably.
+- Do not use a toast as the only explanation for a durable workflow conflict when an inline advisory or acknowledgement flow is more appropriate.
+- Avoid duplicate warnings for the same condition.
+- Keep user-facing language operational and understandable; do not expose internal schema or implementation terminology unnecessarily.
+
+For dashboard work, preserve the widget-oriented architecture and keep business logic out of layout containers.
+
+For report, PDF, invoice, and export work, verify branding and ensure reviewed/visible state is consistent with the UI's source of truth.
+
+## TypeScript and Code Quality Rules
+
+Maintain strict typing.
+
+Avoid:
+
+- `any`
+- unsafe casts used to suppress real mismatches
+- non-null assertions without a proven invariant
+- silent fallback values that hide corrupted or missing state
+- swallowed errors
+- duplicated domain logic
+- speculative abstractions
+- dead compatibility code without confirmed consumers
+
+When types and runtime schema disagree, investigate the schema and migration history. Do not cast around the discrepancy.
+
+Prefer explicit domain helpers for repeated business invariants.
+
+Do not refactor unrelated code solely for style.
+
+## Testing Requirements
+
+Every bug fix should include focused regression coverage when the behavior is reasonably testable.
+
+Tests should prove the repaired invariant, not merely snapshot the implementation.
+
+Depending on the change, test:
+
+- authorized success
+- unauthorized or cross-tenant denial
+- invalid input
+- replay/idempotency
+- partial state
+- legacy/canonical delegation
+- status transition behavior
+- mismatch versus availability distinctions
+- existing-data migration compatibility
+- mobile/tablet interaction logic where practical
+
+Before completion, run the narrowest useful tests first, then broader validation.
+
+Default completion validation for meaningful code changes:
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+```
+
+Use `pnpm check` when appropriate.
+
+Run `pnpm audit:api-routes` when API route structure or canonicalization is affected.
+
+If the full suite is impractical or blocked, run the strongest relevant subset and state exactly what was not verified.
+
+Do not describe pre-existing failures as caused by the task. Do not describe task-introduced failures as pre-existing.
+
+## Environment Variables and External Configuration
+
+Do not invent environment-variable names.
+
+Before requiring an environment variable:
+
+- search the repository for the exact variable
+- inspect existing configuration helpers and examples
+- determine server-only versus client exposure requirements
+- determine whether Vercel, Supabase, Stripe, or another service requires a matching external configuration step
+
+Never output secret values.
+
+At task completion, explicitly say either:
+
+- `Environment variables: none required`
+
+or list the exact variable names and where the user must configure them.
+
+Do the same for migrations and manual deployment actions.
+
+## Code Review Instructions
+
+When reviewing a PR, prioritize correctness and production risk over style.
+
+Continue looking for additional meaningful findings until no new material issues are found.
+
+Specifically inspect for:
+
+- cross-shop or cross-organization data leakage
+- missing authentication
+- missing resource authorization
+- client-controlled tenant scope
+- unsafe service-role access
+- incorrect RLS assumptions
+- forged storage paths
+- non-idempotent mutations
+- webhook or worker replay bugs
+- duplicate side effects
+- partial failure leaving contradictory state
+- unsafe migrations or missing backfills
+- schema/type drift
+- duplicate canonical and legacy systems
+- status normalization regressions
+- work-order versus line-state confusion
+- approval lifecycle regressions
+- parts availability versus compatibility conflation
+- audit acknowledgement that is displayed but not persisted
+- UI/API/database flow mismatches
+- stale exports or reports using a different source of truth
+- tablet/mobile layout regressions
+- environment-variable requirements omitted from the PR summary
+- tests that do not actually cover the claimed behavior
+- claims that validation passed without evidence in the task execution
+
+Do not manufacture low-value style findings to appear exhaustive. Findings should identify a concrete correctness, security, data-integrity, maintainability, or user-workflow risk.
+
+## Definition of Done
+
+A task is done only when:
+
+1. The root cause or requested behavior is understood.
+2. Relevant call sites and downstream consumers were inspected.
+3. The smallest complete fix was implemented.
+4. Tenant isolation and authorization remain correct.
+5. Database changes are migration-safe and existing-data-safe.
+6. Retry/replay/idempotency concerns were evaluated where relevant.
+7. Focused regression coverage was added or a specific reason was given why it was not practical.
+8. Relevant validation commands were actually run.
+9. The final diff was reviewed for unrelated edits, duplicate logic, dead code, and schema drift.
+10. Required migrations, environment variables, external configuration, deployment actions, and unverified risks are clearly reported.
+
+## Required Final Response Format
+
+Unless the user explicitly requests another format, finish with:
+
+### Root cause
+Explain the actual cause. For feature work, state the prior limitation or missing capability.
+
+### What changed
+Summarize the implementation and important flow changes.
+
+### Why this is safe
+Explain tenant, authorization, data-integrity, compatibility, and idempotency considerations relevant to the task.
+
+### Files changed
+List the exact files changed.
+
+### Validation
+List only commands actually run and their actual result.
+
+### Database
+State migrations/backfills required, or `Database: no migration required`.
+
+### Environment variables
+State exact required variable names and configuration locations, or `Environment variables: none required`.
+
+### Manual/deployment actions
+List any Supabase, Vercel, Stripe, provider, or deployment steps, or state `Manual actions: none`.
+
+### Remaining risks or unverified assumptions
+Be explicit. If none are known, say so.
+
+## Working Style
+
+Prefer autonomous completion.
+
+Ask a question only when missing information creates a meaningful risk of implementing the wrong behavior or performing an unsafe action.
+
+If the repository can answer the question, inspect the repository instead of asking the user.
+
+Prefer exact fixes over theory, durable relationships over copied state, canonical paths over compatibility drift, and evidence-backed completion over confident claims.
