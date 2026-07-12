@@ -20,13 +20,17 @@ alter table public.work_order_parts
   add column if not exists mismatch_acknowledged_at timestamptz,
   add column if not exists mismatch_acknowledged_by uuid,
   add column if not exists mismatch_warning_reason text,
-  add column if not exists updated_at timestamptz default now() not null;
+  add column if not exists updated_at timestamptz default now() not null,
+  add column if not exists is_active boolean default true not null,
+  add column if not exists replaced_from_work_order_part_id uuid,
+  add column if not exists replaced_by_work_order_part_id uuid;
 
 alter table public.work_order_part_allocations
   add column if not exists created_at timestamptz default now() not null,
   add column if not exists shop_id uuid,
   add column if not exists work_order_id uuid,
-  add column if not exists source_request_item_id uuid;
+  add column if not exists source_request_item_id uuid,
+  add column if not exists work_order_part_id uuid;
 
 update public.work_order_part_allocations a
 set work_order_id = wl.work_order_id
@@ -42,17 +46,16 @@ create index if not exists idx_work_order_parts_source_request_item
   on public.work_order_parts(source_parts_request_item_id)
   where source_parts_request_item_id is not null;
 
-create unique index if not exists uq_work_order_parts_source_request_item
+create unique index if not exists uq_work_order_parts_active_source_request_item
   on public.work_order_parts(source_parts_request_item_id)
-  where source_parts_request_item_id is not null;
+  where source_parts_request_item_id is not null and is_active;
 
-create unique index if not exists uq_wopa_source_request_item_part_location
-  on public.work_order_part_allocations(source_request_item_id, part_id, location_id)
-  where source_request_item_id is not null;
+create index if not exists idx_work_order_parts_replacement_links
+  on public.work_order_parts(replaced_from_work_order_part_id, replaced_by_work_order_part_id);
 
-create unique index if not exists uq_stock_moves_reference_reason
-  on public.stock_moves(reference_kind, reference_id, reason)
-  where reference_kind is not null and reference_id is not null;
+create unique index if not exists uq_wopa_work_order_part_location
+  on public.work_order_part_allocations(work_order_part_id, location_id)
+  where work_order_part_id is not null;
 
 do $$ begin
   if not exists (select 1 from pg_constraint where conname = 'work_order_parts_source_request_item_id_fkey' and conrelid = 'public.work_order_parts'::regclass) then
@@ -73,6 +76,9 @@ do $$ begin
 end $$;
 
 do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'work_order_part_allocations_work_order_part_id_fkey' and conrelid = 'public.work_order_part_allocations'::regclass) then
+    alter table public.work_order_part_allocations add constraint work_order_part_allocations_work_order_part_id_fkey foreign key (work_order_part_id) references public.work_order_parts(id) on delete set null;
+  end if;
   if not exists (select 1 from pg_constraint where conname = 'work_order_part_allocations_source_request_item_id_fkey' and conrelid = 'public.work_order_part_allocations'::regclass) then
     alter table public.work_order_part_allocations add constraint work_order_part_allocations_source_request_item_id_fkey foreign key (source_request_item_id) references public.part_request_items(id) on delete set null;
   end if;
@@ -129,14 +135,14 @@ begin
     part_number_snapshot, quantity_requested, quantity_allocated, quantity_received, quantity_consumed,
     unit_cost_snapshot, unit_sell_price_snapshot, lifecycle_status, updated_at
   ) values (
-    v_line.work_order_id, v_item.work_order_line_id, v_item.shop_id, v_item.part_id, v_qty::integer,
+    v_line.work_order_id, v_item.work_order_line_id, v_item.shop_id, v_item.part_id, v_qty,
     coalesce(v_item.unit_price, v_item.quoted_price), coalesce(v_item.unit_price, v_item.quoted_price, 0) * v_qty,
     v_item.request_id, v_item.id, coalesce(v_part.name, v_item.description), coalesce(v_part.supplier, v_item.vendor),
     v_part.part_number, v_qty, 0, coalesce(v_item.qty_received, 0), coalesce(v_item.qty_consumed, 0),
     coalesce(v_item.unit_cost, v_part.cost), coalesce(v_item.unit_price, v_item.quoted_price, v_part.price),
     'requested', now()
   )
-  on conflict (source_parts_request_item_id) where source_parts_request_item_id is not null do update set
+  on conflict (source_parts_request_item_id) where source_parts_request_item_id is not null and is_active do update set
     work_order_id = excluded.work_order_id,
     work_order_line_id = excluded.work_order_line_id,
     shop_id = excluded.shop_id,
@@ -150,13 +156,12 @@ begin
 
   if p_create_stock_move then
     insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id)
-    values (v_item.part_id, p_location_id, -v_qty, 'wo_allocate', 'part_request_item', v_item.id, auth.uid(), v_item.shop_id)
-    on conflict (reference_kind, reference_id, reason) where reference_kind is not null and reference_id is not null do update set id = public.stock_moves.id
+    values (v_item.part_id, p_location_id, 0, 'wo_allocate', 'work_order_part', v_wop_id, auth.uid(), v_item.shop_id)
     returning id into v_move_id;
 
-    insert into public.work_order_part_allocations(work_order_line_id, work_order_id, shop_id, part_id, location_id, qty, unit_cost, stock_move_id, source_request_item_id)
-    values (v_item.work_order_line_id, v_line.work_order_id, v_item.shop_id, v_item.part_id, p_location_id, v_qty, coalesce(v_item.unit_cost, v_part.cost, 0), v_move_id, v_item.id)
-    on conflict (source_request_item_id, part_id, location_id) where source_request_item_id is not null do update set
+    insert into public.work_order_part_allocations(work_order_line_id, work_order_id, shop_id, part_id, location_id, qty, unit_cost, stock_move_id, source_request_item_id, work_order_part_id)
+    values (v_item.work_order_line_id, v_line.work_order_id, v_item.shop_id, v_item.part_id, p_location_id, v_qty, coalesce(v_item.unit_cost, v_part.cost, 0), v_move_id, v_item.id, v_wop_id)
+    on conflict (work_order_part_id, location_id) where work_order_part_id is not null do update set
       qty = excluded.qty,
       stock_move_id = coalesce(public.work_order_part_allocations.stock_move_id, excluded.stock_move_id),
       work_order_id = excluded.work_order_id,

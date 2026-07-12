@@ -9,6 +9,7 @@ describe("parts lifecycle completion SQL", () => {
     expect(sql).toContain("add column if not exists idempotency_key text");
     expect(sql).toContain("uq_stock_moves_shop_idempotency_key");
     expect(sql).toContain("drop index if exists public.uq_stock_moves_reference_reason");
+    expect(sql).toContain("add column if not exists lifecycle_quantity numeric");
   });
 
   it("keeps allocation/release out of physical on-hand", () => {
@@ -44,6 +45,10 @@ describe("parts lifecycle read-only audit", () => {
     expect(audit).toContain("duplicate_work_order_parts_per_source_request_item");
     expect(audit).toContain("allocated_greater_than_on_hand");
     expect(audit).toContain("duplicate_movement_idempotency_keys");
+    expect(audit).toContain("allocations_work_order_part_scope_mismatch");
+    expect(audit).toContain("zero_quantity_reservation_audit_missing_lifecycle_quantity");
+    expect(audit).toContain("work_order_part_snapshot_inconsistent_with_part");
+    expect(audit).toContain("replacement_link_cycles");
     expect(audit).not.toMatch(/\b(insert|update|delete|alter|drop|create)\b/i);
   });
 });

@@ -8,9 +8,9 @@ describe("parts request workflow repair migration", () => {
     expect(migration).toContain("source_parts_request_item_id");
     expect(migration).toContain("source_parts_request_id");
     expect(migration).toContain("work_order_line_id");
-    expect(migration).toContain("uq_work_order_parts_source_request_item");
-    expect(migration).toContain("uq_wopa_source_request_item_part_location");
-    expect(migration).toContain("uq_stock_moves_reference_reason");
+    expect(migration).toContain("uq_work_order_parts_active_source_request_item");
+    expect(migration).toContain("uq_wopa_work_order_part_location");
+    expect(migration).toContain("work_order_part_id");
   });
 
   it("uses the existing canonical work-order parts, allocations, and stock movement tables", () => {
@@ -22,7 +22,8 @@ describe("parts request workflow repair migration", () => {
 
   it("keeps allocation idempotent and does not treat stock absence as mismatch", () => {
     expect(migration).toContain("on conflict (source_parts_request_item_id)");
-    expect(migration).toContain("on conflict (reference_kind, reference_id, reason)");
+    expect(migration).toContain("on conflict (work_order_part_id, location_id)");
+    expect(migration).not.toContain("on conflict (reference_kind, reference_id, reason)");
     expect(migration).toContain("'wo_allocate'");
     expect(migration).not.toMatch(/no stock.*mismatch/i);
   });

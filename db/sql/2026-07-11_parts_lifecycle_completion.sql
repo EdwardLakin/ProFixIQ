@@ -8,7 +8,8 @@ alter table public.stock_moves
   add column if not exists work_order_part_id uuid,
   add column if not exists part_request_item_id uuid,
   add column if not exists purchase_order_line_id uuid,
-  add column if not exists metadata jsonb default '{}'::jsonb not null;
+  add column if not exists metadata jsonb default '{}'::jsonb not null,
+  add column if not exists lifecycle_quantity numeric(12,2);
 
 create unique index if not exists uq_stock_moves_shop_idempotency_key
   on public.stock_moves(shop_id, idempotency_key)
@@ -17,6 +18,29 @@ create unique index if not exists uq_stock_moves_shop_idempotency_key
 -- Replace the Phase 1 broad uniqueness rule. Keeping it would block legitimate
 -- second receipts/releases/issues against the same source and reason.
 drop index if exists public.uq_stock_moves_reference_reason;
+
+alter table public.work_order_parts
+  add column if not exists is_active boolean default true not null,
+  add column if not exists replaced_from_work_order_part_id uuid,
+  add column if not exists replaced_by_work_order_part_id uuid;
+
+alter table public.work_order_part_allocations
+  add column if not exists work_order_part_id uuid;
+
+update public.work_order_part_allocations a
+set work_order_part_id = wop.id
+from public.work_order_parts wop
+where a.work_order_part_id is null
+  and a.source_request_item_id = wop.source_parts_request_item_id
+  and a.part_id = wop.part_id
+  and wop.is_active
+  and not exists (
+    select 1 from public.work_order_parts w2
+    where w2.source_parts_request_item_id = a.source_request_item_id
+      and w2.part_id = a.part_id
+      and w2.is_active
+      and w2.id <> wop.id
+  );
 
 alter table public.purchase_order_lines
   add column if not exists part_request_item_id uuid,
@@ -31,6 +55,14 @@ create index if not exists idx_purchase_order_lines_work_order_part_id
   on public.purchase_order_lines(work_order_part_id)
   where work_order_part_id is not null;
 
+create unique index if not exists uq_work_order_parts_active_source_request_item
+  on public.work_order_parts(source_parts_request_item_id)
+  where source_parts_request_item_id is not null and is_active;
+
+create unique index if not exists uq_wopa_work_order_part_location
+  on public.work_order_part_allocations(work_order_part_id, location_id)
+  where work_order_part_id is not null;
+
 create index if not exists idx_stock_moves_work_order_part_id
   on public.stock_moves(work_order_part_id)
   where work_order_part_id is not null;
@@ -41,6 +73,15 @@ do $$ begin
   end if;
   if not exists (select 1 from pg_constraint where conname = 'purchase_order_lines_work_order_part_id_fkey' and conrelid = 'public.purchase_order_lines'::regclass) then
     alter table public.purchase_order_lines add constraint purchase_order_lines_work_order_part_id_fkey foreign key (work_order_part_id) references public.work_order_parts(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'work_order_part_allocations_work_order_part_id_fkey' and conrelid = 'public.work_order_part_allocations'::regclass) then
+    alter table public.work_order_part_allocations add constraint work_order_part_allocations_work_order_part_id_fkey foreign key (work_order_part_id) references public.work_order_parts(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'work_order_parts_replaced_from_fkey' and conrelid = 'public.work_order_parts'::regclass) then
+    alter table public.work_order_parts add constraint work_order_parts_replaced_from_fkey foreign key (replaced_from_work_order_part_id) references public.work_order_parts(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'work_order_parts_replaced_by_fkey' and conrelid = 'public.work_order_parts'::regclass) then
+    alter table public.work_order_parts add constraint work_order_parts_replaced_by_fkey foreign key (replaced_by_work_order_part_id) references public.work_order_parts(id) on delete set null;
   end if;
   if not exists (select 1 from pg_constraint where conname = 'stock_moves_work_order_part_id_fkey' and conrelid = 'public.stock_moves'::regclass) then
     alter table public.stock_moves add constraint stock_moves_work_order_part_id_fkey foreign key (work_order_part_id) references public.work_order_parts(id) on delete set null;
@@ -132,9 +173,10 @@ begin
   if v_line.shop_id is distinct from v_item.shop_id then raise exception 'Work-order line belongs to a different shop.'; end if;
   if v_request.work_order_id is not null and v_request.work_order_id <> v_line.work_order_id then raise exception 'Work-order line does not belong to the request work order.'; end if;
   v_qty := coalesce(v_item.qty_requested, v_item.qty, 0);
-  insert into public.work_order_parts(work_order_id, work_order_line_id, shop_id, part_id, quantity, unit_price, total_price, source_parts_request_id, source_parts_request_item_id, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_requested, quantity_received, quantity_consumed, unit_cost_snapshot, unit_sell_price_snapshot, lifecycle_status, updated_at)
-  values (v_line.work_order_id, v_item.work_order_line_id, v_item.shop_id, v_item.part_id, v_qty::integer, coalesce(v_item.unit_price, v_item.quoted_price, v_part.price), coalesce(v_item.unit_price, v_item.quoted_price, v_part.price, 0) * v_qty, v_item.request_id, v_item.id, coalesce(v_part.name, v_item.description), coalesce(v_part.supplier, v_item.vendor), v_part.part_number, v_qty, coalesce(v_item.qty_received,0), coalesce(v_item.qty_consumed,0), coalesce(v_item.unit_cost, v_part.cost), coalesce(v_item.unit_price, v_item.quoted_price, v_part.price), 'requested', now())
-  on conflict (source_parts_request_item_id) where source_parts_request_item_id is not null do update set work_order_id=excluded.work_order_id, work_order_line_id=excluded.work_order_line_id, shop_id=excluded.shop_id, part_id=excluded.part_id, quantity=excluded.quantity, quantity_requested=excluded.quantity_requested, updated_at=now()
+  select id into v_wop from public.work_order_parts where source_parts_request_item_id = p_request_item_id and is_active for update;
+  if found then return v_wop; end if;
+  insert into public.work_order_parts(work_order_id, work_order_line_id, shop_id, part_id, quantity, unit_price, total_price, source_parts_request_id, source_parts_request_item_id, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_requested, quantity_received, quantity_consumed, unit_cost_snapshot, unit_sell_price_snapshot, lifecycle_status, updated_at, is_active)
+  values (v_line.work_order_id, v_item.work_order_line_id, v_item.shop_id, v_item.part_id, v_qty, coalesce(v_item.unit_price, v_item.quoted_price, v_part.price), coalesce(v_item.unit_price, v_item.quoted_price, v_part.price, 0) * v_qty, v_item.request_id, v_item.id, coalesce(v_part.name, v_item.description), coalesce(v_part.supplier, v_item.vendor), v_part.part_number, v_qty, coalesce(v_item.qty_received,0), coalesce(v_item.qty_consumed,0), coalesce(v_item.unit_cost, v_part.cost), coalesce(v_item.unit_price, v_item.quoted_price, v_part.price), 'requested', now(), true)
   returning id into v_wop;
   return v_wop;
 end $$;
@@ -153,11 +195,11 @@ begin
   if v_wop.part_id is null then raise exception 'Work-order part has no selected part.'; end if;
   v_available := public.parts_available(v_wop.shop_id, v_wop.part_id, p_location_id);
   if v_available < p_qty then raise exception 'Insufficient available stock. Available %, requested %.', v_available, p_qty; end if;
-  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, metadata)
-  values (v_wop.part_id, p_location_id, 0, 'wo_allocate', 'work_order_part', v_wop.id, auth.uid(), v_wop.shop_id, p_idempotency_key, v_wop.id, p_request_item_id, jsonb_build_object('qty_reserved', p_qty, 'operation', 'allocate')) returning id into v_move_id;
-  insert into public.work_order_part_allocations(work_order_line_id, work_order_id, shop_id, part_id, location_id, qty, unit_cost, stock_move_id, source_request_item_id)
-  values (v_wop.work_order_line_id, v_wop.work_order_id, v_wop.shop_id, v_wop.part_id, p_location_id, p_qty, coalesce(v_wop.unit_cost_snapshot,0), v_move_id, p_request_item_id)
-  on conflict (source_request_item_id, part_id, location_id) where source_request_item_id is not null do update set qty = public.work_order_part_allocations.qty + excluded.qty, stock_move_id = excluded.stock_move_id
+  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, metadata, lifecycle_quantity)
+  values (v_wop.part_id, p_location_id, 0, 'wo_allocate', 'work_order_part', v_wop.id, auth.uid(), v_wop.shop_id, p_idempotency_key, v_wop.id, p_request_item_id, jsonb_build_object('qty_reserved', p_qty, 'operation', 'allocate'), p_qty) returning id into v_move_id;
+  insert into public.work_order_part_allocations(work_order_line_id, work_order_id, shop_id, part_id, location_id, qty, unit_cost, stock_move_id, source_request_item_id, work_order_part_id)
+  values (v_wop.work_order_line_id, v_wop.work_order_id, v_wop.shop_id, v_wop.part_id, p_location_id, p_qty, coalesce(v_wop.unit_cost_snapshot,0), v_move_id, p_request_item_id, v_wop.id)
+  on conflict (work_order_part_id, location_id) where work_order_part_id is not null do update set qty = public.work_order_part_allocations.qty + excluded.qty, stock_move_id = excluded.stock_move_id
   returning id, qty into v_alloc_id, v_new_alloc;
   update public.part_request_items set qty_reserved = coalesce(qty_reserved,0) + p_qty, status='reserved', updated_at=now() where id=p_request_item_id;
   update public.work_order_parts set quantity_allocated = coalesce(quantity_allocated,0) + p_qty, lifecycle_status='reserved', updated_at=now() where id=v_wop.id;
@@ -178,12 +220,12 @@ begin
   if found then return coalesce(v_existing.metadata,'{}'::jsonb) || jsonb_build_object('ok', true, 'idempotent', true, 'stock_move_id', v_existing.id); end if;
   select * into v_wop from public.work_order_parts where source_parts_request_item_id=p_request_item_id for update;
   if not found then raise exception 'Work-order part not found.'; end if;
-  select * into v_alloc from public.work_order_part_allocations where source_request_item_id=p_request_item_id and part_id=v_wop.part_id and location_id=p_location_id for update;
+  select * into v_alloc from public.work_order_part_allocations where work_order_part_id=v_wop.id and location_id=p_location_id for update;
   if not found or v_alloc.qty <= 0 then raise exception 'No active allocation to release.'; end if;
   if v_alloc.qty < p_qty then raise exception 'Cannot release more than active allocation.'; end if;
   v_release := p_qty;
-  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, metadata)
-  values (v_wop.part_id, p_location_id, 0, 'wo_release', 'work_order_part', v_wop.id, auth.uid(), v_wop.shop_id, p_idempotency_key, v_wop.id, p_request_item_id, jsonb_build_object('qty_released', v_release, 'operation', 'release')) returning id into v_move_id;
+  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, metadata, lifecycle_quantity)
+  values (v_wop.part_id, p_location_id, 0, 'wo_release', 'work_order_part', v_wop.id, auth.uid(), v_wop.shop_id, p_idempotency_key, v_wop.id, p_request_item_id, jsonb_build_object('qty_released', v_release, 'operation', 'release'), v_release) returning id into v_move_id;
   update public.work_order_part_allocations set qty = qty - v_release, stock_move_id = v_move_id where id = v_alloc.id;
   delete from public.work_order_part_allocations where id = v_alloc.id and qty <= 0;
   update public.part_request_items set qty_reserved = greatest(coalesce(qty_reserved,0) - v_release, 0), updated_at=now() where id=p_request_item_id;
@@ -235,8 +277,8 @@ begin
     select coalesce(sum(qty), coalesce(v_item.qty_requested, v_item.qty, 0)) into v_ordered_limit from public.purchase_order_lines where part_request_item_id=p_request_item_id;
     if coalesce(v_item.qty_received,0) + p_qty > greatest(v_ordered_limit, coalesce(v_item.qty_requested, v_item.qty,0)) then raise exception 'Receipt exceeds requested quantity.'; end if;
   end if;
-  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, purchase_order_line_id, metadata)
-  values (v_wop.part_id, p_location_id, p_qty, 'receive', case when p_po_line_id is null then 'part_request_item' else 'purchase_order_line' end, coalesce(p_po_line_id, p_request_item_id), auth.uid(), v_wop.shop_id, v_key, v_wop.id, p_request_item_id, p_po_line_id, jsonb_build_object('qty_received', p_qty, 'operation', 'receive')) returning id into v_move_id;
+  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, purchase_order_line_id, metadata, lifecycle_quantity)
+  values (v_wop.part_id, p_location_id, p_qty, 'receive', case when p_po_line_id is null then 'part_request_item' else 'purchase_order_line' end, coalesce(p_po_line_id, p_request_item_id), auth.uid(), v_wop.shop_id, v_key, v_wop.id, p_request_item_id, p_po_line_id, jsonb_build_object('qty_received', p_qty, 'operation', 'receive'), p_qty) returning id into v_move_id;
   update public.part_request_items set qty_received=coalesce(qty_received,0)+p_qty, location_id=coalesce(location_id,p_location_id), unit_cost=coalesce(p_unit_cost, unit_cost), status=case when coalesce(qty_received,0)+p_qty >= coalesce(qty_requested, qty,0) then 'received' else 'partially_received' end, updated_at=now() where id=p_request_item_id returning qty_received into v_received_total;
   update public.work_order_parts set quantity_received=coalesce(quantity_received,0)+p_qty, unit_cost_snapshot=coalesce(p_unit_cost, unit_cost_snapshot), updated_at=now() where id=v_wop.id;
   perform public.parts_reconcile_work_order_part(v_wop.id);
@@ -255,11 +297,11 @@ begin
   if found then return coalesce(v_existing.metadata,'{}'::jsonb) || jsonb_build_object('ok', true, 'idempotent', true, 'stock_move_id', v_existing.id); end if;
   if coalesce(v_wop.quantity_allocated,0) < p_qty then raise exception 'Cannot issue more than allocated quantity.'; end if;
   if public.parts_on_hand(v_wop.shop_id, v_wop.part_id, p_location_id) < p_qty then raise exception 'Cannot issue more than on-hand quantity.'; end if;
-  select * into v_alloc from public.work_order_part_allocations where source_request_item_id=v_wop.source_parts_request_item_id and part_id=v_wop.part_id and location_id=p_location_id for update;
+  select * into v_alloc from public.work_order_part_allocations where work_order_part_id=v_wop.id and location_id=p_location_id for update;
   if not found or v_alloc.qty < p_qty then raise exception 'Allocation not found or insufficient for issue.'; end if;
   v_item_id := v_wop.source_parts_request_item_id;
-  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, metadata)
-  values (v_wop.part_id, p_location_id, -p_qty, 'consume', 'work_order_part', v_wop.id, auth.uid(), v_wop.shop_id, p_idempotency_key, v_wop.id, v_item_id, jsonb_build_object('qty_issued', p_qty, 'operation', 'issue')) returning id into v_move_id;
+  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, metadata, lifecycle_quantity)
+  values (v_wop.part_id, p_location_id, -p_qty, 'consume', 'work_order_part', v_wop.id, auth.uid(), v_wop.shop_id, p_idempotency_key, v_wop.id, v_item_id, jsonb_build_object('qty_issued', p_qty, 'operation', 'issue'), p_qty) returning id into v_move_id;
   update public.work_order_part_allocations set qty=qty-p_qty, stock_move_id=v_move_id where id=v_alloc.id;
   delete from public.work_order_part_allocations where id=v_alloc.id and qty<=0;
   update public.work_order_parts set quantity_allocated=greatest(coalesce(quantity_allocated,0)-p_qty,0), quantity_consumed=coalesce(quantity_consumed,0)+p_qty, updated_at=now() where id=v_wop.id;
@@ -279,8 +321,8 @@ begin
   select * into v_existing from public.stock_moves where shop_id=v_wop.shop_id and idempotency_key=p_idempotency_key;
   if found then return coalesce(v_existing.metadata,'{}'::jsonb) || jsonb_build_object('ok', true, 'idempotent', true, 'stock_move_id', v_existing.id); end if;
   if coalesce(v_wop.quantity_consumed,0) - coalesce(v_wop.quantity_returned,0) < p_qty then raise exception 'Cannot return more than issued and unreturned quantity.'; end if;
-  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, metadata)
-  values (v_wop.part_id, p_location_id, p_qty, 'return', 'work_order_part', v_wop.id, auth.uid(), v_wop.shop_id, p_idempotency_key, v_wop.id, v_wop.source_parts_request_item_id, jsonb_build_object('qty_returned', p_qty, 'operation', 'return_to_stock')) returning id into v_move_id;
+  insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, metadata, lifecycle_quantity)
+  values (v_wop.part_id, p_location_id, p_qty, 'return', 'work_order_part', v_wop.id, auth.uid(), v_wop.shop_id, p_idempotency_key, v_wop.id, v_wop.source_parts_request_item_id, jsonb_build_object('qty_returned', p_qty, 'operation', 'return_to_stock'), p_qty) returning id into v_move_id;
   update public.work_order_parts set quantity_returned=coalesce(quantity_returned,0)+p_qty, updated_at=now() where id=v_wop.id;
   perform public.parts_reconcile_work_order_part(v_wop.id);
   return jsonb_build_object('ok', true, 'idempotent', false, 'work_order_part_id', v_wop.id, 'stock_move_id', v_move_id, 'returned_qty', p_qty, 'on_hand_after', public.parts_on_hand(v_wop.shop_id, v_wop.part_id, p_location_id));
@@ -293,7 +335,7 @@ begin
   if nullif(trim(p_idempotency_key),'') is null then raise exception 'idempotency_key is required.'; end if;
   select * into v_wop from public.work_order_parts where source_parts_request_item_id=p_request_item_id for update;
   if not found then raise exception 'Work-order part not found.'; end if;
-  for v_alloc in select * from public.work_order_part_allocations where source_request_item_id=p_request_item_id for update loop
+  for v_alloc in select * from public.work_order_part_allocations where work_order_part_id=v_wop.id for update loop
     v_key := p_idempotency_key || ':release:' || v_alloc.id::text;
     perform public.parts_release_allocation(p_request_item_id, v_alloc.location_id, v_alloc.qty, v_key);
     v_released := v_released + v_alloc.qty;
@@ -317,11 +359,13 @@ begin
   v_had_old := found;
   if v_had_old then
     perform public.parts_cancel_request_item(p_request_item_id, p_idempotency_key || ':cancel-old');
-    update public.work_order_parts set lifecycle_status='replaced', updated_at=now() where id=v_old.id and quantity_consumed = 0;
+    update public.work_order_parts set lifecycle_status='replaced', is_active=false, updated_at=now() where id=v_old.id and quantity_consumed = 0;
   end if;
   update public.part_request_items set part_id=p_new_part_id, status='requested', qty_reserved=0, updated_at=now() where id=p_request_item_id;
-  update public.work_order_parts set part_id=p_new_part_id, description_snapshot=v_part.name, manufacturer_snapshot=v_part.supplier, part_number_snapshot=v_part.part_number, quantity_allocated=0, quantity_consumed=coalesce(quantity_consumed,0), quantity_cancelled=0, lifecycle_status='requested', updated_at=now() where source_parts_request_item_id=p_request_item_id and coalesce(quantity_consumed,0)=0;
+  -- Create a fresh active work_order_parts row; do not rewrite old snapshots.
   v_result := public.parts_allocate_request_item(p_request_item_id, p_location_id, p_qty, p_idempotency_key || ':allocate-new');
+  update public.work_order_parts set replaced_from_work_order_part_id = case when v_had_old then v_old.id else null end where source_parts_request_item_id=p_request_item_id and is_active;
+  if v_had_old then update public.work_order_parts set replaced_by_work_order_part_id = (select id from public.work_order_parts where source_parts_request_item_id=p_request_item_id and is_active limit 1) where id=v_old.id; end if;
   return v_result || jsonb_build_object('ok', true, 'replaced_part_id', case when v_had_old then v_old.part_id else null end, 'new_part_id', p_new_part_id);
 end $$;
 
@@ -355,3 +399,24 @@ begin
   v_key := coalesce(nullif(trim(p_idempotency_key),''), 'receive-request-item:'||p_item_id::text||':'||coalesce(v_line_id::text, 'direct')||':'||p_location_id::text||':'||p_qty::text);
   return public.parts_receive_request_item(p_item_id, p_location_id, p_qty, v_line_id, null, v_key);
 end $$;
+
+
+-- Security hardening: lifecycle RPCs are callable by authenticated users only;
+-- each SECURITY DEFINER function validates shop/work-order scope internally and
+-- API routes additionally require canManageWorkOrders.
+revoke all on function public.parts_allocate_request_item(uuid, uuid, numeric, text) from public, anon;
+revoke all on function public.parts_release_allocation(uuid, uuid, numeric, text) from public, anon;
+revoke all on function public.parts_create_po_line_for_request(uuid, uuid, numeric, numeric, uuid, text) from public, anon;
+revoke all on function public.parts_receive_request_item(uuid, uuid, numeric, uuid, numeric, text) from public, anon;
+revoke all on function public.parts_issue_work_order_part(uuid, uuid, numeric, text) from public, anon;
+revoke all on function public.parts_return_to_stock(uuid, uuid, numeric, text) from public, anon;
+revoke all on function public.parts_cancel_request_item(uuid, text) from public, anon;
+revoke all on function public.parts_replace_request_item(uuid, uuid, uuid, numeric, text) from public, anon;
+grant execute on function public.parts_allocate_request_item(uuid, uuid, numeric, text) to authenticated, service_role;
+grant execute on function public.parts_release_allocation(uuid, uuid, numeric, text) to authenticated, service_role;
+grant execute on function public.parts_create_po_line_for_request(uuid, uuid, numeric, numeric, uuid, text) to authenticated, service_role;
+grant execute on function public.parts_receive_request_item(uuid, uuid, numeric, uuid, numeric, text) to authenticated, service_role;
+grant execute on function public.parts_issue_work_order_part(uuid, uuid, numeric, text) to authenticated, service_role;
+grant execute on function public.parts_return_to_stock(uuid, uuid, numeric, text) to authenticated, service_role;
+grant execute on function public.parts_cancel_request_item(uuid, text) to authenticated, service_role;
+grant execute on function public.parts_replace_request_item(uuid, uuid, uuid, numeric, text) to authenticated, service_role;
