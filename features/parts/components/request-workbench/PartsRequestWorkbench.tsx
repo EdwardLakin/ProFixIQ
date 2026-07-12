@@ -43,7 +43,7 @@ export function PartsRequestWorkbench({
   model: PartsRequestWorkbenchModel;
   onSaveItem?: (input: SaveItemInput) => Promise<void> | void;
   onUseInventory?: (itemId: string) => Promise<void> | void;
-  onAttachInventory?: (input: AttachInventoryInput) => Promise<void> | void;
+  onAttachInventory?: (input: AttachInventoryInput) => Promise<Partial<PartsRequestWorkbenchItem> | void> | Partial<PartsRequestWorkbenchItem> | void;
   onOrderItem?: (itemId: string) => Promise<void> | void;
   onAddToJob?: (item: PartsRequestWorkbenchItem) => Promise<void> | void;
   onSubmitOrder?: (itemId: string, input: OrderPartInput) => Promise<void> | void;
@@ -245,11 +245,26 @@ export function PartsRequestWorkbench({
 
           await onResetConflictOverride?.(activeItem.id);
 
-          await onAttachInventory?.({
+          const updated = await onAttachInventory?.({
             itemId: activeItem.id,
             partId: result.partId,
             warningAccepted: result.warningAccepted,
           });
+
+          if (updated) {
+            setItems((current) =>
+              current.map((item) =>
+                item.id === activeItem.id
+                  ? {
+                      ...item,
+                      ...updated,
+                      partId: updated.partId ?? result.partId,
+                      addedToWorkOrder: updated.addedToWorkOrder ?? item.addedToWorkOrder ?? false,
+                    }
+                  : item,
+              ),
+            );
+          }
 
           setSelectedInventoryPartId("");
           setInventoryQuery("");
