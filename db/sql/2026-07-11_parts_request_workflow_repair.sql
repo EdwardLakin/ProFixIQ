@@ -127,7 +127,13 @@ begin
     raise exception 'Work-order line does not belong to the request work order.';
   end if;
 
-  v_qty := coalesce(v_item.qty_requested, v_item.qty, 0);
+  v_qty := case
+    when coalesce(v_item.qty_requested, 0) > 0
+      then v_item.qty_requested
+    when coalesce(v_item.qty, 0) > 0
+      then v_item.qty
+    else 0
+  end;
 
   insert into public.work_order_parts(
     work_order_id, work_order_line_id, shop_id, part_id, quantity, unit_price, total_price,
