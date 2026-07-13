@@ -29,7 +29,7 @@ export function PartsRequestWorkbench({
   onUseInventory,
   onAttachInventory,
   onOrderItem,
-  onAddToJob,
+  onCommitPackage,
   onSubmitOrder,
   onReceiveItem,
   onOpenReceiveDrawer,
@@ -45,7 +45,7 @@ export function PartsRequestWorkbench({
   onUseInventory?: (itemId: string) => Promise<void> | void;
   onAttachInventory?: (input: AttachInventoryInput) => Promise<Partial<PartsRequestWorkbenchItem> | void> | Partial<PartsRequestWorkbenchItem> | void;
   onOrderItem?: (itemId: string) => Promise<void> | void;
-  onAddToJob?: (item: PartsRequestWorkbenchItem) => Promise<void> | void;
+  onCommitPackage?: () => Promise<void> | void;
   onSubmitOrder?: (itemId: string, input: OrderPartInput) => Promise<void> | void;
   onReceiveItem?: (itemId: string) => Promise<void> | void;
   onOpenReceiveDrawer?: (itemId: string) => Promise<void> | void;
@@ -164,6 +164,9 @@ export function PartsRequestWorkbench({
           const firstItem = items[0];
           if (firstItem) setActiveModal({ type: "order", itemId: firstItem.id });
         }}
+        onCommitPackage={onCommitPackage}
+        commitPackageDisabled={items.length === 0}
+        packageCommittedCount={model.packageCommittedCount}
       />
 
       <PartsRequestWorkbenchSummary items={items} />
@@ -177,7 +180,6 @@ export function PartsRequestWorkbench({
           setActiveModal({ type: "inventory", itemId });
           await onUseInventory?.(itemId);
         }}
-        onAddToJob={onAddToJob}
         onConfirmConflict={(itemId) => setActiveModal({ type: "confirmConflict", itemId })}
         onResetConflictOverride={onResetConflictOverride}
         onOrder={async (itemId) => {

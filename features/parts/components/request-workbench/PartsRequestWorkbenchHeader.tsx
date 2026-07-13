@@ -15,6 +15,9 @@ export function PartsRequestWorkbenchHeader({
   supplierOptions,
   onDefaultSupplierChange,
   onCreatePo,
+  onCommitPackage,
+  commitPackageDisabled,
+  packageCommittedCount,
 }: {
   requestLabel: string;
   status?: string | null;
@@ -27,6 +30,9 @@ export function PartsRequestWorkbenchHeader({
   supplierOptions: WorkbenchOption[];
   onDefaultSupplierChange?: (supplierId: string) => void;
   onCreatePo?: () => void;
+  onCommitPackage?: () => void;
+  commitPackageDisabled?: boolean;
+  packageCommittedCount?: number;
 }): JSX.Element {
   const meta = [
     workOrderCustomId ? `Work Order: ${workOrderCustomId}` : null,
@@ -76,6 +82,23 @@ export function PartsRequestWorkbenchHeader({
             </option>
           ))}
         </select>
+
+        {packageCommittedCount && packageCommittedCount > 0 ? (
+          <span className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+            {packageCommittedCount} saved to work order
+          </span>
+        ) : null}
+
+        {onCommitPackage ? (
+          <button
+            type="button"
+            onClick={onCommitPackage}
+            disabled={commitPackageDisabled}
+            className="rounded-lg border border-emerald-500/40 bg-emerald-600/85 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Save Parts Package to Work Order
+          </button>
+        ) : null}
 
         <button
           type="button"

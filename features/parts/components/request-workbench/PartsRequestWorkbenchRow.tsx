@@ -20,7 +20,6 @@ export function PartsRequestWorkbenchRow({
   onSave,
   onUseInventory,
   onOrder,
-  onAddToJob,
   onConfirmConflict,
   onReceive,
   onAddToStock,
@@ -35,7 +34,6 @@ export function PartsRequestWorkbenchRow({
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
   onOrder?: (itemId: string) => void;
-  onAddToJob?: (item: PartsRequestWorkbenchItem) => void;
   onConfirmConflict?: (itemId: string) => void;
   onReceive?: (itemId: string) => void;
   onAddToStock?: (itemId: string) => void;
@@ -155,7 +153,6 @@ export function PartsRequestWorkbenchRow({
               event.currentTarget.value = "";
               if (value === "save") onSave?.(item.id);
               if (value === "inventory") onUseInventory?.(item.id);
-              if (value === "add") onAddToJob?.(item);
               if (value === "order") onOrder?.(item.id);
               if (value === "receive") onReceive?.(item.id);
               if (value === "stock") onAddToStock?.(item.id);
@@ -166,7 +163,6 @@ export function PartsRequestWorkbenchRow({
           >
             <option value="">Actions</option>
             <option value="save">Save</option>
-            {hasSelectedPart && !isAddedToWorkOrder ? <option value="add">Add to Work Order</option> : null}
             <option value="inventory">{hasSelectedPart ? "Change Part" : "Attach Part"}</option>
             <option value="order">Order</option>
             {item.poId || item.qtyReceived ? <option value="receive">Receive</option> : null}
@@ -178,10 +174,9 @@ export function PartsRequestWorkbenchRow({
         ) : (
           <div className="flex min-w-[12rem] flex-wrap gap-1.5">
             <button type="button" className={action} onClick={() => onSave?.(item.id)}>Save</button>
-            {hasSelectedPart && !isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onAddToJob?.(item)}>Add to Work Order</button> : null}
             {!isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>{hasSelectedPart ? "Change Part" : "Attach Part"}</button> : null}
             {!isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button> : null}
-            {isAddedToWorkOrder ? <span className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-100">Added to work order</span> : null}
+            {isAddedToWorkOrder ? <span className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-100">Saved to work order</span> : null}
             {item.poId || item.qtyReceived ? <button type="button" className={action} onClick={() => onReceive?.(item.id)}>Receive</button> : null}
             <select
               className={action}

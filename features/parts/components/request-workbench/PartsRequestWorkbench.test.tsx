@@ -84,25 +84,25 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
   });
 
 
-  it("separates inventory selection from Add to Work Order", async () => {
+  it("separates inventory selection from the request-level package save", async () => {
     const user = userEvent.setup();
     const onAttachInventory = vi.fn(async () => ({ partId: "part-2", addedToWorkOrder: false }));
-    const onAddToJob = vi.fn();
+    const onCommitPackage = vi.fn();
 
-    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} onAddToJob={onAddToJob} />);
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} onCommitPackage={onCommitPackage} />);
 
     await user.click(screen.getByRole("button", { name: "Attach Part" }));
     await user.click(screen.getByLabelText(/ACDelco Oil Filter/i));
     await user.click(screen.getAllByRole("button", { name: "Attach Part" }).at(-1)!);
 
     await waitFor(() => expect(onAttachInventory).toHaveBeenCalledTimes(1));
-    expect(onAddToJob).not.toHaveBeenCalled();
+    expect(onCommitPackage).not.toHaveBeenCalled();
     expect(screen.getByText("Selected: ACDelco Oil Filter")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add to Work Order" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add to Work Order" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change Part" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Add to Work Order" }));
-    expect(onAddToJob).toHaveBeenCalledWith(expect.objectContaining({ id: "item-1", partId: "part-2", addedToWorkOrder: false }));
+    await user.click(screen.getByRole("button", { name: "Save Parts Package to Work Order" }));
+    expect(onCommitPackage).toHaveBeenCalledTimes(1);
   });
 
   it("hides Add to Work Order after the durable add state is loaded", () => {
@@ -111,7 +111,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
 
     render(<PartsRequestWorkbench model={attachedModel} />);
 
-    expect(screen.getByText("Added to work order")).toBeInTheDocument();
+    expect(screen.getByText("Saved to work order")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add to Work Order" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Change Part" })).not.toBeInTheDocument();
   });
@@ -119,7 +119,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
   it("does not perform Add to Work Order when mismatch acknowledgement is confirmed", async () => {
     const user = userEvent.setup();
     const onConfirmConflict = vi.fn();
-    const onAddToJob = vi.fn();
+    const onCommitPackage = vi.fn();
     const conflictModel = model("part-2");
     conflictModel.items[0] = {
       ...conflictModel.items[0],
@@ -127,13 +127,13 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
       insights: [{ id: "mismatch", kind: "possible_mismatch", label: "Possible mismatch" }],
     };
 
-    render(<PartsRequestWorkbench model={conflictModel} onConfirmConflict={onConfirmConflict} onAddToJob={onAddToJob} />);
+    render(<PartsRequestWorkbench model={conflictModel} onConfirmConflict={onConfirmConflict} onCommitPackage={onCommitPackage} />);
 
     await user.click(screen.getByRole("button", { name: "Attach anyway" }));
     await user.click(screen.getAllByRole("button", { name: "Attach anyway" }).at(-1)!);
 
     expect(onConfirmConflict).toHaveBeenCalledWith("item-1");
-    expect(onAddToJob).not.toHaveBeenCalled();
+    expect(onCommitPackage).not.toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalledWith("Mismatch acknowledged. You can add the selected part now.");
   });
 

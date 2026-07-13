@@ -2,8 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const inventoryRoute = readFileSync("app/api/parts/requests/items/[itemId]/inventory/route.ts", "utf8");
-const addRoute = readFileSync("app/api/parts/requests/items/[itemId]/add/route.ts", "utf8");
+const commitRoute = readFileSync("app/api/parts/requests/[requestId]/commit-package/route.ts", "utf8");
 const page = readFileSync("app/parts/requests/[id]/page.tsx", "utf8");
+const header = readFileSync("features/parts/components/request-workbench/PartsRequestWorkbenchHeader.tsx", "utf8");
 
 describe("parts request inventory lifecycle route separation", () => {
   it("keeps inventory selection scoped to persisting part_request_items.part_id", () => {
@@ -16,11 +17,13 @@ describe("parts request inventory lifecycle route separation", () => {
     expect(inventoryRoute).not.toContain("work_order_line_id:");
   });
 
-  it("keeps Add to Work Order on the canonical add route and downstream side effects", () => {
-    expect(addRoute).toContain("upsert_part_allocation_from_request_item");
-    expect(page).toContain("/api/parts/requests/items/${itemId}/add");
-    expect(page).toContain("/api/menu-items/upsert-from-line");
-    expect(page).toContain("Part added to work order.");
+  it("uses a request-level package commit without allocation or menu learning", () => {
+    expect(commitRoute).toContain("parts_ensure_work_order_part");
+    expect(commitRoute).not.toContain("upsert_part_allocation_from_request_item");
+    expect(commitRoute).not.toContain("upsert-from-line");
+    expect(page).toContain("/api/parts/requests/${requestId}/commit-package");
+    expect(header).toContain("Save Parts Package to Work Order");
+    expect(page).not.toContain("Part added to work order.");
   });
 
   it("uses work_order_parts source linkage rather than part_id as the durable added state", () => {

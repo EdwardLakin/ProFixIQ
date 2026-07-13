@@ -18,7 +18,6 @@ import {
   PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG,
   PartsRequestWorkbench,
   mapRequestToWorkbenchModel,
-  type PartsRequestWorkbenchItem,
   type SaveItemInput,
 } from "@/features/parts/components/request-workbench";
 import {
@@ -71,14 +70,6 @@ type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type LineLite = Pick<WorkOrderLineRow, "id" | "complaint" | "description">;
 
 type Status = RequestRow["status"];
-
-type UpsertResponse = {
-  ok: boolean;
-  menuItemId?: string;
-  updated?: boolean;
-  error?: string;
-  detail?: string;
-};
 
 type UiItem = ItemRow & {
   ui_part_id: string | null;
@@ -1416,7 +1407,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          quoteLineId,
+          quoteLineId: quoteLineId!,
           description: String(it.description ?? "").trim(),
           qty,
           quotedPrice: price,
@@ -1714,26 +1705,11 @@ if (!lineId || !isUuid(lineId)) {
       window.dispatchEvent(new Event("parts-request:submitted"));
       window.dispatchEvent(new Event("wo:parts-used"));
 
-      try {
-        const res = await fetch("/api/menu-items/upsert-from-line", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workOrderLineId: safeLineId }),
-        });
+      // Reusable menu learning intentionally does not run from staged parts-package saves.
 
-        const j = (await res.json().catch(() => null)) as UpsertResponse | null;
-
-        if (!res.ok || !j?.ok) {
-          toast.warning(
-            j?.detail || j?.error || "Added, but couldn’t save to menu items.",
-          );
-        }
-      } catch {
-        // ignore
-      }
 
       setAddedToWorkOrderByItemId((prev) => ({ ...prev, [itemId]: true }));
-      toast.success("Part added to work order.");
+      toast.success("Part saved to work order.");
       setConflictWarningByItemId((prev) => {
         const next = { ...prev };
         delete next[itemId];
@@ -1744,6 +1720,49 @@ if (!lineId || !isUuid(lineId)) {
         delete next[itemId];
         return next;
       });
+    } finally {
+      setSavingReqId(null);
+    }
+  }
+
+  async function commitPartsPackage(requestId: string): Promise<void> {
+    setSavingReqId(requestId);
+    try {
+      const res = await fetch(`/api/parts/requests/${requestId}/commit-package`, { method: "POST" });
+      const body = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        committedCount?: number;
+        skippedCount?: number;
+        errorsRequiringReview?: Array<{ itemId?: string; reason?: string; error?: string }>;
+        results?: Array<{ itemId?: string; status?: string; workOrderPartId?: string }>;
+        error?: string;
+      } | null;
+
+      if (!res.ok || !body) {
+        toast.error(body?.error || "Could not save parts package to work order.");
+        return;
+      }
+
+      const review = body.errorsRequiringReview ?? [];
+      if (!body.ok || review.length > 0) {
+        toast.warning(`Parts package needs review: ${review.length} item${review.length === 1 ? "" : "s"} not saved.`);
+      } else {
+        toast.success(`Parts package saved to work order (${body.committedCount ?? 0} item${body.committedCount === 1 ? "" : "s"}).`);
+      }
+
+      setAddedToWorkOrderByItemId((prev) => {
+        const next = { ...prev };
+        for (const result of body.results ?? []) {
+          if (result.itemId && (result.status === "committed" || result.status === "already_committed")) {
+            next[result.itemId] = true;
+          }
+        }
+        return next;
+      });
+
+      window.dispatchEvent(new Event("parts-request:submitted"));
+      window.dispatchEvent(new Event("wo:parts-used"));
+      await load();
     } finally {
       setSavingReqId(null);
     }
@@ -1870,7 +1889,7 @@ if (!lineId || !isUuid(lineId)) {
                     ? lineLabelFrom(lineById.get(lineId))
                     : "";
 
-                if (PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG || searchParams.get("workbenchV2") === "1") {
+                if (PARTS_REQUEST_WORKBENCH_V2_LOCAL_FLAG || searchParams.get("workbenchV2") !== "0") {
                   const model = mapRequestToWorkbenchModel({
                     request: r.req as unknown as Record<string, unknown>,
                     items: r.items as unknown as Record<string, unknown>[],
@@ -2015,7 +2034,6 @@ if (!lineId || !isUuid(lineId)) {
                             return next;
                           });
                           toast.success("Inventory part selected.");
-                          void load();
                           return body.item
                             ? {
                                 partId: body.item.part_id ?? input.partId,
@@ -2056,16 +2074,8 @@ if (!lineId || !isUuid(lineId)) {
                           toast.success("Inventory item created and attached.");
                           await load();
                         }}
-                        onAddToJob={async (item: PartsRequestWorkbenchItem) => {
-                          await addAndAttach(r.req.id, item.id, {
-                            partId: item.partId ?? null,
-                            qty: item.qty,
-                            sellPrice: item.sellPrice,
-                            description: item.description,
-                            requestedPartNumber: item.requestedPartNumber ?? null,
-                            requestedManufacturer: item.requestedManufacturer ?? null,
-                          });
-                          await load();
+                        onCommitPackage={() => {
+                          void commitPartsPackage(r.req.id);
                         }}
                         onSubmitOrder={async (itemId, input) => {
                           updateItem(r.req.id, itemId, {
@@ -2124,11 +2134,11 @@ if (!lineId || !isUuid(lineId)) {
                               ? new Date(r.req.created_at).toLocaleString()
                               : "—"}
                             <span className="mx-2 text-neutral-600">·</span>
-                            Line: {hasValidLineId ? lineId.slice(0, 8) : "Not linked"}
+                            Line: {hasValidLineId && lineId ? String(lineId).slice(0, 8) : "Not linked"}
                             {hasQuoteLineOrigin ? (
                               <>
                                 <span className="mx-2 text-neutral-600">·</span>
-                                Quote line: {quoteLineId.slice(0, 8)}
+                                Quote line: {quoteLineId ? String(quoteLineId).slice(0, 8) : "—"}
                               </>
                             ) : null}
                           </div>
@@ -2749,7 +2759,7 @@ if (!lineId || !isUuid(lineId)) {
                                             ? "Saving…"
                                             : isQuoteOnlyPreApprovalItem
                                               ? "Save Quote"
-                                              : "Add to Job"}
+                                              : "Save to Work Order"}
                                         </button>
 
                                         {isQuoteOnlyPreApprovalItem ? (
