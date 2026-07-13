@@ -16,6 +16,7 @@ import {
   resolveShopSuppliesSettings,
   shopSuppliesSummaryText,
 } from "@/features/work-orders/lib/shopSupplies";
+import { quoteLineTotalResolved, resolveQuoteLineParts, type CatalogPart, type PartRequest, type PartRequestItem, type ResolvedQuotePart } from "./partsModel";
 
 const COPPER = "#C57A4A";
 const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
@@ -38,6 +39,8 @@ type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type QuoteLineUpdate = DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
+type PartsByQuoteLine = Record<string, ResolvedQuotePart[]>;
+type RequestByQuoteLine = Record<string, PartRequest[]>;
 
 type EditableQuoteLine = QuoteLine & {
   _dirty?: boolean;
@@ -162,11 +165,12 @@ function quoteLinePartsTotal(line: Pick<QuoteLine, "parts_total" | "metadata">):
 }
 
 function quoteLineTotal(line: EditableQuoteLine, shopLaborRate: number): number {
-  return (
-    asNumber(line.grand_total) ??
-    asNumber(line.subtotal) ??
-    quoteLineLaborTotal(line, shopLaborRate) + quoteLinePartsTotal(line)
-  );
+  return quoteLineTotalResolved({
+    persistedGrandTotal: line.grand_total,
+    persistedSubtotal: line.subtotal,
+    calculatedLabor: quoteLineLaborTotal(line, shopLaborRate),
+    calculatedParts: quoteLinePartsTotal(line),
+  });
 }
 
 function hasPartsPrice(line: Pick<QuoteLine, "parts_total" | "metadata">): boolean {
@@ -306,6 +310,22 @@ function sourceSummary(line: Pick<QuoteLine, "metadata" | "suggested_by">): stri
   return values;
 }
 
+function partsRequestLabel(line: Pick<QuoteLine, "description">, index: number): string {
+  const description = safeTrim(line.description);
+  return description ? `Request for ${description}` : `Parts request for quote line ${index + 1}`;
+}
+
+function partPricingLabel(part: ResolvedQuotePart): string {
+  if (part.pricingState === "unresolved") return "Pricing unresolved";
+  if (part.unitPrice != null) return `Unit price: ${fmt(part.unitPrice)}`;
+  return "Price entered";
+}
+
+function selectedPartLabel(part: ResolvedQuotePart): string | null {
+  const identity = [part.selectedPartName, part.selectedPartNumber].filter(Boolean).join(" • ");
+  return identity || null;
+}
+
 export default function QuoteReviewView(props: {
   workOrderId: string;
   embedded?: boolean;
@@ -321,6 +341,8 @@ export default function QuoteReviewView(props: {
   const [shop, setShop] = useState<Shop | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [quoteLines, setQuoteLines] = useState<EditableQuoteLine[]>([]);
+  const [partsByQuoteLine, setPartsByQuoteLine] = useState<PartsByQuoteLine>({});
+  const [requestsByQuoteLine, setRequestsByQuoteLine] = useState<RequestByQuoteLine>({});
   const [workLines, setWorkLines] = useState<WorkOrderLine[]>([]);
   const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
@@ -353,6 +375,8 @@ export default function QuoteReviewView(props: {
         setShop(null);
         setCustomer(null);
         setQuoteLines([]);
+        setPartsByQuoteLine({});
+        setRequestsByQuoteLine({});
         setWorkLines([]);
       }
       setLoading(false);
@@ -387,11 +411,61 @@ export default function QuoteReviewView(props: {
       if (qErr) toast.error(qErr.message);
       if (wlErr) toast.error(wlErr.message);
       setShop(shopRow ?? null);
-      setQuoteLines(((qRows ?? []) as QuoteLine[]).map((line) => ({ ...line, _dirty: false, _laborRateDraft: jsonNumber(quoteMetadata(line).labor_rate) })));
+      const loadedQuoteLines = ((qRows ?? []) as QuoteLine[]).map((line) => ({ ...line, _dirty: false, _laborRateDraft: jsonNumber(quoteMetadata(line).labor_rate) }));
+      const quoteLineIds = loadedQuoteLines.map((line) => line.id).filter(Boolean);
+      let liveRequests: PartRequest[] = [];
+      let liveItems: PartRequestItem[] = [];
+      let selectedParts = new Map<string, CatalogPart>();
+
+      if (quoteLineIds.length > 0) {
+        const [{ data: requestRows, error: requestErr }, { data: itemRows, error: itemErr }] = await Promise.all([
+          supabase
+            .from("part_requests")
+            .select("*")
+            .eq("shop_id", shopId)
+            .eq("work_order_id", woId)
+            .in("quote_line_id", quoteLineIds),
+          supabase
+            .from("part_request_items")
+            .select("*")
+            .eq("shop_id", shopId)
+            .eq("work_order_id", woId)
+            .in("quote_line_id", quoteLineIds)
+            .order("created_at", { ascending: true }),
+        ]);
+        if (requestErr) toast.error(requestErr.message);
+        if (itemErr) toast.error(itemErr.message);
+        liveRequests = (requestRows ?? []) as PartRequest[];
+        liveItems = (itemRows ?? []) as PartRequestItem[];
+
+        const selectedPartIds = [...new Set(liveItems.map((item) => safeTrim(item.part_id ?? "")).filter(Boolean))];
+        if (selectedPartIds.length > 0) {
+          const { data: partRows, error: partErr } = await supabase
+            .from("parts")
+            .select("id,name,sku,part_number,supplier")
+            .eq("shop_id", shopId)
+            .in("id", selectedPartIds);
+          if (partErr) toast.error(partErr.message);
+          selectedParts = new Map(((partRows ?? []) as CatalogPart[]).map((part) => [part.id, part]));
+        }
+      }
+
+      const nextPartsByLine: PartsByQuoteLine = {};
+      const nextRequestsByLine: RequestByQuoteLine = {};
+      for (const line of loadedQuoteLines) {
+        nextPartsByLine[line.id] = resolveQuoteLineParts({ line, liveItems, requests: liveRequests, selectedParts });
+        nextRequestsByLine[line.id] = liveRequests.filter((request) => request.quote_line_id === line.id);
+      }
+
+      setQuoteLines(loadedQuoteLines);
+      setPartsByQuoteLine(nextPartsByLine);
+      setRequestsByQuoteLine(nextRequestsByLine);
       setWorkLines(((wlRows ?? []) as WorkOrderLine[]).filter(activeWorkLine));
     } else {
       setShop(null);
       setQuoteLines([]);
+      setPartsByQuoteLine({});
+      setRequestsByQuoteLine({});
       setWorkLines([]);
     }
 
@@ -792,11 +866,54 @@ export default function QuoteReviewView(props: {
                             <div>Labor rate: <span className="text-neutral-200">{fmt(lineLaborRate)}/hr</span></div>
                           </div>
 
-                          {partsSummary ? (
-                            <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-xs text-neutral-400">
-                              Parts quote sync: <span className="text-neutral-200">{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {fmt(partsSummary.partsTotal)}</span>
+                          <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-xs text-neutral-300">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="font-semibold uppercase tracking-[0.16em] text-neutral-400">Required parts</div>
+                              {partsSummary ? (
+                                <div className="text-neutral-400">
+                                  Sync: <span className="text-neutral-200">{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {fmt(partsSummary.partsTotal)}</span>
+                                </div>
+                              ) : null}
                             </div>
-                          ) : null}
+                            {(partsByQuoteLine[line.id] ?? []).length > 0 ? (
+                              <div className="mt-2 space-y-2">
+                                {(partsByQuoteLine[line.id] ?? []).map((part) => {
+                                  const request = part.requestId ? (requestsByQuoteLine[line.id] ?? []).find((candidate) => candidate.id === part.requestId) ?? null : null;
+                                  const selected = selectedPartLabel(part);
+                                  return (
+                                    <div key={`${part.source}:${part.requestItemId ?? part.requestId ?? part.description}`} className="rounded-lg border border-[color:var(--desktop-border)] bg-black/20 p-2">
+                                      {selected ? (
+                                        <>
+                                          <div className="text-neutral-200">Requested: <span className="font-semibold text-white">{part.description} × {part.quantity}</span></div>
+                                          <div className="mt-1 text-neutral-300">Selected: <span className="text-white">{selected}</span></div>
+                                        </>
+                                      ) : (
+                                        <div className="font-semibold text-white">{part.description} × {part.quantity}</div>
+                                      )}
+                                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-neutral-400">
+                                        {part.requestedPartNumber ? <span>Requested part #: <span className="text-neutral-200">{part.requestedPartNumber}</span></span> : null}
+                                        {part.manufacturer ? <span>Manufacturer: <span className="text-neutral-200">{part.manufacturer}</span></span> : null}
+                                        {part.supplier ?? part.vendor ? <span>Supplier: <span className="text-neutral-200">{part.supplier ?? part.vendor}</span></span> : null}
+                                        <span>{partPricingLabel(part)}</span>
+                                        {part.lineTotal != null ? <span>Line: <span className="text-neutral-200">{fmt(part.lineTotal)}</span></span> : null}
+                                        {part.status ? <span>Status: <span className="text-neutral-200">{statusLabel(part.status)}</span></span> : null}
+                                      </div>
+                                      {request ? (
+                                        <a href={`/parts/requests/${request.id}`} className="mt-2 inline-flex rounded-lg border border-sky-300/35 bg-sky-400/10 px-2.5 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-400/15">
+                                          View Parts Request — {partsRequestLabel(line, index)}
+                                        </a>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="mt-2 rounded-lg border border-[color:var(--desktop-border)] bg-black/20 p-2 text-neutral-400">
+                                <div>Parts: <span className="text-neutral-200">None</span></div>
+                                <div>Parts Request: <span className="text-neutral-200">Not required</span></div>
+                              </div>
+                            )}
+                          </div>
 
                           {sources.length > 0 ? (
                             <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-xs text-neutral-400">
