@@ -860,6 +860,8 @@ export default function InspectionFindingsPage(): JSX.Element {
                   menu_repair_item_id: acceptedMatch.menuRepairItemId ?? null,
                   pricing_status: acceptedMatch.pricingStatus ?? null,
                   pricing_valid_until: acceptedMatch.pricingValidUntil ?? null,
+                  pricing_review_required: acceptedMatch.pricingStatus !== "fresh",
+                  technician_pricing_approved: false,
                   confidence: acceptedMatch.confidence ?? null,
                 }
               : null,
@@ -939,23 +941,6 @@ export default function InspectionFindingsPage(): JSX.Element {
 
       const payload = summarizeFromSections(nextSession);
 
-      const finishRes = await fetch(
-        `/api/work-orders/lines/${resolvedWorkOrderLineId}/finish`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        },
-      );
-
-      const finishJson = (await finishRes.json().catch(() => null)) as
-        | { error?: string }
-        | null;
-
-      if (!finishRes.ok) {
-        throw new Error(finishJson?.error || "Failed to finish inspection");
-      }
-
       const invoiceRefreshRes = await fetch(
         `/api/work-orders/${resolvedWorkOrderId}/invoice`,
         {
@@ -983,7 +968,7 @@ export default function InspectionFindingsPage(): JSX.Element {
         );
         bestEffortWarning =
           invoiceRefreshJson?.issues?.[0]?.message ||
-          "Inspection finished, but invoice refresh failed.";
+          "Findings submitted, but invoice refresh failed.";
       }
 
       const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
@@ -999,7 +984,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       if (!pdfRes.ok || !pdfJson?.ok) {
         bestEffortWarning =
           bestEffortWarning ??
-          (pdfJson?.error || "Inspection finished, but PDF finalize failed.");
+          (pdfJson?.error || "Findings submitted, but PDF finalize failed.");
       }
 
       window.dispatchEvent(
@@ -1008,6 +993,7 @@ export default function InspectionFindingsPage(): JSX.Element {
             workOrderLineId: resolvedWorkOrderLineId,
             cause: payload.cause,
             correction: payload.correction,
+            reviewSubmitted: true,
           },
         }),
       );

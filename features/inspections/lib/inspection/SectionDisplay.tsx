@@ -136,9 +136,9 @@ function submittedAt(item: ItemExtended): string | null {
 function smartPricingText(
   status: "fresh" | "stale" | "expired" | undefined,
 ): string {
-  if (status === "fresh") return "Fresh pricing — safe for auto-add.";
-  if (status === "stale") return "Stale pricing — review before add.";
-  return "Expired pricing — auto-add blocked until pricing is refreshed.";
+  if (status === "fresh") return "Fresh pricing — ready to apply.";
+  if (status === "stale") return "Stale pricing — pricing review required after apply.";
+  return "Expired pricing — pricing review required after apply.";
 }
 
 function smartPricingBadgeClass(
@@ -470,14 +470,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                         if (!match) return null;
 
-                        const canAutoAdd = match.pricingStatus === "fresh";
+                        const canApplyRepair = Boolean(onAcceptSmartMatch);
                         const statusText = pricingStatusText(match.pricingStatus);
                         const actionText =
                           match.pricingStatus === "fresh"
-                            ? "Auto-add eligible"
-                            : match.pricingStatus === "stale"
-                              ? "Review recommended"
-                              : "Auto-add blocked";
+                            ? "Ready to apply"
+                            : "Pricing review required";
 
                         return (
                           <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
@@ -520,20 +518,18 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={!canAutoAdd}
+                                  disabled={!canApplyRepair}
                                   className={[
                                     "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
-                                    canAutoAdd
+                                    canApplyRepair
                                       ? "border border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-900/30"
-                                      : "cursor-not-allowed border border-red-500/20 bg-red-950/20 text-red-200/70",
+                                      : "cursor-not-allowed border border-neutral-500/20 bg-neutral-950/20 text-neutral-200/70",
                                   ].join(" ")}
                                   onClick={() => {
-                                    if (canAutoAdd) {
-                                      onAcceptSmartMatch?.(sectionIndex, itemIndex);
-                                    }
+                                    onAcceptSmartMatch?.(sectionIndex, itemIndex);
                                   }}
                                 >
-                                  {canAutoAdd ? "Add matched repair" : "Pricing review required"}
+                                  Apply repair
                                 </button>
                               </div>
                             </div>
@@ -872,9 +868,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     props.onAcceptSmartMatch?.(sectionIndex, itemIndex)
                                   }
                                 >
-                                  {smartMatch.pricingStatus === "fresh"
-                                    ? "Add matched repair"
-                                    : "Review match"}
+                                  Apply repair
                                 </Button>
                               </div>
                             </>
