@@ -34,6 +34,7 @@ import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/l
 import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
+import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -69,6 +70,7 @@ type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
   parts?: { name: string | null; sku?: string | null; part_number?: string | null; manufacturer?: string | null } | null;
 };
 type LineTechRow = DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
+type PartRequestRow = Pick<DB["public"]["Tables"]["part_requests"]["Row"], "id" | "quote_line_id" | "status">;
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   // real DB column
@@ -220,6 +222,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
   const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
+  const [partRequestsByQuoteLine, setPartRequestsByQuoteLine] = useState<Record<string, PartRequestRow[]>>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [loadedOnce, setLoadedOnce] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
@@ -503,6 +506,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             setShopLaborRate(null);
             setAllocsByLine({});
             setStagedPartsByLine({});
+            setPartRequestsByQuoteLine({});
             setLineTechsByLine({});
           }
 
@@ -649,7 +653,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         // allocations + line techs
         if (lineRows.length) {
-          const [allocsQuery, stagedQuery, lineTechsQuery] = await Promise.all([
+          const [allocsQuery, stagedQuery, lineTechsQuery, partRequestsQuery] = await Promise.all([
             supabase
               .from("work_order_part_allocations")
               .select("*, parts(name)")
@@ -677,6 +681,13 @@ export default function WorkOrderIdClient(): JSX.Element {
                 "work_order_line_id",
                 lineRows.map((l) => l.id),
               ),
+
+            supabase
+              .from("part_requests")
+              .select("id, quote_line_id, status")
+              .eq("work_order_id", woRow.id)
+              .eq("shop_id", woRow.shop_id)
+              .not("quote_line_id", "is", null),
           ]);
 
           const byLine: Record<string, AllocationRow[]> = {};
@@ -708,9 +719,19 @@ export default function WorkOrderIdClient(): JSX.Element {
             }
           });
           setLineTechsByLine(techMap);
+
+          const requestsByQuote: Record<string, PartRequestRow[]> = {};
+          (partRequestsQuery.data as PartRequestRow[] | null)?.forEach((request) => {
+            const quoteLineId = request.quote_line_id;
+            if (!quoteLineId) return;
+            if (!requestsByQuote[quoteLineId]) requestsByQuote[quoteLineId] = [];
+            requestsByQuote[quoteLineId].push(request);
+          });
+          setPartRequestsByQuoteLine(requestsByQuote);
         } else {
           setAllocsByLine({});
           setStagedPartsByLine({});
+          setPartRequestsByQuoteLine({});
           setLineTechsByLine({});
         }
 
@@ -956,11 +977,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const activeJobLines = useMemo(() => jobLines, [jobLines]);
 
   const approvalPendingQuotes = useMemo(
-    () =>
-      quoteLines.filter((q) => {
-        const status = (q.status ?? "").toLowerCase();
-        return status !== "converted" && status !== "declined";
-      }),
+    () => quoteLines.filter((q) => isReviewableQuoteLine(q)),
     [quoteLines],
   );
 
@@ -2000,6 +2017,77 @@ export default function WorkOrderIdClient(): JSX.Element {
                     );
                   })}
                 </div>
+              )}
+
+
+              {approvalPendingQuotes.length > 0 && (
+                <section className={cn(PANEL_VARIANTS.secondary, "rounded-xl p-3")}>
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-300">
+                        Pending quote items
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Recommended repairs stay here until advisor/customer approval materializes work lines.
+                      </p>
+                    </div>
+                    <Link href={`/work-orders/${wo?.id ?? routeId}/quote-review`} className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-500/20">
+                      Open Quote Review
+                    </Link>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {approvalPendingQuotes.map((q) => {
+                      const meta = isRecord(q.metadata) ? q.metadata : {};
+                      const parts = Array.isArray(meta.parts) ? meta.parts : [];
+                      const photoCount = Array.isArray(meta.photo_urls) ? meta.photo_urls.length : 0;
+                      const menuMatch = isRecord(meta.menu_match) ? meta.menu_match : null;
+                      const pricingReviewRequired = menuMatch?.pricing_review_required === true || q.status === "pending_parts";
+                      const partRequests = partRequestsByQuoteLine[q.id] ?? [];
+                      const sourceFinding = asString(meta.source_finding_title) ?? q.ai_complaint ?? "Inspection finding";
+                      const inspectionStatus = asString(meta.inspection_status)?.toUpperCase() ?? "RECOMMEND";
+                      const technicianNotes = asString(meta.technician_notes) ?? q.notes ?? "—";
+
+                      return (
+                        <article key={q.id} className="rounded-xl border border-sky-400/20 bg-sky-950/20 p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-foreground">{q.description || "Recommended repair"}</div>
+                              <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-sky-200">
+                                {inspectionStatus} • {sourceFinding}
+                              </div>
+                            </div>
+                            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] uppercase tracking-wide text-neutral-300">
+                              {String(q.stage ?? q.status ?? "advisor_pending").replaceAll("_", " ")}
+                            </span>
+                          </div>
+                          <div className="mt-3 grid gap-2 text-xs text-neutral-300 sm:grid-cols-2">
+                            <div>Tech notes: <span className="text-neutral-100">{technicianNotes}</span></div>
+                            <div>Labor: <span className="text-neutral-100">{typeof q.labor_hours === "number" ? `${q.labor_hours}h` : typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"}</span></div>
+                            <div>Parts: <span className="text-neutral-100">{parts.length > 0 ? `${parts.length} requirement(s)` : "None / labor-only"}</span></div>
+                            <div>Evidence: <span className="text-neutral-100">{photoCount}</span></div>
+                            <div>Parts Request: <span className="text-neutral-100">{partRequests.length > 0 ? partRequests.map((r) => r.status ?? "requested").join(", ") : "Not required / not created"}</span></div>
+                            <div>Pricing: <span className={pricingReviewRequired ? "text-amber-200" : "text-emerald-200"}>{pricingReviewRequired ? "Review required" : "Pricing available"}</span></div>
+                          </div>
+                          {menuMatch ? (
+                            <div className="mt-2 text-[11px] text-neutral-400">
+                              Menu source: {asString(menuMatch.label) ?? asString(menuMatch.menu_repair_item_id) ?? asString(menuMatch.menu_item_id) ?? "matched repair"}
+                            </div>
+                          ) : null}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Link href={`/work-orders/${wo?.id ?? routeId}/quote-review`} className="rounded-md border border-sky-400/40 px-2.5 py-1 text-[11px] font-semibold text-sky-100 hover:bg-sky-500/10">
+                              Review
+                            </Link>
+                            {partRequests[0]?.id ? (
+                              <Link href={`/parts/requests?requestId=${encodeURIComponent(partRequests[0].id)}`} className="rounded-md border border-neutral-500/40 px-2.5 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/5">
+                                View Parts Request
+                              </Link>
+                            ) : null}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
               )}
 
               {infoLines.length > 0 && (
