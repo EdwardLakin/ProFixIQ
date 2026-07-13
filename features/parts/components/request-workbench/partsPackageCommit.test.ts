@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { resolvePackageCommitQuantity } from "../../../../app/api/parts/requests/[requestId]/commit-package/route";
+import { resolvePackageCommitQuantity } from "@/features/parts/server/resolvePackageCommitQuantity";
 
 type QuantityItem = Parameters<typeof resolvePackageCommitQuantity>[0];
 

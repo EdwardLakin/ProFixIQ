@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { resolvePackageCommitQuantity } from "@/features/parts/server/resolvePackageCommitQuantity";
 
 type DB = Database;
 type PartRequestItem = DB["public"]["Tables"]["part_request_items"]["Row"];
@@ -13,16 +14,6 @@ type ItemResult =
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
-}
-
-type CommitQuantitySource = Pick<PartRequestItem, "qty_requested" | "qty">;
-
-export function resolvePackageCommitQuantity(item: CommitQuantitySource): number {
-  const requested = typeof item.qty_requested === "number" ? item.qty_requested : Number(item.qty_requested);
-  if (Number.isFinite(requested) && requested > 0) return requested;
-  const legacy = typeof item.qty === "number" ? item.qty : Number(item.qty);
-  if (Number.isFinite(legacy) && legacy > 0) return legacy;
-  return 0;
 }
 
 function positiveQuantity(item: PartRequestItem): number {
