@@ -51,6 +51,7 @@ export function mapRequestItemToWorkbenchItem(input: {
     selectedManufacturer: nullableText(selectedPart?.manufacturer ?? selectedPart?.supplier),
     qty,
     sellPrice,
+    suggestedSellPrice: selectedPart?.price == null && selectedPart?.default_price == null ? null : num(selectedPart?.price ?? selectedPart?.default_price, 0),
     status: nullableText(item.status),
     partId: selectedPartId,
     poId: nullableText(item.ui_po_id ?? item.po_id),

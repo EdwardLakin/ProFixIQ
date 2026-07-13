@@ -88,6 +88,20 @@ type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"
   parts?: { name: string | null } | null;
 };
 
+type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
+  description_snapshot?: string | null;
+  manufacturer_snapshot?: string | null;
+  part_number_snapshot?: string | null;
+  unit_sell_price_snapshot?: number | null;
+  lifecycle_status?: string | null;
+  parts?: { name: string | null; part_number?: string | null; manufacturer?: string | null } | null;
+};
+
+
+function money(value: number): string {
+  return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(value);
+}
+
 type WorkflowStatus =
   | "awaiting"
   | "awaiting_approval"
@@ -186,6 +200,7 @@ export default function FocusedJobModal(props: {
   const [prefillCorrection, setPrefillCorrection] = useState("");
 
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
+  const [requiredParts, setRequiredParts] = useState<RequiredPartRow[]>([]);
   const [assignedTechProfile, setAssignedTechProfile] = useState<{ id: string; full_name: string | null; role: string | null } | null>(null);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
@@ -358,13 +373,23 @@ export default function FocusedJobModal(props: {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("work_order_part_allocations")
-        .select("*, parts(name)")
-        .eq("work_order_line_id", workOrderLineId)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      setAllocs((data as AllocationRow[]) ?? []);
+      const [allocQuery, requiredQuery] = await Promise.all([
+        supabase
+          .from("work_order_part_allocations")
+          .select("*, parts(name)")
+          .eq("work_order_line_id", workOrderLineId)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("work_order_parts")
+          .select("*, parts(name, part_number, manufacturer)")
+          .eq("work_order_line_id", workOrderLineId)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true }),
+      ]);
+      if (allocQuery.error) throw allocQuery.error;
+      if (requiredQuery.error) throw requiredQuery.error;
+      setAllocs((allocQuery.data as AllocationRow[]) ?? []);
+      setRequiredParts((requiredQuery.data as RequiredPartRow[]) ?? []);
     } catch (e) {
       console.warn("[FocusedJob] load allocations failed", e);
     } finally {
@@ -564,7 +589,7 @@ export default function FocusedJobModal(props: {
   const isPanelVariant = variant === "panel";
   const isExpandedPanel = isPanelVariant;
   const pricing = line
-    ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: allocs })
+    ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: allocs, stagedParts: requiredParts })
     : null;
   const laborDisplay = formatLaborSummary(pricing?.laborHours, Number(pricing?.laborTotal ?? 0));
   const lineTotal = Number(pricing?.lineTotal ?? 0);
@@ -925,11 +950,11 @@ export default function FocusedJobModal(props: {
               <SectionCard title={partsBottleneckDisplay?.heading ?? "Parts used"}>
                 {allocsLoading ? (
                   <div className="text-sm text-neutral-300">Loading…</div>
-                ) : partsBottleneckDisplay && allocs.length === 0 ? (
+                ) : partsBottleneckDisplay && (allocs.length + requiredParts.length) === 0 ? (
                   <div className="text-sm text-neutral-200">
                     {partsBottleneckDisplay.detail}
                   </div>
-                ) : allocs.length === 0 ? (
+                ) : (allocs.length + requiredParts.length) === 0 ? (
                   <div className="text-sm text-neutral-300">No parts used yet.</div>
                 ) : (
                   <div className="overflow-hidden rounded-xl border border-white/10 bg-black/30">
@@ -939,6 +964,20 @@ export default function FocusedJobModal(props: {
                       <div className="col-span-2 text-right">Qty</div>
                     </div>
                     <ul className="max-h-56 overflow-auto divide-y divide-white/5">
+                      {requiredParts.map((p) => {
+                        const qty = Number(p.quantity ?? 0);
+                        const unit = Number(p.unit_sell_price_snapshot ?? p.unit_price ?? 0);
+                        return (
+                          <li key={`required-${p.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
+                            <div className="col-span-7 min-w-0 break-words text-neutral-100">
+                              {p.description_snapshot ?? p.parts?.name ?? "Required part"}
+                              <div className="text-[11px] text-neutral-400">{[p.part_number_snapshot ?? p.parts?.part_number, p.manufacturer_snapshot ?? p.parts?.manufacturer, p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}</div>
+                            </div>
+                            <div className="col-span-3 truncate text-neutral-400">{unit > 0 ? money(unit) : "—"}</div>
+                            <div className="col-span-2 text-right font-semibold text-neutral-100">{qty}</div>
+                          </li>
+                        );
+                      })}
                       {allocs.map((a) => {
                         const qty =
                           (a as unknown as { qty?: number | null }).qty ??

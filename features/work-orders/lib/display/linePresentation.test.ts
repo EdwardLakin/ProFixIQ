@@ -32,9 +32,9 @@ describe("linePresentation", () => {
     expect(formatLaborSummary(2.2, 319)).toContain("$319.00");
   });
 
-  it("resolves labor total from line total when parts and labor time are present", () => {
+  it("adds active canonical parts to a labor-only line estimate", () => {
     const pricing = resolveWorkOrderLinePricing({
-      line: { labor_time: 2.2, price_estimate: 844 },
+      line: { labor_time: 2.2, price_estimate: 319 },
       shopLaborRate: null,
       stagedParts: [{ quantity: 1, unit_price: 525, total_price: 525 }],
     });

@@ -38,6 +38,7 @@ export type PartsRequestWorkbenchItem = {
   selectedManufacturer?: string | null;
   qty: number;
   sellPrice: number | null;
+  suggestedSellPrice?: number | null;
   status?: WorkbenchStatus | null;
   partId?: string | null;
   poId?: string | null;
