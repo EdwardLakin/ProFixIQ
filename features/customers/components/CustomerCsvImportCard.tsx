@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
-import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
+import { CollapsibleCsvImportCard } from "@/features/shared/components/import/CollapsibleCsvImportCard";
 import {
   CsvImportProgress,
   type CsvImportProgressState,
@@ -515,14 +515,10 @@ export function CustomerCsvImportCard({
   }
 
   return (
-    <GuidedSetupCardShell
+    <CollapsibleCsvImportCard
       testId="customer-csv-import-card"
-      eyebrow={
-        isOnboarding ? "Guided onboarding · Customers" : "Customer files"
-      }
-      title={
-        isOnboarding ? "Upload your customer CSV here" : "Import customers"
-      }
+      eyebrow={isOnboarding ? "Guided onboarding · Customers" : "CSV import"}
+      title={isOnboarding ? "Upload your customer CSV here" : "Import customers"}
       description={
         <>
           {isOnboarding ? (
@@ -541,9 +537,14 @@ export function CustomerCsvImportCard({
           </p>
         </>
       }
-      guided={null}
-      variant="workspace"
-      actions={
+      guidedActive={isOnboarding}
+      hasSelectedFile={Boolean(fileName)}
+      isParsing={importProgress?.phaseKey === "reading_file" || importProgress?.phaseKey === "validating"}
+      isImporting={importing || completingOnboarding}
+      hasValidationIssues={Boolean(parseError || importError || skippedPreviewCount > 0 || (counts?.failed ?? 0) > 0)}
+      hasImportResult={Boolean(counts || skippedRows.length || failedRows.length || importProgress)}
+      compactDescription="Add or update customer records in bulk."
+      headerActions={
         <>
           <input
             ref={fileInputRef}
@@ -655,6 +656,6 @@ export function CustomerCsvImportCard({
         skipDisabled={busyAction !== null}
         skipLabel={busyAction === "skip" ? "Skipping…" : "Skip for now"}
       />{" "}
-    </GuidedSetupCardShell>
+    </CollapsibleCsvImportCard>
   );
 }

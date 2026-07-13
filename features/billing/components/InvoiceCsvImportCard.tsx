@@ -355,6 +355,13 @@ export function InvoiceCsvImportCard({
           </p>
         </>
       }
+      guidedActive={isOnboarding}
+      hasSelectedFile={Boolean(fileName)}
+      isParsing={progress?.phaseKey === "reading_file" || progress?.phaseKey === "validating" || progress?.phaseKey === "processing"}
+      isImporting={importing || completingOnboarding}
+      hasValidationIssues={Boolean(parseError || importError || rows.length - importableRows.length > 0 || (response?.counts?.failed ?? 0) > 0)}
+      hasImportResult={Boolean(response?.counts || response?.skippedRows?.length || response?.failedRows?.length || progress)}
+      compactDescription="Add historical invoice records in bulk."
       actions={
         <>
           <input
