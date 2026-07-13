@@ -14,6 +14,8 @@ const lifecycleSql = readFileSync("db/sql/2026-07-11_parts_lifecycle_completion.
 describe("parts request RLS and legacy trigger reconciliation", () => {
   it("replaces requester-only UPDATE RLS with same-shop parent request USING and WITH CHECK", () => {
     expect(migration).toContain("cmd = 'UPDATE'");
+    expect(migration).toContain("create or replace function public.can_update_part_request_items");
+    expect(migration).toContain("lower(coalesce(p.role, '')) in ('owner', 'admin', 'manager', 'parts')");
     expect(migration).toContain("create policy part_request_items_update_same_shop_parent_request");
     expect(migration).toContain("for update");
     expect(migration).toContain("using (");
@@ -22,7 +24,29 @@ describe("parts request RLS and legacy trigger reconciliation", () => {
     expect(migration).toContain("join public.profiles p on p.id = auth.uid()");
     expect(migration).toContain("pr.id = part_request_items.request_id");
     expect(migration).toContain("pr.shop_id = p.shop_id");
+    expect(migration).toContain("public.can_update_part_request_items(pr.shop_id)");
     expect(migration).toContain("part_request_items.shop_id = pr.shop_id");
+  });
+
+  it("does not admit unauthorized same-shop technician or advisor roles to direct updates", () => {
+    expect(migration).toContain("in ('owner', 'admin', 'manager', 'parts')");
+    expect(migration).not.toContain("'mechanic'");
+    expect(migration).not.toContain("'advisor'");
+  });
+
+  it("blocks ordinary updates from moving immutable ownership and linkage anchors", () => {
+    expect(migration).toContain("create or replace function public.prevent_part_request_item_anchor_changes()");
+    for (const column of ["shop_id", "request_id", "work_order_id", "work_order_line_id", "quote_line_id"]) {
+      expect(migration).toContain(`new.${column} is distinct from old.${column}`);
+    }
+    expect(migration).toContain("create trigger trg_prevent_part_request_item_anchor_changes");
+    expect(migration).toContain("before update on public.part_request_items");
+  });
+
+  it("allows canonical inventory selection route to persist through authorized server path", () => {
+    expect(inventoryRoute).toContain("requireShopScopedApiAccess({ requiredCapability: \"canManageWorkOrders\" })");
+    expect(inventoryRoute).toContain("part_id: partId");
+    expect(inventoryRoute).toContain("updatedItem.part_id !== partId");
   });
 
   it("does not broaden INSERT policy in this migration", () => {
