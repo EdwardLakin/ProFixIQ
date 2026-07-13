@@ -1082,6 +1082,13 @@ export default function InventoryPage(): JSX.Element {
               </p>
             </>
           }
+          guidedActive={guidedQuery?.onboardingStep === "parts"}
+          hasSelectedFile={csvRows.length > 0 || csvHeaders.length > 0}
+          isParsing={csvProgress?.phaseKey === "reading_file" || csvProgress?.phaseKey === "validating" || csvProgress?.phaseKey === "processing"}
+          isImporting={csvImporting || csvCompletingOnboarding}
+          hasValidationIssues={Boolean(csvError || csvReviewRows.length > 0 || (csvResult?.counts.failed ?? 0) > 0 || csvResult?.errors.length)}
+          hasImportResult={Boolean(csvResult || csvProgress)}
+          compactDescription="Add or update parts inventory records in bulk."
           actions={
             <>
               <input

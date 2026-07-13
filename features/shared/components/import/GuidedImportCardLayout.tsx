@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
+import { CollapsibleCsvImportCard } from "@/features/shared/components/import/CollapsibleCsvImportCard";
 
 type Props = {
   testId: string;
@@ -8,6 +8,14 @@ type Props = {
   description: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
+  guidedActive?: boolean;
+  forceExpanded?: boolean;
+  hasSelectedFile?: boolean;
+  isParsing?: boolean;
+  isImporting?: boolean;
+  hasValidationIssues?: boolean;
+  hasImportResult?: boolean;
+  compactDescription?: string;
 };
 
 export function GuidedImportCardLayout({
@@ -17,18 +25,33 @@ export function GuidedImportCardLayout({
   description,
   actions,
   children,
+  guidedActive,
+  forceExpanded,
+  hasSelectedFile,
+  isParsing,
+  isImporting,
+  hasValidationIssues,
+  hasImportResult,
+  compactDescription,
 }: Props) {
   return (
-    <GuidedSetupCardShell
+    <CollapsibleCsvImportCard
       testId={testId}
       eyebrow={eyebrow}
       title={title}
       description={description}
-      guided={null}
+      guidedActive={guidedActive}
+      forceExpanded={forceExpanded}
+      hasSelectedFile={hasSelectedFile}
+      isParsing={isParsing}
+      isImporting={isImporting}
+      hasValidationIssues={hasValidationIssues}
+      hasImportResult={hasImportResult}
+      compactDescription={compactDescription}
+      headerActions={actions}
       variant="workspace"
-      actions={actions}
     >
       {children}
-    </GuidedSetupCardShell>
+    </CollapsibleCsvImportCard>
   );
 }

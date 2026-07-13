@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GuidedSetupCardShell } from "@/features/onboarding-v2/components/GuidedSetupCardShell";
+import { CollapsibleCsvImportCard } from "@/features/shared/components/import/CollapsibleCsvImportCard";
 import {
   CsvImportProgress,
   type CsvImportProgressState,
@@ -443,9 +443,9 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
 
 
   return (
-    <GuidedSetupCardShell
+    <CollapsibleCsvImportCard
       testId="vehicle-csv-import-card"
-      eyebrow={isOnboarding ? "Guided onboarding · Vehicles" : "Vehicle files"}
+      eyebrow={isOnboarding ? "Guided onboarding · Vehicles" : "CSV import"}
       title={isOnboarding ? "Upload your vehicle CSV here" : "Import vehicles"}
       description={
         <>
@@ -459,6 +459,7 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
           </p>
         </>
       }
+      guidedActive={isOnboarding}
       guided={
         isOnboarding
           ? {
@@ -470,7 +471,13 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
             }
           : null
       }
-      actions={
+      hasSelectedFile={Boolean(fileName)}
+      isParsing={importProgress?.phaseKey === "reading_file" || importProgress?.phaseKey === "validating"}
+      isImporting={importing || completingOnboarding}
+      hasValidationIssues={Boolean(parseError || importError || skippedPreviewCount > 0 || (counts?.failed ?? 0) > 0)}
+      hasImportResult={Boolean(counts || skippedRows.length || failedRows.length || importProgress)}
+      compactDescription="Add or update vehicle records in bulk."
+      headerActions={
         <>
           <button
             type="button"
@@ -553,7 +560,7 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
         importSucceeded={importSucceeded}
         onContinue={() => router.push(guidedQuery!.returnTo)}
       />{" "}
-    </GuidedSetupCardShell>
+    </CollapsibleCsvImportCard>
   );
 }
 
