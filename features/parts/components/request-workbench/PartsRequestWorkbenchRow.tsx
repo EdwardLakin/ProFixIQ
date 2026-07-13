@@ -49,6 +49,8 @@ export function PartsRequestWorkbenchRow({
   const hasPossibleMismatch = item.insights?.some((insight) => insight.kind === "possible_mismatch") ?? false;
   const hasSelectedPart = !!item.partId && !!selectedPart;
   const isAddedToWorkOrder = item.addedToWorkOrder === true;
+  const displayedPartNumber = item.selectedPartNumber ?? selectedPart?.partNumber ?? selectedPart?.sku ?? item.requestedPartNumber ?? "";
+  const displayedManufacturer = item.selectedManufacturer ?? selectedPart?.manufacturer ?? item.requestedManufacturer ?? "";
 
   return (
     <tr className="border-t border-[color:var(--desktop-border)] align-top">
@@ -61,20 +63,38 @@ export function PartsRequestWorkbenchRow({
         />
       </td>
       <td className="p-2">
-        <input
-          className={input}
-          value={item.requestedPartNumber ?? ""}
-          placeholder="Part #"
-          onChange={(event) => onChange?.({ ...item, requestedPartNumber: event.target.value })}
-        />
+        {hasSelectedPart ? (
+          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-emerald-950/10 px-2 py-2 text-sm text-white">
+            <div>{displayedPartNumber || "—"}</div>
+            {item.requestedPartNumber && item.requestedPartNumber !== displayedPartNumber ? (
+              <div className="mt-1 text-[11px] text-neutral-400">Requested: {item.requestedPartNumber}</div>
+            ) : null}
+          </div>
+        ) : (
+          <input
+            className={input}
+            value={item.requestedPartNumber ?? ""}
+            placeholder="Part #"
+            onChange={(event) => onChange?.({ ...item, requestedPartNumber: event.target.value })}
+          />
+        )}
       </td>
       <td className="p-2">
-        <input
-          className={input}
-          value={item.requestedManufacturer ?? ""}
-          placeholder="Manufacturer"
-          onChange={(event) => onChange?.({ ...item, requestedManufacturer: event.target.value })}
-        />
+        {hasSelectedPart ? (
+          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-emerald-950/10 px-2 py-2 text-sm text-white">
+            <div>{displayedManufacturer || "—"}</div>
+            {item.requestedManufacturer && item.requestedManufacturer !== displayedManufacturer ? (
+              <div className="mt-1 text-[11px] text-neutral-400">Requested: {item.requestedManufacturer}</div>
+            ) : null}
+          </div>
+        ) : (
+          <input
+            className={input}
+            value={item.requestedManufacturer ?? ""}
+            placeholder="Manufacturer"
+            onChange={(event) => onChange?.({ ...item, requestedManufacturer: event.target.value })}
+          />
+        )}
       </td>
       <td className="p-2">
         <input
@@ -139,6 +159,12 @@ export function PartsRequestWorkbenchRow({
               >
                 Attach anyway
               </button>
+            </div>
+          ) : null}
+          {item.packageCommitWarning ? (
+            <div className="rounded-xl border border-amber-400/30 bg-amber-950/20 p-2 text-xs text-amber-100">
+              <div className="font-medium">Package save needs review</div>
+              <div className="mt-1 text-amber-100/80">{item.packageCommitWarning}</div>
             </div>
           ) : null}
         </div>

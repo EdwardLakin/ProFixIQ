@@ -28,6 +28,8 @@ export function mapRequestItemToWorkbenchItem(input: {
   supplierSuggestionCount?: number;
   conflictWarning?: string | null;
   addedToWorkOrder?: boolean;
+  packageCommitWarning?: string | null;
+  partsById?: Record<string, AnyRecord>;
 }): PartsRequestWorkbenchItem {
   const item = input.item;
   const qty = num(item.ui_qty ?? item.qty ?? item.qty_requested, 1);
@@ -35,20 +37,27 @@ export function mapRequestItemToWorkbenchItem(input: {
   const sellPrice = sellPriceRaw == null || sellPriceRaw === "" ? null : num(sellPriceRaw, 0);
   const qtyReceived = num(item.qty_received, 0);
   const qtyApproved = num(item.qty_approved ?? item.qty, qty);
+  const selectedPartId = nullableText(item.ui_part_id ?? item.part_id);
+  const selectedPart = selectedPartId
+    ? input.partsById?.[selectedPartId] ?? null
+    : null;
 
   return {
     id: text(item.id),
     description: text(item.description, "Part"),
     requestedPartNumber: nullableText(item.requested_part_number),
     requestedManufacturer: nullableText(item.requested_manufacturer),
+    selectedPartNumber: nullableText(selectedPart?.part_number ?? selectedPart?.sku),
+    selectedManufacturer: nullableText(selectedPart?.manufacturer ?? selectedPart?.supplier),
     qty,
     sellPrice,
     status: nullableText(item.status),
-    partId: nullableText(item.ui_part_id ?? item.part_id),
+    partId: selectedPartId,
     poId: nullableText(item.ui_po_id ?? item.po_id),
     qtyReceived,
     qtyApproved,
     addedToWorkOrder: input.addedToWorkOrder === true,
+    packageCommitWarning: input.packageCommitWarning ?? null,
     insights: buildWorkbenchInsights({
       hasSuggestedMatch: false,
       noStock: Boolean(nullableText(item.ui_part_id ?? item.part_id) && input.availableStock != null && num(input.availableStock, 0) <= 0),
@@ -78,6 +87,7 @@ export function mapRequestToWorkbenchModel(input: {
   supplierSuggestionCountByItemId?: Record<string, number>;
   conflictWarningByItemId?: Record<string, string>;
   addedToWorkOrderByItemId?: Record<string, boolean>;
+  packageCommitWarningByItemId?: Record<string, string>;
 }): PartsRequestWorkbenchModel {
   const requestId = text(input.request.id);
   const requestLabel = text(input.request.custom_id, requestId ? requestId.slice(0, 8) : "Request");
@@ -119,6 +129,8 @@ export function mapRequestToWorkbenchModel(input: {
         supplierSuggestionCount: input.supplierSuggestionCountByItemId?.[itemId] ?? 0,
         conflictWarning: input.conflictWarningByItemId?.[itemId] ?? null,
         addedToWorkOrder: input.addedToWorkOrderByItemId?.[itemId] ?? false,
+        packageCommitWarning: input.packageCommitWarningByItemId?.[itemId] ?? null,
+        partsById: Object.fromEntries((input.parts ?? []).map((part) => [text(part.id), part])),
       });
     }),
   };

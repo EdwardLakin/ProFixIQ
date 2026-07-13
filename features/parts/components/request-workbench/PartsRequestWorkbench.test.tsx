@@ -77,7 +77,8 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     }));
 
     expect(screen.getByDisplayValue("Oil filter")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Part #")).toHaveValue("");
+    expect(screen.getByText("OIL-FILTER-5")).toBeInTheDocument();
+    expect(screen.getByText("ACDelco")).toBeInTheDocument();
     expect(screen.getByText("Selected: ACDelco Oil Filter")).toBeInTheDocument();
     expect(screen.getByText("79 on hand")).toBeInTheDocument();
     expect(screen.queryByText("Possible mismatch")).not.toBeInTheDocument();

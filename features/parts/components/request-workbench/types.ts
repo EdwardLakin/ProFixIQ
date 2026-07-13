@@ -34,6 +34,8 @@ export type PartsRequestWorkbenchItem = {
   description: string;
   requestedPartNumber?: string | null;
   requestedManufacturer?: string | null;
+  selectedPartNumber?: string | null;
+  selectedManufacturer?: string | null;
   qty: number;
   sellPrice: number | null;
   status?: WorkbenchStatus | null;
@@ -42,6 +44,7 @@ export type PartsRequestWorkbenchItem = {
   qtyReceived?: number | null;
   qtyApproved?: number | null;
   addedToWorkOrder?: boolean;
+  packageCommitWarning?: string | null;
   insights?: SmartInsight[];
 };
 
