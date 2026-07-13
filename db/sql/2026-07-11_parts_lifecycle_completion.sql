@@ -155,7 +155,7 @@ begin
   where id = p_work_order_part_id;
 end $$;
 
-create or replace function public.parts_ensure_work_order_part(p_request_item_id uuid)
+create or replace function public.parts_attach_request_item(p_request_item_id uuid)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare v_item public.part_request_items%rowtype; v_request public.part_requests%rowtype; v_part public.parts%rowtype; v_line record; v_wop uuid; v_qty numeric;
 begin
@@ -172,7 +172,14 @@ begin
   if not found then raise exception 'Work-order line not found.'; end if;
   if v_line.shop_id is distinct from v_item.shop_id then raise exception 'Work-order line belongs to a different shop.'; end if;
   if v_request.work_order_id is not null and v_request.work_order_id <> v_line.work_order_id then raise exception 'Work-order line does not belong to the request work order.'; end if;
-  v_qty := coalesce(v_item.qty_requested, v_item.qty, 0);
+  v_qty := case
+    when coalesce(v_item.qty_requested, 0) > 0
+      then v_item.qty_requested
+    when coalesce(v_item.qty, 0) > 0
+      then v_item.qty
+    else 0
+  end;
+  if v_qty <= 0 then raise exception 'Quantity must be greater than 0.'; end if;
   select id into v_wop from public.work_order_parts where source_parts_request_item_id = p_request_item_id and is_active for update;
   if found then return v_wop; end if;
   insert into public.work_order_parts(work_order_id, work_order_line_id, shop_id, part_id, quantity, unit_price, total_price, source_parts_request_id, source_parts_request_item_id, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_requested, quantity_received, quantity_consumed, unit_cost_snapshot, unit_sell_price_snapshot, lifecycle_status, updated_at, is_active)
@@ -180,6 +187,11 @@ begin
   returning id into v_wop;
   return v_wop;
 end $$;
+
+create or replace function public.parts_ensure_work_order_part(p_request_item_id uuid)
+returns uuid language sql security definer set search_path = public as $$
+  select public.parts_attach_request_item(p_request_item_id);
+$$;
 
 create or replace function public.parts_allocate_request_item(p_request_item_id uuid, p_location_id uuid, p_qty numeric, p_idempotency_key text)
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -274,7 +286,13 @@ begin
     if coalesce(v_line.received_qty,0) + p_qty > coalesce(v_line.qty,0) then raise exception 'Receipt exceeds ordered quantity.'; end if;
     update public.purchase_order_lines set received_qty = coalesce(received_qty,0) + p_qty where id=p_po_line_id;
   else
-    select coalesce(sum(qty), coalesce(v_item.qty_requested, v_item.qty, 0)) into v_ordered_limit from public.purchase_order_lines where part_request_item_id=p_request_item_id;
+    select coalesce(sum(qty), case
+    when coalesce(v_item.qty_requested, 0) > 0
+      then v_item.qty_requested
+    when coalesce(v_item.qty, 0) > 0
+      then v_item.qty
+    else 0
+  end) into v_ordered_limit from public.purchase_order_lines where part_request_item_id=p_request_item_id;
     if coalesce(v_item.qty_received,0) + p_qty > greatest(v_ordered_limit, coalesce(v_item.qty_requested, v_item.qty,0)) then raise exception 'Receipt exceeds requested quantity.'; end if;
   end if;
   insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, purchase_order_line_id, metadata, lifecycle_quantity)
@@ -404,6 +422,8 @@ end $$;
 -- Security hardening: lifecycle RPCs are callable by authenticated users only;
 -- each SECURITY DEFINER function validates shop/work-order scope internally and
 -- API routes additionally require canManageWorkOrders.
+revoke all on function public.parts_attach_request_item(uuid) from public, anon;
+revoke all on function public.parts_ensure_work_order_part(uuid) from public, anon;
 revoke all on function public.parts_allocate_request_item(uuid, uuid, numeric, text) from public, anon;
 revoke all on function public.parts_release_allocation(uuid, uuid, numeric, text) from public, anon;
 revoke all on function public.parts_create_po_line_for_request(uuid, uuid, numeric, numeric, uuid, text) from public, anon;
@@ -412,6 +432,8 @@ revoke all on function public.parts_issue_work_order_part(uuid, uuid, numeric, t
 revoke all on function public.parts_return_to_stock(uuid, uuid, numeric, text) from public, anon;
 revoke all on function public.parts_cancel_request_item(uuid, text) from public, anon;
 revoke all on function public.parts_replace_request_item(uuid, uuid, uuid, numeric, text) from public, anon;
+grant execute on function public.parts_attach_request_item(uuid) to authenticated, service_role;
+grant execute on function public.parts_ensure_work_order_part(uuid) to authenticated, service_role;
 grant execute on function public.parts_allocate_request_item(uuid, uuid, numeric, text) to authenticated, service_role;
 grant execute on function public.parts_release_allocation(uuid, uuid, numeric, text) to authenticated, service_role;
 grant execute on function public.parts_create_po_line_for_request(uuid, uuid, numeric, numeric, uuid, text) to authenticated, service_role;

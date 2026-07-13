@@ -406,7 +406,13 @@ begin
   if v_line.wo_shop_id is distinct from v_item.shop_id or v_line.line_shop_id is distinct from v_item.shop_id then raise exception 'Work-order line belongs to a different shop.'; end if;
   if v_item.work_order_id is not null and v_item.work_order_id <> v_line.work_order_id then raise exception 'Request item work order does not match line.'; end if;
   if v_request.work_order_id is not null and v_request.work_order_id <> v_line.work_order_id then raise exception 'Work-order line does not belong to the request work order.'; end if;
-  v_qty := coalesce(v_item.qty_requested, v_item.qty, 0);
+  v_qty := case
+    when coalesce(v_item.qty_requested, 0) > 0
+      then v_item.qty_requested
+    when coalesce(v_item.qty, 0) > 0
+      then v_item.qty
+    else 0
+  end;
   if v_qty <= 0 then raise exception 'Quantity must be greater than 0.'; end if;
   select id into v_wop from public.work_order_parts where source_parts_request_item_id = p_request_item_id and coalesce(is_active,true) for update;
   if found then return v_wop; end if;
@@ -524,7 +530,13 @@ begin
     if coalesce(v_line.received_qty,0) + p_qty > coalesce(v_line.qty,0) then raise exception 'Receipt exceeds ordered quantity.'; end if;
     update public.purchase_order_lines set received_qty = coalesce(received_qty,0) + p_qty where id=p_po_line_id;
   else
-    select coalesce(sum(qty), coalesce(v_item.qty_requested, v_item.qty, 0)) into v_ordered_limit from public.purchase_order_lines where part_request_item_id=p_request_item_id;
+    select coalesce(sum(qty), case
+    when coalesce(v_item.qty_requested, 0) > 0
+      then v_item.qty_requested
+    when coalesce(v_item.qty, 0) > 0
+      then v_item.qty
+    else 0
+  end) into v_ordered_limit from public.purchase_order_lines where part_request_item_id=p_request_item_id;
     if coalesce(v_item.qty_received,0) + p_qty > greatest(v_ordered_limit, coalesce(v_item.qty_requested, v_item.qty,0)) then raise exception 'Receipt exceeds requested quantity.'; end if;
   end if;
   insert into public.stock_moves(part_id, location_id, qty_change, reason, reference_kind, reference_id, created_by, shop_id, idempotency_key, work_order_part_id, part_request_item_id, purchase_order_line_id, metadata, lifecycle_quantity)
