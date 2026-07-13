@@ -7,8 +7,9 @@ async function getRuntimeOpenAIClient() {
 
 //features/integrations/ai/index.ts
 
-import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/openai-models";
+import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import type { Json } from "@/features/shared/types/types/supabase";
 /* ========================================================================== */
 /*  QUOTE ENGINE – CENTRAL AI ENTRYPOINT                                      */
 /* ========================================================================== */
@@ -59,23 +60,51 @@ export const ProFixAI = {
       `Complaint: ${complaint}`,
     ].join("\n");
 
-    const completion = await (await getRuntimeOpenAIClient()).chat.completions.create({
-      model: getOpenAIModelForPurpose("fast"),
-      ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
-      max_tokens: 600,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userContext },
-      ],
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "{}";
+    const model = getOpenAIModelForPurpose("fast");
 
     let parsed: unknown;
     try {
+      const response = await (await getRuntimeOpenAIClient()).responses.create({
+        model,
+        ...openAITemperatureParam(model, 0.4),
+        max_output_tokens: 600,
+        text: {
+          format: { type: "json_object" },
+        },
+        input: [
+          {
+            role: "system",
+            content: [{ type: "input_text", text: system }],
+          },
+          {
+            role: "user",
+            content: [{ type: "input_text", text: userContext }],
+          },
+        ],
+      });
+
+      const raw = response.output_text?.trim() ?? "{}";
       parsed = JSON.parse(raw);
-    } catch {
-      // Model gave non-JSON; let caller fall back.
+    } catch (error) {
+      const upstream = error as {
+        code?: unknown;
+        param?: unknown;
+        message?: unknown;
+        status?: unknown;
+        type?: unknown;
+      };
+      console.warn("[AI] quote suggestion unavailable", {
+        endpoint: "responses.create",
+        model,
+        status: typeof upstream.status === "number" ? upstream.status : undefined,
+        code: typeof upstream.code === "string" ? upstream.code : undefined,
+        parameter: typeof upstream.param === "string" ? upstream.param : undefined,
+        type: typeof upstream.type === "string" ? upstream.type : undefined,
+        message:
+          typeof upstream.message === "string"
+            ? upstream.message.slice(0, 240)
+            : "OpenAI request failed",
+      });
       return null;
     }
 
@@ -86,9 +115,8 @@ export const ProFixAI = {
     };
 
     // --- parts ---
-    const partsArr = Array.isArray((parsed as any)?.parts)
-      ? (parsed as any).parts
-      : [];
+    const parsedParts = (parsed as { parts?: unknown }).parts;
+    const partsArr: unknown[] = Array.isArray(parsedParts) ? parsedParts : [];
 
     const normalizedParts: QuoteEnginePart[] = [];
     for (const rawPart of partsArr) {
@@ -135,13 +163,13 @@ export const ProFixAI = {
     out.parts = normalizedParts.slice(0, 10);
 
     // --- laborHours ---
-    const lh = (parsed as any)?.laborHours;
+    const lh = (parsed as { laborHours?: unknown }).laborHours;
     if (typeof lh === "number" && Number.isFinite(lh) && lh > 0 && lh <= 8) {
       out.laborHours = lh;
     }
 
     // --- confidence ---
-    const c = (parsed as any)?.confidence;
+    const c = (parsed as { confidence?: unknown }).confidence;
     if (typeof c === "number" && Number.isFinite(c) && c >= 0 && c <= 1) {
       out.confidence = c;
     }
@@ -186,16 +214,20 @@ async function insertTrainingEvent(event: AITrainingEvent): Promise<void> {
   const supabase = createAdminSupabase();
 
   const { id, source, shopId, payload } = event;
+  const eventPayload: Json = {
+    id: id ?? null,
+    trainingSource: source,
+    vehicleYmm: event.vehicleYmm ?? null,
+    createdAt: event.createdAt ?? new Date().toISOString(),
+    payload: payload as Json,
+  };
 
   const { error } = await supabase.rpc("insert_ai_event", {
-      p_event_type: "training.event",
-    id,
-    trainingSource: source,
+    p_event_type: "training.event",
+    p_payload: eventPayload,
     p_shop_id: shopId,
-    
-    payload: payload,
-    // removed created_at: createdAt ?? new Date().toISOString(),
-  } as any);
+    p_training_source: source,
+  });
 
   if (error) {
     // Never block the user flow on training errors; just log.

@@ -104,6 +104,17 @@ export interface InspectionItem {
   photoRequested?: boolean;
   photoReviewed?: boolean;
   findingReviewed?: boolean;
+  smartMatch?: {
+    sourceType?: "history_repair" | "catalog_menu" | null;
+    label?: string | null;
+    menuItemId?: string | null;
+    menuRepairItemId?: string | null;
+    laborHours?: number | null;
+    parts?: Array<{ name: string; qty?: number }>;
+    pricingStatus?: string | null;
+    pricingValidUntil?: string | null;
+    confidence?: number | null;
+  } | null;
 }
 
 export interface InspectionCategory {

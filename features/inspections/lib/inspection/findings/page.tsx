@@ -658,6 +658,17 @@ export default function InspectionFindingsPage(): JSX.Element {
           laborHours?: number | null;
           parts?: { description: string; qty: number }[];
           value?: string | number | null;
+          smartMatch?: {
+            sourceType?: "history_repair" | "catalog_menu" | null;
+            label?: string | null;
+            menuItemId?: string | null;
+            menuRepairItemId?: string | null;
+            laborHours?: number | null;
+            parts?: Array<{ name: string; qty?: number }>;
+            pricingStatus?: string | null;
+            pricingValidUntil?: string | null;
+            confidence?: number | null;
+          } | null;
         };
 
         const manualParts = Array.isArray(itemExt.parts) ? itemExt.parts : [];
@@ -689,6 +700,24 @@ export default function InspectionFindingsPage(): JSX.Element {
         const quoteAlreadyExists = (nextSession.quote ?? []).some(
           (line) => line.id === quoteId,
         );
+
+        const acceptedMatch = itemExt.smartMatch ?? null;
+        const acceptedMenuParts = Array.isArray(acceptedMatch?.parts)
+          ? acceptedMatch.parts
+              .map((part) => ({
+                name: String(part.name ?? "").trim(),
+                qty:
+                  typeof part.qty === "number" && Number.isFinite(part.qty) && part.qty > 0
+                    ? part.qty
+                    : 1,
+              }))
+              .filter((part) => part.name.length > 0)
+          : [];
+        const acceptedMenuLaborHours =
+          typeof acceptedMatch?.laborHours === "number" &&
+          Number.isFinite(acceptedMatch.laborHours)
+            ? acceptedMatch.laborHours
+            : null;
 
         if (!existingQuoteId && !quoteAlreadyExists) {
           const placeholder: QuoteLineItem = {
@@ -726,28 +755,35 @@ export default function InspectionFindingsPage(): JSX.Element {
           vehicle: nextSession.vehicle ?? undefined,
         });
 
-        if (!suggestion) {
-          nextSession = updateQuoteLineInSession(nextSession, quoteId, {
-            aiState: "error",
-          });
-          continue;
-        }
+        const suggestionParts = suggestion
+          ? ((suggestion.parts ?? []) as Array<{
+              name: string;
+              qty?: number;
+              cost?: number;
+            }>).map((part) => ({
+              name: part.name,
+              qty:
+                typeof part.qty === "number" && Number.isFinite(part.qty) && part.qty > 0
+                  ? part.qty
+                  : 1,
+              cost: part.cost,
+            }))
+          : [];
 
         const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
-          ...((suggestion.parts ?? []) as Array<{
-            name: string;
-            qty: number;
-            cost?: number;
-          }>),
-          ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
+          ...acceptedMenuParts,
+          ...suggestionParts,
+          ...manualParts.map((part) => ({ name: part.description, qty: part.qty })),
         ];
 
         const laborTime =
           manualLaborHours != null && !Number.isNaN(manualLaborHours)
             ? manualLaborHours
-            : (suggestion.laborHours ?? 0.5);
+            : acceptedMenuLaborHours != null
+              ? acceptedMenuLaborHours
+              : (suggestion?.laborHours ?? 0.5);
 
-        const laborRate = suggestion.laborRate ?? 0;
+        const laborRate = suggestion?.laborRate ?? 0;
 
         const partsTotal =
           mergedParts.reduce(
@@ -761,12 +797,18 @@ export default function InspectionFindingsPage(): JSX.Element {
           price,
           laborTime,
           laborRate,
-          ai: {
-            summary: suggestion.summary,
-            confidence: suggestion.confidence,
-            parts: mergedParts,
-          },
-          aiState: "done",
+          ai: suggestion
+            ? {
+                summary: suggestion.summary,
+                confidence: suggestion.confidence,
+                parts: mergedParts,
+              }
+            : {
+                summary: "AI enrichment unavailable; deterministic inspection finding submitted.",
+                confidence: "low",
+                parts: mergedParts,
+              },
+          aiState: suggestion ? "done" : "error",
         });
 
         quotePayloadItems.push({
@@ -788,8 +830,8 @@ export default function InspectionFindingsPage(): JSX.Element {
           notes: note || null,
           complaint: note || null,
           aiComplaint: note || null,
-          aiCause: suggestion.summary ?? null,
-          aiCorrection: suggestion.summary ?? null,
+          aiCause: suggestion?.summary ?? null,
+          aiCorrection: suggestion?.summary ?? null,
           estLaborHours: laborTime,
           laborHours: laborTime,
           laborRate,
@@ -809,6 +851,18 @@ export default function InspectionFindingsPage(): JSX.Element {
             technician_notes: note,
             manual_parts: manualParts,
             source_value: itemExt.value ?? null,
+            ai_enrichment_state: suggestion ? "available" : "unavailable",
+            menu_match: acceptedMatch
+              ? {
+                  source_type: acceptedMatch.sourceType ?? null,
+                  label: acceptedMatch.label ?? null,
+                  menu_item_id: acceptedMatch.menuItemId ?? null,
+                  menu_repair_item_id: acceptedMatch.menuRepairItemId ?? null,
+                  pricing_status: acceptedMatch.pricingStatus ?? null,
+                  pricing_valid_until: acceptedMatch.pricingValidUntil ?? null,
+                  confidence: acceptedMatch.confidence ?? null,
+                }
+              : null,
           },
         });
         quoteIdByFindingKey.set(findingKey(row.sectionIndex, row.itemIndex), quoteId);
@@ -920,15 +974,16 @@ export default function InspectionFindingsPage(): JSX.Element {
           }
         | null;
 
+      let bestEffortWarning: string | null = null;
+
       if (!invoiceRefreshRes.ok || invoiceRefreshJson?.ok === false) {
         console.error(
           "[inspection-findings] invoice refresh failed",
           invoiceRefreshJson,
         );
-        toast.error(
+        bestEffortWarning =
           invoiceRefreshJson?.issues?.[0]?.message ||
-            "Inspection finished, but invoice refresh failed.",
-        );
+          "Inspection finished, but invoice refresh failed.";
       }
 
       const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
@@ -942,9 +997,9 @@ export default function InspectionFindingsPage(): JSX.Element {
         | null;
 
       if (!pdfRes.ok || !pdfJson?.ok) {
-        toast.error(
-          pdfJson?.error || "Inspection finished, but PDF finalize failed.",
-        );
+        bestEffortWarning =
+          bestEffortWarning ??
+          (pdfJson?.error || "Inspection finished, but PDF finalize failed.");
       }
 
       window.dispatchEvent(
@@ -958,7 +1013,11 @@ export default function InspectionFindingsPage(): JSX.Element {
       );
 
       window.dispatchEvent(new CustomEvent("inspection:close"));
-      toast.success("Findings sent to quote review.");
+      if (bestEffortWarning) {
+        toast.warning(bestEffortWarning);
+      } else {
+        toast.success("Findings sent to quote review.");
+      }
       router.push(`/work-orders/${resolvedWorkOrderId}/quote-review`);
     } catch (error: unknown) {
       const message =

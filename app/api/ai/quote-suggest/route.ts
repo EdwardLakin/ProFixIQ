@@ -121,7 +121,7 @@ export async function POST(req: Request) {
     const baseSummary =
       typeof notes === "string" && notes.trim().length > 0 ? notes.trim() : item;
 
-    const suggestion: AISuggestion = aiResult
+    const suggestion: AISuggestion | null = aiResult
       ? {
           parts: aiResult.parts.map((p: QuoteEnginePart) => ({
             name: p.description || "Suggested part",
@@ -133,12 +133,7 @@ export async function POST(req: Request) {
           summary: baseSummary,
           confidence: mapConfidence(aiResult.confidence),
         }
-      : {
-          parts: [],
-          laborHours: 0.5,
-          summary: baseSummary,
-          confidence: "low",
-        };
+      : null;
 
     // ✅ Log using a VALID event_type to avoid 400s (your enum/check constraint)
     if (user.id) {
@@ -177,10 +172,17 @@ export async function POST(req: Request) {
       }
     }
 
+    if (!suggestion) {
+      return NextResponse.json({ suggestion: null, unavailable: true });
+    }
+
     return NextResponse.json({ suggestion });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("quote-suggest error:", err);
-    return NextResponse.json({ error: "AI suggestion failed" }, { status: 500 });
+    return NextResponse.json(
+      { suggestion: null, unavailable: true, error: "AI suggestion unavailable" },
+      { status: 200 },
+    );
   }
 }
