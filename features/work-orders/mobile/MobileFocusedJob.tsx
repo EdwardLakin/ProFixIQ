@@ -30,6 +30,12 @@ import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModa
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import {
+  getCanonicalPartDescription,
+  getCanonicalPartManufacturer,
+  getCanonicalPartNumber,
+  getCanonicalPartQuantity,
+} from "@/features/work-orders/lib/display/workOrderParts";
 
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 
@@ -85,6 +91,7 @@ type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
   part_number_snapshot?: string | null;
   unit_sell_price_snapshot?: number | null;
   lifecycle_status?: string | null;
+  source_parts_request_item_id?: string | null;
   parts?: { name: string | null; part_number?: string | null; manufacturer?: string | null } | null;
 };
 
@@ -314,18 +321,27 @@ export default function MobileFocusedJob(props: {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
     try {
+      let allocBuilder = supabase
+        .from("work_order_part_allocations")
+        .select("*, parts(name)")
+        .eq("work_order_line_id", workOrderLineId);
+      let requiredBuilder = supabase
+        .from("work_order_parts")
+        .select("*, parts(name, part_number, sku, manufacturer, supplier)")
+        .eq("work_order_line_id", workOrderLineId)
+        .eq("is_active", true);
+      if (workOrder?.id) {
+        allocBuilder = allocBuilder.eq("work_order_id", workOrder.id);
+        requiredBuilder = requiredBuilder.eq("work_order_id", workOrder.id);
+      }
+      if (workOrder?.shop_id) {
+        allocBuilder = allocBuilder.eq("shop_id", workOrder.shop_id);
+        requiredBuilder = requiredBuilder.eq("shop_id", workOrder.shop_id);
+      }
+
       const [allocQuery, requiredQuery] = await Promise.all([
-        supabase
-          .from("work_order_part_allocations")
-          .select("*, parts(name)")
-          .eq("work_order_line_id", workOrderLineId)
-          .order("created_at", { ascending: true }),
-        supabase
-          .from("work_order_parts")
-          .select("*, parts(name, part_number, manufacturer)")
-          .eq("work_order_line_id", workOrderLineId)
-          .eq("is_active", true)
-          .order("created_at", { ascending: true }),
+        allocBuilder.order("created_at", { ascending: true }),
+        requiredBuilder.order("created_at", { ascending: true }),
       ]);
       if (allocQuery.error) throw allocQuery.error;
       if (requiredQuery.error) throw requiredQuery.error;
@@ -337,7 +353,7 @@ export default function MobileFocusedJob(props: {
     } finally {
       setAllocsLoading(false);
     }
-  }, [supabase, workOrderLineId]);
+  }, [supabase, workOrder?.id, workOrder?.shop_id, workOrderLineId]);
 
   const refresh = useCallback(async () => {
     if (!workOrderLineId) return;
@@ -533,6 +549,16 @@ export default function MobileFocusedJob(props: {
           event: "*",
           schema: "public",
           table: "work_order_part_allocations",
+          filter: `work_order_line_id=eq.${workOrderLineId}`,
+        },
+        () => void loadAllocations(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_parts",
           filter: `work_order_line_id=eq.${workOrderLineId}`,
         },
         () => void loadAllocations(),
@@ -1245,13 +1271,13 @@ export default function MobileFocusedJob(props: {
                             className="grid grid-cols-12 items-center px-3 py-2 text-sm"
                           >
                             <div className="col-span-7 truncate text-neutral-100">
-                              {p.description_snapshot ?? p.parts?.name ?? "Required part"}
+                              {getCanonicalPartDescription(p) ?? "—"}
                             </div>
                             <div className="col-span-3 truncate text-neutral-400">
-                              {[p.part_number_snapshot ?? p.parts?.part_number, p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ") || "—"}
+                              {[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ") || "—"}
                             </div>
                             <div className="col-span-2 text-right font-semibold text-neutral-100">
-                              {p.quantity}
+                              {getCanonicalPartQuantity(p)}
                             </div>
                           </li>
                         ))}

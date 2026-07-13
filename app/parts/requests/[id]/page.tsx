@@ -415,6 +415,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     const reqList = (reqs ?? []) as RequestRow[];
     const reqIds = reqList.map((r) => r.id);
+    const shopId = woRow.shop_id ?? null;
 
     const itemsByRequest: Record<string, ItemRow[]> = {};
     if (reqIds.length) {
@@ -459,6 +460,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         .from("work_order_parts")
         .select("source_parts_request_item_id")
         .in("source_parts_request_item_id", requestItemIds)
+        .eq("shop_id", shopId)
         .eq("is_active", true);
       if (attachedError) {
         toast.warning(attachedError.message);
@@ -493,7 +495,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       }
     }
 
-    const shopId = woRow.shop_id ?? null;
     if (shopId) {
       const [{ data: ps }, { data: locs }, { data: poRows }, { data: supRows }, { data: vendorRows }] =
         await Promise.all([

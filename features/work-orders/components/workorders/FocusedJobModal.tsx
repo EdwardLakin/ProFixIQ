@@ -25,6 +25,14 @@ import {
   resolvePrimaryTechDisplay,
 } from "@/features/work-orders/lib/display/linePresentation";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+import {
+  filterAllocationsNotBackedByCanonicalParts,
+  getCanonicalPartDescription,
+  getCanonicalPartManufacturer,
+  getCanonicalPartNumber,
+  getCanonicalPartQuantity,
+  getCanonicalPartUnitPrice,
+} from "@/features/work-orders/lib/display/workOrderParts";
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
 import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
 
@@ -94,6 +102,7 @@ type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
   part_number_snapshot?: string | null;
   unit_sell_price_snapshot?: number | null;
   lifecycle_status?: string | null;
+  source_parts_request_item_id?: string | null;
   parts?: { name: string | null; part_number?: string | null; manufacturer?: string | null } | null;
 };
 
@@ -373,18 +382,27 @@ export default function FocusedJobModal(props: {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
     try {
+      let allocBuilder = supabase
+        .from("work_order_part_allocations")
+        .select("*, parts(name)")
+        .eq("work_order_line_id", workOrderLineId);
+      let requiredBuilder = supabase
+        .from("work_order_parts")
+        .select("*, parts(name, part_number, sku, manufacturer, supplier)")
+        .eq("work_order_line_id", workOrderLineId)
+        .eq("is_active", true);
+      if (workOrder?.id) {
+        allocBuilder = allocBuilder.eq("work_order_id", workOrder.id);
+        requiredBuilder = requiredBuilder.eq("work_order_id", workOrder.id);
+      }
+      if (workOrder?.shop_id) {
+        allocBuilder = allocBuilder.eq("shop_id", workOrder.shop_id);
+        requiredBuilder = requiredBuilder.eq("shop_id", workOrder.shop_id);
+      }
+
       const [allocQuery, requiredQuery] = await Promise.all([
-        supabase
-          .from("work_order_part_allocations")
-          .select("*, parts(name)")
-          .eq("work_order_line_id", workOrderLineId)
-          .order("created_at", { ascending: true }),
-        supabase
-          .from("work_order_parts")
-          .select("*, parts(name, part_number, manufacturer)")
-          .eq("work_order_line_id", workOrderLineId)
-          .eq("is_active", true)
-          .order("created_at", { ascending: true }),
+        allocBuilder.order("created_at", { ascending: true }),
+        requiredBuilder.order("created_at", { ascending: true }),
       ]);
       if (allocQuery.error) throw allocQuery.error;
       if (requiredQuery.error) throw requiredQuery.error;
@@ -395,7 +413,7 @@ export default function FocusedJobModal(props: {
     } finally {
       setAllocsLoading(false);
     }
-  }, [supabase, workOrderLineId]);
+  }, [supabase, workOrder?.id, workOrder?.shop_id, workOrderLineId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -413,6 +431,16 @@ export default function FocusedJobModal(props: {
           event: "*",
           schema: "public",
           table: "work_order_part_allocations",
+          filter: `work_order_line_id=eq.${workOrderLineId}`,
+        },
+        () => void loadAllocations(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_parts",
           filter: `work_order_line_id=eq.${workOrderLineId}`,
         },
         () => void loadAllocations(),
@@ -589,7 +617,7 @@ export default function FocusedJobModal(props: {
   const isPanelVariant = variant === "panel";
   const isExpandedPanel = isPanelVariant;
   const pricing = line
-    ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: allocs, stagedParts: requiredParts })
+    ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts), stagedParts: requiredParts })
     : null;
   const laborDisplay = formatLaborSummary(pricing?.laborHours, Number(pricing?.laborTotal ?? 0));
   const lineTotal = Number(pricing?.lineTotal ?? 0);
@@ -965,13 +993,13 @@ export default function FocusedJobModal(props: {
                     </div>
                     <ul className="max-h-56 overflow-auto divide-y divide-white/5">
                       {requiredParts.map((p) => {
-                        const qty = Number(p.quantity ?? 0);
-                        const unit = Number(p.unit_sell_price_snapshot ?? p.unit_price ?? 0);
+                        const qty = getCanonicalPartQuantity(p);
+                        const unit = getCanonicalPartUnitPrice(p);
                         return (
                           <li key={`required-${p.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
                             <div className="col-span-7 min-w-0 break-words text-neutral-100">
-                              {p.description_snapshot ?? p.parts?.name ?? "Required part"}
-                              <div className="text-[11px] text-neutral-400">{[p.part_number_snapshot ?? p.parts?.part_number, p.manufacturer_snapshot ?? p.parts?.manufacturer, p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}</div>
+                              {getCanonicalPartDescription(p) ?? "—"}
+                              <div className="text-[11px] text-neutral-400">{[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}</div>
                             </div>
                             <div className="col-span-3 truncate text-neutral-400">{unit > 0 ? money(unit) : "—"}</div>
                             <div className="col-span-2 text-right font-semibold text-neutral-100">{qty}</div>

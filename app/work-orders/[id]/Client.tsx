@@ -33,6 +33,7 @@ import { cn } from "@shared/lib/utils";
 import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -660,8 +661,9 @@ export default function WorkOrderIdClient(): JSX.Element {
             // ✅ staged/quoted parts from menu quick add (NOT allocated inventory)
             supabase
               .from("work_order_parts")
-              .select("*, parts(name, sku, part_number, manufacturer)")
+              .select("*, parts(name, sku, part_number, manufacturer, supplier)")
               .eq("work_order_id", woRow.id)
+              .eq("shop_id", woRow.shop_id)
               .eq("is_active", true)
               .in(
                 "work_order_line_id",
@@ -923,7 +925,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         quote,
         shopLaborRate,
         stagedParts: stagedPartsByLine[line.id] ?? [],
-        allocatedParts: allocsByLine[line.id] ?? [],
+        allocatedParts: filterAllocationsNotBackedByCanonicalParts(allocsByLine[line.id] ?? [], stagedPartsByLine[line.id] ?? []),
       });
       byLine[line.id] = {
         laborTotal: resolved.laborTotal,
