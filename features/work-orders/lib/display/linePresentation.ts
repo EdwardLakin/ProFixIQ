@@ -28,8 +28,9 @@ export function formatLaborSummary(hours: number | null | undefined, laborTotal:
 
 export function formatPartsSummary(args: { partsCount: number; partsTotal: number }): string {
   const { partsCount, partsTotal } = args;
-  if (partsTotal > 0 && partsCount > 0) {
-    return `${partsCount} requested · ${new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(partsTotal)} est.`;
+  if (partsCount > 0) {
+    const total = new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(partsTotal);
+    return `${partsCount} required · ${total} est.`;
   }
   if (partsTotal > 0) {
     return `Parts ${new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(partsTotal)} est.`;
@@ -49,6 +50,6 @@ export function resolvePartsBottleneckDisplay(args: {
     : "";
   return {
     heading: status === "Backordered" ? "Parts Waiting" : "Parts Requested",
-    detail: `ABS wheel speed sensor — ${status}${estimate}`,
+    detail: `Parts ${status.toLowerCase()}${estimate}`,
   };
 }

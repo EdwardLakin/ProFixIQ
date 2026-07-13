@@ -28,7 +28,7 @@ export function resolveWorkOrderLinePricing(args: {
   line: Pick<WorkOrderLine, "labor_time"> & { id?: string; price_estimate?: number | null; labor_total?: number | null; labor_rate?: number | null };
   quote?: Partial<WorkOrderQuoteLine> | null;
   shopLaborRate: number | null;
-  stagedParts?: Array<Pick<WorkOrderPart, "quantity" | "unit_price" | "total_price">>;
+  stagedParts?: Array<Pick<WorkOrderPart, "quantity" | "unit_price" | "total_price"> & { quantity_requested?: number | null; unit_sell_price_snapshot?: number | null; is_active?: boolean | null }>;
   allocatedParts?: Array<
     Pick<WorkOrderPartAllocation, "qty" | "unit_cost"> & {
       quantity?: number | null;
@@ -68,10 +68,11 @@ export function resolveWorkOrderLinePricing(args: {
   const laborRate = explicitLineLaborRate != null && explicitLineLaborRate > 0 ? explicitLineLaborRate : toNum(shopLaborRate) ?? 0;
   const quotedLaborTotal = toNum(quote?.labor_total);
 
-  const stagedPartsTotal = stagedParts.reduce((sum, part) => {
+  const activeStagedParts = stagedParts.filter((part) => part.is_active !== false);
+  const stagedPartsTotal = activeStagedParts.reduce((sum, part) => {
     const total = toNum(part.total_price);
     if (total != null) return sum + total;
-    return sum + (toNum(part.quantity) ?? 0) * (toNum(part.unit_price) ?? 0);
+    return sum + (toNum(part.quantity_requested) ?? toNum(part.quantity) ?? 0) * (toNum(part.unit_sell_price_snapshot) ?? toNum(part.unit_price) ?? 0);
   }, 0);
 
   const allocPartsTotal = allocatedParts.reduce((sum, part) => {
@@ -82,7 +83,7 @@ export function resolveWorkOrderLinePricing(args: {
 
   const hasQuotePartsTotal = toNum(quote?.parts_total) != null;
   const partsTotal = hasQuotePartsTotal ? (toNum(quote?.parts_total) ?? 0) : stagedPartsTotal + allocPartsTotal;
-  const partsCount = stagedParts.length + allocatedParts.length;
+  const partsCount = activeStagedParts.length + allocatedParts.length;
   const explicitLineLaborTotal = toNum(line.labor_total) ?? (partsTotal > 0 ? linePriceEstimate : null);
   const computedLaborForLineTotal = explicitLineLaborTotal != null && explicitLineLaborTotal > 0 ? explicitLineLaborTotal : laborHours * laborRate;
   const computedLineTotal = computedLaborForLineTotal + partsTotal;
