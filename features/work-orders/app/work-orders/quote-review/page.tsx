@@ -11,6 +11,7 @@ import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed
 import { deriveEventsFromQuote } from "@/features/shared/lib/decisionEvents";
 import PageShell from "@/features/shared/components/PageShell";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
+import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 
 type DB = Database;
 
@@ -25,7 +26,7 @@ type WorkOrderWithMeta = WorkOrder & {
   work_order_lines?: Array<
     Pick<Line, "id" | "status" | "approval_state" | "labor_time" | "line_no" | "description" | "created_at" | "updated_at">
   >;
-  work_order_quote_lines?: Array<Pick<QuoteLine, "id" | "stage">>;
+  work_order_quote_lines?: Array<Pick<QuoteLine, "id" | "stage" | "status" | "approved_at" | "declined_at" | "work_order_line_id">>;
   labor_hours?: number | null;
   waiting_for_parts?: boolean;
 };
@@ -135,7 +136,7 @@ function ApprovalsList(): JSX.Element {
         *,
         shops(name),
         work_order_lines(id,status,approval_state,labor_time,line_no,description,created_at,updated_at),
-        work_order_quote_lines(id,stage)
+        work_order_quote_lines(id,stage,status,approved_at,declined_at,work_order_line_id)
       `,
       )
       .eq("shop_id", shopId)
@@ -165,6 +166,11 @@ function ApprovalsList(): JSX.Element {
     };
 
     const filtered = list.filter((w) => {
+      const qlines = Array.isArray(w.work_order_quote_lines)
+        ? w.work_order_quote_lines
+        : [];
+      if (qlines.some((line) => isReviewableQuoteLine(line))) return true;
+
       const woStatus = safeTrim(w.status).toLowerCase();
       if (woStatus === "awaiting_approval") return true;
 
@@ -182,8 +188,8 @@ function ApprovalsList(): JSX.Element {
       const qlines = Array.isArray(w.work_order_quote_lines)
         ? w.work_order_quote_lines
         : [];
-      const hasQuotes = qlines.length > 0;
-      const waitingForParts = !hasQuotes;
+      const reviewableQuotes = qlines.filter((line) => isReviewableQuoteLine(line));
+      const waitingForParts = reviewableQuotes.some((line) => safeTrim(line.status).toLowerCase() === "pending_parts");
 
       return {
         ...w,

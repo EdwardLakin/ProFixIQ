@@ -28,6 +28,7 @@ import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import {
   applyFetchedMobileDetailSnapshot,
   deriveMobileDetailOperationalState,
@@ -642,11 +643,7 @@ export default function MobileWorkOrderClient({
   );
 
   const quotePending = useMemo(
-    () =>
-      quoteLines.filter((q) => {
-        const status = (q.status ?? "").toLowerCase();
-        return status !== "converted" && status !== "declined";
-      }),
+    () => quoteLines.filter((q) => isReviewableQuoteLine(q)),
     [quoteLines],
   );
 
@@ -1457,6 +1454,42 @@ export default function MobileWorkOrderClient({
               </div>
             )}
           </section>
+
+
+          {quotePending.length > 0 && (
+            <section className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-sky-400/25 px-4 py-4 shadow-[0_16px_40px_rgba(0,0,0,0.88)]">
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-sky-100 sm:text-base">Pending quote items</h2>
+                  <p className="text-[11px] text-neutral-500">Recommended repairs awaiting quote review or customer decision.</p>
+                </div>
+                <Link href={`/work-orders/${wo?.id ?? routeId}/quote-review`} className="rounded-full border border-sky-400/40 px-3 py-1.5 text-[11px] font-semibold text-sky-100">
+                  Review
+                </Link>
+              </div>
+              <div className="space-y-2">
+                {quotePending.map((q) => {
+                  const meta = typeof q.metadata === "object" && q.metadata && !Array.isArray(q.metadata) ? q.metadata as Record<string, unknown> : {};
+                  const parts = Array.isArray(meta.parts) ? meta.parts : [];
+                  const inspectionStatus = typeof meta.inspection_status === "string" ? meta.inspection_status.toUpperCase() : "RECOMMEND";
+                  const sourceFinding = typeof meta.source_finding_title === "string" ? meta.source_finding_title : q.ai_complaint ?? "Inspection finding";
+                  const pricingReviewRequired = q.status === "pending_parts" || (typeof meta.menu_match === "object" && meta.menu_match !== null && (meta.menu_match as Record<string, unknown>).pricing_review_required === true);
+                  return (
+                    <article key={q.id} className="rounded-xl border border-sky-400/20 bg-sky-950/20 p-3">
+                      <div className="text-sm font-semibold text-white">{q.description || "Recommended repair"}</div>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-sky-200">{inspectionStatus} • {sourceFinding}</div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-neutral-300">
+                        <div>Labor: {typeof q.labor_hours === "number" ? `${q.labor_hours}h` : typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"}</div>
+                        <div>Parts: {parts.length > 0 ? `${parts.length} req.` : "None"}</div>
+                        <div>Stage: {String(q.stage ?? q.status ?? "advisor_pending").replaceAll("_", " ")}</div>
+                        <div className={pricingReviewRequired ? "text-amber-200" : "text-emerald-200"}>{pricingReviewRequired ? "Pricing review" : "Pricing available"}</div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           <section
             ref={focusedActionRef}

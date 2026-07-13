@@ -5,6 +5,7 @@ import { postStoryEventToShopReel } from "@/features/integrations/shopreel/serve
 import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 
 
 function getIdFromUrl(url: string): string | null {
@@ -37,6 +38,16 @@ export async function POST(req: Request) {
     });
     if (notDone) {
       return NextResponse.json({ ok: false, error: "All lines must be completed first." }, { status: 400 });
+    }
+
+    const { data: quoteLines, error: quoteErr } = await supabase
+      .from("work_order_quote_lines")
+      .select("status,stage,approved_at,declined_at,work_order_line_id")
+      .eq("work_order_id", woId);
+    if (quoteErr) throw quoteErr;
+
+    if ((quoteLines ?? []).some((line) => isReviewableQuoteLine(line))) {
+      return NextResponse.json({ ok: false, error: "Active pending quote lines must be resolved before invoicing." }, { status: 400 });
     }
 
     const { error: updErr } = await supabase

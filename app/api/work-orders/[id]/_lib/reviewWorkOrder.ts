@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { recordWorkOrderTraining } from "@/features/integrations/ai";
 import { seedWorkOrderIntelligenceFromReview } from "@/features/ai/server/workOrderIntelligence";
+import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 
 type DB = Database;
 
@@ -49,6 +50,11 @@ function hasMeaningfulJson(value: unknown): boolean {
 
 function lineRequiresParts(line: Record<string, unknown>): boolean {
   if (line.no_parts_required === true) return false;
+  const jobType = String(line.job_type ?? "").trim().toLowerCase();
+  const lineType = String(line.line_type ?? "").trim().toLowerCase();
+  if (jobType === "inspection" || jobType === "diagnosis" || lineType === "inspection" || lineType === "diagnostic") {
+    return line.parts_required === true || hasMeaningfulJson(line.parts_required) || hasMeaningfulJson(line.parts_needed);
+  }
   if (line.parts_required === true) return true;
   if (hasMeaningfulJson(line.parts_required)) return true;
   if (hasMeaningfulJson(line.parts_needed)) return true;
@@ -202,6 +208,21 @@ export async function reviewWorkOrder({
   if (lnErr) throw lnErr;
 
   const issues: ReviewIssue[] = [];
+
+  const { data: quoteLines, error: quoteErr } = await supabase
+    .from("work_order_quote_lines")
+    .select("id,status,stage,approved_at,declined_at,work_order_line_id")
+    .eq("work_order_id", wo.id)
+    .eq("shop_id", shopId);
+  if (quoteErr) throw quoteErr;
+
+  const activePendingQuoteCount = (quoteLines ?? []).filter((line) => isReviewableQuoteLine(line)).length;
+  if (activePendingQuoteCount > 0) {
+    issues.push({
+      kind: "pending_quote_lines",
+      message: `${activePendingQuoteCount} pending quote line(s) must be resolved before invoicing.`,
+    });
+  }
 
   if (!lines || lines.length === 0) {
     issues.push({ kind: "no_lines", message: "Work order has no lines" });
