@@ -11,7 +11,6 @@ export function PartsRequestWorkbenchTable({
   onSave,
   onUseInventory,
   onOrder,
-  onAddToJob,
   onConfirmConflict,
   onResetConflictOverride,
   onReceive,
@@ -26,7 +25,6 @@ export function PartsRequestWorkbenchTable({
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
   onOrder?: (itemId: string) => void;
-  onAddToJob?: (item: PartsRequestWorkbenchItem) => void;
   onConfirmConflict?: (itemId: string) => void;
   onResetConflictOverride?: (itemId: string) => void;
   onReceive?: (itemId: string) => void;
@@ -73,7 +71,6 @@ export function PartsRequestWorkbenchTable({
               onSave={onSave}
               onUseInventory={onUseInventory}
               onOrder={onOrder}
-              onAddToJob={onAddToJob}
               onConfirmConflict={onConfirmConflict}
               onReceive={onReceive}
               onAddToStock={onAddToStock}

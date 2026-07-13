@@ -69,6 +69,7 @@ export type PartsRequestWorkbenchModel = {
   inventoryResults?: PartsRequestInventoryResult[];
   defaultLocationId?: string | null;
   items: PartsRequestWorkbenchItem[];
+  packageCommittedCount?: number;
 };
 
 export type SaveItemInput = {

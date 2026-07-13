@@ -131,6 +131,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     .maybeSingle();
 
   if (updateError) return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+  if (!updatedItem) {
+    return NextResponse.json({ ok: false, error: "Inventory selection did not persist. The item may have changed or your shop access was blocked." }, { status: 409 });
+  }
 
   return NextResponse.json({
     ok: true,

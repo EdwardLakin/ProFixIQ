@@ -109,6 +109,7 @@ export function mapRequestToWorkbenchModel(input: {
           : null,
       };
     }),
+    packageCommittedCount: Object.values(input.addedToWorkOrderByItemId ?? {}).filter(Boolean).length,
     items: input.items.map((item) => {
       const itemId = text(item.id);
       return mapRequestItemToWorkbenchItem({
