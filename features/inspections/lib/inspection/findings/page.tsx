@@ -604,7 +604,7 @@ export default function InspectionFindingsPage(): JSX.Element {
         description: string;
         title: string;
         jobType: "repair";
-        status: "pending_parts";
+        status: "pending_parts" | "advisor_pending";
         stage: "advisor_pending";
         source: "inspection";
         sourceInspectionId: string | null;
@@ -755,58 +755,41 @@ export default function InspectionFindingsPage(): JSX.Element {
           vehicle: nextSession.vehicle ?? undefined,
         });
 
-        const suggestionParts = suggestion
-          ? ((suggestion.parts ?? []) as Array<{
-              name: string;
-              qty?: number;
-              cost?: number;
-            }>).map((part) => ({
-              name: part.name,
-              qty:
-                typeof part.qty === "number" && Number.isFinite(part.qty) && part.qty > 0
-                  ? part.qty
-                  : 1,
-              cost: part.cost,
-            }))
-          : [];
+        const verifiedParts: Array<{ name: string; qty: number }> =
+          manualParts.length > 0
+            ? manualParts.map((part) => ({
+                name: part.description,
+                qty: part.qty,
+              }))
+            : acceptedMenuParts;
 
-        const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
-          ...acceptedMenuParts,
-          ...suggestionParts,
-          ...manualParts.map((part) => ({ name: part.description, qty: part.qty })),
-        ];
-
-        const laborTime =
+        const laborHours =
           manualLaborHours != null && !Number.isNaN(manualLaborHours)
             ? manualLaborHours
             : acceptedMenuLaborHours != null
               ? acceptedMenuLaborHours
-              : (suggestion?.laborHours ?? 0.5);
+              : null;
 
-        const laborRate = suggestion?.laborRate ?? 0;
+        const laborRate = null;
 
-        const partsTotal =
-          mergedParts.reduce(
-            (sum, p) => sum + (typeof p.cost === "number" ? p.cost * p.qty : 0),
-            0,
-          ) ?? 0;
-        const laborTotal = laborRate * laborTime;
-        const price = Math.max(0, partsTotal + laborTotal);
+        const partsTotal = 0;
+        const laborTotal = null;
+        const price = partsTotal;
 
         nextSession = updateQuoteLineInSession(nextSession, quoteId, {
           price,
-          laborTime,
-          laborRate,
+          laborTime: laborHours ?? 0,
+          laborRate: 0,
           ai: suggestion
             ? {
                 summary: suggestion.summary,
                 confidence: suggestion.confidence,
-                parts: mergedParts,
+                parts: verifiedParts,
               }
             : {
                 summary: "AI enrichment unavailable; deterministic inspection finding submitted.",
                 confidence: "low",
-                parts: mergedParts,
+                parts: verifiedParts,
               },
           aiState: suggestion ? "done" : "error",
         });
@@ -816,7 +799,7 @@ export default function InspectionFindingsPage(): JSX.Element {
           description: desc,
           title: desc,
           jobType: "repair",
-          status: "pending_parts",
+          status: verifiedParts.length > 0 ? "pending_parts" : "advisor_pending",
           stage: "advisor_pending",
           source: "inspection",
           sourceInspectionId: resolvedInspectionId || null,
@@ -832,19 +815,19 @@ export default function InspectionFindingsPage(): JSX.Element {
           aiComplaint: note || null,
           aiCause: suggestion?.summary ?? null,
           aiCorrection: suggestion?.summary ?? null,
-          estLaborHours: laborTime,
-          laborHours: laborTime,
+          estLaborHours: laborHours,
+          laborHours,
           laborRate,
           partsTotal,
           laborTotal,
           subtotal: price,
           grandTotal: price,
           photoUrls: item.photoUrls ?? [],
-          parts: mergedParts.map((part) => ({
+          parts: verifiedParts.map((part) => ({
             description: part.name,
             name: part.name,
             qty: part.qty,
-            cost: part.cost ?? null,
+            cost: null,
           })),
           metadata: {
             inspection_status: status,
@@ -941,35 +924,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
       const payload = summarizeFromSections(nextSession);
 
-      const invoiceRefreshRes = await fetch(
-        `/api/work-orders/${resolvedWorkOrderId}/invoice`,
-        {
-          method: "POST",
-          credentials: "include",
-          cache: "no-store",
-        },
-      );
-
-      const invoiceRefreshJson = (await invoiceRefreshRes
-        .json()
-        .catch(() => null)) as
-        | {
-            ok?: boolean;
-            issues?: Array<{ kind?: string; message?: string }>;
-          }
-        | null;
-
       let bestEffortWarning: string | null = null;
-
-      if (!invoiceRefreshRes.ok || invoiceRefreshJson?.ok === false) {
-        console.error(
-          "[inspection-findings] invoice refresh failed",
-          invoiceRefreshJson,
-        );
-        bestEffortWarning =
-          invoiceRefreshJson?.issues?.[0]?.message ||
-          "Findings submitted, but invoice refresh failed.";
-      }
 
       const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
         method: "POST",
