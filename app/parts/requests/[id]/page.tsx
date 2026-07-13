@@ -222,6 +222,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const [conflictWarningByItemId, setConflictWarningByItemId] = useState<Record<string, string>>({});
   const [conflictOverrideByItemId, setConflictOverrideByItemId] = useState<Record<string, boolean>>({});
   const [addedToWorkOrderByItemId, setAddedToWorkOrderByItemId] = useState<Record<string, boolean>>({});
+  const [packageCommitWarningByItemId, setPackageCommitWarningByItemId] = useState<Record<string, string>>({});
 
   function clearConflictOverride(itemId: string): void {
     setConflictOverrideByItemId((prev) => {
@@ -1745,8 +1746,16 @@ if (!lineId || !isUuid(lineId)) {
 
       const review = body.errorsRequiringReview ?? [];
       if (!body.ok || review.length > 0) {
+        setPackageCommitWarningByItemId(Object.fromEntries(
+          review.flatMap((item) => {
+            const itemId = item.itemId ? String(item.itemId) : "";
+            const reason = item.reason ?? item.error ?? "Review this item before saving it to the work order.";
+            return itemId ? [[itemId, reason] as const] : [];
+          }),
+        ));
         toast.warning(`Parts package needs review: ${review.length} item${review.length === 1 ? "" : "s"} not saved.`);
       } else {
+        setPackageCommitWarningByItemId({});
         toast.success(`Parts package saved to work order (${body.committedCount ?? 0} item${body.committedCount === 1 ? "" : "s"}).`);
       }
 
@@ -1917,6 +1926,7 @@ if (!lineId || !isUuid(lineId)) {
                     ),
                     conflictWarningByItemId,
                     addedToWorkOrderByItemId,
+                    packageCommitWarningByItemId,
                   });
 
                   return (

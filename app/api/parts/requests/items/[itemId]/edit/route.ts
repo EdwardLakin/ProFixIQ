@@ -54,7 +54,7 @@ export async function PATCH(
 
   const { data: item, error: itemError } = await supabase
     .from("part_request_items")
-    .select("id, request_id, shop_id, work_order_id, quote_line_id")
+    .select("id, request_id, shop_id, work_order_id, work_order_line_id")
     .eq("id", itemId)
     .eq("shop_id", shopId)
     .maybeSingle();
@@ -73,9 +73,6 @@ export async function PATCH(
   if (!parentRequest) return NextResponse.json({ ok: false, error: "Parent parts request is not available for this shop." }, { status: 403 });
   if (cleanString(parentRequest.work_order_id) !== cleanString(item.work_order_id)) {
     return NextResponse.json({ ok: false, error: "Request item work order context mismatch." }, { status: 403 });
-  }
-  if (cleanString(parentRequest.quote_line_id) && cleanString(item.quote_line_id) !== cleanString(parentRequest.quote_line_id)) {
-    return NextResponse.json({ ok: false, error: "Request item quote context mismatch." }, { status: 403 });
   }
 
   if (parentRequest.work_order_id) {
