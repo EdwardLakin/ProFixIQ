@@ -44,4 +44,23 @@ describe("inspection review submission blockers", () => {
     expect(findingsPage).toContain('pricing_review_required: acceptedMatch.pricingStatus !== "fresh"');
     expect(findingsPage).toContain('technician_pricing_approved: false');
   });
+
+  it("keeps technician and accepted-menu truth authoritative during canonical submission", () => {
+    expect(findingsPage).toContain("const verifiedParts:");
+    expect(findingsPage).toContain("manualParts.length > 0");
+    expect(findingsPage).toContain(": acceptedMenuParts;");
+    expect(findingsPage).not.toContain("...suggestionParts");
+    expect(findingsPage).toContain("const laborRate = null;");
+    expect(findingsPage).toContain("const laborTotal = null;");
+    expect(findingsPage).toContain(
+      'status: verifiedParts.length > 0 ? "pending_parts" : "advisor_pending"',
+    );
+  });
+
+  it("does not turn successful quote submission into an invoice-readiness warning", () => {
+    expect(findingsPage).not.toContain(
+      '`/api/work-orders/${resolvedWorkOrderId}/invoice`',
+    );
+    expect(findingsPage).toContain('toast.success("Findings sent to quote review.")');
+  });
 });
