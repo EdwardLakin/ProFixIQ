@@ -134,6 +134,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   if (!updatedItem) {
     return NextResponse.json({ ok: false, error: "Inventory selection did not persist. The item may have changed or your shop access was blocked." }, { status: 409 });
   }
+  if (updatedItem.part_id !== partId) {
+    return NextResponse.json({ ok: false, error: "Inventory selection verification failed. Reload and try again." }, { status: 409 });
+  }
 
   return NextResponse.json({
     ok: true,

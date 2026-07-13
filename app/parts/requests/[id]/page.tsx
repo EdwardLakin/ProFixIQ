@@ -1988,16 +1988,6 @@ if (!lineId || !isUuid(lineId)) {
                             matchedPart: selectedPart,
                           });
 
-                          updateItem(r.req.id, input.itemId, {
-                            ui_part_id: input.partId,
-                            ui_price:
-                              typeof selectedRecord?.price === "number"
-                                ? selectedRecord.price
-                                : selectedRecord?.price == null
-                                  ? undefined
-                                  : Number(selectedRecord.price),
-                          });
-
                           if (conflict && !input.warningAccepted) {
                             setConflictWarningByItemId((prev) => ({ ...prev, [input.itemId]: conflict.message }));
                             toast.warning("Possible mismatch. Review the selected inventory part before attaching.");
