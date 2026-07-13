@@ -29,6 +29,10 @@ import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
+  applyFetchedMobileDetailSnapshot,
+  deriveMobileDetailOperationalState,
+} from "@/features/work-orders/mobile/detailOperationalState";
+import {
   getOfflineSyncSummary,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
@@ -90,8 +94,9 @@ function extractInspectionTemplateId(
 
 type KnownStatus =
   | "awaiting_approval"
-  | "parts_waiting"
+  | "waiting_parts"
   | "awaiting"
+  | "assigned"
   | "queued"
   | "in_progress"
   | "on_hold"
@@ -108,7 +113,7 @@ const BASE_BADGE =
 const BADGE: Record<KnownStatus, string> = {
   awaiting_approval:
     "bg-amber-500/12 border-amber-300/65 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.24)]",
-  parts_waiting:
+  waiting_parts:
     "bg-indigo-500/12 border-indigo-300/65 text-indigo-100 shadow-[0_0_18px_rgba(129,140,248,0.24)]",
   awaiting:
     "bg-slate-900/40 border-slate-400/60 text-slate-200 shadow-[0_0_18px_rgba(148,163,184,0.25)]",
@@ -118,6 +123,8 @@ const BADGE: Record<KnownStatus, string> = {
     "border-cyan-300/70 bg-cyan-500/14 text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.30)]",
   on_hold:
     "bg-amber-500/12 border-amber-300/65 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.24)]",
+  assigned:
+    "bg-sky-900/30 border-sky-400/60 text-sky-200 shadow-[0_0_18px_rgba(56,189,248,0.35)]",
   unassigned:
     "bg-slate-800/65 border-slate-400/60 text-slate-200 shadow-[0_0_14px_rgba(148,163,184,0.20)]",
   planned:
@@ -150,64 +157,7 @@ const APPROVAL_ROLES = new Set([
   "leadhand",
 ]);
 
-type MobileOperationalState =
-  | "in_progress"
-  | "awaiting_approval"
-  | "parts_waiting"
-  | "on_hold"
-  | "unassigned"
-  | "completed";
-
-function normalizeStatus(status: string | null | undefined): string {
-  return String(status ?? "").trim().toLowerCase().replaceAll("-", "_");
-}
-
-function isCompletedLine(line: WorkOrderLine): boolean {
-  const status = normalizeStatus(line.status);
-  return (
-    status === "completed" ||
-    status === "ready_to_invoice" ||
-    status === "invoiced" ||
-    Boolean(line.punched_out_at)
-  );
-}
-
-function isApprovalPendingLine(line: WorkOrderLine): boolean {
-  const approval = normalizeStatus(line.approval_state);
-  const status = normalizeStatus(line.status);
-  return (
-    approval === "pending" ||
-    status === "awaiting_approval" ||
-    status === "needs_approval"
-  );
-}
-
-function isPartsWaitingLine(line: WorkOrderLine): boolean {
-  const status = normalizeStatus(line.status);
-  const holdReason = normalizeStatus(line.hold_reason);
-  return (
-    status === "waiting_parts" ||
-    status === "pending_parts" ||
-    holdReason.includes("part") ||
-    holdReason.includes("quote")
-  );
-}
-
-function isInProgressLine(line: WorkOrderLine): boolean {
-  const status = normalizeStatus(line.status);
-  const punchedIn = Boolean(line.punched_in_at);
-  const punchedOut = Boolean(line.punched_out_at);
-  return status === "in_progress" || (punchedIn && !punchedOut);
-}
-
-function getOperationalState(line: WorkOrderLine): MobileOperationalState {
-  if (isCompletedLine(line)) return "completed";
-  if (isInProgressLine(line)) return "in_progress";
-  if (isApprovalPendingLine(line)) return "awaiting_approval";
-  if (isPartsWaitingLine(line)) return "parts_waiting";
-  if (normalizeStatus(line.status) === "on_hold") return "on_hold";
-  return "unassigned";
-}
+/* Mobile detail operational status is derived in detailOperationalState.ts. */
 
 /* ------------------------------------------------------------------------- */
 
@@ -440,8 +390,6 @@ export default function MobileWorkOrderClient({
           return;
         }
 
-        setWo(woRow);
-
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
           toast.error(
             "This work order is missing vehicle and/or customer. Open the Create form to set them.",
@@ -478,7 +426,14 @@ export default function MobileWorkOrderClient({
 
         if (linesRes.error) throw linesRes.error;
         const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
-        setLines(lineRows);
+        const freshCore = applyFetchedMobileDetailSnapshot({
+          cachedWorkOrder: null,
+          cachedLines: [],
+          fetchedWorkOrder: woRow,
+          fetchedLines: lineRows,
+        });
+        setWo(freshCore.workOrder);
+        setLines(freshCore.lines);
 
         // 🔹 populate tech names from assigned_tech_id
         const techIds = Array.from(
@@ -508,16 +463,26 @@ export default function MobileWorkOrderClient({
           setTechNamesById({});
         }
 
-        if (quotesRes.error) throw quotesRes.error;
-        setQuoteLines(
-          (quotesRes.data as WorkOrderQuoteLine[] | null) ?? [],
-        );
+        if (quotesRes.error) {
+          setQuoteLines([]);
+          console.error("[Mobile WO id page] quote lines load error:", quotesRes.error);
+        } else {
+          setQuoteLines((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
+        }
 
-        if (vehRes?.error) throw vehRes.error;
-        setVehicle((vehRes?.data as Vehicle | null) ?? null);
+        if (vehRes?.error) {
+          setVehicle(null);
+          console.error("[Mobile WO id page] vehicle load error:", vehRes.error);
+        } else {
+          setVehicle((vehRes?.data as Vehicle | null) ?? null);
+        }
 
-        if (custRes?.error) throw custRes.error;
-        setCustomer((custRes?.data as Customer | null) ?? null);
+        if (custRes?.error) {
+          setCustomer(null);
+          console.error("[Mobile WO id page] customer load error:", custRes.error);
+        } else {
+          setCustomer((custRes?.data as Customer | null) ?? null);
+        }
       } catch (e: unknown) {
         const msg =
           e instanceof Error ? e.message : "Failed to load work order.";
@@ -658,13 +623,22 @@ export default function MobileWorkOrderClient({
     return m;
   }, [quoteLines]);
 
+  const mobileOperationalState = useMemo(
+    () => deriveMobileDetailOperationalState(wo, lines),
+    [wo, lines],
+  );
+
+  const visibleLineState = useCallback(
+    (line: WorkOrderLine) => mobileOperationalState.lineStates.get(line) ?? "awaiting",
+    [mobileOperationalState],
+  );
+
   const approvalPending = useMemo(
     () =>
-      lines.filter(
-        (l) =>
-          getOperationalState(l) === "awaiting_approval" && !isCompletedLine(l),
+      mobileOperationalState.visibleLines.filter(
+        (l) => visibleLineState(l) === "awaiting_approval",
       ),
-    [lines],
+    [mobileOperationalState.visibleLines, visibleLineState],
   );
 
   const quotePending = useMemo(
@@ -676,42 +650,15 @@ export default function MobileWorkOrderClient({
     [quoteLines],
   );
 
-  const linesByOperationalState = useMemo(() => {
-    const grouped: Record<MobileOperationalState, WorkOrderLine[]> = {
-      in_progress: [],
-      awaiting_approval: [],
-      parts_waiting: [],
-      on_hold: [],
-      unassigned: [],
-      completed: [],
-    };
-    lines.forEach((line) => {
-      grouped[getOperationalState(line)].push(line);
-    });
-    return grouped;
-  }, [lines]);
-
-  const createdSortedLines = useMemo(() => {
-    return [...lines].sort((a, b) => {
-      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return ta - tb;
-    });
-  }, [lines]);
-
   const actionableLines = useMemo(() => {
-    return [
-      ...linesByOperationalState.in_progress,
-      ...linesByOperationalState.awaiting_approval,
-      ...linesByOperationalState.parts_waiting,
-      ...linesByOperationalState.on_hold,
-      ...linesByOperationalState.unassigned,
-    ].sort((a, b) => {
-      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return ta - tb;
-    });
-  }, [linesByOperationalState]);
+    return mobileOperationalState.visibleLines
+      .filter((line) => visibleLineState(line) !== "completed")
+      .sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return ta - tb;
+      });
+  }, [mobileOperationalState.visibleLines, visibleLineState]);
 
   const displayLines = useMemo(() => {
     const pr: Record<string, number> = {
@@ -720,17 +667,18 @@ export default function MobileWorkOrderClient({
       maintenance: 3,
       repair: 4,
     };
-    const statePriority: Record<MobileOperationalState, number> = {
+    const statePriority: Record<string, number> = {
       in_progress: 1,
       awaiting_approval: 2,
-      parts_waiting: 3,
-      on_hold: 4,
-      unassigned: 5,
-      completed: 6,
+      on_hold: 3,
+      waiting_parts: 4,
+      assigned: 5,
+      awaiting: 6,
+      completed: 7,
     };
-    return [...createdSortedLines].sort((a, b) => {
-      const sa = statePriority[getOperationalState(a)];
-      const sb = statePriority[getOperationalState(b)];
+    return [...mobileOperationalState.visibleLines].sort((a, b) => {
+      const sa = statePriority[visibleLineState(a)] ?? 999;
+      const sb = statePriority[visibleLineState(b)] ?? 999;
       if (sa !== sb) return sa - sb;
 
       const pa = pr[String(a.job_type ?? "repair").toLowerCase()] ?? 999;
@@ -740,7 +688,7 @@ export default function MobileWorkOrderClient({
       const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
       return ta - tb;
     });
-  }, [createdSortedLines]);
+  }, [mobileOperationalState.visibleLines, visibleLineState]);
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
@@ -771,32 +719,24 @@ export default function MobileWorkOrderClient({
         waiterFlagSource.customer_waiting)
     );
 
-  const canonicalHeaderStatus = useMemo<MobileOperationalState>(() => {
-    if (linesByOperationalState.in_progress.length > 0) return "in_progress";
-    if (linesByOperationalState.awaiting_approval.length > 0)
-      return "awaiting_approval";
-    if (linesByOperationalState.parts_waiting.length > 0) return "parts_waiting";
-    if (linesByOperationalState.on_hold.length > 0) return "on_hold";
-    if (linesByOperationalState.unassigned.length > 0) return "unassigned";
-    return "completed";
-  }, [linesByOperationalState]);
+  const canonicalHeaderStatus = mobileOperationalState.headerStatus;
 
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
-  const inProgressCount = linesByOperationalState.in_progress.length;
-  const unassignedCount = linesByOperationalState.unassigned.length;
-  const awaitingPartsCount = linesByOperationalState.parts_waiting.length;
+  const inProgressCount = mobileOperationalState.counters.in_progress;
+  const unassignedCount = mobileOperationalState.counters.awaiting + mobileOperationalState.counters.assigned;
+  const awaitingPartsCount = mobileOperationalState.counters.waiting_parts;
   const nextActionText = useMemo(() => {
     if (inProgressCount > 0) return "Continue active job punches.";
     if (approvalPending.length > 0) return "Review pending approvals.";
     if (awaitingPartsCount > 0) return "Release parts-blocked jobs.";
-    if (linesByOperationalState.on_hold.length > 0) return "Resolve held jobs.";
+    if (mobileOperationalState.counters.on_hold > 0) return "Resolve held jobs.";
     if (unassignedCount > 0) return "Assign unassigned jobs.";
     return "All lines are complete.";
   }, [
     approvalPending.length,
     awaitingPartsCount,
     inProgressCount,
-    linesByOperationalState.on_hold.length,
+    mobileOperationalState.counters.on_hold,
     unassignedCount,
   ]);
 
@@ -818,10 +758,10 @@ export default function MobileWorkOrderClient({
     el.scrollIntoView({ block: "start", behavior: "auto" });
   }, []);
 
-  const firstInProgressLineId = linesByOperationalState.in_progress[0]?.id ?? null;
-  const firstOnHoldLineId = linesByOperationalState.on_hold[0]?.id ?? null;
-  const firstPartsWaitingLineId = linesByOperationalState.parts_waiting[0]?.id ?? null;
-  const firstUnassignedLineId = linesByOperationalState.unassigned[0]?.id ?? null;
+  const firstInProgressLineId = mobileOperationalState.visibleLines.find((line) => visibleLineState(line) === "in_progress")?.id ?? null;
+  const firstOnHoldLineId = mobileOperationalState.visibleLines.find((line) => visibleLineState(line) === "on_hold")?.id ?? null;
+  const firstPartsWaitingLineId = mobileOperationalState.visibleLines.find((line) => visibleLineState(line) === "waiting_parts" || Boolean(line.hold_reason?.toLowerCase().includes("part")))?.id ?? null;
+  const firstUnassignedLineId = mobileOperationalState.visibleLines.find((line) => visibleLineState(line) === "awaiting" || visibleLineState(line) === "assigned")?.id ?? null;
 
   const primaryActionLine = actionableLines[0] ?? null;
 
@@ -842,7 +782,7 @@ export default function MobileWorkOrderClient({
       { title: "In progress", count: inProgressCount, targetLineId: firstInProgressLineId },
       {
         title: "On hold",
-        count: linesByOperationalState.on_hold.length,
+        count: mobileOperationalState.counters.on_hold,
         targetLineId: firstOnHoldLineId,
       },
       { title: "Parts waiting", count: awaitingPartsCount, targetLineId: firstPartsWaitingLineId },
@@ -855,7 +795,7 @@ export default function MobileWorkOrderClient({
       firstPartsWaitingLineId,
       firstUnassignedLineId,
       inProgressCount,
-      linesByOperationalState.on_hold.length,
+      mobileOperationalState.counters.on_hold,
       unassignedCount,
     ],
   );
