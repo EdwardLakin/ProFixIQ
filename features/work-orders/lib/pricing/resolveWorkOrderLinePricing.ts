@@ -63,7 +63,7 @@ export function resolveWorkOrderLinePricing(args: {
   const quotedHours = toNum(quote?.est_labor_hours) ?? toNum(quote?.labor_hours);
   const laborHours = quotedHours ?? lineHours;
 
-  const explicitLineLaborTotal = toNum(line.labor_total);
+  const linePriceEstimate = toNum(line.price_estimate);
   const explicitLineLaborRate = toNum(line.labor_rate);
   const laborRate = explicitLineLaborRate != null && explicitLineLaborRate > 0 ? explicitLineLaborRate : toNum(shopLaborRate) ?? 0;
   const quotedLaborTotal = toNum(quote?.labor_total);
@@ -83,7 +83,10 @@ export function resolveWorkOrderLinePricing(args: {
   const hasQuotePartsTotal = toNum(quote?.parts_total) != null;
   const partsTotal = hasQuotePartsTotal ? (toNum(quote?.parts_total) ?? 0) : stagedPartsTotal + allocPartsTotal;
   const partsCount = stagedParts.length + allocatedParts.length;
-  const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? toNum(line.price_estimate) ?? (laborHours * laborRate) + partsTotal;
+  const explicitLineLaborTotal = toNum(line.labor_total) ?? (partsTotal > 0 ? linePriceEstimate : null);
+  const computedLaborForLineTotal = explicitLineLaborTotal != null && explicitLineLaborTotal > 0 ? explicitLineLaborTotal : laborHours * laborRate;
+  const computedLineTotal = computedLaborForLineTotal + partsTotal;
+  const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? (partsTotal > 0 ? computedLineTotal : linePriceEstimate ?? computedLineTotal);
   const computedLaborTotal = laborHours * laborRate;
   const inferredLaborFromLineTotal = Math.max(0, lineTotal - partsTotal);
   const explicitLineLaborTotalIsUsable = explicitLineLaborTotal != null && explicitLineLaborTotal > 0;

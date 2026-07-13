@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
-import { Toaster } from "sonner";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
 import ShiftTracker from "@shared/components/ShiftTracker";
@@ -261,7 +260,6 @@ export default function AppShell({
     return (
       <div className="min-h-screen text-[var(--theme-text-primary,#E2E8F0)]">
         {children}
-        <Toaster closeButton richColors position="top-right" theme="dark" />
       </div>
     );
   }
@@ -560,7 +558,6 @@ export default function AppShell({
         />
       ) : null}
 
-      <Toaster closeButton richColors position="top-right" theme="dark" />
       {!isMobileWorkOrderDetail ? (
         <div className="md:hidden">
           <AskAssistantEntry mobile />

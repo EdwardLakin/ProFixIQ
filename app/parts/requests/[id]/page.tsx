@@ -379,8 +379,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     return null;
   }
 
-  async function load(): Promise<void> {
-    setLoading(true);
+  async function load(options: { preserveContent?: boolean } = {}): Promise<void> {
+    const preserveContent = options.preserveContent === true;
+    if (!preserveContent) setLoading(true);
 
     const woRow = await resolveWorkOrder(routeId);
     if (!woRow) {
@@ -708,8 +709,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         | { ok?: boolean; error?: string; item?: ItemRow }
         | null;
       if (!res.ok || !body?.ok) {
-        toast.error(body?.error || "Update did not apply.");
-        return;
+        throw new Error(body?.error || "Update did not apply.");
       }
       if (body.item) {
         setRequests((prev) =>
@@ -1756,7 +1756,7 @@ if (!lineId || !isUuid(lineId)) {
         toast.warning(`Parts package needs review: ${review.length} item${review.length === 1 ? "" : "s"} not saved.`);
       } else {
         setPackageCommitWarningByItemId({});
-        toast.success(`Parts package saved to work order (${body.committedCount ?? 0} item${body.committedCount === 1 ? "" : "s"}).`);
+        // Success is shown after canonical refresh below so a refresh failure only emits one warning.
       }
 
       setAddedToWorkOrderByItemId((prev) => {
@@ -1771,7 +1771,14 @@ if (!lineId || !isUuid(lineId)) {
 
       window.dispatchEvent(new Event("parts-request:submitted"));
       window.dispatchEvent(new Event("wo:parts-used"));
-      await load();
+      try {
+        await load({ preserveContent: true });
+        if (body.ok && review.length === 0) {
+          toast.success(`Parts package saved to work order (${body.committedCount ?? 0} item${body.committedCount === 1 ? "" : "s"}).`);
+        }
+      } catch (error) {
+        toast.warning(error instanceof Error ? `Parts package saved, but refresh failed: ${error.message}` : "Parts package saved, but refresh failed.");
+      }
     } finally {
       setSavingReqId(null);
     }
@@ -1973,16 +1980,19 @@ if (!lineId || !isUuid(lineId)) {
                             sellPrice,
                           });
 
-                          await persistItemFields(input.itemId, {
-                            description: input.description,
-                            requested_part_number: input.requestedPartNumber ?? null,
-                            requested_manufacturer: input.requestedManufacturer ?? null,
-                            qty,
-                            quoted_price: sellPrice,
-                          });
-
-                          toast.success("Part request row saved.");
-                          await load();
+                          try {
+                            await persistItemFields(input.itemId, {
+                              description: input.description,
+                              requested_part_number: input.requestedPartNumber ?? null,
+                              requested_manufacturer: input.requestedManufacturer ?? null,
+                              qty,
+                              quoted_price: sellPrice,
+                            });
+                            await load({ preserveContent: true });
+                            toast.success("Part request row saved.");
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "Could not save part request row.");
+                          }
                         }}
                         onAttachInventory={async (input) => {
                           const selectedPart = parts.find((part) => String(part.id) === String(input.partId)) ?? null;

@@ -58,7 +58,14 @@ type AllocationRow =
     parts?: { name: string | null } | null;
   };
 type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
-  parts?: { name: string | null; sku?: string | null } | null;
+  description_snapshot?: string | null;
+  manufacturer_snapshot?: string | null;
+  part_number_snapshot?: string | null;
+  unit_sell_price_snapshot?: number | null;
+  lifecycle_status?: string | null;
+  is_active?: boolean | null;
+  source_parts_request_item_id?: string | null;
+  parts?: { name: string | null; sku?: string | null; part_number?: string | null; manufacturer?: string | null } | null;
 };
 type LineTechRow = DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 
@@ -653,7 +660,9 @@ export default function WorkOrderIdClient(): JSX.Element {
             // ✅ staged/quoted parts from menu quick add (NOT allocated inventory)
             supabase
               .from("work_order_parts")
-              .select("*, parts(name, sku)")
+              .select("*, parts(name, sku, part_number, manufacturer)")
+              .eq("work_order_id", woRow.id)
+              .eq("is_active", true)
               .in(
                 "work_order_line_id",
                 lineRows.map((l) => l.id),
@@ -1876,7 +1885,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         total_cost: null,
                         total_price: p.total_price ?? null,
                         status: "staged",
-                        parts: { name: p.parts?.name ?? null } as { name: string | null },
+                        parts: { name: p.description_snapshot ?? p.parts?.name ?? null } as { name: string | null },
                       } as unknown as AllocationRow;
                     });
 

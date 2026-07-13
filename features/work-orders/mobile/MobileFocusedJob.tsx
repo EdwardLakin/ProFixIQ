@@ -79,6 +79,15 @@ type AllocationRow =
     parts?: { name: string | null } | null;
   };
 
+type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
+  description_snapshot?: string | null;
+  manufacturer_snapshot?: string | null;
+  part_number_snapshot?: string | null;
+  unit_sell_price_snapshot?: number | null;
+  lifecycle_status?: string | null;
+  parts?: { name: string | null; part_number?: string | null; manufacturer?: string | null } | null;
+};
+
 type SyncSummary = ReturnType<typeof getOfflineSyncSummary>;
 type StagedPhoto = {
   clientMutationId: string;
@@ -154,6 +163,7 @@ export default function MobileFocusedJob(props: {
 
   // parts used
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
+  const [requiredParts, setRequiredParts] = useState<RequiredPartRow[]>([]);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
@@ -304,13 +314,23 @@ export default function MobileFocusedJob(props: {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("work_order_part_allocations")
-        .select("*, parts(name)")
-        .eq("work_order_line_id", workOrderLineId)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      setAllocs((data as AllocationRow[]) ?? []);
+      const [allocQuery, requiredQuery] = await Promise.all([
+        supabase
+          .from("work_order_part_allocations")
+          .select("*, parts(name)")
+          .eq("work_order_line_id", workOrderLineId)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("work_order_parts")
+          .select("*, parts(name, part_number, manufacturer)")
+          .eq("work_order_line_id", workOrderLineId)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true }),
+      ]);
+      if (allocQuery.error) throw allocQuery.error;
+      if (requiredQuery.error) throw requiredQuery.error;
+      setAllocs((allocQuery.data as AllocationRow[]) ?? []);
+      setRequiredParts((requiredQuery.data as RequiredPartRow[]) ?? []);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn("[MobileFocusedJob] load allocations failed", e);
@@ -1209,7 +1229,7 @@ export default function MobileFocusedJob(props: {
 
                   {allocsLoading ? (
                     <div className="text-sm text-neutral-300">Loading…</div>
-                  ) : allocs.length === 0 ? (
+                  ) : (allocs.length + requiredParts.length) === 0 ? (
                     <div className="text-sm text-neutral-300">No parts used yet.</div>
                   ) : (
                     <div className="mobile-tech-subpanel overflow-hidden">
@@ -1219,6 +1239,22 @@ export default function MobileFocusedJob(props: {
                         <div className="col-span-2 text-right">Qty</div>
                       </div>
                       <ul className="max-h-56 overflow-auto divide-y divide-white/5">
+                        {requiredParts.map((p) => (
+                          <li
+                            key={`required-${p.id}`}
+                            className="grid grid-cols-12 items-center px-3 py-2 text-sm"
+                          >
+                            <div className="col-span-7 truncate text-neutral-100">
+                              {p.description_snapshot ?? p.parts?.name ?? "Required part"}
+                            </div>
+                            <div className="col-span-3 truncate text-neutral-400">
+                              {[p.part_number_snapshot ?? p.parts?.part_number, p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ") || "—"}
+                            </div>
+                            <div className="col-span-2 text-right font-semibold text-neutral-100">
+                              {p.quantity}
+                            </div>
+                          </li>
+                        ))}
                         {allocs.map((a) => (
                           <li
                             key={a.id}

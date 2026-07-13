@@ -112,6 +112,7 @@ export function PartsRequestWorkbenchRow({
           min="0"
           step="0.01"
           value={item.sellPrice ?? ""}
+          placeholder={item.suggestedSellPrice != null ? String(item.suggestedSellPrice) : undefined}
           onChange={(event) =>
             onChange?.({
               ...item,
@@ -119,6 +120,15 @@ export function PartsRequestWorkbenchRow({
             })
           }
         />
+        {item.sellPrice == null && item.suggestedSellPrice != null ? (
+          <button
+            type="button"
+            className="mt-1 text-[11px] font-medium text-emerald-200 underline decoration-emerald-400/50 underline-offset-2 hover:text-emerald-100"
+            onClick={() => onChange?.({ ...item, sellPrice: item.suggestedSellPrice ?? null })}
+          >
+            Use suggested {money(item.suggestedSellPrice)}
+          </button>
+        ) : null}
       </td>
       <td className="p-2 text-sm font-medium text-white">{money(item.qty * Math.max(0, item.sellPrice ?? 0))}</td>
       <td className="p-2">
