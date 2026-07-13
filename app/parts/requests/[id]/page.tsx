@@ -2001,7 +2001,7 @@ if (!lineId || !isUuid(lineId)) {
                           if (conflict && !input.warningAccepted) {
                             setConflictWarningByItemId((prev) => ({ ...prev, [input.itemId]: conflict.message }));
                             toast.warning("Possible mismatch. Review the selected inventory part before attaching.");
-                            return;
+                            throw new Error(conflict.message);
                           }
 
                           const res = await fetch(`/api/parts/requests/items/${input.itemId}/inventory`, {
@@ -2011,8 +2011,9 @@ if (!lineId || !isUuid(lineId)) {
                           });
                           const body = await res.json().catch(() => null) as { ok?: boolean; error?: string; item?: ItemRow } | null;
                           if (!res.ok || !body?.ok) {
-                            toast.error(body?.error || "Could not attach inventory part.");
-                            return;
+                            const message = body?.error || "Could not attach inventory part.";
+                            toast.error(message);
+                            throw new Error(message);
                           }
 
                           if (body.item) {
