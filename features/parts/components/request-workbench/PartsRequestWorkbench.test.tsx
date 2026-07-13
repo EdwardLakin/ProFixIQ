@@ -68,7 +68,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
 
     await user.click(screen.getByRole("button", { name: "Attach Part" }));
     await user.click(screen.getByLabelText(/ACDelco Oil Filter/i));
-    await user.click(screen.getAllByRole("button", { name: "Attach Part" }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: "Attach Selected Part" }));
 
     await waitFor(() => expect(onAttachInventory).toHaveBeenCalledWith({
       itemId: "item-1",
@@ -94,7 +94,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
 
     await user.click(screen.getByRole("button", { name: "Attach Part" }));
     await user.click(screen.getByLabelText(/ACDelco Oil Filter/i));
-    await user.click(screen.getAllByRole("button", { name: "Attach Part" }).at(-1)!);
+    await user.click(screen.getByRole("button", { name: "Attach Selected Part" }));
 
     await waitFor(() => expect(onAttachInventory).toHaveBeenCalledTimes(1));
     expect(onCommitPackage).not.toHaveBeenCalled();
@@ -174,5 +174,97 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
       availableStockByItemId: { "item-1": 0 },
     });
     expect(attached.items[0]?.insights?.some((insight) => insight.kind === "no_stock")).toBe(true);
+  });
+});
+
+describe("PartsRequestWorkbench inventory picker mobile layout", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("uses a viewport-constrained dialog with sticky header/footer and an independently scrolling results body", async () => {
+    const user = userEvent.setup();
+    render(<PartsRequestWorkbench model={model(null)} />);
+
+    await user.click(screen.getByRole("button", { name: "Attach Part" }));
+
+    const dialog = screen.getByRole("dialog", { name: /Attach Part — Oil filter/i });
+    expect(dialog).toHaveClass("max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)]");
+    expect(dialog).toHaveClass("flex-col");
+    expect(dialog).toHaveClass("overflow-hidden");
+    expect(screen.getByRole("heading", { name: /Attach Part — Oil filter/i }).parentElement?.parentElement?.parentElement).toHaveClass("shrink-0");
+    expect(screen.getByTestId("inventory-picker-results-body")).toHaveClass("flex-1", "overflow-y-auto", "overscroll-contain");
+    expect(screen.getByRole("button", { name: "Attach Selected Part" }).closest("div")?.parentElement).toHaveClass("shrink-0");
+    expect(screen.getByRole("button", { name: "Attach Selected Part" })).toBeVisible();
+    expect(document.body.style.overflow).toBe("hidden");
+  });
+
+  it("keeps the search visible, focused, and caps the displayed result count deterministically", async () => {
+    const user = userEvent.setup();
+    const denseModel = model(null);
+    denseModel.inventoryResults = Array.from({ length: 75 }, (_, index) => ({
+      value: `part-${index}`,
+      label: `Inventory part ${String(index).padStart(2, "0")}`,
+      sku: `SKU-${index}`,
+      partNumber: `PN-${index}`,
+      manufacturer: index % 2 === 0 ? "Fleetguard" : "ACDelco",
+      onHandQty: index,
+    }));
+
+    render(<PartsRequestWorkbench model={denseModel} />);
+    await user.click(screen.getByRole("button", { name: "Attach Part" }));
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Search inventory" })).toHaveFocus());
+    expect(screen.getByText("Showing 50 of 75 results. Refine search to narrow matches.")).toBeInTheDocument();
+    expect(screen.getAllByRole("radio")).toHaveLength(50);
+
+    await user.type(screen.getByRole("textbox", { name: "Search inventory" }), "SKU-74");
+    expect(screen.getByText("1 result")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Inventory part 74/i)).toBeInTheDocument();
+  });
+
+  it("disables confirm until row selection, selects by row click, and submits the selected part once", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi.fn(async () => ({ partId: "part-2", addedToWorkOrder: false }));
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
+    await user.click(screen.getByRole("button", { name: "Attach Part" }));
+
+    const confirm = screen.getByRole("button", { name: "Attach Selected Part" });
+    expect(confirm).toBeDisabled();
+    await user.click(screen.getByText("ACDelco Oil Filter"));
+    expect(screen.getByLabelText(/ACDelco Oil Filter/i)).toBeChecked();
+    expect(confirm).toBeEnabled();
+
+    await Promise.all([user.click(confirm), user.click(confirm)]);
+
+    await waitFor(() => expect(onAttachInventory).toHaveBeenCalledTimes(1));
+    expect(onAttachInventory).toHaveBeenCalledWith({ itemId: "item-1", partId: "part-2", warningAccepted: false });
+  });
+
+  it("keeps the modal open on failure and closes it on success without emitting extra notifications", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Attach failed"))
+      .mockResolvedValueOnce({ partId: "part-2", addedToWorkOrder: false });
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
+    await user.click(screen.getByRole("button", { name: "Attach Part" }));
+    await user.click(screen.getByText("ACDelco Oil Filter"));
+    await user.click(screen.getByRole("button", { name: "Attach Selected Part" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Attach failed");
+    expect(screen.getByRole("dialog", { name: /Attach Part — Oil filter/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/ACDelco Oil Filter/i)).toBeChecked();
+    expect(screen.getByRole("button", { name: "Attach Selected Part" })).toBeEnabled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Attach Selected Part" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Attach Part — Oil filter/i })).not.toBeInTheDocument());
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });
