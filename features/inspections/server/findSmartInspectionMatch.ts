@@ -174,6 +174,69 @@ function isGenericCatalogCandidate(row: MenuItemRow): boolean {
   ]);
 }
 
+
+type ServiceFamily =
+  | "brake_fluid"
+  | "coolant"
+  | "transmission_fluid"
+  | "power_steering_fluid"
+  | "differential_fluid"
+  | "transfer_case_fluid"
+  | "engine_oil"
+  | "fuel_filter"
+  | "air_filter"
+  | "cabin_filter"
+  | "tire_rotation"
+  | "brake_service"
+  | "diagnostic";
+
+const SERVICE_FAMILY_TERMS: Record<ServiceFamily, readonly string[]> = {
+  brake_fluid: ["brake fluid", "brake flush", "hydraulic fluid", "hydraulic service"],
+  coolant: ["coolant", "antifreeze", "coolant flush", "cooling system service"],
+  transmission_fluid: ["transmission fluid", "trans fluid", "transmission service"],
+  power_steering_fluid: ["power steering fluid", "power steering service"],
+  differential_fluid: ["differential fluid", "diff fluid", "differential service"],
+  transfer_case_fluid: ["transfer case fluid", "transfer case service"],
+  engine_oil: ["engine oil", "oil change", "oil service", "lube oil filter"],
+  fuel_filter: ["fuel filter"],
+  air_filter: ["air filter", "engine air filter"],
+  cabin_filter: ["cabin filter", "cabin air filter"],
+  tire_rotation: ["tire rotation", "rotate tires", "tyre rotation"],
+  brake_service: ["brake pads", "brake service", "front pads", "rear pads", "rotors", "brake repair"],
+  diagnostic: ["check engine", "cel", "diagnostic", "diagnose"],
+};
+
+function serviceFamiliesFor(text: string): Set<ServiceFamily> {
+  const normalized = txt(text).replace(/[\W_]+/g, " ").replace(/\s+/g, " ").trim();
+  const families = new Set<ServiceFamily>();
+  for (const [family, terms] of Object.entries(SERVICE_FAMILY_TERMS) as Array<[ServiceFamily, readonly string[]]>) {
+    if (terms.some((term) => normalized.includes(term))) {
+      families.add(family);
+    }
+  }
+
+  if (normalized.includes("fluid") && normalized.includes("brake")) families.add("brake_fluid");
+  if (normalized.includes("flush") && normalized.includes("brake")) families.add("brake_fluid");
+  if (normalized.includes("fluid") && normalized.includes("cool")) families.add("coolant");
+  if (normalized.includes("flush") && normalized.includes("cool")) families.add("coolant");
+  if (normalized.includes("fluid") && normalized.includes("trans")) families.add("transmission_fluid");
+  if (normalized.includes("service") && normalized.includes("trans")) families.add("transmission_fluid");
+  if (normalized.includes("rotate") && normalized.includes("tire")) families.add("tire_rotation");
+
+  return families;
+}
+
+function serviceFamilyScore(input: string, candidate: string): number {
+  const inputFamilies = serviceFamiliesFor(input);
+  if (inputFamilies.size === 0) return 0;
+  const candidateFamilies = serviceFamiliesFor(candidate);
+  let matches = 0;
+  for (const family of inputFamilies) {
+    if (candidateFamilies.has(family)) matches += 1;
+  }
+  return matches > 0 ? Math.min(0.72, 0.52 + matches * 0.1) : 0;
+}
+
 function getFuelFamily(value: unknown): "gasoline" | "diesel" | "other" | null {
   const v = txt(value);
   if (!v) return null;
@@ -592,7 +655,7 @@ export async function findSmartInspectionMatch(args: {
         return null;
       }
 
-      let score = tokenScore(noteText, haystack);
+      let score = Math.max(tokenScore(noteText, haystack), serviceFamilyScore(noteText, haystack));
       score = addVehicleScore(score, row, body);
 
       if (dismissedIds.has(row.id) || dismissedLabels.has(txt(row.name))) {
@@ -640,7 +703,7 @@ export async function findSmartInspectionMatch(args: {
         .join(" ")
         .trim();
 
-      let score = tokenScore(noteText, haystack);
+      let score = Math.max(tokenScore(noteText, haystack), serviceFamilyScore(noteText, haystack));
       if (
         !isCompatibleCandidate({
           body,
@@ -723,7 +786,7 @@ export async function findSmartInspectionMatch(args: {
         return null;
       }
 
-      let score = tokenScore(noteText, haystack);
+      let score = Math.max(tokenScore(noteText, haystack), serviceFamilyScore(noteText, haystack));
       score = addVehicleScore(
         score,
         {
@@ -756,11 +819,25 @@ export async function findSmartInspectionMatch(args: {
         ? bestHistory.row.confidence
         : 0;
 
+  const bestCatalogServiceScore = bestCatalogItem
+    ? serviceFamilyScore(noteText, [
+        bestCatalogItem.row.name ?? "",
+        bestCatalogItem.row.description ?? "",
+        bestCatalogItem.row.complaint ?? "",
+        bestCatalogItem.row.correction ?? "",
+        bestCatalogItem.row.category ?? "",
+        bestCatalogItem.row.service_key ?? "",
+      ].join(" "))
+    : 0;
+
   const hasStrongSpecificMatch =
     Boolean(bestRepairItem && bestRepairItem.score >= 0.72 && topSpecificConfidence >= 0.82) ||
     Boolean(bestHistory && bestHistory.score >= 0.68 && topSpecificConfidence >= 0.8);
+  const catalogHasClearerServiceIntent =
+    Boolean(bestCatalogItem && bestCatalogServiceScore >= 0.52) &&
+    (!bestRepairItem || bestRepairItem.score < 0.72 || topSpecificConfidence < 0.82);
 
-  if (bestRepairItem?.row?.id && (bestRepairItem.row.name || bestRepairItem.row.complaint) && hasStrongSpecificMatch) {
+  if (bestRepairItem?.row?.id && (bestRepairItem.row.name || bestRepairItem.row.complaint) && hasStrongSpecificMatch && !catalogHasClearerServiceIntent) {
     const pricing = pricingMap.get(bestRepairItem.row.id);
     const reasons = compatibilityReasonParts(bestRepairItem.row, body);
 

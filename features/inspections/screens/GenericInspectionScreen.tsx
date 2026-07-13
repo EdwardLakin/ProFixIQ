@@ -953,8 +953,7 @@ type SmartMatchRow = {
             confidence:
               typeof match.confidence === "number" ? match.confidence : null,
             menuItemId: match.menuItemId ?? null,
-            menuRepairItemId:
-              match.menuRepairItemId ?? match.menuItemId ?? null,
+            menuRepairItemId: match.menuRepairItemId ?? null,
             acceptedCount:
               typeof match.acceptedCount === "number"
                 ? match.acceptedCount
@@ -1089,6 +1088,34 @@ type SmartMatchRow = {
     );
 
     try {
+      if (match.menuItemId && !match.menuRepairItemId) {
+        updateItem(sectionIndex, itemIndex, {
+          laborHours:
+            typeof match.laborHours === "number" ? match.laborHours : item.laborHours ?? null,
+          parts: Array.isArray(match.parts)
+            ? match.parts.map((part) => ({
+                description: part.name,
+                qty: part.qty ?? 1,
+              }))
+            : item.parts,
+          smartMatch: {
+            sourceType: "catalog_menu",
+            label: match.label,
+            menuItemId: match.menuItemId,
+            menuRepairItemId: null,
+            laborHours: typeof match.laborHours === "number" ? match.laborHours : null,
+            parts: match.parts ?? [],
+            pricingStatus: match.pricingStatus ?? null,
+            pricingValidUntil: match.pricingValidUntil ?? null,
+            confidence: match.confidence ?? null,
+          },
+        } as ItemPatch);
+        setSmartMatchByKey((prev) => ({ ...prev, [key]: null }));
+        setSmartMatchLoadingByKey((prev) => ({ ...prev, [key]: false }));
+        toast.success("Authored menu service applied to this finding.");
+        return;
+      }
+
       let createdWorkOrderLineId: string | null = null;
       let createdQuoteLineId: string | null = null;
 
@@ -1170,6 +1197,17 @@ type SmartMatchRow = {
         estimateLastUpdatedAt: nowIso,
         estimateWorkOrderLineId: createdWorkOrderLineId,
         estimateQuoteLineId: createdQuoteLineId,
+        smartMatch: {
+          sourceType: "history_repair",
+          label: match.label,
+          menuItemId: null,
+          menuRepairItemId: match.menuRepairItemId ?? null,
+          laborHours: typeof match.laborHours === "number" ? match.laborHours : null,
+          parts: match.parts ?? [],
+          pricingStatus: match.pricingStatus ?? null,
+          pricingValidUntil: match.pricingValidUntil ?? null,
+          confidence: match.confidence ?? null,
+        },
       } as ItemPatch);
 
       updateInspection({
@@ -1221,7 +1259,8 @@ type SmartMatchRow = {
           ? "High-confidence matched repair added to Quote Review."
           : "Matched repair added to Quote Review.",
       );
-      dismissSmartMatch(sectionIndex, itemIndex);
+      setSmartMatchByKey((prev) => ({ ...prev, [key]: null }));
+      setSmartMatchLoadingByKey((prev) => ({ ...prev, [key]: false }));
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to add matched repair",
