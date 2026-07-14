@@ -1,13 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
-import {
-  closeActiveLaborSegments,
-  syncLinePunchMirrorFromSegments,
-} from "@/features/work-orders/server/laborSegments";
-import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
 type DB = Database;
+type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
 
 type ActiveLaborSegment = {
   id: string;
@@ -101,93 +103,48 @@ export async function closeAllActiveTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
   shopId: string;
   technicianId: string;
+  operationKey: string;
   endedAtIso: string;
   reason: string;
   event?: string;
-  breakPunchId?: string | null;
+  sourceEventId?: string | null;
+  details?: Json;
 }) {
-  const { data: active, error } = await getActiveTechnicianJobLabor(params);
-  if (error)
+  const rpc = params.supabase as unknown as RpcClient;
+  const { data, error } = await rpc.rpc("pause_all_active_technician_labor_atomic", {
+    p_shop_id: params.shopId,
+    p_technician_id: params.technicianId,
+    p_actor_user_id: params.technicianId,
+    p_operation_key: params.operationKey,
+    p_at: params.endedAtIso,
+    p_reason: params.reason,
+    p_event: params.event ?? "job_stopped_at_end_day",
+    p_source_event_id: params.sourceEventId ?? null,
+    p_details: params.details ?? {},
+  });
+
+  if (error) {
+    const message = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
     return {
       ok: false as const,
-      status: 500,
-      error: error.message,
+      status: message.includes("FINANCIALLY_LOCKED") ? 409 : 400,
+      error: message,
       closed: [] as ActiveLaborSegment[],
     };
-
-  if (active.length > 1) {
-    await logOperationalEvent({
-      supabase: params.supabase,
-      event: "integrity_warning_multiple_active_jobs",
-      actorId: params.technicianId,
-      entityType: "technician",
-      entityId: params.technicianId,
-      at: params.endedAtIso,
-      details: {
-        shop_id: params.shopId,
-        technician_id: params.technicianId,
-        active_segment_ids: active.map((segment) => segment.id),
-        reason: params.reason,
-        break_punch_id: params.breakPunchId ?? null,
-      } as Json,
-    });
   }
 
-  const lineIds = [
-    ...new Set(
-      active
-        .map((segment) => segment.work_order_line_id)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  ];
-  for (const lineId of lineIds) {
-    const { error: closeErr } = await closeActiveLaborSegments({
-      supabase: params.supabase,
-      workOrderLineId: lineId,
-      technicianId: params.technicianId,
-      endedAtIso: params.endedAtIso,
-      pauseReason: params.reason,
-    });
-    if (closeErr)
-      return {
-        ok: false as const,
-        status: 500,
-        error: closeErr.message,
-        closed: active,
-      };
-
-    const { error: syncErr } = await syncLinePunchMirrorFromSegments({
-      supabase: params.supabase,
-      workOrderLineId: lineId,
-    });
-    if (syncErr)
-      return {
-        ok: false as const,
-        status: 500,
-        error: syncErr.message,
-        closed: active,
-      };
-  }
-
-  for (const segment of active) {
-    await logOperationalEvent({
-      supabase: params.supabase,
-      event: params.event ?? "job_stopped_at_end_day",
-      actorId: params.technicianId,
-      entityType: "work_order_line",
-      entityId: segment.work_order_line_id,
-      at: params.endedAtIso,
-      details: {
-        shop_id: params.shopId,
-        technician_id: params.technicianId,
-        work_order_id: segment.work_order_id,
-        work_order_line_id: segment.work_order_line_id,
-        source_session_id: segment.id,
-        reason: params.reason,
-        break_punch_id: params.breakPunchId ?? null,
-      } as Json,
-    });
-  }
-
-  return { ok: true as const, closed: active };
+  const result = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const count = Number(result.closed_line_count ?? 0);
+  return {
+    ok: true as const,
+    closed: Array.from({ length: Number.isFinite(count) ? count : 0 }, () => ({
+      id: "",
+      shop_id: params.shopId,
+      work_order_id: null,
+      work_order_line_id: null,
+      technician_id: params.technicianId,
+      started_at: null,
+    })) as ActiveLaborSegment[],
+    payload: result,
+  };
 }
