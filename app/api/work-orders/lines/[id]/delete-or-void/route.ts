@@ -1,237 +1,96 @@
-// /app/api/work-orders/lines/[id]/delete-or-void/route.ts
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+import { z } from "zod";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type DB = Database;
-
-type Disposition = "return_to_stock" | "keep_consumed" | "scrap";
-type Mode = "delete" | "void";
-
-type Body = {
-  mode: Mode;
-  disposition?: Disposition; // required when allocations exist
-  reason: string;
-  note?: string | null;
+type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
 };
 
-function safeTrim(x: unknown): string {
-  return typeof x === "string" ? x.trim() : "";
-}
-
-function asNumber(v: unknown): number {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
+const Payload = z.object({
+  mode: z.enum(["delete", "void"]),
+  disposition: z.enum(["return_to_stock", "keep_consumed", "scrap"]).optional(),
+  reservedDisposition: z.literal("release").optional().default("release"),
+  orderedDisposition: z
+    .enum(["cancel_open_order", "retain_open_order"])
+    .optional()
+    .default("cancel_open_order"),
+  receivedDisposition: z
+    .enum(["retain_for_other_work", "return_to_vendor"])
+    .optional()
+    .default("retain_for_other_work"),
+  consumedDisposition: z
+    .enum(["return_to_stock", "keep_consumed", "scrap"])
+    .optional(),
+  reason: z.string().trim().min(1),
+  note: z.string().trim().nullable().optional(),
+  idempotencyKey: z.string().trim().min(1).optional(),
+});
 
 export async function POST(
   req: Request,
-  ctx: { params: Promise<{ id: string }> }, // ✅ folder is [id]
+  context: { params: Promise<{ id: string }> },
 ) {
-  try {
-    const supabase = createServerSupabaseRoute();
-
-    const { id: rawId } = await ctx.params; // ✅ params key is "id"
-    const id = safeTrim(rawId);
-
-    const body = (await req.json().catch(() => null)) as Body | null;
-
-    const mode = safeTrim(body?.mode) as Mode;
-    const disposition = safeTrim(body?.disposition) as Disposition;
-    const reason = safeTrim(body?.reason);
-    const note = body?.note ?? null;
-
-    if (!id) {
-      return NextResponse.json({ error: "Missing id" }, { status: 400 });
-    }
-    if (mode !== "delete" && mode !== "void") {
-      return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
-    }
-    if (!reason) {
-      return NextResponse.json({ error: "Reason is required" }, { status: 400 });
-    }
-
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr) {
-      return NextResponse.json({ error: userErr.message }, { status: 401 });
-    }
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    // Load line + WO status (block if invoiced)
-    const { data: lineRow, error: lineErr } = await supabase
-      .from("work_order_lines")
-      .select("id, work_order_id, shop_id, status, voided_at")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (lineErr) {
-      return NextResponse.json({ error: lineErr.message }, { status: 500 });
-    }
-    if (!lineRow) {
-      return NextResponse.json({ error: "Line not found" }, { status: 404 });
-    }
-
-    if (lineRow.voided_at) {
-      return NextResponse.json(
-        { error: "This line is already voided." },
-        { status: 409 },
-      );
-    }
-
-    const workOrderId = lineRow.work_order_id;
-    const shopId = lineRow.shop_id;
-
-    if (!workOrderId || !shopId) {
-      return NextResponse.json(
-        { error: "Line is missing work_order_id or shop_id" },
-        { status: 500 },
-      );
-    }
-
-    const { data: woRow, error: woErr } = await supabase
-      .from("work_orders")
-      .select("id, status")
-      .eq("id", workOrderId)
-      .maybeSingle();
-
-    if (woErr) {
-      return NextResponse.json({ error: woErr.message }, { status: 500 });
-    }
-
-    const woStatus = safeTrim(woRow?.status).toLowerCase();
-    const lineStatus = safeTrim(lineRow.status).toLowerCase();
-
-    if (woStatus === "invoiced" || lineStatus === "invoiced") {
-      return NextResponse.json(
-        { error: "Cannot delete/void an invoiced line." },
-        { status: 409 },
-      );
-    }
-
-    // Set shop context for RLS (server session)
-    const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
-      p_shop_id: shopId,
-    });
-    if (ctxErr) {
-      return NextResponse.json(
-        { error: ctxErr.message || "Failed to set current_shop_id" },
-        { status: 500 },
-      );
-    }
-
-    // Load allocations for this line
-    const { data: allocs, error: aErr } = await supabase
-      .from("work_order_part_allocations")
-      .select("id, part_id, location_id, qty, stock_move_id")
-      .eq("work_order_line_id", id);
-
-    if (aErr) {
-      return NextResponse.json({ error: aErr.message }, { status: 500 });
-    }
-
-    const allocations = Array.isArray(allocs) ? allocs : [];
-    const hasAllocs = allocations.length > 0;
-
-    if (hasAllocs) {
-      if (
-        disposition !== "return_to_stock" &&
-        disposition !== "keep_consumed" &&
-        disposition !== "scrap"
-      ) {
-        return NextResponse.json(
-          { error: "Disposition is required when parts are on the line." },
-          { status: 400 },
-        );
-      }
-    }
-
-    const hardDeleteAllowed =
-      mode === "delete" &&
-      !hasAllocs &&
-      !["completed", "ready_to_invoice", "invoiced"].includes(lineStatus);
-
-    if (hardDeleteAllowed) {
-      const { error: delErr } = await supabase
-        .from("work_order_lines")
-        .delete()
-        .eq("id", id);
-
-      if (delErr) {
-        return NextResponse.json({ error: delErr.message }, { status: 500 });
-      }
-
-      return NextResponse.json({ ok: true, mode: "deleted" });
-    }
-
-    // Otherwise: VOID (soft delete)
-    if (hasAllocs) {
-      if (disposition === "return_to_stock") {
-        for (const a of allocations) {
-          const partId = a.part_id;
-          const locId = a.location_id;
-          const qty = asNumber(a.qty);
-
-          if (!partId || !locId || qty <= 0) continue;
-
-          const { error: mvErr } = await supabase.rpc("apply_stock_move", {
-            p_part: partId,
-            p_loc: locId,
-            p_qty: qty,
-            p_reason: "return_in",
-            p_ref_kind: "work_order_line_void",
-            p_ref_id: id,
-          });
-
-          if (mvErr) {
-            return NextResponse.json({ error: mvErr.message }, { status: 500 });
-          }
-        }
-      }
-
-      const { error: daErr } = await supabase
-        .from("work_order_part_allocations")
-        .delete()
-        .eq("work_order_line_id", id);
-
-      if (daErr) {
-        return NextResponse.json({ error: daErr.message }, { status: 500 });
-      }
-    }
-
-    const { error: vErr } = await supabase
-      .from("work_order_lines")
-      .update({
-        voided_at: new Date().toISOString(),
-        voided_by: user.id,
-        void_reason: reason,
-        void_note: note,
-      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-      .eq("id", id);
-
-    if (vErr) {
-      return NextResponse.json(
-        {
-          error:
-            vErr.message +
-            " (Did you run the migration to add voided_at/void_reason/etc?)",
-        },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({
-      ok: true,
-      mode: "voided",
-      disposition: hasAllocs ? disposition : null,
-    });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Server error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+  const { id } = await context.params;
+  if (!z.string().uuid().safeParse(id).success) {
+    return NextResponse.json({ error: "Invalid work-order line id." }, { status: 400 });
   }
+
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageWorkOrders",
+  });
+  if (!access.ok) return access.response;
+
+  const json: unknown = await req.json().catch(() => null);
+  const parsed = Payload.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid line disposition payload.", issues: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  const body = parsed.data;
+  const consumedDisposition = body.consumedDisposition ?? body.disposition;
+  if (!consumedDisposition) {
+    return NextResponse.json(
+      { error: "Consumed-parts disposition is required." },
+      { status: 400 },
+    );
+  }
+
+  const rawKey =
+    body.idempotencyKey || req.headers.get("idempotency-key")?.trim() || "";
+  if (!rawKey) {
+    return NextResponse.json(
+      { error: "A stable idempotency key is required." },
+      { status: 400 },
+    );
+  }
+
+  const rpc = access.supabase as unknown as RpcClient;
+  const { data, error } = await rpc.rpc("parts_void_work_order_line_atomic", {
+    p_shop_id: access.profile.shop_id,
+    p_work_order_line_id: id,
+    p_mode: body.mode,
+    p_reserved_disposition: body.reservedDisposition,
+    p_ordered_disposition: body.orderedDisposition,
+    p_received_disposition: body.receivedDisposition,
+    p_consumed_disposition: consumedDisposition,
+    p_reason: body.reason,
+    p_note: body.note ?? null,
+    p_operation_key: `${access.profile.shop_id}:line-void:${rawKey}`,
+    p_actor_user_id: access.profile.id,
+  });
+
+  if (error) {
+    const message = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+    const status = error.message.includes("FINANCIALLY_LOCKED") ? 409 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+
+  return NextResponse.json(data);
 }

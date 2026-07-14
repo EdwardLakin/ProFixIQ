@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { runPostSendPersistence, sendInvoiceReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
-import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import { finalizeInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
@@ -89,7 +89,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const snapshot = await getInvoiceSnapshotForWorkOrder({ supabase: admin, workOrderId });
+    const snapshot = await getIssuableInvoiceSnapshot({
+      supabase: admin,
+      workOrderId,
+      shopId: workOrder.shop_id,
+    });
     const total = Number(snapshot.total ?? 0);
     if (!Number.isFinite(total) || total <= 0) {
       return NextResponse.json({ error: "Cannot issue a zero-total invoice." }, { status: 400 });
