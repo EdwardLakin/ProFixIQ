@@ -86,9 +86,8 @@ const COPPER_FOCUS =
 function cardClass() {
   return [
     "rounded-2xl border border-[color:var(--theme-border-soft)]",
-    "bg-[var(--theme-gradient-panel)]",
-    "shadow-[var(--theme-shadow-medium)]",
-    "backdrop-blur-xl",
+    "bg-[color:var(--theme-surface-panel-strong)]",
+    "shadow-[var(--theme-shadow-soft)]",
     "p-4",
   ].join(" ");
 }
@@ -114,10 +113,10 @@ function subtleButtonClass() {
 function pillClass(status?: string | null) {
   const s = (status || "pending").toLowerCase();
   if (s === "confirmed")
-    return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
+    return "border-emerald-500/25 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200";
   if (s === "cancelled")
-    return "border-red-500/25 bg-red-500/10 text-red-200";
-  return "border-sky-400/30 bg-sky-500/10 text-sky-100";
+    return "border-red-500/25 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200";
+  return "border-amber-500/30 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200";
 }
 
 function safeString(v: unknown): string {
@@ -205,7 +204,10 @@ export default function PortalAppointmentsPage(): JSX.Element {
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
 
   const [panelMode, setPanelMode] = useState<PanelMode>(null);
   const [editing, setEditing] = useState<Booking | null>(null);
@@ -215,6 +217,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
   const [listTab, setListTab] = useState<ListTab>("all");
 
   const bookingsAbortRef = useRef<AbortController | null>(null);
+  const requestsAbortRef = useRef<AbortController | null>(null);
 
   // "..." menu state
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
@@ -232,16 +235,35 @@ export default function PortalAppointmentsPage(): JSX.Element {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [menuOpenFor]);
 
-  // load shops
+  // Resolve the signed-in staff member's shop. Internal scheduling must not
+  // depend on whether that shop currently accepts public online bookings.
   useEffect(() => {
     let mounted = true;
 
     (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id;
+      if (!userId) {
+        if (mounted) toast.error("Sign in to manage appointments.");
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", userId)
+        .maybeSingle<{ shop_id: string | null }>();
+
+      if (profileError || !profile?.shop_id) {
+        if (mounted) toast.error("Your profile is not linked to a shop.");
+        return;
+      }
+
       const { data, error } = await supabase
         .from("shops")
         .select("id,name,slug,accepts_online_booking")
-        .eq("accepts_online_booking", true)
-        .order("name", { ascending: true });
+        .eq("id", profile.shop_id)
+        .maybeSingle();
 
       if (!mounted) return;
 
@@ -252,13 +274,15 @@ export default function PortalAppointmentsPage(): JSX.Element {
         return;
       }
 
-      const rows = (data ?? []) as ShopRow[];
+      const rows = data ? [data as ShopRow] : [];
       setShops(rows);
 
-      if (!shopSlug && rows.length > 0) {
-        const first = rows[0].slug as string;
-        setShopSlug(first);
-        router.replace(`/dashboard/appointments?shop=${encodeURIComponent(first)}`);
+      if (rows.length > 0) {
+        const authorizedSlug = rows[0].slug as string;
+        setShopSlug(authorizedSlug);
+        if (shopSlug !== authorizedSlug) {
+          router.replace(`/dashboard/appointments?shop=${encodeURIComponent(authorizedSlug)}`);
+        }
       }
     })();
 
@@ -321,6 +345,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
     bookingsAbortRef.current = ac;
 
     setLoadingBookings(true);
+    setBookingsError(null);
     try {
       const start = isoDate(ws);
       const end = isoDate(we);
@@ -330,16 +355,44 @@ export default function PortalAppointmentsPage(): JSX.Element {
         { cache: "no-store", signal: ac.signal },
       );
 
-      if (!res.ok) throw new Error("Failed to load appointments.");
-      const j = (await res.json().catch(() => [])) as Booking[];
-      setBookings(j ?? []);
+      const body = (await res.json().catch(() => null)) as Booking[] | { error?: string } | null;
+      if (!res.ok) {
+        const message = body && !Array.isArray(body) ? body.error : null;
+        throw new Error(message || "Failed to load appointments.");
+      }
+      setBookings(Array.isArray(body) ? body : []);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
       // eslint-disable-next-line no-console
       console.error(err);
-      toast.error("Failed to load appointments.");
+      setBookingsError(err instanceof Error ? err.message : "Failed to load appointments.");
     } finally {
       setLoadingBookings(false);
+    }
+  }, []);
+
+  const refreshPendingRequests = useCallback(async (slug: string) => {
+    if (!slug) return;
+    requestsAbortRef.current?.abort();
+    const ac = new AbortController();
+    requestsAbortRef.current = ac;
+    setLoadingRequests(true);
+    try {
+      const res = await fetch(
+        `/api/portal/bookings?shop=${encodeURIComponent(slug)}&status=pending`,
+        { cache: "no-store", signal: ac.signal },
+      );
+      const body = (await res.json().catch(() => null)) as Booking[] | { error?: string } | null;
+      if (!res.ok) {
+        const message = body && !Array.isArray(body) ? body.error : null;
+        throw new Error(message || "Failed to load appointment requests.");
+      }
+      setPendingRequests(Array.isArray(body) ? body : []);
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setBookingsError(err instanceof Error ? err.message : "Failed to load appointment requests.");
+    } finally {
+      setLoadingRequests(false);
     }
   }, []);
 
@@ -347,11 +400,15 @@ export default function PortalAppointmentsPage(): JSX.Element {
   useEffect(() => {
     if (!shopSlug) return;
     void refreshBookings(shopSlug, weekStart, weekEnd);
-    return () => bookingsAbortRef.current?.abort();
-  }, [shopSlug, weekStart, weekEnd, refreshBookings]);
+    void refreshPendingRequests(shopSlug);
+    return () => {
+      bookingsAbortRef.current?.abort();
+      requestsAbortRef.current?.abort();
+    };
+  }, [shopSlug, weekStart, weekEnd, refreshBookings, refreshPendingRequests]);
 
   // derived groups
-  const pending = useMemo(() => bookings.filter((b) => statusOf(b) === "pending"), [bookings]);
+  const pending = pendingRequests;
   const confirmed = useMemo(() => bookings.filter((b) => statusOf(b) === "confirmed"), [bookings]);
   const cancelled = useMemo(() => bookings.filter((b) => statusOf(b) === "cancelled"), [bookings]);
 
@@ -445,9 +502,20 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
       if (!res.ok || !j.booking) throw new Error(j?.error || "Unable to create appointment.");
 
-      toast.success("Appointment created.");
+      const created = j.booking;
+      const confirmRes = await fetch(`/api/portal/bookings/${created.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "confirmed" }),
+      });
+      if (!confirmRes.ok) throw new Error("Appointment was created but could not be confirmed.");
+
+      toast.success("Appointment created and confirmed.");
       closePanel();
-      await refreshBookings(shopSlug, weekStart, weekEnd);
+      await Promise.all([
+        refreshBookings(shopSlug, weekStart, weekEnd),
+        refreshPendingRequests(shopSlug),
+      ]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Create failed";
       toast.error(message);
@@ -467,7 +535,10 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
       toast.success("Appointment updated.");
       closePanel();
-      await refreshBookings(shopSlug, weekStart, weekEnd);
+      await Promise.all([
+        refreshBookings(shopSlug, weekStart, weekEnd),
+        refreshPendingRequests(shopSlug),
+      ]);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Update failed";
       toast.error(message);
@@ -481,6 +552,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
       if (!res.ok) throw new Error("Delete failed.");
       toast.success("Appointment deleted.");
       setBookings((prev) => prev.filter((b) => b.id !== id));
+      setPendingRequests((prev) => prev.filter((b) => b.id !== id));
       if (editing?.id === id) closePanel();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Delete failed";
@@ -529,37 +601,29 @@ export default function PortalAppointmentsPage(): JSX.Element {
     <div className="space-y-6">
       <Toaster position="top-center" />
 
-      <header className="space-y-1">
-        <h1 className="text-2xl font-blackops text-[color:var(--theme-text-primary)]">Appointments</h1>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+        <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[color:var(--theme-text-primary)]">Appointments</h1>
         <p className="text-sm text-[color:var(--theme-text-secondary)]">
-          Admin / manager view of customer bookings for the week.
+          Review customer requests, protect shop capacity, and move approved visits into work.
         </p>
+        </div>
+        <Button type="button" onClick={() => openCreate(isoDate(weekStart))}>
+          New appointment
+        </Button>
       </header>
 
       {/* Top: Shop + Stats + Search */}
       <div className={cardClass()}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
               <div className="text-[0.7rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 Shop
               </div>
-              <select
-                value={shopSlug}
-                onChange={(e) => {
-                  const slug = e.target.value;
-                  setShopSlug(slug);
-                  router.replace(`/dashboard/appointments?shop=${encodeURIComponent(slug)}`);
-                  closePanel();
-                }}
-                className={fieldClass() + " min-w-[220px]"}
-              >
-                {shops.map((s) => (
-                  <option key={s.slug as string} value={s.slug as string}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              <div className="min-w-[180px] text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                {selectedShop?.name ?? "Loading shop…"}
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -579,25 +643,25 @@ export default function PortalAppointmentsPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-sky-500/25 bg-sky-950/20 px-3 py-2">
-                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-sky-200/80">
-                  Requests
+              <div className="rounded-xl border border-amber-500/25 bg-amber-50 px-3 py-2 dark:bg-amber-950/25">
+                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-amber-700 dark:text-amber-200">
+                  Pending review
                 </div>
-                <div className="text-sm font-semibold text-sky-100">{pending.length}</div>
+                <div className="text-sm font-semibold text-amber-900 dark:text-amber-100">{pending.length}</div>
               </div>
 
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-950/10 px-3 py-2">
-                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-emerald-200/80">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-50 px-3 py-2 dark:bg-emerald-950/25">
+                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-emerald-700 dark:text-emerald-200">
                   Confirmed
                 </div>
-                <div className="text-sm font-semibold text-emerald-100">{confirmed.length}</div>
+                <div className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">{confirmed.length}</div>
               </div>
 
-              <div className="rounded-xl border border-red-500/20 bg-red-950/10 px-3 py-2">
-                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-red-200/80">
+              <div className="rounded-xl border border-red-500/20 bg-red-50 px-3 py-2 dark:bg-red-950/25">
+                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-red-700 dark:text-red-200">
                   Cancelled
                 </div>
-                <div className="text-sm font-semibold text-red-100">{cancelled.length}</div>
+                <div className="text-sm font-semibold text-red-900 dark:text-red-100">{cancelled.length}</div>
               </div>
             </div>
           </div>
@@ -659,7 +723,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
       </div>
 
       {/* Main 2-column layout */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* Left: Calendar big */}
         <div className={cardClass()}>
           <div className="mb-3 flex items-center justify-between">
@@ -668,6 +732,23 @@ export default function PortalAppointmentsPage(): JSX.Element {
               <span className="text-[0.75rem] text-[color:var(--theme-text-muted)]">Loading…</span>
             ) : null}
           </div>
+
+          {bookingsError ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/25 bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950/25 dark:text-red-200">
+              <span>{bookingsError}</span>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => {
+                  void refreshBookings(shopSlug, weekStart, weekEnd);
+                  void refreshPendingRequests(shopSlug);
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : null}
 
           <div className="overflow-x-auto pb-2">
             <WeeklyCalendar
@@ -685,21 +766,21 @@ export default function PortalAppointmentsPage(): JSX.Element {
         </div>
 
         {/* Right: Sticky Requests + Panel */}
-        <div className="lg:sticky lg:top-6 space-y-6">
+        <div className="space-y-6 2xl:sticky 2xl:top-6 2xl:self-start">
           {/* Requests (pending) */}
           <div className={cardClass()}>
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                Requests (pending)
+                Customer requests
               </h2>
               <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
-                {filteredPending.length}
+                {loadingRequests ? "Loading…" : filteredPending.length}
               </div>
             </div>
 
             {filteredPending.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-[color:var(--theme-text-muted)]">
-                No pending requests{query.trim() ? " matching your search." : " for this week."}
+                No pending requests{query.trim() ? " matching your search." : "."}
               </div>
             ) : (
               <ul className="divide-y divide-[color:var(--theme-border-soft)]">
@@ -713,7 +794,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                         "py-3 text-sm",
                         // subtle "actionable" highlight
                         "rounded-xl px-2 -mx-2",
-                        "bg-sky-500/[0.05] hover:bg-sky-500/[0.1]",
+                        "border border-amber-500/15 bg-amber-50/70 hover:bg-amber-50 dark:bg-amber-950/15 dark:hover:bg-amber-950/25",
                       ].join(" ")}
                     >
                       <div className="flex items-start gap-3">
@@ -761,7 +842,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                             type="button"
                             size="xs"
                             variant="outline"
-                            className="border-red-500/40 text-red-200 hover:bg-red-900/20"
+                            className="border-red-500/35 text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
                             onClick={() => void declineBooking(b)}
                           >
                             Decline
@@ -812,7 +893,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                                 </button>
                                 <button
                                   type="button"
-                                  className="w-full px-3 py-2 text-left text-sm text-red-200 hover:bg-red-500/10"
+                                  className="w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
                                   onClick={() => {
                                     setMenuOpenFor(null);
                                     void handleDelete(b.id);
@@ -832,7 +913,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
           </div>
 
           {/* Create / Edit panel (desktop card) */}
-          <div className={cardClass() + " hidden lg:block"}>
+          <div className={cardClass() + " hidden 2xl:block"}>
             {panelMode === "edit" && editing ? (
               <EditForm
                 booking={editing}
@@ -876,7 +957,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
       <div className={cardClass()}>
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-            This week ({filteredBookings.length})
+            Week agenda ({filteredBookings.length})
           </h2>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -939,7 +1020,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                         type="button"
                         size="xs"
                         variant="outline"
-                        className="border-red-500/40 text-red-200 hover:bg-red-900/20"
+                        className="border-red-500/35 text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
                         onClick={() => void declineBooking(b)}
                       >
                         Decline
@@ -974,7 +1055,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                     type="button"
                     size="xs"
                     variant="ghost"
-                    className="text-red-300 hover:bg-red-900/25"
+                    className="text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
                     onClick={() => void handleDelete(b.id)}
                   >
                     Delete
@@ -988,7 +1069,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
       {/* Mobile drawer */}
       {panelMode ? (
-        <div className="lg:hidden">
+        <div className="2xl:hidden">
           <div
             className="fixed inset-0 z-40 bg-[color:var(--theme-surface-overlay)]"
             onClick={closePanel}
@@ -1050,7 +1131,7 @@ function TabButton({
         "rounded-full border px-3 py-1 text-xs font-semibold",
         "transition",
         active
-          ? "border-sky-400/35 bg-sky-500/10 text-sky-100"
+          ? "border-sky-500/30 bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-200"
           : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
       ].join(" ")}
     >
@@ -1418,7 +1499,7 @@ function EditForm({
           type="button"
           size="sm"
           variant="ghost"
-          className="text-red-300 hover:bg-red-900/25"
+          className="text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
           onClick={onDelete}
         >
           Delete
