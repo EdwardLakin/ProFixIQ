@@ -1,0 +1,31 @@
+name: Phase 3 Parts Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/parts/**"
+      - "app/api/work-orders/lines/**"
+      - "app/api/invoices/send/route.ts"
+      - "features/invoices/server/getIssuableInvoiceSnapshot.ts"
+      - "supabase/migrations/20260714039*.sql"
+      - "supabase/migrations/20260714040*.sql"
+      - "tests/phase3-parts-*.test.ts"
+      - ".github/workflows/phase3-parts-validation.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint -- app/api/parts app/api/work-orders/lines app/api/invoices/send/route.ts features/invoices/server/getIssuableInvoiceSnapshot.ts tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
+      - run: pnpm vitest run tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
