@@ -364,15 +364,15 @@ export function MobileTechHome({
   return (
     <div className="mobile-tech-page space-y-5 px-4 py-4">
       {/* hero – brushed metal panel */}
-      <section className="mobile-tech-panel px-4 py-4 text-white">
+      <section className="mobile-tech-panel px-4 py-4 text-[color:var(--theme-text-primary)]">
         <div className="space-y-4">
           <div className="text-center">
             <h1 className="text-xl font-semibold leading-tight">
-              <span className="text-neutral-100">Welcome back, </span>
+              <span className="text-[color:var(--theme-text-primary)]">Welcome back, </span>
               <span className="text-[var(--accent-copper)]">{firstName}</span>{" "}
               <span className="align-middle">👋</span>
             </h1>
-            <p className="mt-1 text-xs text-neutral-300">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Bench-side view of today’s work and efficiency.
             </p>
           </div>
@@ -432,7 +432,7 @@ export function MobileTechHome({
       {jobs.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Today&apos;s jobs
             </h2>
             <Link
@@ -447,7 +447,7 @@ export function MobileTechHome({
               <li key={job.id}>
                 <Link
                   href={job.href}
-                  className="mobile-tech-subpanel block px-3 py-2 text-xs text-neutral-100"
+                  className="mobile-tech-subpanel block px-3 py-2 text-xs text-[color:var(--theme-text-primary)]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
@@ -464,10 +464,10 @@ export function MobileTechHome({
 
       {/* tools */}
       <section className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Tools
         </h2>
-        <p className="text-[0.7rem] text-neutral-500">
+        <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
           Quick actions for your bench.
         </p>
         <div className="space-y-2">
@@ -509,8 +509,8 @@ function CurrentJobPill({
 }) {
   if (loading) {
     return (
-      <div className="mobile-tech-subpanel inline-flex w-full items-center justify-between px-3 py-2 text-[0.75rem] text-neutral-300">
-        <span className="uppercase tracking-[0.16em] text-neutral-400">
+      <div className="mobile-tech-subpanel inline-flex w-full items-center justify-between px-3 py-2 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+        <span className="uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
           Current job
         </span>
         <span>Loading…</span>
@@ -520,11 +520,11 @@ function CurrentJobPill({
 
   if (!job || !workOrder) {
     return (
-      <div className="mobile-tech-subpanel inline-flex w-full items-center justify-between px-3 py-2 text-[0.75rem] text-neutral-400">
-        <span className="uppercase tracking-[0.16em] text-neutral-400">
+      <div className="mobile-tech-subpanel inline-flex w-full items-center justify-between px-3 py-2 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+        <span className="uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
           Current job
         </span>
-        <span className="text-[0.7rem] text-neutral-500">
+        <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
           No active job punch
         </span>
       </div>
@@ -548,14 +548,14 @@ function CurrentJobPill({
   return (
     <Link
       href={href}
-      className="mobile-tech-subpanel flex items-center justify-between border border-sky-500/35 px-3 py-2 text-[0.8rem] text-neutral-100"
+      className="mobile-tech-subpanel flex items-center justify-between border border-sky-500/35 px-3 py-2 text-[0.8rem] text-[color:var(--theme-text-primary)]"
     >
       <div className="flex flex-col">
         <span className="text-[0.65rem] uppercase tracking-[0.18em] text-sky-300">
           Current job
         </span>
         <span className="mt-0.5 truncate text-sm font-medium">{jobLabel}</span>
-        <span className="mt-0.5 text-[0.7rem] text-neutral-300">
+        <span className="mt-0.5 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           WO {woLabel}
           {vehicleLabel ? ` • ${vehicleLabel}` : ""}
         </span>
@@ -585,10 +585,10 @@ function StatCard({
 
   return (
     <div className={`${base} ${variantClasses}`}>
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400 text-center">
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)] text-center">
         {label}
       </div>
-      <div className="mt-1 flex items-baseline justify-center gap-1 text-lg font-semibold text-white">
+      <div className="mt-1 flex items-baseline justify-center gap-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
         <span>{value}</span>
       </div>
     </div>
@@ -625,22 +625,22 @@ function SummaryCard({
 
   return (
     <div className="mobile-tech-panel px-4 py-3">
-      <div className="text-center text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
+      <div className="text-center text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label} – Worked vs Billed
       </div>
 
-      <div className="mt-2 flex items-baseline justify-center gap-4 text-sm text-neutral-100">
+      <div className="mt-2 flex items-baseline justify-center gap-4 text-sm text-[color:var(--theme-text-primary)]">
         <div className="text-center">
-          <span className="text-neutral-400">Worked</span>{" "}
-          <span className="font-semibold text-white">{workedText}</span>
+          <span className="text-[color:var(--theme-text-secondary)]">Worked</span>{" "}
+          <span className="font-semibold text-[color:var(--theme-text-primary)]">{workedText}</span>
         </div>
         <div className="text-center">
-          <span className="text-neutral-400">Billed</span>{" "}
-          <span className="font-semibold text-white">{billedText}</span>
+          <span className="text-[color:var(--theme-text-secondary)]">Billed</span>{" "}
+          <span className="font-semibold text-[color:var(--theme-text-primary)]">{billedText}</span>
         </div>
       </div>
 
-      <div className="mt-2 text-center text-[0.7rem] text-neutral-400">
+      <div className="mt-2 text-center text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Efficiency:{" "}
         <span className="font-semibold text-sky-300">
           {effText}
@@ -648,7 +648,7 @@ function SummaryCard({
       </div>
 
       {hint ? (
-        <div className="mt-2 text-center text-[0.7rem] text-neutral-500">
+        <div className="mt-2 text-center text-[0.7rem] text-[color:var(--theme-text-muted)]">
           {hint}
         </div>
       ) : null}
@@ -674,7 +674,7 @@ function ShiftStatusChip({
   let classes = "";
 
   if (loading) {
-    classes = "border-[var(--metal-border-soft)] text-neutral-100 bg-slate-900/70";
+    classes = "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)] bg-[color:var(--theme-surface-panel)]";
   } else if (status === "active") {
     classes = "border-sky-400/70 text-sky-100 bg-sky-500/12";
   } else if (status === "break") {
@@ -684,14 +684,14 @@ function ShiftStatusChip({
   } else if (status === "ended") {
     classes = "border-red-500/70 text-red-100 bg-red-500/12";
   } else {
-    classes = "border-[var(--metal-border-soft)] text-neutral-200 bg-slate-900/70";
+    classes = "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)] bg-[color:var(--theme-surface-panel)]";
   }
 
   return (
     <div className={`${base} ${classes}`}>
       <span className="uppercase tracking-[0.2em]">{label}</span>
       {detail ? (
-        <span className="mt-1 text-[0.7rem] text-neutral-100/90">{detail}</span>
+        <span className="mt-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">{detail}</span>
       ) : null}
     </div>
   );
@@ -709,11 +709,11 @@ function ToolCard({
   return (
     <Link
       href={href}
-      className="mobile-tech-subpanel block px-4 py-3 text-sm text-neutral-100 transition hover:border-sky-500/45"
+      className="mobile-tech-subpanel block px-4 py-3 text-sm text-[color:var(--theme-text-primary)] transition hover:border-sky-500/45"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             {label}
           </div>
           <div className="mt-1 text-sm">{description}</div>

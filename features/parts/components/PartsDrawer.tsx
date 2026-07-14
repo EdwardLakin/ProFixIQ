@@ -103,37 +103,37 @@ export default function PartsDrawer({
 
   const tabBtn = (active: boolean) =>
     active
-      ? "rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md"
-      : "rounded-full border border-transparent px-4 py-2 text-sm text-neutral-300 hover:text-white";
+      ? "rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--accent-copper,#f97316)]/15 to-[color:var(--theme-surface-page)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md"
+      : "rounded-full border border-transparent px-4 py-2 text-sm text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]";
 
   return (
     <div className="fixed inset-0 z-[510]" onClick={(e) => e.stopPropagation()}>
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
         onClick={emitClose}
         aria-hidden="true"
       />
 
       {/* Panel */}
       <div
-        className="absolute inset-x-0 bottom-0 z-[520] w-full overflow-hidden rounded-t-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 text-white shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:inset-auto md:top-1/2 md:left-1/2 md:h-[85vh] md:w-[960px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl"
+        className="absolute inset-x-0 bottom-0 z-[520] w-full overflow-hidden rounded-t-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:inset-auto md:top-1/2 md:left-1/2 md:h-[85vh] md:w-[960px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* subtle radial like menu page */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+          className="pointer-events-none absolute inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
         />
 
         {/* Header */}
-        <div className="metal-card flex items-center justify-between gap-3 border-b border-white/10 bg-gradient-to-r from-black/80 via-slate-950/80 to-black/80 px-4 py-3 md:px-5">
+        <div className="metal-card flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-3 md:px-5">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
               Parts
             </div>
             <div
-              className="text-lg font-semibold text-white"
+              className="text-lg font-semibold text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops), system-ui" }}
             >
               Parts Drawer
@@ -142,14 +142,14 @@ export default function PartsDrawer({
 
           <button
             onClick={emitClose}
-            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-black/70"
+            className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-[color:var(--theme-surface-overlay)]"
           >
             Close
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-3 md:px-5">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--theme-border-soft)] px-4 py-3 md:px-5">
           <button
             className={tabBtn(tab === "use")}
             onClick={() => setTab("use")}
@@ -165,7 +165,7 @@ export default function PartsDrawer({
             Request to Purchase
           </button>
 
-          <div className="ml-auto hidden rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[11px] text-neutral-300 md:block">
+          <div className="ml-auto hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)] md:block">
             Copper / glass theme
           </div>
         </div>
@@ -173,7 +173,7 @@ export default function PartsDrawer({
         {/* Body */}
         <div className="h-[70vh] overflow-auto p-4 md:h-[calc(85vh-120px)] md:p-5">
           {tab === "use" ? (
-            <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-4">
+            <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-4">
               <PartPicker
                 open={true}
                 variant="inline"
@@ -188,7 +188,7 @@ export default function PartsDrawer({
               />
             </div>
           ) : (
-            <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:p-4">
+            <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-4">
               <PartsRequestModal
                 isOpen={true}
                 workOrderId={workOrderId}

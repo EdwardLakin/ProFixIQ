@@ -169,7 +169,7 @@ export default function AirCornerGrid({
               "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
               unitMode === "standard"
                 ? "border-orange-500/70 bg-orange-500/10 text-orange-100"
-                : "border-white/10 bg-black/55 text-neutral-200 hover:border-orange-500/50",
+                : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:border-orange-500/50",
             ].join(" ")}
           >
             Standard
@@ -181,13 +181,13 @@ export default function AirCornerGrid({
               "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
               unitMode === "metric"
                 ? "border-orange-500/70 bg-orange-500/10 text-orange-100"
-                : "border-white/10 bg-black/55 text-neutral-200 hover:border-orange-500/50",
+                : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:border-orange-500/50",
             ].join(" ")}
           >
             Metric
           </button>
 
-          <div className="hidden text-[10px] uppercase tracking-[0.16em] text-neutral-500 md:block">
+          <div className="hidden text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)] md:block">
             {modeHint(unitMode)}
           </div>
         </div>
@@ -195,7 +195,7 @@ export default function AirCornerGrid({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -209,7 +209,7 @@ export default function AirCornerGrid({
       {tables.map((t) => (
         <div
           key={t.axle}
-          className="overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-950/70 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl"
+          className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
         >
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <div
@@ -226,13 +226,13 @@ export default function AirCornerGrid({
                 <table className="w-full table-fixed border-separate border-spacing-y-1">
                   <thead>
                     <tr className="text-xs text-muted-foreground">
-                      <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-slate-400">
+                      <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                         Item
                       </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
                         Left
                       </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-100">
+                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
                         Right
                       </th>
                     </tr>
@@ -265,7 +265,7 @@ export default function AirCornerGrid({
                               <div className="relative w-full max-w-none">
                                 <input
                                   defaultValue={cell.initial}
-                                  className="h-12 w-full rounded-lg border border-slate-700/70 bg-slate-950/70 px-3 pr-14 text-base text-foreground placeholder:text-slate-500 focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
+                                  className="h-12 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 pr-14 text-base text-foreground placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
                                   placeholder="Value"
                                   autoComplete="off"
                                   inputMode="decimal"
@@ -314,7 +314,7 @@ function AddAxlePicker({
   return (
     <div className="flex items-center gap-2 px-1">
       <select
-        className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-xs text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
+        className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
         value={pending}
         onChange={(e) => setPending(e.target.value)}
       >
@@ -327,7 +327,7 @@ function AddAxlePicker({
       </select>
 
       <button
-        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
+        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
         onClick={() => {
           if (pending) onAddAxle(pending);
         }}

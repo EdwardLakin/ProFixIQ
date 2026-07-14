@@ -125,7 +125,7 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
           >
             Battery Grid
           </div>
-          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             Rating CCA • Tested CCA (max 5 batteries)
           </div>
         </div>
@@ -146,7 +146,7 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
             aria-expanded={open}
             title={open ? "Collapse" : "Expand"}
             tabIndex={-1}
@@ -159,17 +159,17 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
       {open ? (
         <div className="overflow-x-auto">
           <div className="inline-block min-w-full align-middle">
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl">
+            <div className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
               <table className="min-w-full table-fixed border-separate border-spacing-y-[2px]">
                 <thead>
                   <tr>
-                    <th className="w-[180px] px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                    <th className="w-[180px] px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                       Metric
                     </th>
                     {Array.from({ length: grid.batteryCount }, (_, i) => i + 1).map((n) => (
                       <th
                         key={n}
-                        className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100"
+                        className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]"
                         style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
                       >
                         Battery {n}
@@ -181,7 +181,7 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
                 <tbody>
                   {(["rating", "tested"] as const).map((kind) => (
                     <tr key={kind} className="align-middle">
-                      <td className="px-3 py-1.5 text-sm font-semibold text-neutral-100">
+                      <td className="px-3 py-1.5 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {kind === "rating" ? "Rating (CCA)" : "Tested (CCA)"}
                       </td>
 
@@ -204,14 +204,14 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
                             <div className="relative mx-auto w-full max-w-[7.75rem]">
                               <input
                                 value={value}
-                                className="h-[34px] w-full rounded-lg border border-white/10 bg-black/55 px-3 py-1.5 pr-12 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
+                                className="h-[34px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 pr-12 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                                 placeholder={kind === "rating" ? "Rating" : "Tested"}
                                 autoComplete="off"
                                 inputMode="decimal"
                                 type="number"
                                 onChange={(e) => commit(cell.idx, e.currentTarget.value)}
                               />
-                              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400">
+                              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-[color:var(--theme-text-secondary)]">
                                 CCA
                               </span>
                             </div>
@@ -224,7 +224,7 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
               </table>
 
               {!canAdd ? (
-                <div className="border-t border-white/10 px-3 py-2 text-[11px] text-neutral-400">
+                <div className="border-t border-[color:var(--theme-border-soft)] px-3 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                   Note: “Add Battery” requires <code>updateSection</code> to be provided by your InspectionForm context
                   provider.
                 </div>

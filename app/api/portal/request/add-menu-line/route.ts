@@ -54,7 +54,7 @@ export async function POST(req: Request) {
 
     const workOrderId = (body?.workOrderId ?? "").trim();
     const menuItemId = (body?.menuItemId ?? "").trim();
-    
+
 
     if (!workOrderId || !menuItemId) return bad("Missing workOrderId or menuItemId");
 
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
       // store parts suggestion into existing json-ish column if present in your types
       // if your schema uses a different column name, swap it here:
       parts_needed: partsNeeded as unknown as DB["public"]["Tables"]["work_order_lines"]["Insert"]["parts_needed"],
-      
+
     };
 
     const { data: created, error: insErr } = await supabase

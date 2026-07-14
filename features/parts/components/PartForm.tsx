@@ -149,7 +149,7 @@ export function PartForm({ shopId }: { shopId: string }) {
       <button
         type="submit"
         disabled={pending || !form.name}
-        className="px-4 py-2 rounded-xl bg-neutral-900 text-white"
+        className="px-4 py-2 rounded-xl bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]"
       >
         {pending ? "Saving…" : "Create Part"}
       </button>

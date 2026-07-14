@@ -33,15 +33,15 @@ export default function MobileManagerHome({ managerName, role, stats }: Props) {
   return (
     <div className="space-y-6 px-4 py-4">
       {/* Hero */}
-      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
         <div className="space-y-4">
           <div className="text-center">
             <h1 className="text-xl font-semibold leading-tight">
-              <span className="text-neutral-100">Shop overview, </span>
+              <span className="text-[color:var(--theme-text-primary)]">Shop overview, </span>
               <span className="text-[var(--accent-copper)]">{firstName}</span>{" "}
               <span className="align-middle">📊</span>
             </h1>
-            <p className="mt-1 text-xs text-neutral-300">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               High-level view of workload, waiters and technician coverage.
             </p>
           </div>
@@ -60,7 +60,7 @@ export default function MobileManagerHome({ managerName, role, stats }: Props) {
             />
           </div>
 
-          <div className="mt-1 text-center text-[0.75rem] text-neutral-300">
+          <div className="mt-1 text-center text-[0.75rem] text-[color:var(--theme-text-secondary)]">
             Today billed:{" "}
             <span className="font-semibold text-[var(--accent-copper-soft)]">
               {todayBilled ?? "—"}
@@ -120,9 +120,9 @@ function ManagerStatChip({
   warn?: boolean;
 }) {
   const base =
-    "metal-card rounded-2xl px-3 py-3 shadow-[0_16px_32px_rgba(0,0,0,0.75)] text-center border";
+    "metal-card rounded-2xl px-3 py-3 shadow-[var(--theme-shadow-medium)] text-center border";
 
-  let color = "border-[var(--metal-border-soft)] text-neutral-100";
+  let color = "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)]";
   if (accent) {
     color =
       "border-emerald-400/70 text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.55)]";
@@ -133,7 +133,7 @@ function ManagerStatChip({
 
   return (
     <div className={`${base} ${color}`}>
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
       <div className="mt-1 text-lg font-semibold">{value}</div>
@@ -155,14 +155,14 @@ function FlowCard({
   return (
     <Link
       href={href}
-      className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-sm text-neutral-100 transition hover:border-[var(--accent-copper-soft)]"
+      className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)]"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             {title}
           </div>
-          <div className="mt-1 text-xs text-neutral-200">{body}</div>
+          <div className="mt-1 text-xs text-[color:var(--theme-text-primary)]">{body}</div>
         </div>
         <span className="text-[0.7rem] text-[var(--accent-copper-soft)]">
           {cta} →

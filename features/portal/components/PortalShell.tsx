@@ -38,9 +38,9 @@ function isPortalAuth(pathname: string) {
 function MenuIcon() {
   return (
     <div className="flex flex-col gap-[3px]">
-      <span className="h-[2px] w-[14px] rounded-full bg-white" />
-      <span className="h-[2px] w-[14px] rounded-full bg-white" />
-      <span className="h-[2px] w-[14px] rounded-full bg-white" />
+      <span className="h-[2px] w-[14px] rounded-full bg-[color:var(--theme-surface-panel-strong)]" />
+      <span className="h-[2px] w-[14px] rounded-full bg-[color:var(--theme-surface-panel-strong)]" />
+      <span className="h-[2px] w-[14px] rounded-full bg-[color:var(--theme-surface-panel-strong)]" />
     </div>
   );
 }
@@ -63,8 +63,8 @@ function NavPill({
       className={cx(
         "group flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition",
         active
-          ? "border-white/14 bg-white/7 text-white shadow-[0_10px_30px_rgba(0,0,0,0.55)]"
-          : "border-white/10 bg-black/20 text-neutral-200 hover:border-white/14 hover:bg-white/5",
+          ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]"
+          : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]",
       )}
     >
       <span className="font-semibold">{label}</span>
@@ -123,14 +123,14 @@ export default function PortalShell({
   // ✅ AUTH PAGES: allow the auth page to own the full viewport/background
   if (hideNav) {
     return (
-      <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
+      <div className="relative min-h-dvh app-metal-bg text-[color:var(--theme-text-primary)] overflow-hidden">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-1/2 top-[-22%] h-[58rem] w-[58rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.15),transparent_60%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.88),transparent_68%)]" />
+          <div className="absolute inset-0 bg-[var(--theme-gradient-panel)]" />
         </div>
 
         {/* ✅ Removed `relative` to satisfy cssConflict lint */}
-        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_2px_12px_rgba(0,0,0,0.45)]">
+        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[var(--theme-shadow-medium)]">
           <div className="flex flex-col leading-none">
             <span
               className="font-blackops text-xs tracking-[0.22em]"
@@ -138,7 +138,7 @@ export default function PortalShell({
             >
               PROFIXIQ
             </span>
-            <span className="text-[0.65rem] text-neutral-300">
+            <span className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">
               Customer Portal
             </span>
           </div>
@@ -146,7 +146,7 @@ export default function PortalShell({
           <button
             type="button"
             onClick={() => router.push("/portal")}
-            className="desktop-btn-secondary inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.7rem] text-neutral-100 active:scale-95"
+            className="desktop-btn-secondary inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)] active:scale-95"
           >
             <span className="uppercase tracking-[0.16em]">Home</span>
           </button>
@@ -160,15 +160,15 @@ export default function PortalShell({
   }
 
   return (
-    <div className="relative min-h-dvh app-metal-bg text-white overflow-hidden">
+    <div className="relative min-h-dvh app-metal-bg text-[color:var(--theme-text-primary)] overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-[6%] h-[80rem] w-[80rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.12),transparent_62%)]" />
         <div className="absolute right-[-18%] top-[28%] h-[46rem] w-[46rem] rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.06),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(15,23,42,0.82),transparent_70%)]" />
+        <div className="absolute inset-0 bg-[var(--theme-gradient-panel)]" />
       </div>
 
       {/* ✅ Removed `relative` to satisfy cssConflict lint */}
-      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_2px_12px_rgba(0,0,0,0.45)]">
+      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[var(--theme-shadow-medium)]">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -189,10 +189,10 @@ export default function PortalShell({
           </button>
 
           <div>
-            <div className="text-[0.75rem] font-medium text-neutral-100">
+            <div className="text-[0.75rem] font-medium text-[color:var(--theme-text-primary)]">
               {title}
             </div>
-            <div className="text-[0.65rem] text-neutral-400">{subtitle}</div>
+            <div className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">{subtitle}</div>
           </div>
         </div>
 
@@ -247,7 +247,7 @@ export default function PortalShell({
               >
                 PROFIXIQ
               </div>
-              <div className="mt-1 text-xs text-neutral-400">
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Customer Portal
               </div>
             </div>
@@ -263,7 +263,7 @@ export default function PortalShell({
               ))}
             </nav>
 
-            <div className="px-5 pb-5 text-xs text-neutral-500">
+            <div className="px-5 pb-5 text-xs text-[color:var(--theme-text-muted)]">
               Powered by ProFixIQ
             </div>
           </div>
@@ -272,10 +272,10 @@ export default function PortalShell({
         {mobileOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
             <div
-              className="absolute inset-0 bg-black/60"
+              className="absolute inset-0 bg-[color:var(--theme-surface-overlay)]"
               onClick={() => setMobileOpen(false)}
             />
-            <div className="absolute left-0 top-0 h-full w-[82vw] max-w-[360px] border-r border-white/10 bg-[#020611]/95 backdrop-blur-xl">
+            <div className="absolute left-0 top-0 h-full w-[82vw] max-w-[360px] border-r border-[color:var(--theme-border-soft)] bg-[var(--theme-surface-page)]/95 backdrop-blur-xl">
               <div className="flex items-center justify-between border-b border-[color:var(--desktop-border)] px-5 py-5">
                 <div>
                   <div
@@ -284,13 +284,13 @@ export default function PortalShell({
                   >
                     PROFIXIQ
                   </div>
-                  <div className="mt-1 text-xs text-neutral-400">
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                     Customer Portal
                   </div>
                 </div>
                 <button
                   type="button"
-                  className="desktop-btn-secondary rounded-full border px-3 py-1 text-xs text-neutral-100"
+                  className="desktop-btn-secondary rounded-full border px-3 py-1 text-xs text-[color:var(--theme-text-primary)]"
                   onClick={() => setMobileOpen(false)}
                 >
                   Close
@@ -309,7 +309,7 @@ export default function PortalShell({
                 ))}
               </nav>
 
-              <div className="mt-auto border-t border-white/10 px-5 py-4">
+              <div className="mt-auto border-t border-[color:var(--theme-border-soft)] px-5 py-4">
                 <button
                   type="button"
                   onClick={() => void signOut()}
@@ -319,7 +319,7 @@ export default function PortalShell({
                   {signingOut ? "Signing out…" : "Sign out"}
                 </button>
 
-                <div className="mt-3 text-xs text-neutral-500">
+                <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
                   Powered by ProFixIQ
                 </div>
               </div>
@@ -328,7 +328,7 @@ export default function PortalShell({
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="desktop-panel-soft min-h-full rounded-2xl border border-white/10 bg-black/20 p-3 backdrop-blur-md md:p-4">{children}</div>
+          <div className="desktop-panel-soft min-h-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur-md md:p-4">{children}</div>
         </div>
       </div>
     </div>

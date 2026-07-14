@@ -8,7 +8,7 @@ export default function Page() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[60vh] grid place-items-center text-white">
+        <div className="min-h-[60vh] grid place-items-center text-[color:var(--theme-text-primary)]">
           <p>Loading booking page…</p>
         </div>
       }

@@ -60,7 +60,7 @@ function Stars({ value }: { value: number }) {
               className="block h-3.5 w-3.5"
               style={{
                 background: filled
-                  ? `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.35) 35%, rgba(0,0,0,0) 70%), linear-gradient(135deg, rgba(197,122,74,0.95), rgba(249,115,22,0.85))`
+                  ? `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.35) 35%, transparent 70%), linear-gradient(135deg, rgba(197,122,74,0.95), rgba(249,115,22,0.85))`
                   : isHalf
                     ? `linear-gradient(90deg, rgba(197,122,74,0.95) 0%, rgba(197,122,74,0.95) 50%, rgba(148,163,184,0.22) 50%, rgba(148,163,184,0.22) 100%)`
                     : "rgba(148,163,184,0.22)",
@@ -91,11 +91,11 @@ function SignalDot() {
 
 function StatPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2 backdrop-blur">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+    <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 backdrop-blur">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
-      <div className="mt-0.5 text-sm font-extrabold text-white">{value}</div>
+      <div className="mt-0.5 text-sm font-extrabold text-[color:var(--theme-text-primary)]">{value}</div>
     </div>
   );
 }
@@ -169,14 +169,14 @@ export default function LandingReviews() {
           style={{
             background:
               "radial-gradient(800px 360px at 18% 10%, rgba(197,122,74,0.14), transparent 60%)," +
-              "radial-gradient(900px 520px at 78% 90%, rgba(15,23,42,0.70), rgba(2,6,23,1) 60%)",
+              "var(--theme-gradient-panel)",
           }}
         />
         <div
           className="absolute inset-0 opacity-[0.10]"
           style={{
             backgroundImage:
-              "repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 8px)",
+              "var(--theme-gradient-panel)",
           }}
         />
       </div>
@@ -191,24 +191,24 @@ export default function LandingReviews() {
         </div>
 
         <h2
-          className="mt-3 text-3xl text-white md:text-5xl"
+          className="mt-3 text-3xl text-[color:var(--theme-text-primary)] md:text-5xl"
           style={{
             fontFamily: "var(--font-blackops)",
-            textShadow: "0 0 48px rgba(0,0,0,0.75)",
+            boxShadow: "var(--theme-shadow-medium)",
           }}
         >
           Proof from the floor.
         </h2>
 
-        <p className="mx-auto mt-3 max-w-2xl text-sm text-neutral-300 sm:text-base">
+        <p className="mx-auto mt-3 max-w-2xl text-sm text-[color:var(--theme-text-secondary)] sm:text-base">
           Shops don’t want “more software.” They want less retyping, faster approvals,
           and evidence that follows the job.
         </p>
       </div>
 
-      <div className="mt-10 overflow-hidden rounded-3xl border border-white/10 bg-black/20 backdrop-blur-xl">
+      <div className="mt-10 overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] backdrop-blur-xl">
         <div className="grid gap-0 lg:grid-cols-[420px_1fr]">
-          <div className="relative border-b border-white/10 p-6 lg:border-b-0 lg:border-r">
+          <div className="relative border-b border-[color:var(--theme-border-soft)] p-6 lg:border-b-0 lg:border-r">
             <div
               className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
               style={{ background: "rgba(197,122,74,0.14)" }}
@@ -216,21 +216,21 @@ export default function LandingReviews() {
 
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                   Average rating
                 </div>
                 <div className="mt-2 flex items-end gap-2">
-                  <div className="text-4xl font-extrabold text-white">
+                  <div className="text-4xl font-extrabold text-[color:var(--theme-text-primary)]">
                     {stats.count ? stats.avg.toFixed(1) : "—"}
                   </div>
-                  <div className="pb-1 text-sm text-neutral-400">/ 5</div>
+                  <div className="pb-1 text-sm text-[color:var(--theme-text-secondary)]">/ 5</div>
                 </div>
 
                 <div className="mt-2">
                   <Stars value={stats.avg} />
                 </div>
 
-                <div className="mt-3 text-sm text-neutral-300">
+                <div className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
                   {stats.count
                     ? `${stats.count} review${stats.count === 1 ? "" : "s"}`
                     : "No public reviews yet"}
@@ -246,10 +246,10 @@ export default function LandingReviews() {
             <div className="mt-6 space-y-2">
               {distribution.map((d) => (
                 <div key={d.stars} className="flex items-center gap-3">
-                  <div className="w-14 text-[11px] font-semibold text-neutral-400">
+                  <div className="w-14 text-[11px] font-semibold text-[color:var(--theme-text-secondary)]">
                     {d.stars} star
                   </div>
-                  <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
                     <div
                       className="absolute inset-y-0 left-0 rounded-full"
                       style={{
@@ -260,14 +260,14 @@ export default function LandingReviews() {
                       }}
                     />
                   </div>
-                  <div className="w-10 text-right text-[11px] text-neutral-400">
+                  <div className="w-10 text-right text-[11px] text-[color:var(--theme-text-secondary)]">
                     {d.n}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-neutral-200">
+            <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)]">
               <span className="font-semibold" style={{ color: COPPER_LIGHT }}>
                 If you’re still reading,
               </span>{" "}
@@ -277,9 +277,9 @@ export default function LandingReviews() {
 
           <div className="p-6">
             {loading ? (
-              <div className="text-sm text-neutral-400">Loading reviews…</div>
+              <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading reviews…</div>
             ) : reviews.length === 0 ? (
-              <div className="text-sm text-neutral-400">No public reviews yet.</div>
+              <div className="text-sm text-[color:var(--theme-text-secondary)]">No public reviews yet.</div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {reviews.map((r) => {
@@ -288,13 +288,13 @@ export default function LandingReviews() {
                   return (
                     <div
                       key={r.id}
-                      className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/15 p-5 backdrop-blur-sm"
+                      className="relative overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-sm"
                     >
                       <div
                         className="pointer-events-none absolute inset-0"
                         style={{
                           boxShadow:
-                            "0 0 0 1px rgba(255,255,255,0.05) inset, 0 18px 60px rgba(0,0,0,0.35)",
+                            "0 0 0 1px rgba(255,255,255,0.05) inset, 0 18px 60px var(--theme-surface-inset)",
                         }}
                       />
 
@@ -302,14 +302,14 @@ export default function LandingReviews() {
                         className="pointer-events-none absolute inset-0 opacity-[0.10]"
                         style={{
                           backgroundImage:
-                            "repeating-linear-gradient(115deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.00) 2px, rgba(0,0,0,0.35) 6px)",
+                            "var(--theme-gradient-panel)",
                         }}
                       />
 
                       <div className="relative">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                               Shop review
                             </div>
                             <div className="mt-2">
@@ -317,21 +317,21 @@ export default function LandingReviews() {
                             </div>
                           </div>
 
-                          <div className="text-[11px] text-neutral-500">
+                          <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                             {formatDate(r.created_at)}
                           </div>
                         </div>
 
-                        <p className="mt-4 text-sm leading-relaxed text-neutral-200">
+                        <p className="mt-4 text-sm leading-relaxed text-[color:var(--theme-text-primary)]">
                           {r.comment?.trim() || "No comment provided."}
                         </p>
 
                         {r.shop_owner_reply ? (
-                          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                          <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                               Shop reply
                             </div>
-                            <p className="mt-2 text-sm leading-relaxed text-neutral-300">
+                            <p className="mt-2 text-sm leading-relaxed text-[color:var(--theme-text-secondary)]">
                               {r.shop_owner_reply}
                             </p>
                           </div>

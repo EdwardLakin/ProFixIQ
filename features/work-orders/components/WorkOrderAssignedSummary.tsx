@@ -84,7 +84,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
 
   if (loading) {
     return (
-      <span className="inline-flex animate-pulse items-center rounded-full border border-neutral-700 bg-neutral-900/70 px-2.5 py-0.5 text-[0.7rem] text-neutral-400">
+      <span className="inline-flex animate-pulse items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2.5 py-0.5 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Loading…
       </span>
     );
@@ -92,7 +92,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
 
   if (!rows.length || !firstTechLabel) {
     return (
-      <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-950/80 px-2.5 py-0.5 text-[0.7rem] text-neutral-400">
+      <span className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2.5 py-0.5 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Unassigned
       </span>
     );
@@ -122,7 +122,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
       )}
       <span>{firstTechLabel}</span>
       {extraCount > 0 && (
-        <span className="text-[0.65rem] text-neutral-100/80">
+        <span className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">
           +{extraCount} collaborators
         </span>
       )}

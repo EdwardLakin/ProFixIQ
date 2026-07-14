@@ -76,7 +76,7 @@ type SignedUrlRow = {
 function statusClasses(status: AgentRequestStatus) {
   switch (status) {
     case "submitted":
-      return "border-neutral-700 bg-neutral-900 text-neutral-200";
+      return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]";
     case "in_progress":
       return "border-sky-700/70 bg-sky-900/40 text-sky-200";
     case "awaiting_approval":
@@ -89,7 +89,7 @@ function statusClasses(status: AgentRequestStatus) {
     case "failed":
       return "border-red-700/70 bg-red-900/40 text-red-200";
     default:
-      return "border-neutral-700 bg-neutral-900 text-neutral-200";
+      return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]";
   }
 }
 
@@ -440,30 +440,30 @@ export default function AgentConsolePage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-6 text-white">
+    <div className="mx-auto max-w-6xl px-3 py-6 text-[color:var(--theme-text-primary)]">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-300">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Agent Console
           </h1>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Review AI-generated issues, pull requests, and catalog changes for ProFixIQ.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-neutral-300 backdrop-blur-md">
+        <div className="flex items-center gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] backdrop-blur-md">
           <div className="flex flex-col">
-            <span className="text-[0.65rem] uppercase tracking-[0.13em] text-neutral-500">
+            <span className="text-[0.65rem] uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
               Requests
             </span>
             <span className="font-semibold">{requests.length} open</span>
           </div>
-          <Separator orientation="vertical" className="h-6 bg-white/10" />
+          <Separator orientation="vertical" className="h-6 bg-[color:var(--theme-surface-subtle)]" />
           <Button
             type="button"
             size="sm"
             variant="outline"
-            className="border-orange-500/60 bg-black/40 text-xs font-semibold text-orange-400 hover:bg-orange-600 hover:text-black"
+            className="border-orange-500/60 bg-[color:var(--theme-surface-inset)] text-xs font-semibold text-orange-400 hover:bg-orange-600 hover:text-[color:var(--theme-text-on-accent)]"
             onClick={() => void loadRequests()}
           >
             Refresh
@@ -473,23 +473,23 @@ export default function AgentConsolePage() {
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
         {/* LEFT LIST */}
-        <Card className="flex h-[70vh] flex-col rounded-2xl border border-white/10 bg-black/30 p-3 shadow-card backdrop-blur-md">
+        <Card className="flex h-[70vh] flex-col rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between px-1">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">
               Requests
             </h2>
             {isLoading && (
-              <span className="text-[0.7rem] text-neutral-500">Syncing…</span>
+              <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">Syncing…</span>
             )}
           </div>
 
-          <Separator className="mb-2 bg-white/10" />
+          <Separator className="mb-2 bg-[color:var(--theme-surface-subtle)]" />
 
           <div className="flex-1 space-y-2 overflow-auto">
             {error && <p className="text-xs text-red-400">{error}</p>}
 
             {!isLoading && !error && requests.length === 0 && (
-              <p className="text-xs text-neutral-500">No agent requests yet.</p>
+              <p className="text-xs text-[color:var(--theme-text-muted)]">No agent requests yet.</p>
             )}
 
             {requests.map((req) => (
@@ -498,17 +498,17 @@ export default function AgentConsolePage() {
                 type="button"
                 onClick={() => setSelected(req)}
                 className={cn(
-                  "w-full rounded-xl border border-white/5 bg-black/40 px-3 py-2 text-left text-xs text-neutral-100 transition hover:border-orange-500/70 hover:bg-orange-500/5",
+                  "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-left text-xs text-[color:var(--theme-text-primary)] transition hover:border-orange-500/70 hover:bg-orange-500/5",
                   selected?.id === req.id &&
                     "border-orange-500/80 bg-orange-500/10",
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-col gap-0.5">
-                    <span className="line-clamp-1 text-[0.8rem] font-medium text-neutral-50">
+                    <span className="line-clamp-1 text-[0.8rem] font-medium text-[color:var(--theme-text-primary)]">
                       {req.description}
                     </span>
-                    <span className="text-[0.7rem] text-neutral-400">
+                    <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                       {prettyIntent(req.intent)} •{" "}
                       {new Date(req.created_at).toLocaleString()}
                     </span>
@@ -523,7 +523,7 @@ export default function AgentConsolePage() {
                       {req.status.replace(/_/g, " ")}
                     </Badge>
                     {req.llm_confidence != null && (
-                      <span className="text-[10px] text-neutral-500">
+                      <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                         Conf: {req.llm_confidence.toFixed(2)}
                       </span>
                     )}
@@ -535,18 +535,18 @@ export default function AgentConsolePage() {
         </Card>
 
         {/* RIGHT DETAILS */}
-        <Card className="flex h-[70vh] flex-col rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-md">
+        <Card className="flex h-[70vh] flex-col rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-md">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">
               {selected ? "Request Details" : "Select a Request"}
             </h2>
           </div>
 
-          <Separator className="mb-3 bg-white/10" />
+          <Separator className="mb-3 bg-[color:var(--theme-surface-subtle)]" />
 
-          <div className="flex-1 space-y-4 overflow-auto text-sm text-neutral-100">
+          <div className="flex-1 space-y-4 overflow-auto text-sm text-[color:var(--theme-text-primary)]">
             {!selected && (
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-[color:var(--theme-text-muted)]">
                 Choose a request on the left to see description, GitHub links,
                 context, and LLM notes.
               </p>
@@ -557,7 +557,7 @@ export default function AgentConsolePage() {
                 {/* DESCRIPTION */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold text-neutral-50">
+                    <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       Description
                     </h3>
                     <Badge
@@ -569,95 +569,95 @@ export default function AgentConsolePage() {
                       {selected.status.replace(/_/g, " ")}
                     </Badge>
                   </div>
-                  <p className="whitespace-pre-line text-xs text-neutral-200">
+                  <p className="whitespace-pre-line text-xs text-[color:var(--theme-text-primary)]">
                     {selected.description}
                   </p>
                 </div>
 
-                <Separator className="bg-white/10" />
+                <Separator className="bg-[color:var(--theme-surface-subtle)]" />
 
                 {/* META */}
                 <div className="grid grid-cols-2 gap-4 text-[0.75rem]">
                   <div className="space-y-1">
-                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
                       Intent
                     </div>
-                    <div className="text-neutral-100">
+                    <div className="text-[color:var(--theme-text-primary)]">
                       {prettyIntent(selected.intent)}
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
                       LLM Model
                     </div>
-                    <div className="text-neutral-100">
+                    <div className="text-[color:var(--theme-text-primary)]">
                       {selected.llm_model ?? "n/a"}
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
                       Confidence
                     </div>
-                    <div className="text-neutral-100">
+                    <div className="text-[color:var(--theme-text-primary)]">
                       {selected.llm_confidence != null
                         ? selected.llm_confidence.toFixed(3)
                         : "n/a"}
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
                       Reporter Role
                     </div>
-                    <div className="text-neutral-100">
+                    <div className="text-[color:var(--theme-text-primary)]">
                       {selected.reporter_role ?? "unknown"}
                     </div>
                   </div>
                 </div>
 
-                <Separator className="bg-white/10" />
+                <Separator className="bg-[color:var(--theme-surface-subtle)]" />
 
                 {/* CONTEXT */}
                 {selectedContext && Object.keys(selectedContext).length > 0 && (
                   <>
                     <div className="space-y-2 text-[0.75rem]">
-                      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
                         Context
                       </div>
-                      <div className="space-y-1 text-neutral-200">
+                      <div className="space-y-1 text-[color:var(--theme-text-primary)]">
                         {selectedContext.location && (
                           <div>
-                            <span className="text-neutral-500">Location:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Location:</span>{" "}
                             {selectedContext.location}
                           </div>
                         )}
                         {selectedContext.device && (
                           <div>
-                            <span className="text-neutral-500">Device:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Device:</span>{" "}
                             {selectedContext.device}
                           </div>
                         )}
                         {selectedContext.steps && (
                           <div>
-                            <div className="text-neutral-500">
+                            <div className="text-[color:var(--theme-text-muted)]">
                               Steps to Reproduce:
                             </div>
-                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-[color:var(--theme-surface-inset)] p-2 text-[0.7rem] text-[color:var(--theme-text-primary)]">
                               {selectedContext.steps}
                             </pre>
                           </div>
                         )}
                         {selectedContext.expected && (
                           <div>
-                            <div className="text-neutral-500">Expected:</div>
-                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                            <div className="text-[color:var(--theme-text-muted)]">Expected:</div>
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-[color:var(--theme-surface-inset)] p-2 text-[0.7rem] text-[color:var(--theme-text-primary)]">
                               {selectedContext.expected}
                             </pre>
                           </div>
                         )}
                         {selectedContext.actual && (
                           <div>
-                            <div className="text-neutral-500">Actual:</div>
-                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                            <div className="text-[color:var(--theme-text-muted)]">Actual:</div>
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-[color:var(--theme-surface-inset)] p-2 text-[0.7rem] text-[color:var(--theme-text-primary)]">
                               {selectedContext.actual}
                             </pre>
                           </div>
@@ -667,12 +667,12 @@ export default function AgentConsolePage() {
                         {Array.isArray(selectedContext.attachmentIds) &&
                           selectedContext.attachmentIds.length > 0 && (
                             <div className="space-y-1">
-                              <div className="text-neutral-500">
+                              <div className="text-[color:var(--theme-text-muted)]">
                                 Attachments:
                               </div>
 
                               {attachmentsLoading && (
-                                <div className="text-[0.7rem] text-neutral-500">
+                                <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                                   Loading screenshots…
                                 </div>
                               )}
@@ -689,7 +689,7 @@ export default function AgentConsolePage() {
                                     return (
                                       <li
                                         key={path}
-                                        className="text-neutral-300"
+                                        className="text-[color:var(--theme-text-secondary)]"
                                       >
                                         <div className="flex items-center gap-2">
                                           <button
@@ -706,7 +706,7 @@ export default function AgentConsolePage() {
                                           >
                                             Screenshot {idx + 1}
                                           </button>
-                                          <span className="truncate text-neutral-500">
+                                          <span className="truncate text-[color:var(--theme-text-muted)]">
                                             (
                                             {
                                               path.split("/")[
@@ -733,7 +733,7 @@ export default function AgentConsolePage() {
                                                 width={640}
                                                 height={360}
                                                 unoptimized
-                                                className="max-h-40 w-auto cursor-zoom-in rounded-md border border-white/10 bg-black/40 object-contain"
+                                                className="max-h-40 w-auto cursor-zoom-in rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] object-contain"
                                               />
                                             </button>
                                           </div>
@@ -747,16 +747,16 @@ export default function AgentConsolePage() {
                       </div>
                     </div>
 
-                    <Separator className="bg-white/10" />
+                    <Separator className="bg-[color:var(--theme-surface-subtle)]" />
                   </>
                 )}
 
                 {/* GITHUB */}
                 <div className="space-y-1 text-[0.75rem]">
-                  <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                  <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
                     GitHub
                   </div>
-                  <div className="space-y-1 text-neutral-200">
+                  <div className="space-y-1 text-[color:var(--theme-text-primary)]">
                     {selected.github_issue_url ? (
                       <div>
                         Issue:{" "}
@@ -801,12 +801,12 @@ export default function AgentConsolePage() {
                 {/* LLM NOTES */}
                 {selected.llm_notes && (
                   <>
-                    <Separator className="bg-white/10" />
+                    <Separator className="bg-[color:var(--theme-surface-subtle)]" />
                     <div className="space-y-1 text-[0.75rem]">
-                      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
                         LLM Notes
                       </div>
-                      <p className="whitespace-pre-line text-neutral-300">
+                      <p className="whitespace-pre-line text-[color:var(--theme-text-secondary)]">
                         {selected.llm_notes}
                       </p>
                     </div>
@@ -814,31 +814,31 @@ export default function AgentConsolePage() {
                 )}
 
                 {/* QUESTIONS + RESPONSES */}
-                <Separator className="bg-white/10" />
+                <Separator className="bg-[color:var(--theme-surface-subtle)]" />
                 <div className="space-y-2 text-[0.75rem]">
                   <div className="flex items-center justify-between">
-                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                    <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-[color:var(--theme-text-secondary)]">
                       Agent Q&A
                     </div>
-                    <span className="text-[10px] text-neutral-500">
+                    <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                       {responses.length} repl
                       {responses.length === 1 ? "y" : "ies"}
                     </span>
                   </div>
 
                   {questions.length > 0 ? (
-                    <div className="rounded-lg border border-white/10 bg-black/25 p-2">
-                      <div className="text-[0.7rem] text-neutral-400">
+                    <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2">
+                      <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                         Questions the agent needs answered:
                       </div>
                       <ul className="mt-2 space-y-2">
                         {questions.map((q, idx) => (
                           <li
                             key={q.id ?? `${idx}`}
-                            className="rounded-md bg-black/40 p-2"
+                            className="rounded-md bg-[color:var(--theme-surface-inset)] p-2"
                           >
-                            <div className="text-xs text-neutral-200">
-                              <span className="text-neutral-500">
+                            <div className="text-xs text-[color:var(--theme-text-primary)]">
+                              <span className="text-[color:var(--theme-text-muted)]">
                                 Q{idx + 1}:
                               </span>{" "}
                               {q.question}
@@ -848,34 +848,34 @@ export default function AgentConsolePage() {
                       </ul>
                     </div>
                   ) : (
-                    <div className="text-[0.7rem] text-neutral-500">
+                    <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                       No structured questions yet. (Once the worker starts
                       asking, they’ll show here.)
                     </div>
                   )}
 
                   {responses.length > 0 && (
-                    <div className="rounded-lg border border-white/10 bg-black/25 p-2">
-                      <div className="text-[0.7rem] text-neutral-400">
+                    <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2">
+                      <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                         Replies
                       </div>
                       <div className="mt-2 space-y-2">
                         {responses.map((r) => (
                           <div
                             key={r.id}
-                            className="rounded-md bg-black/40 p-2"
+                            className="rounded-md bg-[color:var(--theme-surface-inset)] p-2"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="text-[10px] text-neutral-500">
+                              <div className="text-[10px] text-[color:var(--theme-text-muted)]">
                                 {new Date(r.created_at).toLocaleString()}
                               </div>
-                              <div className="text-[10px] text-neutral-600 truncate">
+                              <div className="text-[10px] text-[color:var(--theme-text-muted)] truncate">
                                 {r.user_id
                                   ? `user: ${r.user_id}`
                                   : "user: unknown"}
                               </div>
                             </div>
-                            <div className="mt-1 whitespace-pre-wrap text-xs text-neutral-200">
+                            <div className="mt-1 whitespace-pre-wrap text-xs text-[color:var(--theme-text-primary)]">
                               {r.message}
                             </div>
                           </div>
@@ -884,15 +884,15 @@ export default function AgentConsolePage() {
                     </div>
                   )}
 
-                  <div className="space-y-2 rounded-lg border border-white/10 bg-black/25 p-2">
-                    <div className="text-[0.7rem] text-neutral-400">
+                  <div className="space-y-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2">
+                    <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                       Reply (answer the agent / add missing info)
                     </div>
                     <textarea
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
                       placeholder="Example: This only happens on iPad Safari. Console shows 'ReferenceError: window is not defined' from RoleSidebar.tsx ..."
-                      className="min-h-[90px] w-full rounded-md border border-white/10 bg-black/40 p-2 text-xs text-neutral-200 outline-none focus:border-orange-500/60"
+                      className="min-h-[90px] w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-xs text-[color:var(--theme-text-primary)] outline-none focus:border-orange-500/60"
                     />
                     <div className="flex items-center justify-end gap-2">
                       <Button
@@ -901,7 +901,7 @@ export default function AgentConsolePage() {
                         variant="outline"
                         disabled={!replyText.trim() || replySending}
                         className={cn(
-                          "border-orange-500/60 text-xs font-semibold text-orange-300 hover:bg-orange-600 hover:text-black disabled:opacity-50",
+                          "border-orange-500/60 text-xs font-semibold text-orange-300 hover:bg-orange-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
                           replySending && "cursor-wait",
                         )}
                         onClick={() => void sendReply()}
@@ -912,7 +912,7 @@ export default function AgentConsolePage() {
                   </div>
                 </div>
 
-                <Separator className="bg-white/10" />
+                <Separator className="bg-[color:var(--theme-surface-subtle)]" />
 
                 {/* ACTION BUTTONS */}
                 <div className="flex flex-wrap gap-2">
@@ -922,7 +922,7 @@ export default function AgentConsolePage() {
                     variant="outline"
                     disabled={!selected || isPending}
                     className={cn(
-                      "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-black disabled:opacity-50",
+                      "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
                       isPending && "cursor-wait",
                     )}
                     onClick={() => selected && updateStatus("approve", selected)}
@@ -936,7 +936,7 @@ export default function AgentConsolePage() {
                     variant="outline"
                     disabled={!selected || isPending}
                     className={cn(
-                      "border-red-500/70 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-black disabled:opacity-50",
+                      "border-red-500/70 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
                       isPending && "cursor-wait",
                     )}
                     onClick={() => selected && updateStatus("reject", selected)}
@@ -950,7 +950,7 @@ export default function AgentConsolePage() {
                     variant="outline"
                     disabled={!selected || isPending}
                     className={cn(
-                      "border-indigo-500/60 text-xs font-semibold text-indigo-200 hover:bg-indigo-600 hover:text-black disabled:opacity-50",
+                      "border-indigo-500/60 text-xs font-semibold text-indigo-200 hover:bg-indigo-600 hover:text-[color:var(--theme-text-on-accent)] disabled:opacity-50",
                       isPending && "cursor-wait",
                     )}
                     onClick={() => selected && notifyDiscord(selected)}
@@ -964,7 +964,7 @@ export default function AgentConsolePage() {
                     variant="outline"
                     disabled={!selected || isPending}
                     className={cn(
-                      "border-white/40 text-xs font-semibold text-neutral-300 hover:bg-red-700 hover:text-white disabled:opacity-50",
+                      "border-[color:var(--theme-border-soft)] text-xs font-semibold text-[color:var(--theme-text-secondary)] hover:bg-red-700 hover:text-[color:var(--theme-text-primary)] disabled:opacity-50",
                       isPending && "cursor-wait",
                     )}
                     onClick={() => selected && deleteRequest(selected)}
@@ -980,7 +980,7 @@ export default function AgentConsolePage() {
 
       {lightboxUrl && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-3"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--theme-surface-overlay)] px-3"
           onClick={() => setLightboxUrl(null)}
         >
           <div
@@ -989,7 +989,7 @@ export default function AgentConsolePage() {
           >
             <button
               type="button"
-              className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-black"
+              className="absolute right-2 top-2 rounded-full bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-page)]"
               onClick={() => setLightboxUrl(null)}
             >
               Close
@@ -1001,7 +1001,7 @@ export default function AgentConsolePage() {
               width={1600}
               height={900}
               unoptimized
-              className="max-h-[90vh] max-w-[90vw] rounded-lg border border-white/20 object-contain"
+              className="max-h-[90vh] max-w-[90vw] rounded-lg border border-[color:var(--theme-border-soft)] object-contain"
             />
           </div>
         </div>

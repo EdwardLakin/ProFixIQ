@@ -109,20 +109,20 @@ export default function PartsRequestsPage(): JSX.Element {
   const [deletingWoId, setDeletingWoId] = useState<string | null>(null);
 
   const ACCENT_BORDER = "border-[color:var(--desktop-border-strong)]";
-  const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
+  const ACCENT_TEXT = "text-[var(--theme-text-primary,var(--theme-text-primary))]";
   const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_12%,transparent)]";
   const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_35%,transparent)]";
 
-  const PAGE = "w-full space-y-4 px-3 py-4 text-white sm:px-5 lg:px-8 xl:px-12";
+  const PAGE = "w-full space-y-4 px-3 py-4 text-[color:var(--theme-text-primary)] sm:px-5 lg:px-8 xl:px-12";
   const CARD =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const CARD_PAD = `${CARD} p-4`;
-  const INPUT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${ACCENT_FOCUS_RING}`;
-  const SELECT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const INPUT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const SELECT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none ${ACCENT_FOCUS_RING}`;
   const BTN_BASE =
     "inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-60";
-  const BTN_GHOST = `${BTN_BASE} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]`;
-  const BTN_ACCENT = `${BTN_BASE} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
+  const BTN_GHOST = `${BTN_BASE} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]`;
+  const BTN_ACCENT = `${BTN_BASE} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-[color:var(--theme-surface-page)] ${ACCENT_HOVER_BG}`;
   const BTN_DANGER = `${BTN_BASE} border-red-500/30 bg-red-950/25 text-red-200 hover:bg-red-950/40`;
 
   const PILL_BASE =
@@ -431,20 +431,20 @@ export default function PartsRequestsPage(): JSX.Element {
 
   return (
     <div className={PAGE}>
-      <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_24px_60px_rgba(2,6,23,0.62)]">
-        <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(56,189,248,0.12),rgba(15,23,42,0.02))] px-4 py-5 sm:px-6">
+      <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)]">
+        <div className="border-b border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] px-4 py-5 sm:px-6">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
             Parts
           </div>
           <h1
-            className="text-2xl font-semibold text-white"
+            className="text-2xl font-semibold text-[color:var(--theme-text-primary)]"
             style={{ fontFamily: "var(--font-blackops), system-ui" }}
           >
             Requests
           </h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             One card per work order. Completion % is based on items with part + qty
             + price.
           </p>
@@ -468,7 +468,7 @@ export default function PartsRequestsPage(): JSX.Element {
         <div className="px-4 py-4 sm:px-6">
           <div className="grid gap-3 md:grid-cols-12 md:items-end">
             <div className="md:col-span-6">
-              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-neutral-400">
+              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Search queue
               </div>
               <input
@@ -480,7 +480,7 @@ export default function PartsRequestsPage(): JSX.Element {
             </div>
 
             <div className="md:col-span-3">
-              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-neutral-400">Flow state</div>
+              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Flow state</div>
               <select
                 className={SELECT}
                 value={statusFilter}
@@ -497,9 +497,9 @@ export default function PartsRequestsPage(): JSX.Element {
             </div>
 
             <div className="md:col-span-3">
-              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-neutral-400">Visible cards</div>
-              <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-neutral-200">
-                <span className="font-semibold text-white">{filtered.length}</span>{" "}
+              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Visible cards</div>
+              <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">
+                <span className="font-semibold text-[color:var(--theme-text-primary)]">{filtered.length}</span>{" "}
                 work order{filtered.length === 1 ? "" : "s"}
               </div>
             </div>
@@ -508,9 +508,9 @@ export default function PartsRequestsPage(): JSX.Element {
       </section>
 
       {loading ? (
-        <div className={`${CARD_PAD} text-sm text-neutral-300`}>Loading active request buckets…</div>
+        <div className={`${CARD_PAD} text-sm text-[color:var(--theme-text-secondary)]`}>Loading active request buckets…</div>
       ) : filtered.length === 0 ? (
-        <div className={`${CARD_PAD} border-dashed text-sm text-neutral-400`}>
+        <div className={`${CARD_PAD} border-dashed text-sm text-[color:var(--theme-text-secondary)]`}>
           No active parts requests match this filter.
         </div>
       ) : (
@@ -532,35 +532,35 @@ export default function PartsRequestsPage(): JSX.Element {
               <div key={b.workOrderId} className={CARD_PAD}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-lg font-semibold tracking-wide text-white">
+                    <div className="text-lg font-semibold tracking-wide text-[color:var(--theme-text-primary)]">
                       {woLabel}
                     </div>
 
                     {b.customerName && (
-                      <div className="mt-1 text-sm font-medium text-neutral-200">
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
                         {b.customerName}
                       </div>
                     )}
 
                     {b.vehicleLabel && (
-                      <div className="mt-1 text-xs text-neutral-500">
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                         {b.vehicleLabel}
                       </div>
                     )}
 
-                    <div className="mt-2 text-xs text-neutral-400">
+                    <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                       {b.requests.length} request
                       {b.requests.length === 1 ? "" : "s"} · {b.itemsCount} item
                       {b.itemsCount === 1 ? "" : "s"}
                       {b.quoteOriginCount > 0 ? (
                         <>
-                          <span className="mx-2 text-neutral-600">·</span>
+                          <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
                           {b.quoteOriginCount} quote-originated
                         </>
                       ) : null}
                       {b.itemsCount > 0 ? (
                         <>
-                          <span className="mx-2 text-neutral-600">·</span>
+                          <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
                           {b.completeCount}/{b.itemsCount} complete
                         </>
                       ) : null}
@@ -571,7 +571,7 @@ export default function PartsRequestsPage(): JSX.Element {
                 </div>
 
                 <div className="mt-4">
-                  <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                  <div className="flex items-center justify-between text-[11px] text-[color:var(--theme-text-secondary)]">
                     <span>Completion</span>
                     <span className={ACCENT_TEXT}>{b.completionPct}%</span>
                   </div>

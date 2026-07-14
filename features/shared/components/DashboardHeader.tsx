@@ -7,11 +7,11 @@ export default function DashboardHeader() {
     <header
       className="mb-6 w-full border p-6 backdrop-blur-xl"
       style={{
-        borderColor: "var(--theme-card-border,#334155)",
-        background: "var(--theme-card-bg,#111827)",
-        color: "var(--theme-text-primary,#FFFFFF)",
+        borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+        background: "var(--theme-card-bg,var(--theme-surface-page))",
+        color: "var(--theme-text-primary,var(--theme-text-inverse))",
         borderRadius: "var(--theme-radius-xl,1rem)",
-        boxShadow: "var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))",
+        boxShadow: "var(--theme-shadow-medium)",
       }}
     >
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
@@ -27,7 +27,7 @@ export default function DashboardHeader() {
           </h1>
           <p
             className="mt-1 text-sm"
-            style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+            style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
           >
             AI-powered repair assistant built for mechanics
           </p>

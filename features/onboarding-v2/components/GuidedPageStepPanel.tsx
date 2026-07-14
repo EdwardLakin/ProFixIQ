@@ -58,23 +58,23 @@ export default function GuidedPageStepPanel({ context: contextOverride, classNam
   return (
     <section
       aria-label={`Guided setup step: ${context.step.title}`}
-      className={`rounded-3xl border border-[var(--accent-copper-soft)]/60 bg-[linear-gradient(135deg,rgba(197,122,74,0.18),rgba(2,6,23,0.92)_42%,rgba(15,23,42,0.9))] p-4 text-white shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl sm:p-5 ${className}`}
+      className={`rounded-3xl border border-[var(--accent-copper-soft)]/60 bg-[var(--theme-gradient-panel)] p-4 text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl sm:p-5 ${className}`}
       data-guided-step={context.stepKey}
       data-guided-highlight={context.highlight ?? undefined}
     >
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-3xl space-y-3">
-          <div className="inline-flex rounded-full border border-[var(--accent-copper-soft)]/55 bg-black/35 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper,#C57A4A)]">
+          <div className="inline-flex rounded-full border border-[var(--accent-copper-soft)]/55 bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper,#C57A4A)]">
             Guided setup
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-white sm:text-2xl" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
+            <h2 className="text-xl font-semibold text-[color:var(--theme-text-primary)] sm:text-2xl" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
               {context.step.title}
             </h2>
-            <p className="mt-1 text-sm text-neutral-200">{context.step.question}</p>
+            <p className="mt-1 text-sm text-[color:var(--theme-text-primary)]">{context.step.question}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-3 text-sm text-neutral-200">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">What to do here</div>
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)]">
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">What to do here</div>
             {getGuidedStepPageInstructions(context.stepKey)}
           </div>
           {stepAction ? (
@@ -104,14 +104,14 @@ export default function GuidedPageStepPanel({ context: contextOverride, classNam
             type="button"
             onClick={() => void finishStep("skip")}
             disabled={busyAction !== null}
-            className={`${baseButtonClass} border border-white/15 bg-white/5 text-neutral-200 hover:bg-white/10`}
+            className={`${baseButtonClass} border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]`}
           >
             {skipLabel}
           </button>
           <button
             type="button"
             onClick={() => router.push(context.returnTo)}
-            className={`${baseButtonClass} border border-[var(--accent-copper-soft)]/45 bg-black/30 text-[var(--accent-copper,#C57A4A)] hover:bg-black/45`}
+            className={`${baseButtonClass} border border-[var(--accent-copper-soft)]/45 bg-[color:var(--theme-surface-inset)] text-[var(--accent-copper,#C57A4A)] hover:bg-[color:var(--theme-surface-inset)]`}
           >
             Back to guided setup
           </button>

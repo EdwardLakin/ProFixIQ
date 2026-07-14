@@ -165,7 +165,7 @@ export default function ImportCustomersPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 text-white">
+    <div className="max-w-4xl mx-auto p-6 text-[color:var(--theme-text-primary)]">
       <h1 className="text-3xl font-bold text-orange-400 mb-6">
         Import Customers & Vehicles
       </h1>
@@ -213,7 +213,7 @@ export default function ImportCustomersPage() {
               {loading ? "Importing..." : "Import to Database"}
             </Button>
 
-            <div className="mt-6 max-h-64 overflow-auto border border-white rounded p-2 text-sm">
+            <div className="mt-6 max-h-64 overflow-auto border border-[color:var(--theme-border-strong)] rounded p-2 text-sm">
               <table className="w-full">
                 <thead className="text-orange-300">
                   <tr>
@@ -224,7 +224,7 @@ export default function ImportCustomersPage() {
                 </thead>
                 <tbody>
                   {parsedData.map((row, i) => (
-                    <tr key={i} className="border-t border-gray-700">
+                    <tr key={i} className="border-t border-[color:var(--theme-border-soft)]">
                       {rawHeaders.map((h) => (
                         <td key={h}>{row[h]}</td>
                       ))}

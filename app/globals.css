@@ -49,6 +49,28 @@
   --theme-input-border: rgba(148, 163, 184, 0.3);
   --theme-input-text: #ffffff;
 
+  /* Semantic surfaces used by every route and shared component. */
+  --theme-surface-page: #050910;
+  --theme-surface-panel: #111827;
+  --theme-surface-panel-strong: #0b1220;
+  --theme-surface-inset: rgba(0, 0, 0, 0.4);
+  --theme-surface-subtle: rgba(255, 255, 255, 0.05);
+  --theme-surface-hover: rgba(255, 255, 255, 0.1);
+  --theme-surface-overlay: rgba(2, 6, 23, 0.94);
+  --theme-backdrop: rgba(0, 0, 0, 0.68);
+  --theme-border-soft: rgba(255, 255, 255, 0.1);
+  --theme-border-strong: rgba(255, 255, 255, 0.2);
+  --theme-text-inverse: #ffffff;
+  --theme-text-on-accent: #020617;
+  --theme-gradient-page:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 56%),
+    linear-gradient(180deg, #050910, #020617);
+  --theme-gradient-panel:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--brand-primary) 9%, transparent), transparent 58%),
+    linear-gradient(160deg, rgba(17, 24, 39, 0.96), rgba(2, 6, 23, 0.98));
+  --theme-gradient-header:
+    linear-gradient(180deg, rgba(3, 8, 18, 0.96), rgba(2, 6, 15, 0.98));
+
   --theme-radius-sm: 0.375rem;
   --theme-radius-md: 0.5rem;
   --theme-radius-lg: 0.75rem;
@@ -85,37 +107,78 @@ html {
 }
 
 html[data-theme-mode="light"] {
-  --theme-text-primary: #0f172a;
-  --theme-text-secondary: #475569;
-  --theme-text-muted: #64748b;
+  /* BrandThemeBoot writes brand values inline, so mode tokens intentionally
+     use !important to remain authoritative when the mode changes. */
+  --theme-surface-page: #f8fafc !important;
+  --theme-surface-panel: rgba(255, 255, 255, 0.92) !important;
+  --theme-surface-panel-strong: #ffffff !important;
+  --theme-surface-inset: rgba(226, 232, 240, 0.72) !important;
+  --theme-surface-subtle: rgba(148, 163, 184, 0.1) !important;
+  --theme-surface-hover: rgba(148, 163, 184, 0.18) !important;
+  --theme-surface-overlay: rgba(255, 255, 255, 0.97) !important;
+  --theme-backdrop: rgba(15, 23, 42, 0.38) !important;
+  --theme-border-soft: rgba(100, 116, 139, 0.22) !important;
+  --theme-border-strong: rgba(71, 85, 105, 0.38) !important;
+  --theme-text-inverse: #ffffff !important;
+  --theme-text-on-accent: #020617 !important;
+  --theme-gradient-page:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 10%, transparent), transparent 58%),
+    linear-gradient(180deg, #f8fafc, #e2e8f0) !important;
+  --theme-gradient-panel:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--brand-primary) 7%, transparent), transparent 60%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.94)) !important;
+  --theme-gradient-header:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.96)) !important;
 
-  --theme-app-bg: #f8fafc;
-  --theme-app-bg-secondary: #e2e8f0;
+  --theme-text-primary: #0f172a !important;
+  --theme-text-secondary: #475569 !important;
+  --theme-text-muted: #64748b !important;
 
-  --theme-sidebar-bg: #e2e8f0;
-  --theme-sidebar-text: #0f172a;
+  --theme-app-bg: #f8fafc !important;
+  --theme-app-bg-secondary: #e2e8f0 !important;
+
+  --theme-sidebar-bg: #e2e8f0 !important;
+  --theme-sidebar-text: #0f172a !important;
   --theme-sidebar-active-text: #ffffff;
 
-  --theme-header-bg: rgba(255, 255, 255, 0.92);
-  --theme-header-text: #0f172a;
+  --theme-header-bg: rgba(255, 255, 255, 0.92) !important;
+  --theme-header-text: #0f172a !important;
 
-  --theme-card-bg: rgba(255, 255, 255, 0.88);
-  --theme-card-border: rgba(148, 163, 184, 0.35);
-  --theme-surface-2: rgba(255, 255, 255, 0.72);
+  --theme-card-bg: rgba(255, 255, 255, 0.88) !important;
+  --theme-card-border: rgba(148, 163, 184, 0.35) !important;
+  --theme-surface-2: rgba(255, 255, 255, 0.72) !important;
 
-  --theme-button-secondary-bg: #e2e8f0;
-  --theme-button-secondary-text: #0f172a;
+  --theme-button-secondary-bg: #e2e8f0 !important;
+  --theme-button-secondary-text: #0f172a !important;
 
-  --theme-input-bg: rgba(255, 255, 255, 0.9);
-  --theme-input-border: rgba(148, 163, 184, 0.45);
-  --theme-input-text: #0f172a;
+  --theme-input-bg: rgba(255, 255, 255, 0.9) !important;
+  --theme-input-border: rgba(148, 163, 184, 0.45) !important;
+  --theme-input-text: #0f172a !important;
 
-  --glass-bg: rgba(255, 255, 255, 0.5);
-  --glass-bg-soft: rgba(255, 255, 255, 0.35);
+  --glass-bg: rgba(255, 255, 255, 0.5) !important;
+  --glass-bg-soft: rgba(255, 255, 255, 0.35) !important;
+
+  --desktop-bg-base: #f8fafc !important;
+  --desktop-bg-secondary: #e2e8f0 !important;
+  --desktop-bg-tint: color-mix(in srgb, var(--brand-primary) 10%, transparent) !important;
+  --desktop-panel-bg: rgba(255, 255, 255, 0.9) !important;
+  --desktop-panel-bg-soft: rgba(255, 255, 255, 0.78) !important;
+  --desktop-item-bg: rgba(248, 250, 252, 0.86) !important;
+  --desktop-border: rgba(100, 116, 139, 0.3) !important;
+  --desktop-border-strong: rgba(71, 85, 105, 0.46) !important;
+  --desktop-shadow-panel: 0 20px 55px rgba(15, 23, 42, 0.14) !important;
+  --desktop-shadow-card: 0 14px 36px rgba(15, 23, 42, 0.11) !important;
+
+  --dashboard-shell-bg:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 10%, transparent), transparent 58%),
+    linear-gradient(180deg, #f8fafc, #e2e8f0) !important;
+  --dashboard-hero-bg:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), #f1f5f9) !important;
 
   --app-shell-bg:
     radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 55%),
-    linear-gradient(180deg, var(--theme-app-bg), var(--theme-app-bg-secondary));
+    linear-gradient(180deg, var(--theme-app-bg), var(--theme-app-bg-secondary)) !important;
 }
 
 body {
@@ -132,7 +195,7 @@ body {
 }
 
 .input {
-  @apply w-full border px-3 py-2 placeholder:text-neutral-400;
+  @apply w-full border px-3 py-2;
   border-radius: var(--theme-radius-md);
   background-color: var(--theme-input-bg);
   border-color: var(--theme-input-border);
@@ -217,10 +280,9 @@ select {
 }
 
 .metal-bar {
-  background:
-    linear-gradient(180deg, rgba(3, 8, 18, 0.96), rgba(2, 6, 15, 0.98));
+  background: var(--theme-gradient-header);
   border-bottom: 1px solid color-mix(in srgb, var(--desktop-border) 88%, transparent);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--theme-shadow-soft);
 }
 
 .metal-card {
@@ -231,10 +293,7 @@ select {
 }
 
 .app-metal-bg {
-  background:
-    radial-gradient(circle at 50% -8%, rgba(59, 130, 246, 0.12), transparent 56%),
-    radial-gradient(circle at 88% 90%, rgba(29, 78, 216, 0.08), transparent 60%),
-    linear-gradient(180deg, #030711, #02050d 72%);
+  background: var(--theme-gradient-page);
 }
 
 .glass-card,
@@ -250,7 +309,7 @@ select {
   .desktop-backdrop {
     background:
       radial-gradient(circle at top, var(--desktop-bg-tint), transparent 56%),
-      radial-gradient(circle at bottom, color-mix(in srgb, var(--desktop-bg-base) 88%, #020617), var(--desktop-bg-secondary) 78%);
+      linear-gradient(180deg, var(--desktop-bg-base), var(--desktop-bg-secondary));
   }
 
   .desktop-panel {
@@ -272,33 +331,33 @@ select {
     border-radius: 1rem;
     border: 1px solid color-mix(in srgb, var(--desktop-border) 90%, transparent);
     background: var(--desktop-item-bg);
-    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
+    box-shadow: var(--desktop-shadow-card);
   }
 
   .desktop-title {
     font-family: var(--font-blackops), var(--font-inter), system-ui, sans-serif;
     letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: color-mix(in srgb, #dbeafe 82%, var(--brand-primary) 18%);
+    color: color-mix(in srgb, var(--theme-text-primary) 82%, var(--brand-primary) 18%);
   }
 
   .desktop-toolbar-row {
     border-radius: 0.9rem;
     border: 1px solid color-mix(in srgb, var(--desktop-border) 85%, transparent);
-    background: rgba(4, 9, 18, 0.62);
+    background: var(--theme-surface-inset);
     padding: 0.65rem;
   }
 
   .desktop-input {
     border-radius: 0.75rem;
     border: 1px solid color-mix(in srgb, var(--desktop-border) 92%, transparent);
-    background: rgba(3, 8, 16, 0.82);
+    background: var(--theme-input-bg);
     color: var(--theme-text-primary);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .desktop-input::placeholder {
-    color: color-mix(in srgb, var(--theme-text-secondary) 84%, #9ca3af);
+    color: var(--theme-text-secondary);
   }
 
   .desktop-input:focus-visible {
@@ -311,8 +370,8 @@ select {
   .desktop-pill {
     border-radius: 9999px;
     border: 1px solid color-mix(in srgb, var(--desktop-border) 90%, transparent);
-    background: rgba(5, 10, 18, 0.68);
-    color: #d4d4d8;
+    background: var(--theme-surface-inset);
+    color: var(--theme-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.16em;
     font-size: 10px;
@@ -322,15 +381,15 @@ select {
 
   .desktop-pill-active {
     border-color: color-mix(in srgb, #60a5fa 58%, var(--desktop-border));
-    background: color-mix(in srgb, #1d4ed8 20%, rgba(6, 10, 19, 0.9));
-    color: #f8fafc;
+    background: color-mix(in srgb, var(--brand-primary) 20%, var(--theme-surface-panel));
+    color: var(--theme-text-primary);
   }
 
   .desktop-btn-primary {
     border-radius: 9999px;
     border: 1px solid color-mix(in srgb, var(--brand-primary) 52%, #f59e0b);
     background: linear-gradient(to right, color-mix(in srgb, var(--brand-primary) 78%, #f3f4f6), color-mix(in srgb, var(--brand-primary) 54%, #fb923c));
-    color: #020617;
+    color: var(--theme-text-on-accent);
     text-transform: uppercase;
     letter-spacing: 0.16em;
     box-shadow: 0 0 20px color-mix(in srgb, var(--brand-primary) 40%, transparent);
@@ -339,8 +398,8 @@ select {
   .desktop-btn-secondary {
     border-radius: 9999px;
     border: 1px solid color-mix(in srgb, var(--desktop-border) 92%, transparent);
-    background: rgba(3, 8, 16, 0.72);
-    color: #e5e7eb;
+    background: var(--theme-surface-inset);
+    color: var(--theme-text-primary);
     text-transform: uppercase;
     letter-spacing: 0.16em;
   }
@@ -348,7 +407,7 @@ select {
   .desktop-btn-danger {
     border-radius: 9999px;
     border: 1px solid color-mix(in srgb, #ef4444 68%, transparent);
-    background: color-mix(in srgb, #7f1d1d 35%, rgba(3, 8, 16, 0.78));
+    background: color-mix(in srgb, #7f1d1d 35%, var(--theme-surface-inset));
     color: #fecaca;
     text-transform: uppercase;
     letter-spacing: 0.16em;
@@ -357,52 +416,50 @@ select {
   .desktop-link-chip {
     border-radius: 9999px;
     border: 1px solid color-mix(in srgb, var(--desktop-border) 88%, transparent);
-    background: rgba(3, 8, 16, 0.72);
+    background: var(--theme-surface-inset);
     padding: 0.2rem 0.55rem;
     font-size: 11px;
-    color: #d1d5db;
+    color: var(--theme-text-secondary);
   }
 }
 
 
 
 .mobile-tech-page {
-  background:
-    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 10%, transparent), transparent 58%),
-    linear-gradient(180deg, color-mix(in srgb, var(--theme-app-bg) 86%, #020617), var(--theme-app-bg-secondary));
+  background: var(--theme-gradient-page);
 }
 
 .mobile-tech-panel {
   border-radius: 1rem;
   border: 1px solid color-mix(in srgb, var(--metal-border-soft) 88%, transparent);
-  background: linear-gradient(160deg, rgba(12, 20, 34, 0.9), rgba(3, 8, 18, 0.92));
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+  background: var(--theme-gradient-panel);
+  box-shadow: var(--theme-shadow-soft);
   backdrop-filter: blur(10px);
 }
 
 .mobile-tech-subpanel {
   border-radius: 0.9rem;
   border: 1px solid color-mix(in srgb, var(--metal-border-soft) 74%, transparent);
-  background: rgba(3, 10, 20, 0.78);
+  background: var(--theme-surface-inset);
 }
 
 .mobile-tech-stat {
   border-radius: 0.9rem;
   border: 1px solid color-mix(in srgb, var(--metal-border-soft) 82%, transparent);
-  background: rgba(7, 16, 28, 0.9);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  background: var(--theme-surface-panel-strong);
+  box-shadow: var(--theme-shadow-soft);
 }
 
 .mobile-tech-input {
   width: 100%;
   border-radius: 0.8rem;
   border: 1px solid color-mix(in srgb, var(--metal-border-soft) 90%, transparent);
-  background: rgba(2, 7, 16, 0.84);
+  background: var(--theme-input-bg);
   color: var(--theme-text-primary);
 }
 
 .mobile-tech-input::placeholder {
-  color: color-mix(in srgb, var(--theme-text-secondary) 92%, #9ca3af);
+  color: var(--theme-text-secondary);
 }
 
 .mobile-tech-input:focus-visible {
@@ -425,20 +482,20 @@ select {
 
 .mobile-tech-btn-primary {
   border-color: color-mix(in srgb, #38bdf8 60%, transparent);
-  background: color-mix(in srgb, #0ea5e9 24%, #081325);
-  color: #e0f2fe;
+  background: color-mix(in srgb, #0ea5e9 24%, var(--theme-surface-panel));
+  color: var(--theme-text-primary);
 }
 
 .mobile-tech-btn-secondary {
   border-color: color-mix(in srgb, var(--metal-border-soft) 90%, transparent);
-  background: rgba(6, 14, 26, 0.72);
-  color: #e5e7eb;
+  background: var(--theme-surface-inset);
+  color: var(--theme-text-primary);
 }
 
 .mobile-tech-btn-ghost {
   border-color: color-mix(in srgb, var(--metal-border-soft) 66%, transparent);
   background: transparent;
-  color: #cbd5e1;
+  color: var(--theme-text-secondary);
 }
 
 .mobile-tech-btn-danger {
@@ -449,8 +506,8 @@ select {
 
 .mobile-tech-btn-utility {
   border-color: color-mix(in srgb, var(--brand-accent) 46%, transparent);
-  background: color-mix(in srgb, var(--brand-primary) 14%, #07101e);
-  color: color-mix(in srgb, var(--brand-accent) 88%, #f1f5f9);
+  background: color-mix(in srgb, var(--brand-primary) 14%, var(--theme-surface-panel));
+  color: color-mix(in srgb, var(--brand-accent) 88%, var(--theme-text-primary));
 }
 
 .mobile-tech-utility-dock {
@@ -463,9 +520,9 @@ select {
   padding: 0.45rem;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--metal-border-soft) 86%, transparent);
-  background: rgba(2, 7, 16, 0.8);
+  background: var(--theme-surface-overlay);
   backdrop-filter: blur(10px);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.38);
+  box-shadow: var(--theme-shadow-soft);
 }
 .accent-chip {
   border-radius: 9999px;
@@ -514,13 +571,13 @@ select {
   }
 
   dialog.wo-modal::backdrop {
-    background: rgba(0, 0, 0, 0);
+    background: transparent;
     backdrop-filter: blur(2px);
     transition: background 180ms ease;
   }
 
   dialog.wo-modal[open]::backdrop {
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--theme-backdrop);
   }
 }
 

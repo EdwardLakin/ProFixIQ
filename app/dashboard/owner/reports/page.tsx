@@ -5,7 +5,7 @@ import FeaturePage from "@/features/dashboard/app/dashboard/owner/reports/page";
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="p-6 text-white">Loading…</div>}>
+    <Suspense fallback={<div className="p-6 text-[color:var(--theme-text-primary)]">Loading…</div>}>
       <FeaturePage />
     </Suspense>
   );

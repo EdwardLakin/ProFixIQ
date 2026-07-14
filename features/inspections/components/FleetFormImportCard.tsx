@@ -476,8 +476,8 @@ export default function FleetFormImportCard() {
         onSubmit={handleSubmit}
         className="
           relative rounded-2xl border border-[rgba(100,116,139,0.34)]
-          bg-[linear-gradient(180deg,rgba(10,14,24,0.92),rgba(4,8,18,0.96))]
-          shadow-[0_28px_90px_rgba(0,0,0,0.95)] backdrop-blur-xl p-5
+          bg-[linear-gradient(180deg,var(--theme-surface-inset),var(--theme-surface-inset))]
+          shadow-[var(--theme-shadow-medium)] backdrop-blur-xl p-5
         "
       >
         {/* Copper glow wash */}
@@ -488,15 +488,15 @@ export default function FleetFormImportCard() {
 
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Fleet Form Import
             </div>
-            <p className="mt-1 text-xs text-neutral-300">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Convert a fleet’s current inspection sheet into a ProFixIQ template.
             </p>
           </div>
 
-          <span className="rounded-full border border-neutral-700 bg-black/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             Beta
           </span>
         </div>
@@ -504,7 +504,7 @@ export default function FleetFormImportCard() {
         {/* FILE + TITLE */}
         <div className="mb-4 grid gap-4 md:grid-cols-2">
           {/* File input */}
-          <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
             Form images (page 1–n)
             <input
               type="file"
@@ -513,20 +513,20 @@ export default function FleetFormImportCard() {
               onChange={handleFileChange}
               className="
                 rounded-xl border border-[rgba(125,134,153,0.56)]
-                bg-[rgba(3,6,11,0.9)] px-3 py-2 text-xs text-white
+                bg-[var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]
                 file:mr-2 file:rounded-lg file:border file:border-[rgba(100,116,139,0.5)]
-                file:bg-[rgba(12,12,14,0.78)] file:px-3 file:py-1.5 file:text-[10px] file:uppercase
-                file:tracking-[0.18em] file:text-neutral-300
-                hover:file:bg-[rgba(15,23,42,0.88)]
+                file:bg-[var(--theme-surface-inset)] file:px-3 file:py-1.5 file:text-[10px] file:uppercase
+                file:tracking-[0.18em] file:text-[color:var(--theme-text-secondary)]
+                hover:file:bg-[var(--theme-surface-inset)]
               "
             />
-            <span className="mt-1 text-[10px] text-neutral-500">
+            <span className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
               Upload clear photos/scans (JPEG, PNG, HEIC, WEBP, or TIFF). One image per page.
             </span>
           </label>
 
           {/* Title hint */}
-          <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
             Optional title
             <input
               value={titleHint}
@@ -534,7 +534,7 @@ export default function FleetFormImportCard() {
               placeholder="ABC Logistics – Daily Truck Inspection"
               className="
                 rounded-xl border border-[rgba(125,134,153,0.56)]
-                bg-[rgba(3,6,11,0.9)] px-3 py-2 text-xs text-white placeholder:text-neutral-500
+                bg-[var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]
               "
             />
           </label>
@@ -542,21 +542,21 @@ export default function FleetFormImportCard() {
 
         {/* Selected files list */}
         {files.length > 0 && (
-          <div className="mb-4 rounded-xl border border-[rgba(84,96,122,0.5)] bg-[rgba(2,4,8,0.72)] p-3">
-            <div className="mb-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+          <div className="mb-4 rounded-xl border border-[rgba(84,96,122,0.5)] bg-[var(--theme-surface-inset)] p-3">
+            <div className="mb-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Selected pages ({files.length})
             </div>
             <ul className="space-y-2">
               {files.map((f, idx) => (
                 <li
                   key={`${f.name}-${idx}`}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-[rgba(72,84,110,0.52)] bg-[rgba(1,2,4,0.7)] px-3 py-2"
+                  className="flex items-center justify-between gap-2 rounded-lg border border-[rgba(72,84,110,0.52)] bg-[var(--theme-surface-inset)] px-3 py-2"
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-xs text-neutral-200">
+                    <div className="truncate text-xs text-[color:var(--theme-text-primary)]">
                       {idx + 1}. {f.name}
                     </div>
-                    <div className="text-[10px] text-neutral-500">
+                    <div className="text-[10px] text-[color:var(--theme-text-muted)]">
                       {f.type} • {formatBytes(f.size)}
                     </div>
                   </div>
@@ -564,7 +564,7 @@ export default function FleetFormImportCard() {
                   <button
                     type="button"
                     onClick={() => handleRemove(idx)}
-                    className="rounded-full border border-[rgba(100,116,139,0.42)] bg-[rgba(8,8,11,0.74)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:bg-[rgba(15,23,42,0.88)]"
+                    className="rounded-full border border-[rgba(100,116,139,0.42)] bg-[var(--theme-surface-inset)] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:bg-[var(--theme-surface-inset)]"
                     aria-label={`Remove ${f.name}`}
                   >
                     Remove
@@ -577,14 +577,14 @@ export default function FleetFormImportCard() {
 
         {/* VEHICLE TYPE + DUTY + ACTIONS */}
         <div className="mb-4 grid gap-4 md:grid-cols-[1fr,1fr,auto,auto]">
-          <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
             Vehicle type
             <select
               value={vehicleType}
               onChange={(e) => setVehicleType(e.target.value)}
               className="
                 rounded-xl border border-[rgba(125,134,153,0.56)]
-                bg-[rgba(3,6,11,0.9)] px-3 py-2 text-xs text-white
+                bg-[var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]
               "
             >
               <option value="">Not specified</option>
@@ -596,14 +596,14 @@ export default function FleetFormImportCard() {
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
             Duty class
             <select
               value={dutyClass}
               onChange={(e) => setDutyClass(e.target.value as DutyClass | "")}
               className="
                 rounded-xl border border-[rgba(125,134,153,0.56)]
-                bg-[rgba(3,6,11,0.9)] px-3 py-2 text-xs text-white
+                bg-[var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]
               "
             >
               <option value="">Not specified</option>
@@ -611,7 +611,7 @@ export default function FleetFormImportCard() {
               <option value="medium">Medium</option>
               <option value="heavy">Heavy</option>
             </select>
-            <span className="mt-1 text-[10px] text-neutral-500">
+            <span className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
               Helps auto-select hydraulic or air brake grids.
             </span>
           </label>
@@ -623,8 +623,8 @@ export default function FleetFormImportCard() {
               onClick={openCamera}
               className="
                 w-full rounded-xl border border-[rgba(100,116,139,0.45)]
-                bg-[rgba(10,11,15,0.82)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                text-neutral-200 hover:bg-[rgba(15,23,42,0.9)] hover:border-[rgba(148,163,184,0.62)]
+                bg-[var(--theme-surface-inset)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
+                text-[color:var(--theme-text-primary)] hover:bg-[var(--theme-surface-inset)] hover:border-[rgba(148,163,184,0.62)]
                 disabled:opacity-50
               "
             >
@@ -638,8 +638,8 @@ export default function FleetFormImportCard() {
               disabled={!canSubmit}
               className="
                 w-full rounded-xl border border-[rgba(100,116,139,0.45)]
-                bg-[rgba(10,11,15,0.82)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                text-neutral-200 hover:bg-[rgba(15,23,42,0.9)] hover:border-[rgba(148,163,184,0.62)]
+                bg-[var(--theme-surface-inset)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
+                text-[color:var(--theme-text-primary)] hover:bg-[var(--theme-surface-inset)] hover:border-[rgba(148,163,184,0.62)]
                 disabled:opacity-50
               "
             >
@@ -659,7 +659,7 @@ export default function FleetFormImportCard() {
         )}
 
         {!errorMsg && (
-          <p className="mt-2 text-[10px] text-neutral-500">
+          <p className="mt-2 text-[10px] text-[color:var(--theme-text-muted)]">
             Upload images → AI reads each page → Review & map sections → Save as template.
           </p>
         )}
@@ -667,16 +667,16 @@ export default function FleetFormImportCard() {
 
       {/* Camera modal (simple, dependency-free) */}
       {cameraOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-[rgba(110,119,138,0.55)] bg-[linear-gradient(180deg,rgba(8,10,16,0.96),rgba(4,5,8,0.98))] shadow-[0_30px_120px_rgba(0,0,0,0.95)]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-[rgba(110,119,138,0.55)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
             <div className="flex items-center justify-between border-b border-[rgba(110,119,138,0.45)] px-4 py-3">
-              <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-neutral-300">
+              <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Camera Capture
               </div>
               <button
                 type="button"
                 onClick={closeCamera}
-                className="rounded-full border border-[rgba(100,116,139,0.45)] bg-[rgba(8,9,12,0.8)] px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:bg-[rgba(15,23,42,0.88)]"
+                className="rounded-full border border-[rgba(100,116,139,0.45)] bg-[var(--theme-surface-inset)] px-3 py-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:bg-[var(--theme-surface-inset)]"
               >
                 Close
               </button>
@@ -691,7 +691,7 @@ export default function FleetFormImportCard() {
                 <>
                   <video
                     ref={videoRef}
-                    className="aspect-video w-full rounded-xl border border-[rgba(110,119,138,0.45)] bg-black"
+                    className="aspect-video w-full rounded-xl border border-[rgba(110,119,138,0.45)] bg-[color:var(--theme-surface-page)]"
                     playsInline
                     muted
                   />
@@ -703,15 +703,15 @@ export default function FleetFormImportCard() {
                       onClick={handleCapture}
                       className="
                         rounded-xl border border-[rgba(100,116,139,0.45)]
-                        bg-[rgba(10,11,15,0.82)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
-                        text-neutral-200 hover:bg-[rgba(15,23,42,0.9)] hover:border-[rgba(148,163,184,0.62)]
+                        bg-[var(--theme-surface-inset)] px-4 py-2 text-[11px] uppercase tracking-[0.16em]
+                        text-[color:var(--theme-text-primary)] hover:bg-[var(--theme-surface-inset)] hover:border-[rgba(148,163,184,0.62)]
                       "
                     >
                       Capture
                     </button>
                   </div>
 
-                  <p className="mt-2 text-[10px] text-neutral-500">
+                  <p className="mt-2 text-[10px] text-[color:var(--theme-text-muted)]">
                     Tip: Fill the frame, avoid glare, and tap-to-focus before capturing.
                   </p>
                 </>

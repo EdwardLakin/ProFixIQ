@@ -39,11 +39,11 @@ type VehicleForm = {
 
 
 function cardClass() {
-  return "rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl";
+  return "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl";
 }
 
 function inputClass() {
-  return "w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500";
+  return "w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)]";
 }
 
 function copperButtonStyle(): React.CSSProperties {
@@ -64,7 +64,7 @@ function copperButtonHoverStyle(): React.CSSProperties {
 function neutralButtonStyle(): React.CSSProperties {
   return {
     borderColor: "rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.35)",
+    background: "var(--theme-surface-inset)",
     color: "rgba(255,255,255,0.85)",
   };
 }
@@ -318,7 +318,7 @@ export default function PortalVehiclesPage() {
 
   return (
       <div className="mx-auto max-w-3xl">
-        <div className={cardClass() + " text-sm text-neutral-200"}>
+        <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
           Loading your vehicles…
         </div>
       </div>
@@ -326,16 +326,16 @@ export default function PortalVehiclesPage() {
   }
 
   if (inviteRequired) {
-    return <div className="mx-auto max-w-3xl"><div className={cardClass() + " text-sm text-neutral-200"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
+    return <div className="mx-auto max-w-3xl"><div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 text-white">
+    <div className="mx-auto max-w-3xl space-y-6 text-[color:var(--theme-text-primary)]">
       <header className="space-y-1">
         <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
           My vehicles
         </h1>
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-[color:var(--theme-text-secondary)]">
           Save your vehicles so booking and service history stays organized.
         </p>
       </header>
@@ -348,11 +348,11 @@ export default function PortalVehiclesPage() {
 
       <section className={cardClass() + " space-y-4 sm:p-6"}>
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-neutral-50">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             {isEdit ? "Edit vehicle" : "Add vehicle"}
           </h2>
           {isEdit && (
-            <span className="text-xs text-neutral-500">
+            <span className="text-xs text-[color:var(--theme-text-muted)]">
               Editing <span className="font-mono">{editingId?.slice(0, 8)}…</span>
             </span>
           )}
@@ -423,7 +423,7 @@ export default function PortalVehiclesPage() {
             <button
               onClick={resetForm}
               disabled={saving}
-              className="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:bg-white/5 disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
               style={neutralButtonStyle()}
             >
               Cancel
@@ -431,12 +431,12 @@ export default function PortalVehiclesPage() {
           )}
         </div>
 
-        <p className="text-xs text-neutral-500">Fields marked with * are required.</p>
+        <p className="text-xs text-[color:var(--theme-text-muted)]">Fields marked with * are required.</p>
       </section>
 
       <section className="space-y-3">
         {vehicles.length === 0 ? (
-          <div className={cardClass() + " border-dashed text-sm text-neutral-400"}>
+          <div className={cardClass() + " border-dashed text-sm text-[color:var(--theme-text-secondary)]"}>
             No vehicles yet. Add your first vehicle above so you can book appointments faster and
             see service history.
           </div>
@@ -449,7 +449,7 @@ export default function PortalVehiclesPage() {
                     if (inviteRequired) {
               return (
                 <div key={v.id} className="mx-auto max-w-3xl">
-                  <div className={cardClass() + " text-sm text-neutral-200"}>
+                  <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
                     <div className="font-semibold">Portal invite required</div>
                     <div className="mt-1">
                       Open the invite link sent by the shop, or ask the shop to resend your portal invite.
@@ -462,11 +462,11 @@ export default function PortalVehiclesPage() {
   return (
               <div
                 key={v.id}
-                className="flex flex-col justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md shadow-card sm:flex-row sm:items-center"
+                className="flex flex-col justify-between gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur-md shadow-card sm:flex-row sm:items-center"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-neutral-50">{title}</div>
-                  <div className="mt-0.5 text-xs text-neutral-400">
+                  <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
                     VIN <span className="font-mono">{v.vin || "—"}</span> • Plate{" "}
                     <span className="font-mono">{v.license_plate || "—"}</span> • Mileage{" "}
                     <span className="font-mono">{v.mileage || "—"}</span>
@@ -481,7 +481,7 @@ export default function PortalVehiclesPage() {
 
                 <div className="flex gap-2">
                   <button
-                    className="inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition hover:bg-white/5"
+                    className="inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition hover:bg-[color:var(--theme-surface-subtle)]"
                     style={neutralButtonStyle()}
                     onClick={() => startEdit(v)}
                   >
@@ -501,7 +501,7 @@ export default function PortalVehiclesPage() {
         )}
       </section>
 
-      <p className="text-[0.75rem] text-neutral-500">
+      <p className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
         Tip: keep VIN and plate saved so your shop can match records faster.
       </p>
     </div>

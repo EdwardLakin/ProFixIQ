@@ -268,7 +268,7 @@ export default function MobileInspectionRunnerPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-[calc(100vh-3rem)] items-center justify-center px-3 py-4 text-sm text-neutral-300">
+      <main className="flex min-h-[calc(100vh-3rem)] items-center justify-center px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
         Preparing inspection…
       </main>
     );
@@ -289,15 +289,15 @@ export default function MobileInspectionRunnerPage() {
         <button
           type="button"
           onClick={() => router.back()}
-          className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
+          className="inline-flex items-center gap-1 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
         >
           <span>←</span>
           <span className="uppercase tracking-[0.16em]">Back</span>
         </button>
 
-        <div className="flex-1 truncate px-2 text-center text-[11px] font-medium text-neutral-200">
+        <div className="flex-1 truncate px-2 text-center text-[11px] font-medium text-[color:var(--theme-text-primary)]">
           Inspection •{" "}
-          <span className="font-mono text-neutral-100">
+          <span className="font-mono text-[color:var(--theme-text-primary)]">
             {lineId.slice(0, 8)}
           </span>
         </div>
@@ -306,7 +306,7 @@ export default function MobileInspectionRunnerPage() {
       </header>
 
       <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">
-        <div className="mx-auto max-w-4xl text-white">
+        <div className="mx-auto max-w-4xl text-[color:var(--theme-text-primary)]">
           <GenericInspectionScreen />
         </div>
       </main>

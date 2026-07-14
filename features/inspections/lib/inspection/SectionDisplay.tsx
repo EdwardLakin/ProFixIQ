@@ -255,15 +255,15 @@ export default function SectionDisplay(props: SectionDisplayProps) {
   return (
     <Card className="mb-6 px-4 py-3 md:px-5 md:py-4">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,#334155)] pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-3">
         {gridSection ? (
-          <div className="text-left text-base font-semibold tracking-[0.08em] text-[var(--theme-text-primary,#E2E8F0)] transition-opacity hover:opacity-80 md:text-lg">
+          <div className="text-left text-base font-semibold tracking-[0.08em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-lg">
             {resolvedTitle}
           </div>
         ) : (
           <button
             onClick={toggleOpen}
-            className="text-left text-base font-semibold tracking-[0.08em] text-[var(--theme-text-primary,#E2E8F0)] transition-opacity hover:opacity-80 md:text-lg"
+            className="text-left text-base font-semibold tracking-[0.08em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-lg"
             aria-expanded={open}
             type="button"
           >
@@ -341,14 +341,14 @@ export default function SectionDisplay(props: SectionDisplayProps) {
           {gridSection ? (
             <div />
           ) : (
-            <div className="overflow-hidden rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)]">
+            <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)]">
               {/* Desktop header row — desktop only */}
-              <div className="hidden border-b border-white/10 bg-black/25 px-4 py-2 lg:block">
+              <div className="hidden border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 lg:block">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Item · Status · Notes
                   </div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Item · Status · Notes
                   </div>
                 </div>
@@ -358,11 +358,11 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <div
                 className={[
                   "grid gap-2 p-2",
-                  "lg:grid-cols-2 lg:gap-[2px] lg:bg-white/10 lg:p-[2px]",
+                  "lg:grid-cols-2 lg:gap-[2px] lg:bg-[color:var(--theme-surface-subtle)] lg:p-[2px]",
                   "[&>*]:rounded-lg",
-                  "[&>*]:border [&>*]:border-white/10",
-                  "[&>*]:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),rgba(0,0,0,0.72))]",
-                  "[&>*]:shadow-[0_12px_28px_rgba(0,0,0,0.60)]",
+                  "[&>*]:border [&>*]:border-[color:var(--theme-border-soft)]",
+                  "[&>*]:bg-[var(--theme-gradient-panel)]",
+                  "[&>*]:shadow-[var(--theme-shadow-medium)]",
                   "[&>*]:backdrop-blur-md",
                   "[&>*]:relative [&>*]:overflow-hidden",
                   "[&>*]:before:absolute [&>*]:before:inset-x-0 [&>*]:before:top-0 [&>*]:before:h-[2px] [&>*]:before:content-['']",
@@ -370,8 +370,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   "[&>*]:transition [&>*]:duration-150",
                   "[&>*]:hover:-translate-y-[1px]",
                   "[&>*]:hover:border-[rgba(197,122,74,0.45)]",
-                  "[&>*]:hover:shadow-[0_18px_38px_rgba(0,0,0,0.70)]",
-                  "[&>*]:hover:bg-[radial-gradient(circle_at_top,_rgba(197,122,74,0.14),rgba(0,0,0,0.74))]",
+                  "[&>*]:hover:shadow-[var(--theme-shadow-medium)]",
+                  "[&>*]:hover:bg-[var(--theme-gradient-panel)]",
                   "[&>*:nth-child(odd)]:brightness-[1.02]",
                   "[&>*:nth-child(even)]:brightness-[0.98]",
                   "lg:[&>*:nth-child(4n+1)]:brightness-[1.02] lg:[&>*:nth-child(4n+2)]:brightness-[1.02]",
@@ -405,7 +405,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                       ? "before:bg-red-500/70"
                       : isRec
                         ? "before:bg-orange-500/70"
-                        : "before:bg-white/0";
+                        : "before:bg-[color:var(--theme-surface-subtle)]";
 
                   const submitted = isSubmittedItem(item);
                   const k = `${sectionIndex}:${itemIndex}`;
@@ -478,10 +478,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                             : "Pricing review required";
 
                         return (
-                          <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                          <div className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="min-w-0">
-                                <div className="text-[12px] font-semibold text-neutral-100">
+                                <div className="text-[12px] font-semibold text-[color:var(--theme-text-primary)]">
                                   Suggested repair: {match.label}
                                 </div>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -492,17 +492,17 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   >
                                     {statusText}
                                   </span>
-                                  <span className="text-[10px] text-neutral-400">
+                                  <span className="text-[10px] text-[color:var(--theme-text-secondary)]">
                                     {actionText}
                                   </span>
                                   {match.pricingValidUntil ? (
-                                    <span className="text-[10px] text-neutral-500">
+                                    <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                                       Valid until {new Date(match.pricingValidUntil).toLocaleDateString()}
                                     </span>
                                   ) : null}
                                 </div>
                                 {match.correction ? (
-                                  <div className="mt-2 text-[11px] text-neutral-300">
+                                  <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                                     {match.correction}
                                   </div>
                                 ) : null}
@@ -511,7 +511,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  className="rounded-full border border-white/15 bg-black/30 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-white/5"
+                                  className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
                                   onClick={() => onDismissSmartMatch?.(sectionIndex, itemIndex)}
                                 >
                                   Dismiss
@@ -523,7 +523,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     "rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
                                     canApplyRepair
                                       ? "border border-emerald-500/40 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-900/30"
-                                      : "cursor-not-allowed border border-neutral-500/20 bg-neutral-950/20 text-neutral-200/70",
+                                      : "cursor-not-allowed border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-secondary)]",
                                   ].join(" ")}
                                   onClick={() => {
                                     onAcceptSmartMatch?.(sectionIndex, itemIndex);
@@ -577,10 +577,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         const submittedStamp = submittedAt(item);
 
                         return (
-                          <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                          <div className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
-                                <span className="text-[12px] font-semibold text-neutral-100">
+                                <span className="text-[12px] font-semibold text-[color:var(--theme-text-primary)]">
                                   Parts &amp; Labor
                                 </span>
 
@@ -591,7 +591,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 )}
 
                                 {submittedStamp && (
-                                  <span className="text-[10px] text-neutral-500">
+                                  <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                                     {new Date(submittedStamp).toLocaleString()}
                                   </span>
                                 )}
@@ -602,7 +602,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   <>
                                     <button
                                       type="button"
-                                      className="text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:text-neutral-100"
+                                      className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
                                       onClick={() => setPartsOpen(k, !partsOpen)}
                                     >
                                       {partsOpen ? "Collapse" : "Expand"}
@@ -622,7 +622,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     ) : (
                                       <button
                                         type="button"
-                                        className="text-[10px] uppercase tracking-[0.16em] text-neutral-300 hover:text-neutral-100"
+                                        className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
                                         onClick={() => {
                                           setEditing(k, false);
                                           setPartsOpen(k, false);
@@ -654,12 +654,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     return (
                                       <div
                                         key={pIdx}
-                                        className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
+                                        className="flex flex-wrap items-center gap-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2"
                                       >
                                         <input
                                           disabled={lockInputs}
                                           className={[
-                                            "min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
+                                            "min-w-0 flex-1 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
                                             "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
                                             lockInputs
                                               ? "opacity-60 cursor-not-allowed"
@@ -678,7 +678,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                         <input
                                           disabled={lockInputs}
                                           className={[
-                                            "w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
+                                            "w-16 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
                                             "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
                                             lockInputs
                                               ? "opacity-60 cursor-not-allowed"
@@ -748,10 +748,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     disabled={lockInputs}
                                     onClick={addEmptyPart}
                                     className={[
-                                      "mt-1 inline-flex items-center rounded-full border border-white/20 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100",
+                                      "mt-1 inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]",
                                       "hover:border-accent/80 hover:text-accent",
                                       lockInputs
-                                        ? "opacity-50 cursor-not-allowed hover:border-white/20 hover:text-neutral-100"
+                                        ? "opacity-50 cursor-not-allowed hover:border-[color:var(--theme-border-soft)] hover:text-[color:var(--theme-text-primary)]"
                                         : "",
                                     ].join(" ")}
                                   >
@@ -760,13 +760,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 </div>
 
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                                  <span className="text-[11px] text-neutral-400">
+                                  <span className="text-[11px] text-[color:var(--theme-text-secondary)]">
                                     Labor hours
                                   </span>
                                   <input
                                     disabled={lockInputs}
                                     className={[
-                                      "w-20 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500",
+                                      "w-20 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
                                       "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
                                       lockInputs
                                         ? "opacity-60 cursor-not-allowed"
@@ -785,7 +785,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                       )
                                     }
                                   />
-                                  <span className="text-[10px] text-neutral-500">
+                                  <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                                     (rate + pricing handled later)
                                   </span>
                                 </div>
@@ -796,9 +796,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                       })()}
 
                       {(smartMatchLoading || smartMatch) && isFailOrRec && note.length > 0 ? (
-                        <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+                        <div className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                           {smartMatchLoading ? (
-                            <div className="text-[11px] text-neutral-400">
+                            <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                               Checking smart match…
                             </div>
                           ) : smartMatch ? (
@@ -811,13 +811,13 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 </span>
 
                                 {typeof smartMatch.acceptanceRate === "number" ? (
-                                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-neutral-300">
+                                  <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                                     Win rate {Math.round(smartMatch.acceptanceRate * 100)}%
                                   </span>
                                 ) : null}
 
                                 {typeof smartMatch.acceptedCount === "number" ? (
-                                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-neutral-300">
+                                  <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                                     Accepted {smartMatch.acceptedCount}
                                   </span>
                                 ) : null}
@@ -827,21 +827,21 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 </span>
                               </div>
 
-                              <div className="mt-2 text-[12px] font-semibold text-neutral-100">
+                              <div className="mt-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)]">
                                 {smartMatch.label}
                               </div>
 
                               {smartMatch.correction ? (
-                                <div className="mt-1 text-[11px] text-neutral-400">
+                                <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                                   {smartMatch.correction}
                                 </div>
                               ) : null}
 
-                              <div className="mt-2 text-[11px] text-neutral-400">
+                              <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                                 {pricingText}
                               </div>
 
-                              <div className="mt-1 text-[11px] text-neutral-500">
+                              <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                                 Pricing valid until: {smartMatch.pricingValidUntil ?? "No active pricing snapshot"}
                               </div>
 

@@ -119,29 +119,29 @@ export default function CauseCorrectionModal({
         className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
-        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
             Job completion story
           </div>
-          <div className="mt-1 text-xs text-neutral-400">
+          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Capture what failed and exactly what was done so this line is complete, searchable, and useful later.
           </div>
         </div>
-        <div className="flex items-center justify-between text-[0.7rem] text-neutral-400">
+        <div className="flex items-center justify-between text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="font-semibold uppercase tracking-[0.18em]">
               Complaint
             </span>
-            <span className="truncate text-[0.8rem] font-medium text-neutral-100">
+            <span className="truncate text-[0.8rem] font-medium text-[color:var(--theme-text-primary)]">
               {headerLabel}
             </span>
             {/* keep id around but de-emphasized (helps debugging) */}
-            <span className="font-mono text-[0.65rem] text-neutral-500">
+            <span className="font-mono text-[0.65rem] text-[color:var(--theme-text-muted)]">
               {jobId}
             </span>
           </div>
 
-          <span className="shrink-0 rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
+          <span className="shrink-0 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Cause / Correction
           </span>
         </div>
@@ -159,7 +159,7 @@ export default function CauseCorrectionModal({
         )}
 
         {!canComplete && (
-          <div className="rounded-lg border border-amber-500/35 bg-black/35 px-3 py-2 text-[0.75rem] text-amber-200">
+          <div className="rounded-lg border border-amber-500/35 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.75rem] text-amber-200">
             <span className="font-semibold">Required:</span> enter both a{" "}
             <span className="font-semibold">cause</span> and{" "}
             <span className="font-semibold">correction</span> to complete the
@@ -168,13 +168,13 @@ export default function CauseCorrectionModal({
         )}
 
         <div className="space-y-1">
-          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Cause
           </label>
           <textarea
             ref={causeRef}
             rows={3}
-            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={cause}
             onChange={(e) => {
               setCause(e.target.value);
@@ -186,12 +186,12 @@ export default function CauseCorrectionModal({
         </div>
 
         <div className="space-y-1">
-          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Correction
           </label>
           <textarea
             rows={3}
-            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={correction}
             onChange={(e) => {
               setCorrection(e.target.value);
@@ -206,17 +206,17 @@ export default function CauseCorrectionModal({
               }
             }}
           />
-          <p className="mt-1 text-[0.7rem] text-neutral-500">
+          <p className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">
             Press{" "}
-            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+            <kbd className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-1 text-[0.65rem]">
               Ctrl
             </kbd>{" "}
             /{" "}
-            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+            <kbd className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-1 text-[0.65rem]">
               ⌘
             </kbd>{" "}
             +{" "}
-            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+            <kbd className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-1 text-[0.65rem]">
               Enter
             </kbd>{" "}
             to complete.
@@ -229,7 +229,7 @@ export default function CauseCorrectionModal({
             type="button"
             onClick={onClose}
             disabled={busy}
-            className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/45 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5 disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
           >
             Cancel
           </button>
@@ -244,8 +244,8 @@ export default function CauseCorrectionModal({
                 className={[
                   "inline-flex flex-1 items-center justify-center rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] sm:flex-none sm:px-5",
                   canSaveDraft
-                    ? "border border-[var(--metal-border-soft)] bg-black/50 text-neutral-200 hover:bg-white/5"
-                    : "border border-white/10 bg-black/30 text-neutral-500 opacity-70",
+                    ? "border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
+                    : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-muted)] opacity-70",
                 ].join(" ")}
                 title={
                   canSaveDraft
@@ -264,7 +264,7 @@ export default function CauseCorrectionModal({
               className={[
                 "inline-flex flex-1 items-center justify-center rounded-full px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] shadow-[0_0_20px_rgba(212,118,49,0.7)] sm:flex-none sm:px-6",
                 canComplete
-                  ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black hover:brightness-110"
+                  ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] hover:brightness-110"
                   : "border border-amber-500/40 bg-amber-500/10 text-amber-200 opacity-70",
               ].join(" ")}
               title={

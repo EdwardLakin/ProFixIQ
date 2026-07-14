@@ -88,25 +88,25 @@ export function CsvImportProgress({
       progress.failed !== undefined ||
       progress.duplicates !== undefined ? (
         <div className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
-          <div className="rounded-lg bg-black/20 px-2 py-1">
+          <div className="rounded-lg bg-[color:var(--theme-surface-inset)] px-2 py-1">
             Imported:{" "}
             <span className="font-semibold">{progress.imported ?? 0}</span>
           </div>
-          <div className="rounded-lg bg-black/20 px-2 py-1">
+          <div className="rounded-lg bg-[color:var(--theme-surface-inset)] px-2 py-1">
             Skipped:{" "}
             <span className="font-semibold">{progress.skipped ?? 0}</span>
           </div>
-          <div className="rounded-lg bg-black/20 px-2 py-1">
+          <div className="rounded-lg bg-[color:var(--theme-surface-inset)] px-2 py-1">
             Failed:{" "}
             <span className="font-semibold">{progress.failed ?? 0}</span>
           </div>
-          <div className="rounded-lg bg-black/20 px-2 py-1">
+          <div className="rounded-lg bg-[color:var(--theme-surface-inset)] px-2 py-1">
             Duplicates:{" "}
             <span className="font-semibold">{progress.duplicates ?? 0}</span>
           </div>
         </div>
       ) : null}
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/35">
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-inset)]">
         <div
           className={`h-full rounded-full transition-all duration-300 ${
             isFailed

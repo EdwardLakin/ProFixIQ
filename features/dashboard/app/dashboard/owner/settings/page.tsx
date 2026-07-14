@@ -36,6 +36,7 @@ import {
 } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { normalizeCanonicalPlan, type CanonicalPlan } from "@/features/stripe/lib/stripe/plan-normalization";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
+import { applyThemePreference } from "@/features/shared/lib/theme";
 
 type FileInputChangeEvent = {
   target: {
@@ -323,10 +324,10 @@ export default function OwnerSettingsPage() {
 
   // Shared UI classes for selects (fix: dark inputs + consistent font colors)
   const selectClass =
-    "w-full rounded-md border border-border bg-neutral-950/60 px-3 py-2 text-sm text-neutral-100 shadow-inner outline-none transition focus:border-white/20 focus:ring-1 focus:ring-white/10 disabled:opacity-50";
-  const labelClass = "text-xs text-neutral-400";
+    "w-full rounded-md border border-border bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] shadow-inner outline-none transition focus:border-[color:var(--theme-border-soft)] focus:ring-1 focus:ring-[color:var(--theme-border-strong)] disabled:opacity-50";
+  const labelClass = "text-xs text-[color:var(--theme-text-secondary)]";
   const navChipClass =
-    "inline-flex items-center rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-semibold text-neutral-300 transition hover:bg-black/40 hover:text-white";
+    "inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-inset)] hover:text-[color:var(--theme-text-primary)]";
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -847,7 +848,7 @@ try {
       }
 
       setAppearanceMode(nextMode);
-      window.localStorage.setItem("pfq-theme-mode", nextMode);
+      applyThemePreference(nextMode);
       window.dispatchEvent(new Event("profixiq:brand-refresh"));
       toast.success("Appearance mode updated.");
     } finally {
@@ -1232,9 +1233,9 @@ try {
             : `${trialDaysLeft} days left`
           : "Active";
       return (
-        <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
+        <span className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}>
           <span className="text-[color:var(--accent-copper-light)]">Trial</span>
-          <span className="text-neutral-300">{label}</span>
+          <span className="text-[color:var(--theme-text-secondary)]">{label}</span>
         </span>
       );
     }
@@ -1263,14 +1264,14 @@ try {
 
     if (subStatus === "canceled") {
       return (
-        <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
+        <span className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}>
           Canceled
         </span>
       );
     }
 
     return (
-      <span className={`${base} border-white/10 bg-black/40 text-neutral-200`}>
+      <span className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}>
         Status: {String(billingDisplayStatus).replaceAll("_", " ").toUpperCase()}
       </span>
     );
@@ -1325,7 +1326,7 @@ try {
       ) : null}
 
 
-      <div className="sticky top-2 z-10 rounded-2xl border border-white/10 bg-black/35 p-3 backdrop-blur">
+      <div className="sticky top-2 z-10 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur">
         <div className="flex flex-wrap gap-2">
           <a href="#shop-info" className={navChipClass}>General</a>
           <a href="#operations-defaults" className={navChipClass}>Defaults</a>
@@ -1365,7 +1366,7 @@ try {
               <label className="space-y-1 text-sm"><span className={labelClass}>Pay cadence</span><select className={selectClass} value={payrollSettings.cadence} onChange={(e) => setPayrollSettings((p) => ({ ...p, cadence: e.target.value }))}><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="semimonthly">Semi-monthly</option></select></label>
               <label className="space-y-1 text-sm"><span className={labelClass}>Week starts on</span><select className={selectClass} value={payrollSettings.week_starts_on} onChange={(e) => setPayrollSettings((p) => ({ ...p, week_starts_on: Number(e.target.value) }))}><option value={0}>Sunday</option><option value={1}>Monday</option><option value={2}>Tuesday</option><option value={3}>Wednesday</option><option value={4}>Thursday</option><option value={5}>Friday</option><option value={6}>Saturday</option></select></label>
             </div>
-            <div className="border-t border-white/10 p-4"><Button onClick={() => void savePayrollSettings()} disabled={payrollSettingsSaving || !isUnlocked}>{payrollSettingsSaving ? "Saving…" : "Save payroll settings"}</Button></div>
+            <div className="border-t border-[color:var(--theme-border-soft)] p-4"><Button onClick={() => void savePayrollSettings()} disabled={payrollSettingsSaving || !isUnlocked}>{payrollSettingsSaving ? "Saving…" : "Save payroll settings"}</Button></div>
           </OwnerSettingsPanel>
 
           <OwnerSettingsSectionIntro
@@ -1469,7 +1470,7 @@ try {
               placeholder="Invoice footer note"
               disabled={!isUnlocked}
             />
-            <label className="flex items-center gap-2 text-sm text-neutral-200">
+            <label className="flex items-center gap-2 text-sm text-[color:var(--theme-text-primary)]">
               <input
                 type="checkbox"
                 checked={emailOnComplete}
@@ -1551,17 +1552,17 @@ try {
       </div>
 
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <DialogContent className="border-white/15 bg-neutral-950/95 text-neutral-100">
+        <DialogContent className="border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
           <DialogHeader>
             <DialogTitle>Cancel subscription</DialogTitle>
-            <DialogDescription className="text-neutral-300">
+            <DialogDescription className="text-[color:var(--theme-text-secondary)]">
               You are currently on the {planLabel(plan)} plan.
               {" "}Cancellation is scheduled for the end of your current billing period by default.
               {" "}Your access and seats remain active until that date.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm text-neutral-300">
+          <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)]">
             After the period ends, paid subscription features stop renewing for this location
             until you subscribe again.
             {periodEndIso ? ` Current period end: ${formatDate(periodEndIso)}.` : ""}
@@ -1578,7 +1579,7 @@ try {
             <Button
               onClick={() => void confirmCancelSubscription()}
               disabled={cancelLoading}
-              className="bg-red-600 text-white hover:bg-red-500"
+              className="bg-red-600 text-[color:var(--theme-text-primary)] hover:bg-red-500"
             >
               {cancelLoading ? "Scheduling..." : "Cancel at period end"}
             </Button>

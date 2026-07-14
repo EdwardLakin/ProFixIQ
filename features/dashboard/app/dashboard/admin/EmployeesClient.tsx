@@ -134,7 +134,7 @@ export default function AdminEmployeesClient() {
         <AdminToolbar>
           <AdminField label="Search" className="flex-1">
             <input
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-400/70"
               placeholder="Search name, email, or phone"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -142,7 +142,7 @@ export default function AdminEmployeesClient() {
           </AdminField>
           <AdminField label="Role" className="w-full md:w-52">
             <select
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-orange-400/70"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-orange-400/70"
               value={roleFilter}
               onChange={(event) => setRoleFilter(event.target.value)}
             >
@@ -177,7 +177,7 @@ export default function AdminEmployeesClient() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Employee</th>
                   <th className="px-4 py-2.5 text-left">Role</th>
@@ -187,12 +187,12 @@ export default function AdminEmployeesClient() {
                   <th className="px-4 py-2.5 text-left">Payroll posture</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                 {filteredRows.map((r) => (
-                  <tr key={r.id} className="text-neutral-200">
+                  <tr key={r.id} className="text-[color:var(--theme-text-primary)]">
                     <td className="px-4 py-2.5">
-                      <p className="font-medium text-neutral-100">{r.full_name ?? "—"}</p>
-                      <p className="text-xs text-neutral-500">{r.email ?? "No email"}</p>
+                      <p className="font-medium text-[color:var(--theme-text-primary)]">{r.full_name ?? "—"}</p>
+                      <p className="text-xs text-[color:var(--theme-text-muted)]">{r.email ?? "No email"}</p>
                     </td>
                     <td className="px-4 py-2.5">
                       <AdminBadge>{r.role ?? "—"}</AdminBadge>
@@ -200,8 +200,8 @@ export default function AdminEmployeesClient() {
                     <td className="px-4 py-2.5">
                       <AdminBadge>{r.completed_onboarding ? "Complete" : "Needs follow-up"}</AdminBadge>
                     </td>
-                    <td className="px-4 py-2.5 text-neutral-300">{r.phone ?? "Missing phone"}</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-neutral-300">
+                    <td className="px-4 py-2.5 text-[color:var(--theme-text-secondary)]">{r.phone ?? "Missing phone"}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-[color:var(--theme-text-secondary)]">
                       {r.last_active_at ? new Date(r.last_active_at).toLocaleDateString() : "Never recorded"}
                     </td>
                     <td className="px-4 py-2.5">
@@ -210,7 +210,7 @@ export default function AdminEmployeesClient() {
                       ) : payrollExceptionMap[r.id]?.warning ? (
                         <AdminBadge>{payrollExceptionMap[r.id].warning} warning</AdminBadge>
                       ) : (
-                        <span className="text-xs text-neutral-500">No open payroll exceptions</span>
+                        <span className="text-xs text-[color:var(--theme-text-muted)]">No open payroll exceptions</span>
                       )}
                     </td>
                   </tr>

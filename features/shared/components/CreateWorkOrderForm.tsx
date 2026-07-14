@@ -105,7 +105,7 @@ export default function CreateWorkOrderForm() {
   };
 
   return (
-    <div className="desktop-panel-soft mx-auto mt-8 max-w-2xl space-y-4 rounded-xl border p-6 text-white backdrop-blur-md shadow-card">
+    <div className="desktop-panel-soft mx-auto mt-8 max-w-2xl space-y-4 rounded-xl border p-6 text-[color:var(--theme-text-primary)] backdrop-blur-md shadow-card">
       <h2 className="font-blackops text-center text-3xl font-bold text-[var(--theme-text-primary)]">
         Create Work Order
       </h2>

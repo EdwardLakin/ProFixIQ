@@ -16,7 +16,7 @@ const PhotoPreview: React.FC<PhotoPreviewProps> = ({ photoUrls }) => {
           key={index}
           src={url}
           alt={`Photo ${index + 1}`}
-          className="w-16 h-16 object-cover rounded border border-gray-500"
+          className="w-16 h-16 object-cover rounded border border-[color:var(--theme-border-soft)]"
         />
       ))}
     </div>

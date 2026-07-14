@@ -13,14 +13,14 @@ export default function TeamsClient() {
   ];
 
   return (
-    <div className="p-6 text-white">
+    <div className="p-6 text-[color:var(--theme-text-primary)]">
       <h1 className="text-2xl font-bold mb-4">Teams</h1>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {teams.map((t) => (
           <div
             key={t.name}
-            className="rounded border border-neutral-800 bg-neutral-900/40 p-4"
+            className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4"
           >
             <div className="text-lg font-semibold">{t.name}</div>
             <div className="text-sm opacity-70 mt-1">
@@ -31,10 +31,10 @@ export default function TeamsClient() {
             </div>
 
             <div className="mt-3 flex gap-2">
-              <button className="px-3 py-1 rounded bg-orange-600 text-black">
+              <button className="px-3 py-1 rounded bg-orange-600 text-[color:var(--theme-text-on-accent)]">
                 Manage
               </button>
-              <button className="px-3 py-1 rounded border border-neutral-700 bg-neutral-800">
+              <button className="px-3 py-1 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)]">
                 Add Member
               </button>
             </div>
@@ -42,7 +42,7 @@ export default function TeamsClient() {
         ))}
       </div>
 
-      <button className="mt-4 px-3 py-2 rounded bg-neutral-800 border border-neutral-700">
+      <button className="mt-4 px-3 py-2 rounded bg-[color:var(--theme-surface-panel-strong)] border border-[color:var(--theme-border-soft)]">
         Create Team
       </button>
     </div>

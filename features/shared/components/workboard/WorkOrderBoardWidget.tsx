@@ -50,7 +50,7 @@ export default function WorkOrderBoardWidget(props: {
       <div className="flex justify-end">
         <Link
           href={href}
-          className="rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-black/35"
+          className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
         >
           {ctaLabel}
         </Link>

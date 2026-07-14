@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: "Helvetica",
     lineHeight: 1.4,
-    color: "#0a0a0a",
+    color: "var(--theme-surface-page)",
   },
 
   header: {

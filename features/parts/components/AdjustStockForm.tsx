@@ -40,7 +40,7 @@ export function AdjustStockForm({ partId }: { partId: string }) {
       />
       <button
         disabled={pending}
-        className="px-3 py-2 rounded-xl bg-neutral-900 text-white"
+        className="px-3 py-2 rounded-xl bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]"
       >
         {pending ? "Saving…" : "Apply"}
       </button>

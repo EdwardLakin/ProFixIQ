@@ -32,7 +32,7 @@ function statusPill(status: string | null | undefined): string {
   if (s === "ordered") return "border-indigo-500/40 bg-indigo-500/10 text-indigo-200";
   if (s === "open" || s === "draft") return "border-sky-500/30 bg-sky-950/25 text-[rgba(242,210,187,0.94)]";
   if (s === "cancelled" || s === "canceled") return "border-rose-500/40 bg-rose-500/10 text-rose-200";
-  return "border-white/10 bg-white/5 text-neutral-200";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
 }
 
 function isNonEmptyString(v: unknown): v is string {
@@ -316,30 +316,30 @@ export default function PurchaseOrdersPage(): JSX.Element {
     }
   };
 
-  const pageWrap = "relative p-4 md:p-6 text-white";
+  const pageWrap = "relative p-4 md:p-6 text-[color:var(--theme-text-primary)]";
   const panel =
-    "metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
   const headerFont = { fontFamily: "var(--font-blackops), system-ui" } as const;
 
   return (
     <div className={pageWrap}>
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(200,122,67,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
       />
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-500">Parts</div>
-          <h1 className="mt-1 text-2xl font-semibold text-white" style={headerFont}>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Parts</div>
+          <h1 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]" style={headerFont}>
             Purchase Orders
           </h1>
-          <div className="mt-1 text-xs text-neutral-500">Create stock POs, receive, and track partials.</div>
+          <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Create stock POs, receive, and track partials.</div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
-            className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 hover:bg-black/60 disabled:opacity-60"
+            className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-neutral,var(--theme-text-muted))]/70 hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-60"
             onClick={() => (shopId ? void refresh(shopId) : null)}
             disabled={!shopId || loading}
             type="button"
@@ -348,7 +348,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
           </button>
 
           <button
-            className="rounded-full border border-[color:var(--accent-neutral,#64748b)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-neutral,#64748b)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-neutral-light,#cbd5e1)] disabled:opacity-60"
+            className="rounded-full border border-[color:var(--accent-neutral,var(--theme-text-muted))]/80 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--accent-neutral,var(--theme-text-muted))]/15 to-[color:var(--theme-surface-page)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md hover:border-[color:var(--accent-neutral-light,var(--theme-text-primary))] disabled:opacity-60"
             onClick={() => setOpen(true)}
             disabled={!shopId}
             type="button"
@@ -365,20 +365,20 @@ export default function PurchaseOrdersPage(): JSX.Element {
       ) : null}
 
       {loading ? (
-        <div className={`${panel} p-4 text-sm text-neutral-400`}>Loading…</div>
+        <div className={`${panel} p-4 text-sm text-[color:var(--theme-text-secondary)]`}>Loading…</div>
       ) : pos.length === 0 ? (
-        <div className={`${panel} p-4 text-sm text-neutral-400`}>No purchase orders yet.</div>
+        <div className={`${panel} p-4 text-sm text-[color:var(--theme-text-secondary)]`}>No purchase orders yet.</div>
       ) : (
         <div className={`${panel} overflow-hidden`}>
-          <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-black/70 via-slate-950/70 to-black/70 px-4 py-3">
-            <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">Recent POs</div>
-            <div className="text-[11px] text-neutral-500">{pos.length} shown</div>
+          <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-3">
+            <div className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Recent POs</div>
+            <div className="text-[11px] text-[color:var(--theme-text-muted)]">{pos.length} shown</div>
           </div>
 
           <div className="overflow-auto">
             <table className="w-full min-w-[820px] text-sm">
               <thead>
-                <tr className="text-left text-neutral-400">
+                <tr className="text-left text-[color:var(--theme-text-secondary)]">
                   <th className="p-3">PO</th>
                   <th className="p-3">Supplier</th>
                   <th className="p-3">Status</th>
@@ -394,9 +394,9 @@ export default function PurchaseOrdersPage(): JSX.Element {
                   const st = (po.status as string | null) ?? "—";
 
                   return (
-                    <tr key={id} className="border-t border-white/5 hover:bg-white/5">
-                      <td className="p-3 font-mono text-neutral-100">{id.slice(0, 8)}</td>
-                      <td className="p-3 text-neutral-200">{sName}</td>
+                    <tr key={id} className="border-t border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]">
+                      <td className="p-3 font-mono text-[color:var(--theme-text-primary)]">{id.slice(0, 8)}</td>
+                      <td className="p-3 text-[color:var(--theme-text-primary)]">{sName}</td>
                       <td className="p-3">
                         <span
                           className={[
@@ -407,19 +407,19 @@ export default function PurchaseOrdersPage(): JSX.Element {
                           {st}
                         </span>
                       </td>
-                      <td className="p-3 text-neutral-300">{fmtDate(po.created_at as string | null)}</td>
+                      <td className="p-3 text-[color:var(--theme-text-secondary)]">{fmtDate(po.created_at as string | null)}</td>
                       <td className="p-3 text-right">
                         <div className="inline-flex items-center gap-2">
                           <Link
                             href={`/parts/po/${id}`}
-                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 hover:bg-black/55"
+                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-neutral,var(--theme-text-muted))]/70 hover:bg-[color:var(--theme-surface-inset)]"
                           >
                             Open
                           </Link>
 
                           <Link
                             href={`/parts/po/${id}/receive`}
-                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 hover:bg-black/55"
+                            className="inline-flex items-center justify-center rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-neutral,var(--theme-text-muted))]/70 hover:bg-[color:var(--theme-surface-inset)]"
                           >
                             Receive
                           </Link>
@@ -436,21 +436,21 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
       {/* New PO Modal */}
       {open ? (
-        <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/70 p-4" onClick={closeModal}>
+        <div className="fixed inset-0 z-[600] flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4" onClick={closeModal}>
           <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
             {/* IMPORTANT: keep modal within viewport and scroll internally */}
             <div className={`${panel} max-h-[85vh] overflow-hidden p-5`}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-500">Create</div>
-                  <div className="text-xl font-semibold text-white" style={headerFont}>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Create</div>
+                  <div className="text-xl font-semibold text-[color:var(--theme-text-primary)]" style={headerFont}>
                     New Purchase Order
                   </div>
-                  <div className="mt-1 text-xs text-neutral-500">Add header + optional line items for stock ordering.</div>
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Add header + optional line items for stock ordering.</div>
                 </div>
 
                 <button
-                  className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-2 text-sm text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 disabled:opacity-60"
+                  className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-neutral,var(--theme-text-muted))]/70 disabled:opacity-60"
                   onClick={closeModal}
                   disabled={busyCreate}
                   type="button"
@@ -464,9 +464,9 @@ export default function PurchaseOrdersPage(): JSX.Element {
                 <div className="grid gap-4">
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="min-w-0">
-                      <div className="mb-1 text-xs text-neutral-400">Supplier</div>
+                      <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Supplier</div>
                       <select
-                        className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100"
+                        className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-sm text-[color:var(--theme-text-primary)]"
                         value={supplierId}
                         onChange={(e) => setSupplierId(e.target.value)}
                         disabled={busyCreate}
@@ -479,23 +479,23 @@ export default function PurchaseOrdersPage(): JSX.Element {
                         ))}
                       </select>
 
-                      <div className="mt-2 text-[11px] text-neutral-500">or create a new supplier name:</div>
+                      <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">or create a new supplier name:</div>
                       <input
-                        className="mt-1 w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-600"
+                        className="mt-1 w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                         value={newSupplierName}
                         onChange={(e) => setNewSupplierName(e.target.value)}
                         placeholder="e.g., NAPA / FleetPride / Cummins…"
                         disabled={busyCreate || !!supplierId}
                       />
-                      <div className="mt-1 text-[11px] text-neutral-600">
+                      <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                         If you select a supplier above, this field is ignored.
                       </div>
                     </div>
 
                     <div className="min-w-0">
-                      <div className="mb-1 text-xs text-neutral-400">PO Notes</div>
+                      <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">PO Notes</div>
                       <textarea
-                        className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-600"
+                        className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                         rows={5}
                         value={poNote}
                         onChange={(e) => setPoNote(e.target.value)}
@@ -505,18 +505,18 @@ export default function PurchaseOrdersPage(): JSX.Element {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                  <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">PO Lines</div>
-                        <div className="mt-1 text-[11px] text-neutral-500">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">PO Lines</div>
+                        <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                           Add lines now, or create header-only and add lines later. Select a stock part or type the part you want to order.
                         </div>
                       </div>
 
                       <button
                         type="button"
-                        className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-1.5 text-xs text-neutral-100 hover:border-[color:var(--accent-neutral,#64748b)]/70 disabled:opacity-60"
+                        className="shrink-0 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-neutral,var(--theme-text-muted))]/70 disabled:opacity-60"
                         onClick={addLine}
                         disabled={busyCreate}
                       >
@@ -529,7 +529,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                       <div className="w-full overflow-x-auto">
                         <table className="w-full min-w-[980px] text-sm">
                           <thead>
-                            <tr className="text-left text-neutral-400">
+                            <tr className="text-left text-[color:var(--theme-text-secondary)]">
                               <th className="p-2">Part</th>
                               <th className="p-2">Part / description</th>
                               <th className="p-2">Vendor Part #</th>
@@ -541,10 +541,10 @@ export default function PurchaseOrdersPage(): JSX.Element {
                           </thead>
                           <tbody>
                             {lines.map((l) => (
-                              <tr key={l.id} className="border-t border-white/10">
+                              <tr key={l.id} className="border-t border-[color:var(--theme-border-soft)]">
                                 <td className="p-2">
                                   <select
-                                    className="w-[380px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100"
+                                    className="w-[380px] rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)]"
                                     value={l.part_id}
                                     onChange={(e) => updateLine(l.id, { part_id: e.target.value })}
                                     disabled={busyCreate}
@@ -560,7 +560,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
                                 <td className="p-2">
                                   <input
-                                    className="w-[220px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                    className="w-[220px] rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                                     value={l.description}
                                     onChange={(e) => updateLine(l.id, { description: e.target.value })}
                                     placeholder="Type part description"
@@ -570,7 +570,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
                                 <td className="p-2">
                                   <input
-                                    className="w-[220px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                    className="w-[220px] rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                                     value={l.vendor_part_number}
                                     onChange={(e) => updateLine(l.id, { vendor_part_number: e.target.value })}
                                     placeholder="Vendor / catalog #"
@@ -583,7 +583,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                                     type="number"
                                     min={0}
                                     step={1}
-                                    className="w-[120px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
+                                    className="w-[120px] rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-right text-xs text-[color:var(--theme-text-primary)]"
                                     value={String(l.ordered_qty)}
                                     onChange={(e) =>
                                       updateLine(l.id, {
@@ -599,7 +599,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                                     type="number"
                                     min={0}
                                     step={0.01}
-                                    className="w-[140px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
+                                    className="w-[140px] rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-right text-xs text-[color:var(--theme-text-primary)]"
                                     value={String(l.unit_cost)}
                                     onChange={(e) => updateLine(l.id, { unit_cost: Math.max(0, toNum(e.target.value, 0)) })}
                                     disabled={busyCreate}
@@ -608,7 +608,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
                                 <td className="p-2">
                                   <input
-                                    className="w-[280px] rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                    className="w-[280px] rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                                     value={l.notes}
                                     onChange={(e) => updateLine(l.id, { notes: e.target.value })}
                                     placeholder="Notes (core, urgency, etc.)"
@@ -619,7 +619,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                                 <td className="p-2 text-right">
                                   <button
                                     type="button"
-                                    className="rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-neutral-100 hover:bg-white/5 disabled:opacity-60"
+                                    className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
                                     onClick={() => removeLine(l.id)}
                                     disabled={busyCreate || lines.length <= 1}
                                     title={lines.length <= 1 ? "Keep at least one row" : "Remove line"}
@@ -637,12 +637,12 @@ export default function PurchaseOrdersPage(): JSX.Element {
                     {/* Mobile stack layout (keeps everything inside modal) */}
                     <div className="md:hidden grid gap-3">
                       {lines.map((l, idx) => (
-                        <div key={l.id} className="rounded-2xl border border-white/10 bg-black/35 p-3">
+                        <div key={l.id} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                           <div className="mb-2 flex items-center justify-between">
-                            <div className="text-xs font-semibold text-neutral-300">Line {idx + 1}</div>
+                            <div className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">Line {idx + 1}</div>
                             <button
                               type="button"
-                              className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-xs text-neutral-100 hover:bg-white/5 disabled:opacity-60"
+                              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
                               onClick={() => removeLine(l.id)}
                               disabled={busyCreate || lines.length <= 1}
                             >
@@ -652,9 +652,9 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
                           <div className="grid gap-2">
                             <div>
-                              <div className="mb-1 text-[11px] text-neutral-500">Part / description</div>
+                              <div className="mb-1 text-[11px] text-[color:var(--theme-text-muted)]">Part / description</div>
                               <select
-                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100"
+                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)]"
                                 value={l.part_id}
                                 onChange={(e) => updateLine(l.id, { part_id: e.target.value })}
                                 disabled={busyCreate}
@@ -669,9 +669,9 @@ export default function PurchaseOrdersPage(): JSX.Element {
                             </div>
 
                             <div>
-                              <div className="mb-1 text-[11px] text-neutral-500">Part / description</div>
+                              <div className="mb-1 text-[11px] text-[color:var(--theme-text-muted)]">Part / description</div>
                               <input
-                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                                 value={l.description}
                                 onChange={(e) => updateLine(l.id, { description: e.target.value })}
                                 placeholder="Type part description"
@@ -680,9 +680,9 @@ export default function PurchaseOrdersPage(): JSX.Element {
                             </div>
 
                             <div>
-                              <div className="mb-1 text-[11px] text-neutral-500">Vendor Part #</div>
+                              <div className="mb-1 text-[11px] text-[color:var(--theme-text-muted)]">Vendor Part #</div>
                               <input
-                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                                 value={l.vendor_part_number}
                                 onChange={(e) => updateLine(l.id, { vendor_part_number: e.target.value })}
                                 placeholder="Vendor / catalog #"
@@ -692,12 +692,12 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
                             <div className="grid grid-cols-2 gap-2">
                               <div>
-                                <div className="mb-1 text-[11px] text-neutral-500">Qty</div>
+                                <div className="mb-1 text-[11px] text-[color:var(--theme-text-muted)]">Qty</div>
                                 <input
                                   type="number"
                                   min={0}
                                   step={1}
-                                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
+                                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-right text-xs text-[color:var(--theme-text-primary)]"
                                   value={String(l.ordered_qty)}
                                   onChange={(e) =>
                                     updateLine(l.id, {
@@ -709,12 +709,12 @@ export default function PurchaseOrdersPage(): JSX.Element {
                               </div>
 
                               <div>
-                                <div className="mb-1 text-[11px] text-neutral-500">Unit Cost</div>
+                                <div className="mb-1 text-[11px] text-[color:var(--theme-text-muted)]">Unit Cost</div>
                                 <input
                                   type="number"
                                   min={0}
                                   step={0.01}
-                                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-right text-xs text-neutral-100"
+                                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-right text-xs text-[color:var(--theme-text-primary)]"
                                   value={String(l.unit_cost)}
                                   onChange={(e) => updateLine(l.id, { unit_cost: Math.max(0, toNum(e.target.value, 0)) })}
                                   disabled={busyCreate}
@@ -723,9 +723,9 @@ export default function PurchaseOrdersPage(): JSX.Element {
                             </div>
 
                             <div>
-                              <div className="mb-1 text-[11px] text-neutral-500">Line Notes</div>
+                              <div className="mb-1 text-[11px] text-[color:var(--theme-text-muted)]">Line Notes</div>
                               <input
-                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-2 text-xs text-neutral-100 placeholder:text-neutral-600"
+                                className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                                 value={l.notes}
                                 onChange={(e) => updateLine(l.id, { notes: e.target.value })}
                                 placeholder="Notes (core, urgency, etc.)"
@@ -737,7 +737,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                       ))}
                     </div>
 
-                    <div className="mt-2 text-[11px] text-neutral-600">
+                    <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
                       Tip: If you don’t know the part yet, you can create the PO header only and add lines later from the PO page.
                     </div>
                   </div>
@@ -748,7 +748,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
 
                   <div className="flex flex-wrap justify-end gap-2 pt-1">
                     <button
-                      className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:bg-black/60 disabled:opacity-60"
+                      className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-60"
                       onClick={closeModal}
                       disabled={busyCreate}
                       type="button"
@@ -757,7 +757,7 @@ export default function PurchaseOrdersPage(): JSX.Element {
                     </button>
 
                     <button
-                      className="rounded-full border border-[color:var(--accent-neutral,#64748b)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-neutral,#64748b)]/15 to-black/80 px-4 py-2 text-sm font-semibold text-neutral-50 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md hover:border-[color:var(--accent-neutral-light,#cbd5e1)] disabled:opacity-60"
+                      className="rounded-full border border-[color:var(--accent-neutral,var(--theme-text-muted))]/80 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--accent-neutral,var(--theme-text-muted))]/15 to-[color:var(--theme-surface-page)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md hover:border-[color:var(--accent-neutral-light,var(--theme-text-primary))] disabled:opacity-60"
                       onClick={() => void createPo()}
                       disabled={!shopId || busyCreate}
                       type="button"
@@ -766,9 +766,9 @@ export default function PurchaseOrdersPage(): JSX.Element {
                     </button>
                   </div>
 
-                  <div className="text-[11px] text-neutral-600">
-                    After creation, you’ll see it in the list. Click <span className="text-neutral-200">Open</span> to review/edit
-                    lines, or <span className="text-neutral-200">Receive</span> to receive items.
+                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">
+                    After creation, you’ll see it in the list. Click <span className="text-[color:var(--theme-text-primary)]">Open</span> to review/edit
+                    lines, or <span className="text-[color:var(--theme-text-primary)]">Receive</span> to receive items.
                   </div>
                 </div>
               </div>

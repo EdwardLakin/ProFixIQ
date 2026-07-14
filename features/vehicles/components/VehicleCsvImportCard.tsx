@@ -482,7 +482,7 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
           >
             Choose CSV file
           </button>
@@ -528,7 +528,7 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
         <div className="mt-4 space-y-3">
           {previewRows.length ? (
             <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)]">
-              <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
+              <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Preview
               </div>
               {previewRows.map((row, index) => (
@@ -536,10 +536,10 @@ export function VehicleCsvImportCard({ guidedQuery }: Props) {
                   key={`${row.vin ?? row.unit_number ?? row.license_plate ?? index}`}
                   className="border-b border-[color:var(--desktop-border)] px-3 py-2 last:border-b-0"
                 >
-                  <div className="font-semibold text-white">
+                  <div className="font-semibold text-[color:var(--theme-text-primary)]">
                     {vehicleLabel(row)}
                   </div>
-                  <div className="text-xs text-neutral-400">
+                  <div className="text-xs text-[color:var(--theme-text-secondary)]">
                     VIN: {row.vin || "—"} · Unit: {row.unit_number || "—"} ·
                     Plate: {row.license_plate || "—"}
                   </div>

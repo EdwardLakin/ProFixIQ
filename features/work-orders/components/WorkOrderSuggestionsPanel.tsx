@@ -224,13 +224,13 @@ export function WorkOrderSuggestionsPanel({
   const hasItems = items.length > 0;
 
   return (
-    <div className="rounded-xl border border-white/12 bg-black/45 p-4 text-sm text-white/80 shadow-[0_18px_45px_rgba(0,0,0,0.70)] backdrop-blur-xl">
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-[color:var(--accent-copper-light,#f6d2b3)]">
             Maintenance suggestions
           </h2>
-          <p className="text-[11px] text-white/45">
+          <p className="text-[11px] text-[color:var(--theme-text-muted)]">
             Based on this vehicle&apos;s profile and mileage, add items as jobs
             and send them for parts quoting.
           </p>
@@ -239,23 +239,23 @@ export function WorkOrderSuggestionsPanel({
           type="button"
           onClick={() => fetchSuggestions({ isRefresh: true })}
           disabled={loading || refreshing}
-          className="rounded-md border border-white/12 bg-black/35 px-2 py-1 text-[11px] text-white/75 hover:bg-white/5 disabled:opacity-60"
+          className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[11px] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
       {effectiveOdo !== null && (
-        <div className="mb-2 text-[11px] text-white/55">
+        <div className="mb-2 text-[11px] text-[color:var(--theme-text-muted)]">
           Odometer:&nbsp;
-          <span className="font-mono text-white/85">
+          <span className="font-mono text-[color:var(--theme-text-secondary)]">
             {effectiveOdo.toLocaleString()} km
           </span>
         </div>
       )}
 
       {loading && !hasItems && !error && (
-        <div className="mt-2 text-xs text-white/45">Loading…</div>
+        <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Loading…</div>
       )}
 
       {error && (
@@ -265,7 +265,7 @@ export function WorkOrderSuggestionsPanel({
       )}
 
       {!loading && !error && !hasItems && (
-        <div className="mt-2 text-xs text-white/45">
+        <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
           No maintenance suggestions recorded for this work order yet.
         </div>
       )}
@@ -284,16 +284,16 @@ export function WorkOrderSuggestionsPanel({
             return (
               <div
                 key={key}
-                className="rounded-lg border border-white/10 bg-black/40 p-3 backdrop-blur-md"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur-md"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="truncate font-medium text-white">
+                      <div className="truncate font-medium text-[color:var(--theme-text-primary)]">
                         {s.label}
                       </div>
                       {s.serviceCode && (
-                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-white/70">
+                        <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                           {s.serviceCode}
                         </span>
                       )}
@@ -304,7 +304,7 @@ export function WorkOrderSuggestionsPanel({
                       )}
                     </div>
 
-                    <div className="mt-0.5 text-[11px] text-white/55">
+                    <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                       {s.jobType} •{" "}
                       {typeof s.laborHours === "number"
                         ? `${s.laborHours.toFixed(1)}h`
@@ -315,7 +315,7 @@ export function WorkOrderSuggestionsPanel({
                     </div>
 
                     {s.notes && (
-                      <div className="mt-1 text-[11px] text-white/55">
+                      <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                         {s.notes}
                       </div>
                     )}
@@ -326,7 +326,7 @@ export function WorkOrderSuggestionsPanel({
                       type="button"
                       onClick={() => void addSuggestedJob(s)}
                       disabled={addingKey === key}
-                      className="rounded-md border border-[color:var(--accent-copper-soft,rgba(205,120,64,0.45))] bg-black/25 px-3 py-1 text-[11px] font-medium text-[color:var(--accent-copper-light,#f6d2b3)] hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.18))] disabled:opacity-60"
+                      className="rounded-md border border-[color:var(--accent-copper-soft,rgba(205,120,64,0.45))] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-medium text-[color:var(--accent-copper-light,#f6d2b3)] hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.18))] disabled:opacity-60"
                     >
                       {addingKey === key ? "Adding…" : "Add & send to parts"}
                     </button>

@@ -143,27 +143,27 @@ export default function DeleteOrVoidLineModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4"
       onClick={closeSafely}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-950/90 p-4 shadow-[0_30px_90px_rgba(0,0,0,0.75)] backdrop-blur"
+        className="w-full max-w-lg rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-2 text-sm font-semibold text-white">{title}</div>
+        <div className="mb-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
 
-        <div className="text-[11px] text-neutral-300">
+        <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
           <div className="truncate">
-            <span className="text-neutral-400">Line:</span> {jobLabel}
+            <span className="text-[color:var(--theme-text-secondary)]">Line:</span> {jobLabel}
           </div>
           <div className="mt-1">
-            <span className="text-neutral-400">Status:</span>{" "}
+            <span className="text-[color:var(--theme-text-secondary)]">Status:</span>{" "}
             {(line.status ?? "awaiting").replaceAll("_", " ")}
           </div>
           <div className="mt-1">
-            <span className="text-neutral-400">Parts on line:</span>{" "}
+            <span className="text-[color:var(--theme-text-secondary)]">Parts on line:</span>{" "}
             {allocations.length}
           </div>
 
@@ -177,13 +177,13 @@ export default function DeleteOrVoidLineModal({
 
         <div className="mt-4 space-y-3">
           {/* Mode */}
-          <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Action
             </div>
 
             <div className="mt-2 flex flex-col gap-2">
-              <label className="flex items-start gap-2 text-sm text-neutral-200">
+              <label className="flex items-start gap-2 text-sm text-[color:var(--theme-text-primary)]">
                 <input
                   type="radio"
                   name="mode"
@@ -192,8 +192,8 @@ export default function DeleteOrVoidLineModal({
                   disabled={busy}
                 />
                 <span>
-                  <span className="font-semibold text-white">Void / Cancel</span>
-                  <div className="text-[11px] text-neutral-400">
+                  <span className="font-semibold text-[color:var(--theme-text-primary)]">Void / Cancel</span>
+                  <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                     Recommended. Keeps an audit trail and handles parts safely.
                   </div>
                 </span>
@@ -201,7 +201,7 @@ export default function DeleteOrVoidLineModal({
 
               <label
                 className={[
-                  "flex items-start gap-2 text-sm text-neutral-200",
+                  "flex items-start gap-2 text-sm text-[color:var(--theme-text-primary)]",
                   hardDeleteAllowed ? "" : "opacity-60",
                 ].join(" ")}
                 title={
@@ -218,8 +218,8 @@ export default function DeleteOrVoidLineModal({
                   disabled={!hardDeleteAllowed || busy}
                 />
                 <span>
-                  <span className="font-semibold text-white">Hard delete</span>
-                  <div className="text-[11px] text-neutral-400">
+                  <span className="font-semibold text-[color:var(--theme-text-primary)]">Hard delete</span>
+                  <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                     Only allowed when no parts exist and line isn&apos;t completed.
                   </div>
                 </span>
@@ -229,12 +229,12 @@ export default function DeleteOrVoidLineModal({
 
           {/* Parts disposition */}
           {hasAllocs && (
-            <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Parts handling
               </div>
 
-              <div className="mt-2 flex flex-col gap-2 text-sm text-neutral-200">
+              <div className="mt-2 flex flex-col gap-2 text-sm text-[color:var(--theme-text-primary)]">
                 <label className="flex items-start gap-2">
                   <input
                     type="radio"
@@ -244,10 +244,10 @@ export default function DeleteOrVoidLineModal({
                     disabled={busy}
                   />
                   <span>
-                    <span className="font-semibold text-white">
+                    <span className="font-semibold text-[color:var(--theme-text-primary)]">
                       Return parts to stock
                     </span>
-                    <div className="text-[11px] text-neutral-400">
+                    <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                       Creates a stock move (reason: return_in) and removes allocations.
                     </div>
                   </span>
@@ -262,10 +262,10 @@ export default function DeleteOrVoidLineModal({
                     disabled={busy}
                   />
                   <span>
-                    <span className="font-semibold text-white">
+                    <span className="font-semibold text-[color:var(--theme-text-primary)]">
                       Parts were used / keep consumed
                     </span>
-                    <div className="text-[11px] text-neutral-400">
+                    <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                       Inventory unchanged; removes allocations so customer isn’t charged.
                     </div>
                   </span>
@@ -280,8 +280,8 @@ export default function DeleteOrVoidLineModal({
                     disabled={busy}
                   />
                   <span>
-                    <span className="font-semibold text-white">Scrap</span>
-                    <div className="text-[11px] text-neutral-400">
+                    <span className="font-semibold text-[color:var(--theme-text-primary)]">Scrap</span>
+                    <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                       Same as “keep consumed” for now (inventory unchanged), but records reason.
                     </div>
                   </span>
@@ -291,8 +291,8 @@ export default function DeleteOrVoidLineModal({
           )}
 
           {/* Reason / note */}
-          <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Reason
             </div>
 
@@ -300,7 +300,7 @@ export default function DeleteOrVoidLineModal({
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               disabled={busy}
-              className="mt-2 w-full rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 text-sm text-white outline-none focus:border-[color:var(--accent-copper,#f97316)]/60"
+              className="mt-2 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-[color:var(--accent-copper,#f97316)]/60"
             >
               <option>Customer declined</option>
               <option>Duplicate line</option>
@@ -313,7 +313,7 @@ export default function DeleteOrVoidLineModal({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               disabled={busy}
-              className="mt-2 min-h-[90px] w-full rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 text-sm text-white outline-none focus:border-[color:var(--accent-copper,#f97316)]/60"
+              className="mt-2 min-h-[90px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-[color:var(--accent-copper,#f97316)]/60"
               placeholder="Optional note…"
             />
           </div>
@@ -324,7 +324,7 @@ export default function DeleteOrVoidLineModal({
             type="button"
             onClick={closeSafely}
             disabled={busy}
-            className="rounded-xl border border-white/15 bg-black/40 px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/60 disabled:opacity-60"
+            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-60"
           >
             Cancel
           </button>

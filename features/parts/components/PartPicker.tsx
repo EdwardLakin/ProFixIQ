@@ -409,15 +409,15 @@ export function PartPicker({
   if (!open) return null;
 
   const panel = (
-    <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:p-6">
+    <div className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-6">
           {/* Header */}
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+              <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
                 Select a part
               </div>
               <h3
-                className="mt-1 text-2xl font-semibold text-white"
+                className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]"
                 style={{ fontFamily: "var(--font-blackops), system-ui" }}
               >
                 Part Picker
@@ -426,7 +426,7 @@ export function PartPicker({
 
             <button
               onClick={close}
-              className="rounded-full border border-neutral-700 bg-neutral-950 px-4 py-2 text-sm text-neutral-100 hover:border-orange-500 hover:bg-neutral-900"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-orange-500 hover:bg-[color:var(--theme-surface-panel)]"
               type="button"
             >
               Close
@@ -434,13 +434,13 @@ export function PartPicker({
           </div>
 
           {/* AI Suggestions */}
-          <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-            <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-black/80 via-slate-950/80 to-black/80 px-4 py-2.5">
-              <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+          <div className="mb-4 rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-2.5">
+              <div className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 AI suggestions
               </div>
               {aiLoading ? (
-                <div className="text-xs text-neutral-400">Thinking…</div>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Thinking…</div>
               ) : null}
             </div>
 
@@ -448,18 +448,18 @@ export function PartPicker({
               {aiErr ? (
                 <div className="text-xs text-red-300">{aiErr}</div>
               ) : aiItems.length === 0 ? (
-                <div className="text-xs text-neutral-500">No suggestions.</div>
+                <div className="text-xs text-[color:var(--theme-text-muted)]">No suggestions.</div>
               ) : (
                 <div className="grid gap-2">
                   {aiItems.map((s, i) => (
                     <div
                       key={`${s.sku ?? s.title ?? "s"}-${i}`}
-                      className="rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3"
+                      className="rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="text-sm font-semibold text-neutral-100">{s.title}</div>
-                          <div className="text-[11px] text-neutral-400">
+                          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{s.title}</div>
+                          <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                             {s.sku ? `${s.sku} • ` : ""}
                             Qty {s.quantitySuggestion} • {s.fitmentConfidence.replaceAll("_", " ")}
                           </div>
@@ -481,7 +481,7 @@ export function PartPicker({
                           Review for add
                         </button>
                       </div>
-                      <div className="mt-2 text-[11px] text-neutral-300">{s.reviewRecommendation}</div>
+                      <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">{s.reviewRecommendation}</div>
                       {s.warnings.length > 0 ? (
                         <ul className="mt-2 space-y-1 text-[11px] text-amber-300">
                           {s.warnings.slice(0, 2).map((warning) => (
@@ -493,7 +493,7 @@ export function PartPicker({
                         {s.linkedEvidence.slice(0, 3).map((e) => (
                           <span
                             key={e.id}
-                            className="rounded-full border border-white/10 bg-black/50 px-2 py-0.5 text-[10px] text-neutral-300"
+                            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] text-[color:var(--theme-text-secondary)]"
                           >
                             {e.label}
                           </span>
@@ -509,7 +509,7 @@ export function PartPicker({
           {/* Search */}
           <div className="mb-4">
             <input
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md"
+              className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] placeholder:text-[color:var(--theme-text-muted)] backdrop-blur-md"
               placeholder="Search name, SKU, category…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -519,21 +519,21 @@ export function PartPicker({
           {err ? <div className="mb-3 text-sm text-red-300">{err}</div> : null}
 
           {loading ? (
-            <div className="text-sm text-neutral-400">Searching…</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">Searching…</div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {/* Results */}
-              <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-                <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-black/80 via-slate-950/80 to-black/80 px-4 py-2.5">
-                  <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+              <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
+                <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-2.5">
+                  <div className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Results
                   </div>
-                  <div className="text-[11px] text-neutral-500">{parts.length} shown</div>
+                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">{parts.length} shown</div>
                 </div>
 
                 <div className="max-h-80 overflow-auto p-2">
                   {parts.length === 0 ? (
-                    <div className="p-3 text-sm text-neutral-400">No parts found.</div>
+                    <div className="p-3 text-sm text-[color:var(--theme-text-secondary)]">No parts found.</div>
                   ) : (
                     parts.map((p) => {
                       const pid = p.id as UUID;
@@ -553,17 +553,17 @@ export function PartPicker({
                           }}
                           className={[
                             "block w-full rounded-xl border px-3 py-2 text-left transition",
-                            "border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 hover:bg-black/70",
+                            "border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] hover:bg-[color:var(--theme-surface-overlay)]",
                             active
                               ? "ring-2 ring-[color:var(--accent-copper,#f97316)]/60"
                               : "ring-0",
                           ].join(" ")}
                           type="button"
                         >
-                          <div className="truncate text-sm font-semibold text-neutral-50">
+                          <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                             {summary.name}
                           </div>
-                          <div className="truncate text-xs text-neutral-500">
+                          <div className="truncate text-xs text-[color:var(--theme-text-muted)]">
                             {summary.sku ?? "No SKU"} • {summary.partNumber ? `Part # ${summary.partNumber}` : "No part #"} • {summary.category ?? "Uncategorized"}
                           </div>
                         </button>
@@ -574,23 +574,23 @@ export function PartPicker({
               </div>
 
               {/* Stock & Pricing */}
-              <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-                <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+              <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
+                <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Stock & pricing
                 </div>
 
                 {hasPartsWithoutStockRecords ? (
-                  <div className="mb-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-neutral-400">
+                  <div className="mb-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
                     Parts imported. Stock records not initialized yet.
                   </div>
                 ) : null}
 
                 {!selectedPartId ? (
-                  <div className="text-sm text-neutral-400">
+                  <div className="text-sm text-[color:var(--theme-text-secondary)]">
                     Select a part to view stock.
                   </div>
                 ) : selectedStocks.length === 0 ? (
-                  <div className="text-sm text-neutral-400">
+                  <div className="text-sm text-[color:var(--theme-text-secondary)]">
                     No stock entries yet (you can still use/consume).
                   </div>
                 ) : (
@@ -608,22 +608,22 @@ export function PartPicker({
                             key={s.location_id}
                             className={[
                               "flex items-center justify-between gap-3 rounded-xl border p-3",
-                              "border-[color:var(--metal-border-soft,#1f2937)] bg-black/50",
+                              "border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)]",
                               checked
                                 ? "ring-2 ring-[color:var(--accent-copper,#f97316)]/50"
                                 : "",
                             ].join(" ")}
                           >
                             <div className="min-w-0">
-                              <div className="text-sm font-semibold text-neutral-100">
+                              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                                 {l?.code ?? "LOC"}
                               </div>
-                              <div className="truncate text-xs text-neutral-500">
+                              <div className="truncate text-xs text-[color:var(--theme-text-muted)]">
                                 {l?.name ?? String(s.location_id).slice(0, 6) + "…"}
                               </div>
                             </div>
 
-                            <div className="tabular-nums text-sm font-semibold text-neutral-50">
+                            <div className="tabular-nums text-sm font-semibold text-[color:var(--theme-text-primary)]">
                               {Number(s.qty_available)} avail
                             </div>
 
@@ -642,25 +642,25 @@ export function PartPicker({
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
-                    <div className="text-xs text-neutral-500">Quantity</div>
+                    <div className="text-xs text-[color:var(--theme-text-muted)]">Quantity</div>
                     <input
                       type="text"
                       inputMode="decimal"
                       value={qtyStr}
                       onChange={(e) => setQtyStr(cleanNumericString(e.target.value))}
-                      className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+                      className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                       placeholder="e.g. 1"
                     />
                   </div>
 
                   <div className="grid gap-1.5">
-                    <div className="text-xs text-neutral-500">Location</div>
+                    <div className="text-xs text-[color:var(--theme-text-muted)]">Location</div>
                     <select
                       value={defaultLocId ?? ""}
                       onChange={(e) =>
                         setSelectedLocId((e.target.value || null) as UUID | null)
                       }
-                      className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100"
+                      className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
                     >
                       <option value="">Auto</option>
                       {locs.map((l) => (
@@ -674,20 +674,20 @@ export function PartPicker({
 
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <div className="grid gap-1.5">
-                    <div className="text-xs text-neutral-500">Unit cost</div>
+                    <div className="text-xs text-[color:var(--theme-text-muted)]">Unit cost</div>
                     <input
                       type="text"
                       inputMode="decimal"
                       value={unitCostStr}
                       onChange={(e) => setUnitCostStr(cleanNumericString(e.target.value))}
-                      className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+                      className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                       placeholder="e.g. 45.00"
                     />
                   </div>
 
                   <div className="grid gap-1.5">
-                    <div className="text-xs text-neutral-500">Availability</div>
-                    <div className="flex items-center rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-2 text-sm text-neutral-200">
+                    <div className="text-xs text-[color:var(--theme-text-muted)]">Availability</div>
+                    <div className="flex items-center rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">
                       {availabilityLabel}
                     </div>
                   </div>
@@ -697,7 +697,7 @@ export function PartPicker({
                   <button
                     disabled={!selectedPartId || qtyNum <= 0}
                     onClick={confirmPick}
-                    className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-5 py-2 text-sm font-semibold text-neutral-50 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition hover:border-[color:var(--accent-copper-light,#fed7aa)] hover:bg-[color:var(--accent-copper,#f97316)]/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--accent-copper,#f97316)]/15 to-[color:var(--theme-surface-page)] px-5 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md transition hover:border-[color:var(--accent-copper-light,#fed7aa)] hover:bg-[color:var(--accent-copper,#f97316)]/20 disabled:cursor-not-allowed disabled:opacity-60"
                     type="button"
                   >
                     Use Part
@@ -719,7 +719,7 @@ export function PartPicker({
       }}
     >
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        className="fixed inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
         aria-hidden="true"
         onClick={() => close()}
       />

@@ -119,9 +119,9 @@ async function fetchAllRows<T>(fetchPage: (from: number, to: number) => Promise<
 function KpiCard({ title, value, hint, href }: { title: string; value: string; hint?: string; href?: string }) {
   const content = (
     <div className={`${ui.itemCard} px-4 py-3`}>
-      <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">{title}</p>
-      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-neutral-500">{hint}</p> : null}
+      <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">{title}</p>
+      <p className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{hint}</p> : null}
     </div>
   );
 
@@ -466,7 +466,7 @@ export default function PartsVendorsPage(): JSX.Element {
   }, [directory, readinessFilter, search]);
 
   return (
-    <div className="relative p-5 text-white fade-in md:p-6">
+    <div className="relative p-5 text-[color:var(--theme-text-primary)] fade-in md:p-6">
       <PageShell
         eyebrow="Parts · Vendor operations"
         title="Vendor Command Center"
@@ -497,8 +497,8 @@ export default function PartsVendorsPage(): JSX.Element {
 
           <section className="grid gap-3 lg:grid-cols-2">
             <div className="desktop-panel-soft p-4">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">Vendor readiness / data quality</p>
-              <ul className="mt-3 space-y-2 text-sm text-neutral-200">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Vendor readiness / data quality</p>
+              <ul className="mt-3 space-y-2 text-sm text-[color:var(--theme-text-primary)]">
                 <li className="desktop-item-card flex items-center justify-between px-3 py-2"><span>Vendors missing contact email/phone</span><strong>{loading ? "…" : formatCount(derived.vendorsMissingContact)}</strong></li>
                 <li className="desktop-item-card flex items-center justify-between px-3 py-2"><span>Vendors missing account number/vendor code</span><strong>{loading ? "…" : formatCount(derived.vendorsMissingAccount)}</strong></li>
                 <li className="desktop-item-card flex items-center justify-between px-3 py-2"><span>Vendor records with no linked parts</span><strong>{loading ? "…" : directory.filter((d) => d.linkedPartsCount === 0).length.toLocaleString()}</strong></li>
@@ -509,12 +509,12 @@ export default function PartsVendorsPage(): JSX.Element {
             </div>
 
             <div className="desktop-panel-soft p-4">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">Integration readiness</p>
-              <h2 className="mt-2 text-base font-semibold text-white">Preparation only — live integrations not connected yet.</h2>
-              <ul className="mt-3 space-y-2 text-sm text-neutral-200">
-                <li className="desktop-item-card px-3 py-2"><span className="font-semibold text-neutral-100">PartsTech readiness:</span> {derived.integrationReadiness.partsTech}</li>
-                <li className="desktop-item-card px-3 py-2"><span className="font-semibold text-neutral-100">QuickBooks vendor sync readiness:</span> {derived.integrationReadiness.quickBooks}</li>
-                <li className="desktop-item-card px-3 py-2"><span className="font-semibold text-neutral-100">Supplier API readiness:</span> {derived.integrationReadiness.supplierApi}</li>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Integration readiness</p>
+              <h2 className="mt-2 text-base font-semibold text-[color:var(--theme-text-primary)]">Preparation only — live integrations not connected yet.</h2>
+              <ul className="mt-3 space-y-2 text-sm text-[color:var(--theme-text-primary)]">
+                <li className="desktop-item-card px-3 py-2"><span className="font-semibold text-[color:var(--theme-text-primary)]">PartsTech readiness:</span> {derived.integrationReadiness.partsTech}</li>
+                <li className="desktop-item-card px-3 py-2"><span className="font-semibold text-[color:var(--theme-text-primary)]">QuickBooks vendor sync readiness:</span> {derived.integrationReadiness.quickBooks}</li>
+                <li className="desktop-item-card px-3 py-2"><span className="font-semibold text-[color:var(--theme-text-primary)]">Supplier API readiness:</span> {derived.integrationReadiness.supplierApi}</li>
               </ul>
             </div>
           </section>
@@ -522,8 +522,8 @@ export default function PartsVendorsPage(): JSX.Element {
           <section className="desktop-panel-soft p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">Vendor directory</p>
-                <h2 className="mt-1 text-lg font-semibold text-white">Search and triage vendor records</h2>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Vendor directory</p>
+                <h2 className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">Search and triage vendor records</h2>
               </div>
               <div className="flex w-full flex-wrap gap-2 md:w-auto">
                 <input
@@ -544,9 +544,9 @@ export default function PartsVendorsPage(): JSX.Element {
             </div>
 
             {!loading && vendors.length === 0 ? (
-              <div className="mt-3 rounded-lg border border-dashed border-neutral-700 bg-black/20 p-4 text-sm text-neutral-300">
-                <p className="font-medium text-neutral-100">No vendors found yet.</p>
-                <p className="mt-1 text-neutral-400">Vendors can appear from Parts inventory usage, purchase orders, receiving flows, or import activation later.</p>
+              <div className="mt-3 rounded-lg border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
+                <p className="font-medium text-[color:var(--theme-text-primary)]">No vendors found yet.</p>
+                <p className="mt-1 text-[color:var(--theme-text-secondary)]">Vendors can appear from Parts inventory usage, purchase orders, receiving flows, or import activation later.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link href="/parts/inventory" className={ui.buttonSecondary}>Go to Inventory</Link>
                   <Link href="/parts/po" className={ui.buttonSecondary}>Go to Purchase Orders</Link>
@@ -560,25 +560,25 @@ export default function PartsVendorsPage(): JSX.Element {
                   <details key={row.supplier.id} className="desktop-item-card overflow-hidden">
                     <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-3 py-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">{row.supplier.name}</p>
-                        <p className="text-xs text-neutral-400">
+                        <p className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{row.supplier.name}</p>
+                        <p className="text-xs text-[color:var(--theme-text-secondary)]">
                           Account: {hasValue(row.supplier.account_no) ? row.supplier.account_no : "Not tracked"} · Email: {hasValue(row.supplier.email) ? row.supplier.email : "Not tracked"} · Phone: {hasValue(row.supplier.phone) ? row.supplier.phone : "Not tracked"}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className={`rounded-md border px-2 py-1 ${readinessTone(row.readiness)}`}>{row.readiness}</span>
-                        <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">Parts: {row.linkedPartsCount}</span>
-                        <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">Open POs: {row.openPoCount}</span>
-                        <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">Pending receive: {row.pendingReceivingCount}</span>
-                        <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">Last activity: {formatDate(row.lastActivityAt)}</span>
+                        <span className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1">Parts: {row.linkedPartsCount}</span>
+                        <span className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1">Open POs: {row.openPoCount}</span>
+                        <span className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1">Pending receive: {row.pendingReceivingCount}</span>
+                        <span className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1">Last activity: {formatDate(row.lastActivityAt)}</span>
                       </div>
                     </summary>
 
-                    <div className="border-t border-white/10 bg-black/20 px-3 py-3 text-sm text-neutral-300">
+                    <div className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]">
                       <div className="grid gap-3 lg:grid-cols-2">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">Overview</p>
-                          <ul className="mt-2 space-y-1 text-xs text-neutral-300">
+                          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">Overview</p>
+                          <ul className="mt-2 space-y-1 text-xs text-[color:var(--theme-text-secondary)]">
                             <li>Vendor ID: {row.supplier.id}</li>
                             <li>Linked parts (detected): {row.linkedPartsCount}</li>
                             <li>Open purchase orders: {row.openPoCount}</li>
@@ -586,7 +586,7 @@ export default function PartsVendorsPage(): JSX.Element {
                           </ul>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-neutral-400">Detected issues</p>
+                          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">Detected issues</p>
                           {row.issues.length === 0 ? (
                             <p className="mt-2 text-xs text-emerald-200">No deterministic issues detected.</p>
                           ) : (
@@ -609,8 +609,8 @@ export default function PartsVendorsPage(): JSX.Element {
           </section>
 
           <section className="desktop-panel-soft p-4">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">AI assistant preparation</p>
-            <h2 className="mt-2 text-base font-semibold text-white">Ready for assistant review · Future AI-assisted cleanup</h2>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">AI assistant preparation</p>
+            <h2 className="mt-2 text-base font-semibold text-[color:var(--theme-text-primary)]">Ready for assistant review · Future AI-assisted cleanup</h2>
             <ul className="mt-3 grid gap-2 text-sm md:grid-cols-2">
               <li className="desktop-item-card flex items-center justify-between px-3 py-2"><span>Duplicate vendor candidates</span><strong>{loading ? "…" : formatCount(derived.duplicateVendorCandidates)}</strong></li>
               <li className="desktop-item-card flex items-center justify-between px-3 py-2"><span>Parts missing vendor link</span><strong>{loading ? "…" : formatCount(derived.partsMissingVendorLink)}</strong></li>
@@ -629,7 +629,7 @@ export default function PartsVendorsPage(): JSX.Element {
             </section>
           ) : null}
 
-          <div className="text-xs text-neutral-500">Shop scope: {shopId || "Not resolved"}</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">Shop scope: {shopId || "Not resolved"}</div>
         </div>
       </PageShell>
     </div>

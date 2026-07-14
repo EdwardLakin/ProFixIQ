@@ -231,11 +231,11 @@ export default function InspectionModal({
   const bodyHeight = compact ? "max-h-[80vh]" : "max-h-[92vh]";
 
   const cardBase =
-    "rounded-2xl border border-slate-700/70 " +
-    "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
-    "shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+    "rounded-2xl border border-[color:var(--theme-border-soft)] " +
+    "bg-[var(--theme-gradient-panel)] " +
+    "shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 
-  const innerShell = "rounded-2xl border border-slate-700/70 bg-slate-950/95";
+  const innerShell = "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]";
 
   return (
     <Dialog
@@ -245,14 +245,14 @@ export default function InspectionModal({
       className="fixed inset-0 z-[300] flex items-center justify-center px-2 py-6 sm:px-4"
     >
       {/* clickable dimmed backdrop */}
-      <div className="fixed inset-0 z-[290] bg-black/70 backdrop-blur-sm" aria-hidden />
+      <div className="fixed inset-0 z-[290] bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" aria-hidden />
 
       <Dialog.Panel
         className={`relative z-[310] mx-auto w-full ${panelWidth} ${cardBase}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 rounded-t-2xl border-b border-slate-700/80 bg-slate-950/95 px-4 py-2.5">
+        <div className="flex items-start justify-between gap-3 rounded-t-2xl border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-2.5">
           <div className="space-y-1">
             <Dialog.Title className="text-base font-semibold tracking-wide text-foreground sm:text-lg">
               {title}
@@ -272,14 +272,14 @@ export default function InspectionModal({
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] text-foreground hover:border-[rgba(184,115,51,0.9)] hover:bg-slate-900/80"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-[11px] text-foreground hover:border-[rgba(184,115,51,0.9)] hover:bg-[color:var(--theme-surface-panel)]"
             >
               {compact ? "Expand" : "Shrink"}
             </button>
             <button
               type="button"
               onClick={close}
-              className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-muted-foreground hover:bg-slate-800"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-1 text-xs text-muted-foreground hover:bg-[color:var(--theme-surface-panel-strong)]"
               aria-label="Close inspection"
             >
               ✕
@@ -305,7 +305,7 @@ export default function InspectionModal({
           )}
 
           {!derived.screenTemplate ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-6 text-center text-sm text-muted-foreground">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-6 text-center text-sm text-muted-foreground">
               No inspection selected.
             </div>
           ) : (
@@ -315,11 +315,11 @@ export default function InspectionModal({
           )}
 
           {/* Footer actions */}
-          <div className="sticky bottom-0 mt-4 flex flex-col gap-2 border-t border-slate-800 bg-slate-950/95 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="sticky bottom-0 mt-4 flex flex-col gap-2 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] pt-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-muted-foreground hover:border-[rgba(184,115,51,0.9)] hover:text-foreground hover:bg-slate-900/80 sm:text-[11px]"
+              className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-xs text-muted-foreground hover:border-[rgba(184,115,51,0.9)] hover:text-foreground hover:bg-[color:var(--theme-surface-panel)] sm:text-[11px]"
             >
               {compact ? "Expand view" : "Shrink view"}
             </button>

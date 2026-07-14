@@ -44,12 +44,12 @@ export default function ReviewsPage() {
   }, [supabase]);
 
   if (loading) {
-    return <div className="text-sm text-neutral-400">Loading…</div>;
+    return <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>;
   }
 
   if (!shopId) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-neutral-300">
+      <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
         You’re not attached to a shop yet.
       </div>
     );
@@ -57,25 +57,25 @@ export default function ReviewsPage() {
 
   return (
     <div className="w-full space-y-6">
-      <div className="rounded-3xl border border-white/10 bg-black/20 p-6 backdrop-blur-xl">
-        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+      <div className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 backdrop-blur-xl">
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
           Reviews
         </div>
         <h1
-          className="mt-2 text-2xl text-white md:text-3xl"
+          className="mt-2 text-2xl text-[color:var(--theme-text-primary)] md:text-3xl"
           style={{ fontFamily: "var(--font-blackops)" }}
         >
           Share feedback. Build trust.
         </h1>
-        <p className="mt-2 max-w-3xl text-sm text-neutral-300">
+        <p className="mt-2 max-w-3xl text-sm text-[color:var(--theme-text-secondary)]">
           Reviews help us improve ProFixIQ and help other shops understand what it’s like in the bay.
         </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ReviewForm shopId={shopId} />
-        <div className="rounded-3xl border border-white/10 bg-black/15 p-6 backdrop-blur-xl">
-          <div className="text-sm font-semibold text-white">Recent reviews</div>
+        <div className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 backdrop-blur-xl">
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Recent reviews</div>
           <div className="mt-4">
             <ReviewsList shopId={shopId} />
           </div>

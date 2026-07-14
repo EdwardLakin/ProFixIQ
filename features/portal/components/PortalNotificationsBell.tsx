@@ -81,7 +81,7 @@ export default function PortalNotificationsBell() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/18 bg-black/40 text-xs text-neutral-100 hover:bg-black/70"
+        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
         aria-label="Notifications"
       >
         <span aria-hidden>🔔</span>
@@ -93,9 +93,9 @@ export default function PortalNotificationsBell() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-white/15 bg-black/95 p-3 text-xs text-neutral-100 shadow-[0_18px_50px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+        <div className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Notifications
             </div>
             <button
@@ -103,7 +103,7 @@ export default function PortalNotificationsBell() {
               onClick={() => void markAllRead()}
               disabled={unreadCount === 0}
               className={classNames(
-                "text-[0.7rem] text-neutral-300 hover:text-white",
+                "text-[0.7rem] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]",
                 unreadCount === 0 && "opacity-40",
               )}
             >
@@ -111,9 +111,9 @@ export default function PortalNotificationsBell() {
             </button>
           </div>
 
-          {loading ? <div className="py-3 text-neutral-500">Loading…</div> : null}
+          {loading ? <div className="py-3 text-[color:var(--theme-text-muted)]">Loading…</div> : null}
           {!loading && items.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/10 bg-black/40 px-3 py-3 text-[0.7rem] text-neutral-400">
+            <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
               You do not have any notifications yet.
             </div>
           ) : null}
@@ -127,21 +127,21 @@ export default function PortalNotificationsBell() {
                   className={classNames(
                     "w-full rounded-xl border px-3 py-2 text-left",
                     item.read_at
-                      ? "border-white/8 bg-black/30"
+                      ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
                       : "border-[color:var(--accent-copper,#c57a4a)]/40 bg-[color:var(--accent-copper,#c57a4a)]/10",
                   )}
                 >
-                  <div className="text-[0.65rem] uppercase tracking-[0.15em] text-neutral-500">
+                  <div className="text-[0.65rem] uppercase tracking-[0.15em] text-[color:var(--theme-text-muted)]">
                     {item.kind?.replaceAll("_", " ") ?? "Update"}
                   </div>
-                  <div className="mt-0.5 text-[0.8rem] font-semibold text-neutral-100">
+                  <div className="mt-0.5 text-[0.8rem] font-semibold text-[color:var(--theme-text-primary)]">
                     {item.title ?? "Notification"}
                   </div>
                   {item.body ? (
-                    <div className="mt-0.5 text-[0.75rem] text-neutral-300">{item.body}</div>
+                    <div className="mt-0.5 text-[0.75rem] text-[color:var(--theme-text-secondary)]">{item.body}</div>
                   ) : null}
                   {item.created_at ? (
-                    <div className="mt-1 text-[0.65rem] text-neutral-500">
+                    <div className="mt-1 text-[0.65rem] text-[color:var(--theme-text-muted)]">
                       {new Date(item.created_at).toLocaleString()}
                     </div>
                   ) : null}

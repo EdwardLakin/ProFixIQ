@@ -81,10 +81,10 @@ const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor", "lead_hand
 const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 const INPUT_DARK =
-  "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
+  "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
 
 const SELECT_DARK =
-  "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
+  "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
 
 function isStatusKey(x: string): x is StatusKey {
   return (
@@ -157,7 +157,7 @@ function stageAccent(status: string | null | undefined): {
       badge:
         "border-sky-400/60 bg-sky-500/10 text-sky-100",
       border: "border-sky-500/30",
-      progress: "bg-[linear-gradient(90deg,#0ea5e9,#c57a4a)]",
+      progress: "bg-[var(--theme-gradient-panel)]",
     };
   }
 
@@ -242,7 +242,7 @@ function techRollupChip(rollup: TechRollup): string {
   if (rollup === "completed") {
     return "border-emerald-400/70 bg-emerald-500/10 text-emerald-100";
   }
-  return "border-slate-400/50 bg-slate-500/10 text-slate-100";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
 }
 
 function priorityLabel(priority: number | null | undefined): string | null {
@@ -261,9 +261,9 @@ function priorityChip(priority: number | null | undefined): string {
     return "border-sky-500/50 bg-sky-500/15 text-sky-100";
   }
   if (priority === 4) {
-    return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-slate-300";
+    return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]";
   }
-  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-300";
+  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]";
 }
 
 export default function WorkOrdersView(): JSX.Element {
@@ -839,40 +839,40 @@ export default function WorkOrdersView(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-foreground">
-      <section className="overflow-hidden rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_22px_52px_rgba(2,6,23,0.58)]">
-        <div className="bg-[linear-gradient(180deg,rgba(56,189,248,0.1),rgba(15,23,42,0.02))] p-4 md:p-5">
+      <section className="overflow-hidden rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)]">
+        <div className="bg-[var(--theme-gradient-panel)] p-4 md:p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
               Board
             </div>
             <h1
-              className="mt-1 text-2xl text-white md:text-3xl"
+              className="mt-1 text-2xl text-[color:var(--theme-text-primary)] md:text-3xl"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
               Work Orders
             </h1>
-            <p className="mt-2 text-sm text-neutral-300">
+            <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
               Live repair jobs across inspection, approval, parts, technician work, and invoicing.
             </p>
 
             {!loading && !err ? (
               <div className="mt-3 flex flex-wrap gap-2">
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                  Active: <span className="text-white">{activeCount}</span>
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                  Active: <span className="text-[color:var(--theme-text-primary)]">{activeCount}</span>
                 </div>
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
                   Awaiting approval:{" "}
-                  <span className="text-white">{awaitingApprovalCount}</span>
+                  <span className="text-[color:var(--theme-text-primary)]">{awaitingApprovalCount}</span>
                 </div>
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                  Waiters: <span className="text-white">{waiterCount}</span>
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                  Waiters: <span className="text-[color:var(--theme-text-primary)]">{waiterCount}</span>
                 </div>
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                  Urgent: <span className="text-white">{urgentCount}</span>
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                  Urgent: <span className="text-[color:var(--theme-text-primary)]">{urgentCount}</span>
                 </div>
-                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                  Total: <span className="text-white">{total}</span>
+                <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                  Total: <span className="text-[color:var(--theme-text-primary)]">{total}</span>
                 </div>
               </div>
             ) : null}
@@ -888,7 +888,7 @@ export default function WorkOrdersView(): JSX.Element {
 
             <Link
               href="/work-orders/create"
-              className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3.5 py-1.5 text-sm font-semibold text-[color:var(--theme-text-primary,#E2E8F0)] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
+              className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3.5 py-1.5 text-sm font-semibold text-[color:var(--theme-text-primary,var(--theme-text-primary))] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
             >
               <span className="mr-1.5 text-base leading-none">+</span>
               New work order
@@ -898,11 +898,11 @@ export default function WorkOrdersView(): JSX.Element {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur shadow-[0_16px_36px_rgba(2,6,23,0.5)]">
+      <section className="rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 backdrop-blur shadow-[var(--theme-shadow-medium)]">
         {workforceDrilldownActive ? (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-sm text-sky-100">
             <span>Filtered from Workforce Overview: Unassigned active jobs</span>
-            <Link href="/work-orders/view" className="underline underline-offset-2 hover:text-white">
+            <Link href="/work-orders/view" className="underline underline-offset-2 hover:text-[color:var(--theme-text-primary)]">
               Clear filter
             </Link>
           </div>
@@ -944,7 +944,7 @@ export default function WorkOrdersView(): JSX.Element {
               void load();
               setAssignVersion((v) => v + 1);
             }}
-            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
+            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
           >
             Refresh
           </button>
@@ -967,7 +967,7 @@ export default function WorkOrdersView(): JSX.Element {
           ))}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-neutral-300">
+        <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
           {workforceDrilldownActive ? "No unassigned active jobs right now." : "No work orders match your current filters."}
         </div>
       ) : (
@@ -1023,16 +1023,16 @@ export default function WorkOrdersView(): JSX.Element {
             return (
               <div
                 key={r.id}
-                className={`rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)] ${accent.border}`}
+                className={`rounded-2xl border bg-[color:var(--desktop-item-bg)] p-4 backdrop-blur transition hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))] ${accent.border}`}
                 style={{
                   boxShadow:
-                    "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 24px rgba(0,0,0,0.22)",
+                    "0 0 0 1px rgba(255,255,255,0.04) inset, 0 0 24px var(--theme-surface-inset)",
                 }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-extrabold text-white">
+                      <span className="text-sm font-extrabold text-[color:var(--theme-text-primary)]">
                         {displayId}
                       </span>
 
@@ -1079,32 +1079,32 @@ export default function WorkOrdersView(): JSX.Element {
                       ) : null}
                     </div>
 
-                    <div className="mt-2 truncate text-sm font-semibold text-neutral-200">
+                    <div className="mt-2 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {customerName || "No customer"}
                     </div>
 
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--theme-text-secondary)]">
                       {vehicleLabel ? <span>{vehicleLabel}</span> : <span>No vehicle</span>}
                       {plate ? <span>({plate})</span> : null}
                     </div>
                   </div>
 
                   <div className="shrink-0 text-right">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                       Created
                     </div>
-                    <div className="mt-1 text-sm font-bold text-neutral-200">
+                    <div className="mt-1 text-sm font-bold text-[color:var(--theme-text-primary)]">
                       {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-4">
-                  <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                  <div className="flex items-center justify-between text-[11px] text-[color:var(--theme-text-secondary)]">
                     <span>Workflow health</span>
                     <span>{progressPct}%</span>
                   </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8">
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
                     <div
                       className={`h-full rounded-full ${accent.progress}`}
                       style={{ width: `${progressPct}%` }}
@@ -1128,7 +1128,7 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Link
                     href={href}
-                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
+                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
                   >
                     Open
                   </Link>
@@ -1177,7 +1177,7 @@ export default function WorkOrdersView(): JSX.Element {
                       className={
                         reviewedOk
                           ? "rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
-                          : "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-500 opacity-60"
+                          : "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-muted)] opacity-60"
                       }
                     >
                       Invoice
@@ -1214,7 +1214,7 @@ export default function WorkOrdersView(): JSX.Element {
                       </button>
                     ) : (
                       <div className="space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                           Assign unassigned lines
                         </div>
 
@@ -1240,7 +1240,7 @@ export default function WorkOrdersView(): JSX.Element {
                               event.stopPropagation();
                               void handleAssignAll(r.id);
                             }}
-                            className="rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary,#E2E8F0)] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
+                            className="rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.35),rgba(197,122,74,0.18))] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary,var(--theme-text-primary))] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65"
                           >
                             Apply
                           </button>
@@ -1251,7 +1251,7 @@ export default function WorkOrdersView(): JSX.Element {
                               setAssigningFor(null);
                               setSelectedTechId("");
                             }}
-                            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
+                            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
                           >
                             Cancel
                           </button>

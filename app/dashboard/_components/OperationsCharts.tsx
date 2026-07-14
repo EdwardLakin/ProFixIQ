@@ -14,11 +14,11 @@ export function ShopLoadChart({ data }: { data: Array<{ label: string; count: nu
             </linearGradient>
           </defs>
           <CartesianGrid stroke="rgba(148,163,184,0.2)" strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: "#94A3B8", fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "#94A3B8", fontSize: 10 }} axisLine={false} tickLine={false} />
+          <XAxis dataKey="label" tick={{ fill: "var(--theme-text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: "var(--theme-text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
           <Tooltip
             contentStyle={{
-              background: "#050b18",
+              background: "var(--theme-surface-inset)",
               border: "1px solid rgba(148,163,184,0.25)",
               borderRadius: "10px",
             }}

@@ -239,12 +239,12 @@ export default function FleetUnitNewPage(): JSX.Element {
       title="Add fleet unit"
       description="Enroll a vehicle into a fleet program so it appears in the tower, pre-trips, and service requests."
     >
-      <div className="space-y-6 text-white">
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl sm:p-6">
+      <div className="space-y-6 text-[color:var(--theme-text-primary)]">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl sm:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">Fleet & vehicle</h2>
-              <p className="text-xs text-neutral-400">
+              <p className="text-xs text-[color:var(--theme-text-secondary)]">
                 Choose the fleet program and either link an existing vehicle or
                 create a new asset.
               </p>
@@ -252,7 +252,7 @@ export default function FleetUnitNewPage(): JSX.Element {
             <button
               type="button"
               onClick={() => router.push("/fleet/units")}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/55"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)]"
             >
               <span aria-hidden>←</span>
               Back to units
@@ -260,7 +260,7 @@ export default function FleetUnitNewPage(): JSX.Element {
           </div>
 
           {loading ? (
-            <p className="text-sm text-neutral-400">Loading fleet data…</p>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading fleet data…</p>
           ) : fleets.length === 0 ? (
             <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-3 text-xs text-amber-100">
               No fleet programs found for this shop. Create a fleet in the
@@ -274,7 +274,7 @@ export default function FleetUnitNewPage(): JSX.Element {
             </div>
           )}
           {success && (
-            <div className="mt-3 rounded-xl border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100 shadow-[0_0_18px_rgba(6,95,70,0.45)]">
+            <div className="mt-3 rounded-xl border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100 shadow-[var(--theme-shadow-medium)]">
               {success}
             </div>
           )}
@@ -282,12 +282,12 @@ export default function FleetUnitNewPage(): JSX.Element {
           <div className="mt-4 space-y-5 opacity-100">
             {/* Fleet selection */}
             <div className="space-y-1 text-sm">
-              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Fleet program
               </label>
               <select
                 disabled={disabled}
-                className="w-full rounded-lg border border-white/12 bg-black/70 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                 value={fleetId}
                 onChange={(e) => setFleetId(e.target.value)}
               >
@@ -297,24 +297,24 @@ export default function FleetUnitNewPage(): JSX.Element {
                   </option>
                 ))}
               </select>
-              <p className="text-[11px] text-neutral-500">
+              <p className="text-[11px] text-[color:var(--theme-text-muted)]">
                 Units enrolled here show up together in the Fleet Control Tower.
               </p>
             </div>
 
             {/* Mode toggle */}
             <div className="space-y-2 text-sm">
-              <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+              <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Vehicle mode
               </label>
-              <div className="inline-flex rounded-full border border-white/14 bg-black/70 p-1 text-[11px]">
+              <div className="inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-1 text-[11px]">
                 <button
                   type="button"
                   onClick={() => setMode("new_vehicle")}
                   className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
                     mode === "new_vehicle"
-                      ? "bg-sky-400 text-slate-950 font-semibold shadow-[0_0_18px_rgba(56,189,248,0.35)]"
-                      : "text-neutral-300 hover:bg-black/60"
+                      ? "bg-sky-400 text-[color:var(--theme-text-primary)] font-semibold shadow-[0_0_18px_rgba(56,189,248,0.35)]"
+                      : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)]"
                   }`}
                 >
                   New vehicle
@@ -324,8 +324,8 @@ export default function FleetUnitNewPage(): JSX.Element {
                   onClick={() => setMode("existing_vehicle")}
                   className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
                     mode === "existing_vehicle"
-                      ? "bg-sky-400 text-slate-950 font-semibold shadow-[0_0_18px_rgba(56,189,248,0.35)]"
-                      : "text-neutral-300 hover:bg-black/60"
+                      ? "bg-sky-400 text-[color:var(--theme-text-primary)] font-semibold shadow-[0_0_18px_rgba(56,189,248,0.35)]"
+                      : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)]"
                   }`}
                 >
                   Existing vehicle
@@ -336,17 +336,17 @@ export default function FleetUnitNewPage(): JSX.Element {
             {/* Existing vehicle ID */}
             {mode === "existing_vehicle" && (
               <div className="space-y-1 text-sm">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                   Existing Vehicle ID
                 </label>
                 <input
                   disabled={disabled}
-                  className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder="Paste vehicles.id"
                   value={existingVehicleId}
                   onChange={(e) => setExistingVehicleId(e.target.value)}
                 />
-                <p className="text-[11px] text-neutral-500">
+                <p className="text-[11px] text-[color:var(--theme-text-muted)]">
                   Later you can replace this with a VIN / plate search picker.
                 </p>
               </div>
@@ -357,36 +357,36 @@ export default function FleetUnitNewPage(): JSX.Element {
               <div className="space-y-3 text-sm">
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                       Unit #
                     </label>
                     <input
                       disabled={disabled}
-                      className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="Truck / trailer ID"
                       value={unitNumber}
                       onChange={(e) => setUnitNumber(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                       Plate
                     </label>
                     <input
                       disabled={disabled}
-                      className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="License plate"
                       value={plate}
                       onChange={(e) => setPlate(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                       VIN
                     </label>
                     <input
                       disabled={disabled}
-                      className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="VIN"
                       value={vin}
                       onChange={(e) => setVin(e.target.value)}
@@ -396,12 +396,12 @@ export default function FleetUnitNewPage(): JSX.Element {
 
                 <div className="grid gap-3 sm:grid-cols-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                       Year
                     </label>
                     <input
                       disabled={disabled}
-                      className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="YYYY"
                       inputMode="numeric"
                       value={year}
@@ -409,24 +409,24 @@ export default function FleetUnitNewPage(): JSX.Element {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                       Make
                     </label>
                     <input
                       disabled={disabled}
-                      className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="Make"
                       value={make}
                       onChange={(e) => setMake(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1 sm:col-span-2">
-                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                    <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                       Model
                     </label>
                     <input
                       disabled={disabled}
-                      className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                       placeholder="Model / trim"
                       value={model}
                       onChange={(e) => setModel(e.target.value)}
@@ -439,12 +439,12 @@ export default function FleetUnitNewPage(): JSX.Element {
             {/* Fleet meta */}
             <div className="grid gap-3 sm:grid-cols-2 text-sm">
               <div className="space-y-1">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                   Display nickname
                 </label>
                 <input
                   disabled={disabled}
-                  className="w-full rounded-lg border border-white/10 bg-[var(--glass-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[var(--glass-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                   placeholder="Optional label (e.g. Linehaul 12)"
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
@@ -452,13 +452,13 @@ export default function FleetUnitNewPage(): JSX.Element {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-300">
+                <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                   Custom intervals (optional)
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   <input
                     disabled={disabled}
-                    className="w-full rounded-lg border border-white/12 bg-black/70 px-2 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="km"
                     inputMode="numeric"
                     value={customKm}
@@ -466,7 +466,7 @@ export default function FleetUnitNewPage(): JSX.Element {
                   />
                   <input
                     disabled={disabled}
-                    className="w-full rounded-lg border border-white/12 bg-black/70 px-2 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="hours"
                     inputMode="numeric"
                     value={customHours}
@@ -474,14 +474,14 @@ export default function FleetUnitNewPage(): JSX.Element {
                   />
                   <input
                     disabled={disabled}
-                    className="w-full rounded-lg border border-white/12 bg-black/70 px-2 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/40 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="days"
                     inputMode="numeric"
                     value={customDays}
                     onChange={(e) => setCustomDays(e.target.value)}
                   />
                 </div>
-                <p className="text-[11px] text-neutral-500">
+                <p className="text-[11px] text-[color:var(--theme-text-muted)]">
                   Used later to drive next inspection dates and reminders.
                 </p>
               </div>
@@ -492,7 +492,7 @@ export default function FleetUnitNewPage(): JSX.Element {
                 type="button"
                 disabled={disabled || saving}
                 onClick={() => void handleSubmit()}
-                className="inline-flex items-center justify-center rounded-full bg-[linear-gradient(to_right,#0EA5E9,#38BDF8)] px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_26px_rgba(56,189,248,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-full bg-[var(--theme-gradient-panel)] px-5 py-2.5 text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_26px_rgba(56,189,248,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {saving ? "Saving…" : "Add fleet unit"}
               </button>

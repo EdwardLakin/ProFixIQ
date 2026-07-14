@@ -14,7 +14,7 @@ export function ReviewSubmitBlock(props: {
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ fontWeight: 800 }}>Review</div>
 
-      <div style={{ padding: 12, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)" }}>
+      <div style={{ padding: 12, borderRadius: 12, border: "1px solid var(--theme-surface-inset)" }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>{summary.title}</div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -24,7 +24,7 @@ export function ReviewSubmitBlock(props: {
               style={{
                 padding: "6px 10px",
                 borderRadius: 999,
-                border: "1px solid rgba(0,0,0,0.12)",
+                border: "1px solid var(--theme-surface-inset)",
                 fontSize: 12,
               }}
             >

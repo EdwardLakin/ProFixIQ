@@ -55,7 +55,7 @@ export default function MobileMessagesPage() {
 
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
-          <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-neutral-200">
+          <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
             Messages
           </h1>
 
@@ -64,10 +64,10 @@ export default function MobileMessagesPage() {
             onClick={() => router.push("/mobile/messages/new")}
             className="
               rounded-full border border-[var(--accent-copper-soft)]
-              bg-black/60 px-3 py-1 text-[0.7rem] font-semibold
+              bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.7rem] font-semibold
               text-[var(--accent-copper-soft)]
-              shadow-[0_10px_20px_rgba(0,0,0,0.65)]
-              hover:bg-black/80 hover:border-[var(--accent-copper)]
+              shadow-[var(--theme-shadow-medium)]
+              hover:bg-[color:var(--theme-surface-overlay)] hover:border-[var(--accent-copper)]
             "
           >
             New chat
@@ -83,12 +83,12 @@ export default function MobileMessagesPage() {
 
         {/* Loading */}
         {loading ? (
-          <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] px-3 py-4 text-sm text-neutral-300">
+          <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
             Loading conversations…
           </div>
         ) : rows.length === 0 ? (
           // Empty state
-          <div className="metal-card rounded-xl border border-dashed border-[var(--metal-border-soft)] px-3 py-6 text-sm text-neutral-400 text-center">
+          <div className="metal-card rounded-xl border border-dashed border-[var(--metal-border-soft)] px-3 py-6 text-sm text-[color:var(--theme-text-secondary)] text-center">
             No conversations yet.
             <br />
             Tap <span className="text-[var(--accent-copper-soft)]">New chat</span> to begin.
@@ -122,7 +122,7 @@ export default function MobileMessagesPage() {
                   key={conversation.id}
                   href={href}
                   className="
-                    metal-card relative flex items-start gap-3 rounded-xl 
+                    metal-card relative flex items-start gap-3 rounded-xl
                     border border-[var(--metal-border-soft)]
                     bg-[var(--metal-surface)] px-3 py-3
                     hover:border-[var(--accent-copper-soft)]
@@ -143,7 +143,7 @@ export default function MobileMessagesPage() {
                   <div className="
                     mt-1 flex h-8 w-8 shrink-0 items-center justify-center
                     rounded-full border border-[var(--accent-copper-soft)]
-                    bg-black/50 text-[0.7rem] font-semibold text-[var(--accent-copper-soft)]
+                    bg-[color:var(--theme-surface-inset)] text-[0.7rem] font-semibold text-[var(--accent-copper-soft)]
                     shadow-[0_0_8px_rgba(255,125,0,0.25)]
                   ">
                     {title.slice(0, 1).toUpperCase()}
@@ -152,7 +152,7 @@ export default function MobileMessagesPage() {
                   {/* Body */}
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="truncate font-semibold text-neutral-50">
+                      <span className="truncate font-semibold text-[color:var(--theme-text-primary)]">
                         {title}
                       </span>
 
@@ -161,7 +161,7 @@ export default function MobileMessagesPage() {
                           className="
                             inline-flex h-5 min-w-[20px] items-center justify-center
                             rounded-full bg-[var(--accent-copper-soft)]
-                            px-1 text-[0.65rem] font-bold text-black
+                            px-1 text-[0.65rem] font-bold text-[color:var(--theme-text-on-accent)]
                           "
                         >
                           {unread_count}
@@ -169,12 +169,12 @@ export default function MobileMessagesPage() {
                       )}
                     </div>
 
-                    <p className="truncate text-[0.75rem] text-neutral-300">
+                    <p className="truncate text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                       {preview}
                     </p>
                   </div>
 
-                  <span className="shrink-0 pt-1 text-[0.65rem] text-neutral-500">
+                  <span className="shrink-0 pt-1 text-[0.65rem] text-[color:var(--theme-text-muted)]">
                     {when}
                   </span>
                 </Link>

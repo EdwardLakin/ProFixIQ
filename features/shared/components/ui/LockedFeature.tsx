@@ -74,8 +74,8 @@ export default function LockedFeature({
   return (
     <div
       className={clsx(
-        "rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(184,115,51,0.10),rgba(0,0,0,0.82))] p-6",
-        "text-center shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl",
+        "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] p-6",
+        "text-center shadow-[var(--theme-shadow-medium)] backdrop-blur-xl",
         "flex flex-col items-center gap-4",
         className,
       )}
@@ -85,7 +85,7 @@ export default function LockedFeature({
         <span className="text-lg font-semibold">{copy.title}</span>
       </div>
 
-      <p className="max-w-md text-sm text-neutral-300">{copy.body}</p>
+      <p className="max-w-md text-sm text-[color:var(--theme-text-secondary)]">{copy.body}</p>
 
       {showSetupButton && reason === "setup_required" ? (
         <div className="mt-1 flex flex-wrap justify-center gap-3">

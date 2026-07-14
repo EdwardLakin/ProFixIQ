@@ -290,7 +290,7 @@ function ApprovalsList(): JSX.Element {
 
   if (rows.length === 0) {
     return (
-      <div className="rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-neutral-400">
+      <div className="rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
         No work orders waiting for approval.
       </div>
     );
@@ -302,21 +302,21 @@ function ApprovalsList(): JSX.Element {
         <div className="border-b border-[color:var(--desktop-border)] px-5 py-4 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
                 Work Orders
               </div>
-              <h1 className="mt-1 text-2xl font-semibold text-white">Quote Review Queue</h1>
-              <p className="mt-1 text-sm text-neutral-400">Triage records ready for advisor review.</p>
+              <h1 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">Quote Review Queue</h1>
+              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Triage records ready for advisor review.</p>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <div className={ui.pill}>
-                  Total: <span className="text-white">{rows.length}</span>
+                  Total: <span className="text-[color:var(--theme-text-primary)]">{rows.length}</span>
                 </div>
                 <div className={`${ui.pill} border-sky-500/30 bg-sky-500/10 text-sky-100`}>
-                  Waiting for parts: <span className="text-white">{waitingCount}</span>
+                  Waiting for parts: <span className="text-[color:var(--theme-text-primary)]">{waitingCount}</span>
                 </div>
                 <div className={`${ui.pill} border-emerald-500/30 bg-emerald-500/10 text-emerald-100`}>
-                  Quotes ready: <span className="text-white">{readyCount}</span>
+                  Quotes ready: <span className="text-[color:var(--theme-text-primary)]">{readyCount}</span>
                 </div>
               </div>
             </div>
@@ -379,7 +379,7 @@ function ApprovalsList(): JSX.Element {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-lg font-semibold text-white">
+                      <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
                         {w.custom_id ? w.custom_id : `#${w.id.slice(0, 8)}`}
                       </div>
 
@@ -393,19 +393,19 @@ function ApprovalsList(): JSX.Element {
                       </StatusBadge>
                     </div>
 
-                    <div className="mt-2 truncate text-sm font-semibold text-white">
+                    <div className="mt-2 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {w.shops?.name || "Work order"}
                     </div>
-                    <div className="mt-1 text-xs text-neutral-400">
+                    <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                       {formatDecisionStatus({ workStatus: w.status }).label}
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                       Created
                     </div>
-                    <div className="mt-1 text-sm font-semibold text-white">
+                    <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {w.created_at ? new Date(w.created_at).toLocaleDateString() : "—"}
                     </div>
                   </div>
@@ -413,11 +413,11 @@ function ApprovalsList(): JSX.Element {
               </div>
 
               <div className="px-4 py-3">
-                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   <span>Decision progress</span>
                   <span>{progressValue}%</span>
                 </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
                   <div
                     className={`h-full rounded-full ${accent.progress}`}
                     style={{ width: `${progressValue}%` }}
@@ -426,25 +426,25 @@ function ApprovalsList(): JSX.Element {
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <div className="desktop-panel-soft px-3 py-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                       Labor
                     </div>
-                    <div className="mt-1 text-sm font-semibold text-white">
+                    <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {typeof w.labor_hours === "number" ? `${w.labor_hours.toFixed(1)}h` : "—"}
                     </div>
                   </div>
 
                   <div className="desktop-panel-soft px-3 py-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                       Created
                     </div>
-                    <div className="mt-1 text-sm font-semibold text-white">
+                    <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {w.created_at ? new Date(w.created_at).toLocaleDateString() : "—"}
                     </div>
                   </div>
                 </div>
                 <details className="mt-3">
-                  <summary className="cursor-pointer text-xs font-medium text-neutral-400 hover:text-neutral-200">
+                  <summary className="cursor-pointer text-xs font-medium text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">
                     Decision history
                   </summary>
                   <DecisionEventFeed events={decisionEvents} compact className="mt-2" maxVisible={4} />

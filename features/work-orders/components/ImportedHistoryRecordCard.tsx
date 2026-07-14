@@ -81,11 +81,11 @@ function Detail({
   value: ReactNode;
 }): JSX.Element {
   return (
-    <div className="rounded-lg border border-[color:var(--desktop-border)] bg-black/15 px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+    <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
         {label}
       </div>
-      <div className="mt-1 break-words text-xs text-neutral-100">{value}</div>
+      <div className="mt-1 break-words text-xs text-[color:var(--theme-text-primary)]">{value}</div>
     </div>
   );
 }
@@ -129,10 +129,10 @@ export function ImportedHistoryRecordCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-white">
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             {serviceDateLabel}
           </div>
-          <div className="mt-1 text-[11px] text-neutral-400">
+          <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
             {[vehicleLabel, vehicleIdentifiers].filter(Boolean).join(" • ") ||
               "Vehicle not linked"}
           </div>
@@ -161,7 +161,7 @@ export function ImportedHistoryRecordCard({
           id={detailsId}
           className={compact ? "mt-3 space-y-3" : "mt-3 space-y-3"}
         >
-          <div className="grid gap-2 text-xs text-neutral-300 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 text-xs text-[color:var(--theme-text-secondary)] sm:grid-cols-2 lg:grid-cols-4">
             <Detail
               label="Work order"
               value={textOrDash(row.work_order_number)}
@@ -175,8 +175,8 @@ export function ImportedHistoryRecordCard({
             />
             <Detail label="Amount" value={moneyParts.join(" • ") || "—"} />
           </div>
-          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-black/20 px-3 py-2 text-sm leading-6 text-neutral-200">
-            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm leading-6 text-[color:var(--theme-text-primary)]">
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
               Service summary
             </div>
             {serviceSummary}

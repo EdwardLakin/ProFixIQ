@@ -44,22 +44,22 @@ type Variant = "modal" | "panel";
 
 const statusTextColor: Record<string, string> = {
   in_progress: "text-sky-200",
-  awaiting: "text-slate-200",
+  awaiting: "text-[color:var(--theme-text-primary)]",
   queued: "text-indigo-200",
   on_hold: "text-amber-200",
   completed: "text-emerald-200",
   paused: "text-amber-200",
   assigned: "text-sky-200",
-  unassigned: "text-neutral-200",
+  unassigned: "text-[color:var(--theme-text-primary)]",
   awaiting_approval: "text-blue-200",
   declined: "text-red-200",
   deferred: "text-orange-200",
   waiting_parts: "text-amber-200",
   approved: "text-indigo-200",
-  pending: "text-slate-200",
+  pending: "text-[color:var(--theme-text-primary)]",
 };
 
-const chip = (status: string) => statusTextColor[status] ?? "text-neutral-200";
+const chip = (status: string) => statusTextColor[status] ?? "text-[color:var(--theme-text-primary)]";
 
 const displayStatusLabel = (status: string, punchedInAt: string | null): string => {
   if (status === "in_progress" || (!!punchedInAt && status !== "completed" && status !== "declined" && status !== "deferred")) return "Active";
@@ -77,14 +77,14 @@ const displayStatusLabel = (status: string, punchedInAt: string | null): string 
 const btnBase =
   "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium transition";
 const btnNeutral =
-  btnBase + " border-white/10 bg-black/35 text-neutral-100 hover:bg-white/5";
+  btnBase + " border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
 const btnInfo =
   btnBase + " border-sky-500/45 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
 const btnDanger =
   btnBase + " border-red-500/45 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnSecondary = btnInfo;
 const btnTertiary =
-  btnBase + " border-white/10 bg-black/25 text-neutral-200 hover:bg-white/5";
+  btnBase + " border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -133,10 +133,10 @@ function SectionCard({
   titleRight?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/32 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+    <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       {title ? (
         <div className="mb-2 flex items-center justify-between gap-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             {title}
           </div>
           {titleRight}
@@ -150,15 +150,15 @@ function SectionCard({
 function MetaStat({
   label,
   value,
-  valueClassName = "text-neutral-100",
+  valueClassName = "text-[color:var(--theme-text-primary)]",
 }: {
   label: string;
   value: string;
   valueClassName?: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
         {label}
       </div>
       <div className={`mt-1 text-sm font-medium ${valueClassName}`}>{value}</div>
@@ -643,7 +643,7 @@ export default function FocusedJobModal(props: {
 
   const Body = (
     <div
-      className={`relative overflow-hidden rounded-[26px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.14),rgba(10,10,10,0.97)_36%,rgba(5,5,5,0.99)_100%)] text-foreground shadow-[0_28px_90px_rgba(0,0,0,0.96)] ${
+      className={`relative overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-foreground shadow-[var(--theme-shadow-medium)] ${
         isPanelVariant
           ? ""
           : openAi
@@ -656,19 +656,19 @@ export default function FocusedJobModal(props: {
 
       <div className="flex h-full min-h-0 flex-col">
         <div
-          className={`${isPanelVariant ? "" : "sticky top-0 z-20"} border-b border-white/10 bg-[rgba(5,5,5,0.82)] px-4 py-3 backdrop-blur-xl sm:px-5`}
+          className={`${isPanelVariant ? "" : "sticky top-0 z-20"} border-b border-[color:var(--theme-border-soft)] bg-[var(--theme-surface-inset)] px-4 py-3 backdrop-blur-xl sm:px-5`}
         >
           <div className="mb-2 flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-base font-semibold tracking-tight text-white sm:text-lg">
+              <div className="text-base font-semibold tracking-tight text-[color:var(--theme-text-primary)] sm:text-lg">
                 {titleText}
               </div>
               {workOrder ? (
-                <div className="mt-1 text-xs text-neutral-400">
+                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                   WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
                 </div>
               ) : null}
-              <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+              <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                 Selected job
               </div>
             </div>
@@ -694,7 +694,7 @@ export default function FocusedJobModal(props: {
                   closeAllSubModals();
                   onClose();
                 }}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/40 text-xs text-neutral-200 transition hover:border-[var(--accent-copper-soft)] hover:bg-white/5 hover:text-white"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-xs text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
                 title="Close"
               >
                 ✕
@@ -703,7 +703,7 @@ export default function FocusedJobModal(props: {
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            <span className={`inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${chip(normalizedLineStatus)}`}>
+            <span className={`inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${chip(normalizedLineStatus)}`}>
               {statusLabel}
             </span>
 
@@ -720,7 +720,7 @@ export default function FocusedJobModal(props: {
             ) : null}
 
             {line?.approval_state ? (
-              <span className="inline-flex rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-300">
+              <span className="inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Approval {line.approval_state}
               </span>
             ) : null}
@@ -730,11 +730,11 @@ export default function FocusedJobModal(props: {
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4">
           {busy && !line ? (
             <div className="grid gap-3">
-              <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
-              <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
+              <div className="h-6 w-40 animate-pulse rounded-full bg-[color:var(--theme-surface-subtle)]" />
+              <div className="h-24 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
             </div>
           ) : !line ? (
-            <div className="text-sm text-neutral-300">No job found.</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">No job found.</div>
           ) : (
             <div
               className="space-y-3"
@@ -869,33 +869,33 @@ export default function FocusedJobModal(props: {
                 <SectionCard title="Vehicle & customer">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                         Vehicle
                       </div>
-                      <div className="mt-1 text-sm text-neutral-100">
+                      <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                         {vehicle
                           ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
-                      <div className="mt-1 text-[11px] text-neutral-400">
+                      <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                         VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
 
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                         Customer
                       </div>
-                      <div className="mt-1 text-sm text-neutral-100">
+                      <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                         {customer
                           ? [customer.first_name ?? "", customer.last_name ?? ""]
                               .filter(Boolean)
                               .join(" ") || "—"
                           : "—"}
                       </div>
-                      <div className="mt-1 text-[11px] text-neutral-400">
+                      <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
                       </div>
                     </div>
@@ -948,7 +948,7 @@ export default function FocusedJobModal(props: {
               <SectionCard title="Repair story">
                 <button
                   type="button"
-                  className="w-full rounded-xl border border-white/10 bg-black/30 p-3 text-left text-xs text-neutral-200 hover:border-[var(--accent-copper-light)]/60"
+                  className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-left text-xs text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-light)]/60"
                   onClick={() => {
                     closeAllSubModals();
                     setPrefillCause(line?.cause ?? "");
@@ -956,9 +956,9 @@ export default function FocusedJobModal(props: {
                     setOpenComplete(true);
                   }}
                 >
-                  <div><span className="text-neutral-500">Complaint:</span> {line?.complaint?.trim() || line?.description?.trim() || "Add complaint"}</div>
-                  <div className="mt-1"><span className="text-neutral-500">Cause:</span> {line?.cause?.trim() || "Add cause"}</div>
-                  <div className="mt-1"><span className="text-neutral-500">Correction:</span> {line?.correction?.trim() || "Add correction"}</div>
+                  <div><span className="text-[color:var(--theme-text-muted)]">Complaint:</span> {line?.complaint?.trim() || line?.description?.trim() || "Add complaint"}</div>
+                  <div className="mt-1"><span className="text-[color:var(--theme-text-muted)]">Cause:</span> {line?.cause?.trim() || "Add cause"}</div>
+                  <div className="mt-1"><span className="text-[color:var(--theme-text-muted)]">Correction:</span> {line?.correction?.trim() || "Add correction"}</div>
                   <div className="mt-2 text-[11px] text-[var(--accent-copper-light)]">Edit story</div>
                 </button>
               </SectionCard>
@@ -970,39 +970,39 @@ export default function FocusedJobModal(props: {
                   onChange={(e) => setTechNotes(e.target.value)}
                   onBlur={saveNotes}
                   disabled={savingNotes}
-                  className="w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+                  className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
                   placeholder="Add notes for this job…"
                 />
               </SectionCard>
 
               <SectionCard title={partsBottleneckDisplay?.heading ?? "Parts used"}>
                 {allocsLoading ? (
-                  <div className="text-sm text-neutral-300">Loading…</div>
+                  <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
                 ) : partsBottleneckDisplay && (allocs.length + requiredParts.length) === 0 ? (
-                  <div className="text-sm text-neutral-200">
+                  <div className="text-sm text-[color:var(--theme-text-primary)]">
                     {partsBottleneckDisplay.detail}
                   </div>
                 ) : (allocs.length + requiredParts.length) === 0 ? (
-                  <div className="text-sm text-neutral-300">No parts used yet.</div>
+                  <div className="text-sm text-[color:var(--theme-text-secondary)]">No parts used yet.</div>
                 ) : (
-                  <div className="overflow-hidden rounded-xl border border-white/10 bg-black/30">
-                    <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                  <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+                    <div className="grid grid-cols-12 bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                       <div className="col-span-7">Part</div>
                       <div className="col-span-3">Location</div>
                       <div className="col-span-2 text-right">Qty</div>
                     </div>
-                    <ul className="max-h-56 overflow-auto divide-y divide-white/5">
+                    <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
                       {requiredParts.map((p) => {
                         const qty = getCanonicalPartQuantity(p);
                         const unit = getCanonicalPartUnitPrice(p);
                         return (
                           <li key={`required-${p.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
-                            <div className="col-span-7 min-w-0 break-words text-neutral-100">
+                            <div className="col-span-7 min-w-0 break-words text-[color:var(--theme-text-primary)]">
                               {getCanonicalPartDescription(p) ?? "—"}
-                              <div className="text-[11px] text-neutral-400">{[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}</div>
+                              <div className="text-[11px] text-[color:var(--theme-text-secondary)]">{[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}</div>
                             </div>
-                            <div className="col-span-3 truncate text-neutral-400">{unit > 0 ? money(unit) : "—"}</div>
-                            <div className="col-span-2 text-right font-semibold text-neutral-100">{qty}</div>
+                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">{unit > 0 ? money(unit) : "—"}</div>
+                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">{qty}</div>
                           </li>
                         );
                       })}
@@ -1014,15 +1014,15 @@ export default function FocusedJobModal(props: {
 
                         return (
                           <li key={a.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
-                            <div className="col-span-7 min-w-0 break-words text-neutral-100">
+                            <div className="col-span-7 min-w-0 break-words text-[color:var(--theme-text-primary)]">
                               {a.parts?.name ?? "Part"}
                             </div>
-                            <div className="col-span-3 truncate text-neutral-400">
+                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
                               {(a as unknown as { location_id?: string | null }).location_id
                                 ? `loc ${String((a as unknown as { location_id?: string | null }).location_id).slice(0, 6)}…`
                                 : "—"}
                             </div>
-                            <div className="col-span-2 text-right font-semibold text-neutral-100">
+                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
                               {qty}
                             </div>
                           </li>
@@ -1069,7 +1069,7 @@ export default function FocusedJobModal(props: {
 
               <SectionCard title="AI suggested repairs">
                 <details className="group" open={!isPanelVariant}>
-                  <summary className="cursor-pointer text-xs text-neutral-300 transition group-open:mb-2 hover:text-neutral-100">
+                  <summary className="cursor-pointer text-xs text-[color:var(--theme-text-secondary)] transition group-open:mb-2 hover:text-[color:var(--theme-text-primary)]">
                     {isPanelVariant ? "Expand AI suggestions" : "AI suggestions"}
                   </summary>
                   {line && workOrder ? (
@@ -1083,12 +1083,12 @@ export default function FocusedJobModal(props: {
                       }}
                     />
                   ) : (
-                    <div className="text-sm text-neutral-300">Vehicle/work order details required.</div>
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">Vehicle/work order details required.</div>
                   )}
                 </details>
               </SectionCard>
 
-              <div className="px-1 text-xs text-neutral-500">
+              <div className="px-1 text-xs text-[color:var(--theme-text-muted)]">
                 Job ID: {line.id}
                 {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
                 {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
@@ -1114,7 +1114,7 @@ export default function FocusedJobModal(props: {
         }}
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
-        <div className="fixed inset-0 z-[100] bg-black/72 backdrop-blur-sm" aria-hidden="true" />
+        <div className="fixed inset-0 z-[100] bg-[color:var(--theme-surface-inset)] backdrop-blur-sm" aria-hidden="true" />
         <div
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}

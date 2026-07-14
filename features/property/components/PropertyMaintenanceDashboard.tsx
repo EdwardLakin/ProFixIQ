@@ -120,13 +120,13 @@ export default function PropertyMaintenanceDashboard({
       <header className="border-b border-[color:var(--metal-border-soft)] pb-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
               Property operations
             </p>
-            <h1 className="mt-1 text-3xl text-neutral-100 md:text-4xl" style={{ fontFamily: "var(--font-blackops)" }}>
+            <h1 className="mt-1 text-3xl text-[color:var(--theme-text-primary)] md:text-4xl" style={{ fontFamily: "var(--font-blackops)" }}>
               {title}
             </h1>
-            <p className="mt-2 text-sm text-neutral-400">
+            <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
               {subtitle}
             </p>
           </div>
@@ -134,7 +134,7 @@ export default function PropertyMaintenanceDashboard({
             <select
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value as typeof locationFilter)}
-              className="rounded-lg border border-[color:var(--metal-border-soft)] bg-black/50 px-3 py-2 text-xs text-neutral-200"
+              className="rounded-lg border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]"
             >
               <option value="all">All property locations</option>
               {locations.map((option) => (
@@ -143,7 +143,7 @@ export default function PropertyMaintenanceDashboard({
                 </option>
               ))}
             </select>
-            <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${hasLiveData ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-100" : "border-[color:var(--metal-border-soft)] bg-black/40 text-neutral-300"}`}>
+            <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${hasLiveData ? "border-emerald-300/40 bg-emerald-500/10 text-emerald-100" : "border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]"}`}>
               {modeLabel ?? (hasLiveData ? "Live data" : "Demo fallback")}
             </span>
           </div>
@@ -161,7 +161,7 @@ export default function PropertyMaintenanceDashboard({
           <Link
             key={action.href}
             href={action.href}
-            className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition ${action.accent ? "border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 text-neutral-100 hover:bg-[color:var(--accent-copper)]/30" : "border-[color:var(--metal-border-soft)] bg-black/35 text-neutral-200 hover:bg-black/55"}`}
+            className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition ${action.accent ? "border-[color:var(--accent-copper)]/70 bg-[color:var(--accent-copper)]/20 text-[color:var(--theme-text-primary)] hover:bg-[color:var(--accent-copper)]/30" : "border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)]"}`}
           >
             {action.label}
           </Link>
@@ -172,84 +172,84 @@ export default function PropertyMaintenanceDashboard({
         <button
           type="button"
           onClick={() => setFocusFilter((prev) => (prev === "open_requests" ? "all" : "open_requests"))}
-          className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 px-4 py-3 text-left"
+          className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-left"
         >
-          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Open requests</div>
-          <div className="mt-1 text-3xl text-neutral-100">{openIssues.length}</div>
+          <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Open requests</div>
+          <div className="mt-1 text-3xl text-[color:var(--theme-text-primary)]">{openIssues.length}</div>
         </button>
-        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 px-4 py-3">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Scheduled / in progress</div>
-          <div className="mt-1 text-3xl text-neutral-100">{inProgressIssues}</div>
+        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Scheduled / in progress</div>
+          <div className="mt-1 text-3xl text-[color:var(--theme-text-primary)]">{inProgressIssues}</div>
         </div>
-        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 px-4 py-3">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Inspection issues</div>
-          <div className="mt-1 text-3xl text-neutral-100">{inspectionFindings}</div>
+        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Inspection issues</div>
+          <div className="mt-1 text-3xl text-[color:var(--theme-text-primary)]">{inspectionFindings}</div>
         </div>
-        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/30 px-4 py-3">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">{propertyOperationsTerminology.assetPluralLabel}</div>
-          <div className="mt-1 text-3xl text-neutral-100">{filteredAssets.length}</div>
+        <div className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">{propertyOperationsTerminology.assetPluralLabel}</div>
+          <div className="mt-1 text-3xl text-[color:var(--theme-text-primary)]">{filteredAssets.length}</div>
         </div>
       </section>
 
       <section className="grid gap-5 lg:grid-cols-2">
-        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/25 p-4">
+        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
           <div className="flex items-center justify-between border-b border-[color:var(--metal-border-soft)] pb-2">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-200">Requests needing attention</h2>
-            <Link href={propertyOperationsRoutes.portalRequests} className="text-xs text-neutral-400 hover:text-neutral-200">All requests</Link>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">Requests needing attention</h2>
+            <Link href={propertyOperationsRoutes.portalRequests} className="text-xs text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">All requests</Link>
           </div>
           {openIssues.slice(0, 8).map((issue) => (
-            <div key={issue.id} className="border-b border-white/5 pb-2 last:border-b-0">
+            <div key={issue.id} className="border-b border-[color:var(--theme-border-soft)] pb-2 last:border-b-0">
               <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-neutral-100">{issue.assetLabel}</span>
-                <span className="text-neutral-400 uppercase">{issue.status.replaceAll("_", " ")}</span>
+                <span className="font-semibold text-[color:var(--theme-text-primary)]">{issue.assetLabel}</span>
+                <span className="text-[color:var(--theme-text-secondary)] uppercase">{issue.status.replaceAll("_", " ")}</span>
               </div>
-              <p className="mt-1 text-xs text-neutral-300">{issue.summary}</p>
-              <div className="mt-2 flex items-center gap-3 text-[11px] text-neutral-500">
-                <Link href={`/property/requests/${issue.id}`} className="hover:text-neutral-200">Request</Link>
-                <Link href={`${propertyOperationsRoutes.assetDetailBase}/${issue.assetId}`} className="hover:text-neutral-200">Asset</Link>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{issue.summary}</p>
+              <div className="mt-2 flex items-center gap-3 text-[11px] text-[color:var(--theme-text-muted)]">
+                <Link href={`/property/requests/${issue.id}`} className="hover:text-[color:var(--theme-text-primary)]">Request</Link>
+                <Link href={`${propertyOperationsRoutes.assetDetailBase}/${issue.assetId}`} className="hover:text-[color:var(--theme-text-primary)]">Asset</Link>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/25 p-4">
+        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
           <div className="flex items-center justify-between border-b border-[color:var(--metal-border-soft)] pb-2">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-200">Recent inspections</h2>
-            <Link href="/property/inspections" className="text-xs text-neutral-400 hover:text-neutral-200">All inspections</Link>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">Recent inspections</h2>
+            <Link href="/property/inspections" className="text-xs text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">All inspections</Link>
           </div>
           {recentInspectionItems.length > 0 ? recentInspectionItems.map((issue) => (
-            <div key={issue.id} className="border-b border-white/5 pb-2 last:border-b-0 text-xs">
-              <div className="font-semibold text-neutral-100">{issue.assetLabel}</div>
-              <div className="mt-1 text-neutral-300">{issue.summary}</div>
-              <div className="mt-1 text-neutral-500">{new Date(issue.createdAt).toLocaleDateString()}</div>
+            <div key={issue.id} className="border-b border-[color:var(--theme-border-soft)] pb-2 last:border-b-0 text-xs">
+              <div className="font-semibold text-[color:var(--theme-text-primary)]">{issue.assetLabel}</div>
+              <div className="mt-1 text-[color:var(--theme-text-secondary)]">{issue.summary}</div>
+              <div className="mt-1 text-[color:var(--theme-text-muted)]">{new Date(issue.createdAt).toLocaleDateString()}</div>
             </div>
-          )) : <p className="text-xs text-neutral-400">No recent inspection findings in current scope.</p>}
+          )) : <p className="text-xs text-[color:var(--theme-text-secondary)]">No recent inspection findings in current scope.</p>}
         </div>
 
-        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/25 p-4">
+        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
           <div className="border-b border-[color:var(--metal-border-soft)] pb-2">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-200">Assets / properties</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">Assets / properties</h2>
           </div>
           {filteredAssets.slice(0, 8).map((asset) => (
-            <div key={asset.id} className="flex items-center justify-between border-b border-white/5 pb-2 last:border-b-0 text-xs">
+            <div key={asset.id} className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] pb-2 last:border-b-0 text-xs">
               <div>
-                <div className="font-semibold text-neutral-100">{asset.label}</div>
-                <div className="text-neutral-400">{asset.location ?? "Unassigned location"}</div>
+                <div className="font-semibold text-[color:var(--theme-text-primary)]">{asset.label}</div>
+                <div className="text-[color:var(--theme-text-secondary)]">{asset.location ?? "Unassigned location"}</div>
               </div>
-              <Link href={`${propertyOperationsRoutes.assetDetailBase}/${asset.id}`} className="text-neutral-300 hover:text-neutral-100">View</Link>
+              <Link href={`${propertyOperationsRoutes.assetDetailBase}/${asset.id}`} className="text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">View</Link>
             </div>
           ))}
         </div>
 
-        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/25 p-4">
+        <div className="space-y-3 rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
           <div className="border-b border-[color:var(--metal-border-soft)] pb-2">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-200">Vendor follow-ups</h2>
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">Vendor follow-ups</h2>
           </div>
           {pendingVendorFollowUps.slice(0, 8).map((assignment) => (
-            <div key={assignment.id} className="border-b border-white/5 pb-2 last:border-b-0 text-xs">
-              <div className="font-semibold text-neutral-100">{assignment.routeLabel}</div>
-              <div className="mt-1 text-neutral-400">{assignment.assetLabel} · {assignment.requesterName}</div>
-              <div className="mt-1 uppercase tracking-[0.12em] text-neutral-500">{assignment.state.replaceAll("_", " ")}</div>
+            <div key={assignment.id} className="border-b border-[color:var(--theme-border-soft)] pb-2 last:border-b-0 text-xs">
+              <div className="font-semibold text-[color:var(--theme-text-primary)]">{assignment.routeLabel}</div>
+              <div className="mt-1 text-[color:var(--theme-text-secondary)]">{assignment.assetLabel} · {assignment.requesterName}</div>
+              <div className="mt-1 uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">{assignment.state.replaceAll("_", " ")}</div>
             </div>
           ))}
         </div>

@@ -25,7 +25,7 @@ export default async function NewMemberPropertyRequestPage({ searchParams }: { s
 
   const { data: memberships } = await supabase.from("property_members").select("id,user_id,property_id,unit_id").eq("user_id", user.id);
   if (!(memberships ?? []).length) {
-    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div><p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p></section>;
+    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Maintenance Requests</p><h1 className="text-2xl text-[color:var(--theme-text-primary)]">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">Inspections</Link></div></div><p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No property portal access is assigned to this account.</p></section>;
   }
 
   const [propertiesResult, unitsResult, assetsResult] = await Promise.all([
@@ -40,50 +40,50 @@ export default async function NewMemberPropertyRequestPage({ searchParams }: { s
   const assets = (assetsResult.data ?? []).filter((a) => properties.some((p) => p.id === a.property_id));
 
   if (!properties.length) {
-    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div><p className="mt-3 text-sm text-neutral-300">No member-scoped properties are available for request submission.</p></section>;
+    return <section className="metal-card rounded-3xl p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Maintenance Requests</p><h1 className="text-2xl text-[color:var(--theme-text-primary)]">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">Inspections</Link></div></div><p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No member-scoped properties are available for request submission.</p></section>;
   }
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Maintenance Requests</p><h1 className="text-2xl text-neutral-100">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div>
-      <p className="mt-2 text-sm text-neutral-300">Submit a maintenance request for a property or unit you have access to.</p>
-      <p className="mt-1 text-sm text-neutral-400">Add issue details, scheduling notes, and access instructions to help resolve your request quickly.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Maintenance Requests</p><h1 className="text-2xl text-[color:var(--theme-text-primary)]">Submit Request</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">View requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">Inspections</Link></div></div>
+      <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Submit a maintenance request for a property or unit you have access to.</p>
+      <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Add issue details, scheduling notes, and access instructions to help resolve your request quickly.</p>
       {error ? <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div> : null}
 
       <form action={createMemberPropertyMaintenanceRequest} className="mt-6 grid gap-3 md:grid-cols-2">
-        <label className="text-sm text-neutral-300">Property *</label>
-        <select name="property_id" required className="rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100">
+        <label className="text-sm text-[color:var(--theme-text-secondary)]">Property *</label>
+        <select name="property_id" required className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]">
           {properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
         </select>
 
-        <label className="text-sm text-neutral-300">Unit (optional)</label>
-        <select name="unit_id" className="rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100">
+        <label className="text-sm text-[color:var(--theme-text-secondary)]">Unit (optional)</label>
+        <select name="unit_id" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]">
           <option value="">None</option>
           {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.unit_label}</option>)}
         </select>
 
-        <label className="text-sm text-neutral-300">Asset (optional)</label>
-        <select name="asset_id" className="rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100">
+        <label className="text-sm text-[color:var(--theme-text-secondary)]">Asset (optional)</label>
+        <select name="asset_id" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]">
           <option value="">None</option>
           {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
         </select>
 
-        <label className="text-sm text-neutral-300 md:col-span-2">Title *</label>
-        <input name="title" required className="rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <label className="text-sm text-neutral-300 md:col-span-2">Summary *</label>
-        <textarea name="summary" required className="min-h-[120px] rounded-lg md:col-span-2 border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <label className="text-sm text-neutral-300 md:col-span-2">Category (optional)</label>
-        <input name="category" className="rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <label className="text-sm text-neutral-300">Severity</label>
-        <select name="severity" defaultValue="routine" className="rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100">
+        <label className="text-sm text-[color:var(--theme-text-secondary)] md:col-span-2">Title *</label>
+        <input name="title" required className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
+        <label className="text-sm text-[color:var(--theme-text-secondary)] md:col-span-2">Summary *</label>
+        <textarea name="summary" required className="min-h-[120px] rounded-lg md:col-span-2 border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
+        <label className="text-sm text-[color:var(--theme-text-secondary)] md:col-span-2">Category (optional)</label>
+        <input name="category" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
+        <label className="text-sm text-[color:var(--theme-text-secondary)]">Severity</label>
+        <select name="severity" defaultValue="routine" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]">
           <option value="emergency">emergency</option><option value="urgent">urgent</option><option value="routine">routine</option><option value="recommended">recommended</option>
         </select>
-        <label className="text-sm text-neutral-300 md:col-span-2">Access notes (optional)</label>
-        <textarea name="access_notes" className="min-h-[80px] rounded-lg md:col-span-2 border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <label className="text-sm text-neutral-300 md:col-span-2">Preferred window (optional)</label>
-        <input name="preferred_window" placeholder="Example: Weekdays 9am–12pm" className="rounded-lg md:col-span-2 border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <label className="text-sm text-neutral-300 md:col-span-2">Photo notes (optional)</label>
-        <textarea name="photo_notes" className="min-h-[80px] rounded-lg md:col-span-2 border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
+        <label className="text-sm text-[color:var(--theme-text-secondary)] md:col-span-2">Access notes (optional)</label>
+        <textarea name="access_notes" className="min-h-[80px] rounded-lg md:col-span-2 border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
+        <label className="text-sm text-[color:var(--theme-text-secondary)] md:col-span-2">Preferred window (optional)</label>
+        <input name="preferred_window" placeholder="Example: Weekdays 9am–12pm" className="rounded-lg md:col-span-2 border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
+        <label className="text-sm text-[color:var(--theme-text-secondary)] md:col-span-2">Photo notes (optional)</label>
+        <textarea name="photo_notes" className="min-h-[80px] rounded-lg md:col-span-2 border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
         <button type="submit" className="mt-2 rounded-lg md:col-span-2 border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">Submit request</button>
       </form>
     </section>

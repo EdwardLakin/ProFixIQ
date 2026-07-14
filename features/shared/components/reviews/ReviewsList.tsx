@@ -108,16 +108,16 @@ export default function ReviewsList({ shopId }: Props) {
     setSaving(null);
   }
 
-  if (loading) return <div className="text-sm text-neutral-400">Loading reviews…</div>;
+  if (loading) return <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading reviews…</div>;
 
   return (
     <div className="space-y-4">
       {/* Summary header */}
       <div
-        className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/15 p-5 backdrop-blur-xl"
+        className="relative overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-xl"
         style={{
           boxShadow:
-            "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+            "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px var(--theme-surface-inset)",
         }}
       >
         <div
@@ -126,15 +126,15 @@ export default function ReviewsList({ shopId }: Props) {
         />
         <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
               Shop reviews
             </div>
             <div className="mt-1 flex items-center gap-3">
-              <div className="text-lg font-extrabold text-white">
+              <div className="text-lg font-extrabold text-[color:var(--theme-text-primary)]">
                 {reviews.length === 0 ? "No reviews yet" : avg.toFixed(1)}
               </div>
               {reviews.length > 0 ? <StarsRow rating={avg} /> : null}
-              <div className="text-xs text-neutral-400">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">
                 {reviews.length} review{reviews.length === 1 ? "" : "s"}
               </div>
             </div>
@@ -154,42 +154,42 @@ export default function ReviewsList({ shopId }: Props) {
       </div>
 
       {reviews.length === 0 ? (
-        <div className="text-sm text-neutral-400">Be the first to leave a review.</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Be the first to leave a review.</div>
       ) : (
         <ul className="space-y-3">
           {reviews.map((r) => (
             <li
               key={r.id}
-              className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/20 p-5 backdrop-blur-xl"
+              className="relative overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-xl"
               style={{
                 boxShadow:
-                  "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+                  "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px var(--theme-surface-inset)",
               }}
             >
               <div
                 className="pointer-events-none absolute inset-0 opacity-[0.08]"
                 style={{
                   backgroundImage:
-                    "repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 9px)",
+                    "var(--theme-gradient-panel)",
                 }}
               />
               <div className="relative">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3">
                     <StarsRow rating={Number(r.rating)} />
-                    <div className="text-sm font-semibold text-neutral-200">
+                    <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {Number(r.rating).toFixed(1)} / 5
                     </div>
                   </div>
-                  <div className="text-xs text-neutral-500">
+                  <div className="text-xs text-[color:var(--theme-text-muted)]">
                     {new Date(r.created_at).toLocaleString()}
                   </div>
                 </div>
 
                 {r.comment ? (
-                  <p className="mt-3 text-sm text-neutral-200">{r.comment}</p>
+                  <p className="mt-3 text-sm text-[color:var(--theme-text-primary)]">{r.comment}</p>
                 ) : (
-                  <p className="mt-3 text-sm text-neutral-500">
+                  <p className="mt-3 text-sm text-[color:var(--theme-text-muted)]">
                     (No comment — rating only)
                   </p>
                 )}
@@ -199,13 +199,13 @@ export default function ReviewsList({ shopId }: Props) {
                   <OwnerReplyBox review={r} onSave={saveReply} saving={saving === r.id} />
                 ) : r.shop_owner_reply ? (
                   <div
-                    className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4"
+                    className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4"
                     style={{
                       boxShadow: "0 0 0 1px rgba(197,122,74,0.06) inset",
                     }}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                      <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                         Owner reply
                       </div>
                       <span
@@ -217,9 +217,9 @@ export default function ReviewsList({ shopId }: Props) {
                         aria-hidden
                       />
                     </div>
-                    <p className="mt-2 text-sm text-neutral-200">{r.shop_owner_reply}</p>
+                    <p className="mt-2 text-sm text-[color:var(--theme-text-primary)]">{r.shop_owner_reply}</p>
                     {r.replied_at ? (
-                      <div className="mt-2 text-xs text-neutral-500">
+                      <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
                         {new Date(r.replied_at).toLocaleString()}
                       </div>
                     ) : null}
@@ -246,9 +246,9 @@ function OwnerReplyBox({
   const [val, setVal] = useState<string>(review.shop_owner_reply ?? "");
 
   return (
-    <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4">
+    <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+        <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
           Owner reply
         </div>
         <span
@@ -260,7 +260,7 @@ function OwnerReplyBox({
       </div>
 
       <textarea
-        className="mt-3 w-full rounded-2xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-2"
+        className="mt-3 w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2"
         rows={2}
         value={val}
         onChange={(e) => setVal(e.target.value)}
@@ -272,7 +272,7 @@ function OwnerReplyBox({
         <button
           onClick={() => void onSave(review.id, val)}
           disabled={saving}
-          className="inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-extrabold text-black disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-extrabold text-[color:var(--theme-text-on-accent)] disabled:opacity-60"
           style={{
             backgroundColor: "rgba(197,122,74,0.95)",
             boxShadow: "0 0 28px rgba(197,122,74,0.22)",
@@ -285,7 +285,7 @@ function OwnerReplyBox({
           type="button"
           onClick={() => setVal(review.shop_owner_reply ?? "")}
           disabled={saving}
-          className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-semibold text-neutral-200 hover:border-white/20 hover:bg-black/35 disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)] disabled:opacity-60"
         >
           Reset
         </button>

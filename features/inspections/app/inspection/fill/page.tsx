@@ -77,10 +77,10 @@ if (urlParams.grid) merged.grid = urlParams.grid;
   }, [sp, router]);
 
   const cardBase =
-    "mx-auto w-full max-w-6xl rounded-2xl border border-slate-700/70 " +
-    "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] " +
-    "shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
-  const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/80";
+    "mx-auto w-full max-w-6xl rounded-2xl border border-[color:var(--theme-border-soft)] " +
+    "bg-[var(--theme-gradient-panel)] " +
+    "shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
+  const cardInner = "rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]";
 
   if (!ready || !template) {
     return (

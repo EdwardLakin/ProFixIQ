@@ -16,10 +16,10 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
   const containerStyle = embedded
     ? undefined
     : {
-        borderColor: "var(--theme-card-border,#334155)",
-        background: "var(--theme-card-bg,#111827)",
+        borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+        background: "var(--theme-card-bg,var(--theme-surface-page))",
         borderRadius: "var(--theme-radius-xl,1rem)",
-        boxShadow: "var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))",
+        boxShadow: "var(--theme-shadow-medium)",
       };
 
   return (
@@ -29,13 +29,13 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
           <div>
             <div
               className="text-xs font-semibold uppercase tracking-[0.18em]"
-              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
             >
               Daily Summary
             </div>
             <div
               className="mt-0.5 text-xs"
-              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
             >
               Role-aware operational snapshot for today
             </div>
@@ -47,9 +47,9 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
           onClick={() => void reload()}
           className="rounded-full border px-2.5 py-1 text-[11px] hover:brightness-110"
           style={{
-            borderColor: "var(--theme-card-border,#334155)",
-            background: "var(--theme-surface-2,#0B1220)",
-            color: "var(--theme-text-primary,#FFFFFF)",
+            borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+            background: "var(--theme-surface-2,var(--theme-surface-page))",
+            color: "var(--theme-text-primary,var(--theme-text-inverse))",
           }}
         >
           Refresh
@@ -59,7 +59,7 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
       {loading ? (
         <div
           className="mt-3 text-sm"
-          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+          style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
         >
           Loading summary…
         </div>
@@ -70,7 +70,7 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
       ) : !data ? (
         <div
           className="mt-3 text-sm"
-          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+          style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
         >
           No summary available.
         </div>
@@ -82,16 +82,16 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
             <MiniMetric label="Links" value={String(data.links.length)} />
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Priority signal</div>
-            <div className="mt-1 text-sm text-neutral-100">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Priority signal</div>
+            <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
               {data.notifications[0]?.title ?? data.summaryText.slice(0, 84)}
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Next action</div>
-            <div className="mt-1 text-sm text-neutral-200">{data.actionItems[0] ?? "Monitor board flow and clear blockers."}</div>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5">
+            <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Next action</div>
+            <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">{data.actionItems[0] ?? "Monitor board flow and clear blockers."}</div>
             <div className="mt-2">
               <Link
                 href={data.links[0]?.href ?? "/dashboard"}
@@ -107,20 +107,20 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
           <div
             className="border p-3"
             style={{
-              borderColor: "var(--theme-card-border,#334155)",
-              background: "var(--theme-surface-2,#0B1220)",
+              borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+              background: "var(--theme-surface-2,var(--theme-surface-page))",
               borderRadius: "var(--theme-radius-xl,1rem)",
             }}
           >
             <div
               className="text-xs uppercase tracking-[0.16em]"
-              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
             >
               {data.role}
             </div>
             <p
               className="mt-1.5 whitespace-pre-line text-sm leading-6"
-              style={{ color: "var(--theme-text-primary,#FFFFFF)" }}
+              style={{ color: "var(--theme-text-primary,var(--theme-text-inverse))" }}
             >
               {data.summaryText}
             </p>
@@ -130,7 +130,7 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
             <div className="mt-3">
               <div
                 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em]"
-                style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+                style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
               >
                 Action Items
               </div>
@@ -139,7 +139,7 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
                   <li
                     key={`${item}-${index}`}
                     className="text-sm leading-5"
-                    style={{ color: "var(--theme-text-primary,#FFFFFF)" }}
+                    style={{ color: "var(--theme-text-primary,var(--theme-text-inverse))" }}
                   >
                     • {item}
                   </li>
@@ -152,7 +152,7 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
             <div className="mt-3">
               <div
                 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em]"
-                style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+                style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
               >
                 Quick Links
               </div>
@@ -179,7 +179,7 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
             <div className="mt-3">
               <div
                 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em]"
-                style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+                style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
               >
                 Alerts
               </div>
@@ -204,9 +204,9 @@ export default function DailySummaryCard({ embedded = false }: { embedded?: bool
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
-      <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">{label}</div>
-      <div className="mt-1 text-base font-semibold text-white">{value}</div>
+    <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">{label}</div>
+      <div className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
     </div>
   );
 }

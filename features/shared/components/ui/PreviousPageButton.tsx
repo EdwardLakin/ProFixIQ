@@ -13,8 +13,8 @@ type PreviousPageButtonProps = {
 };
 
 const baseClasses =
-  "inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-medium text-neutral-200 shadow-sm backdrop-blur-sm transition " +
-  "hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/40";
+  "inline-flex items-center gap-1 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-medium text-[color:var(--theme-text-primary)] shadow-sm backdrop-blur-sm transition " +
+  "hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-inset)]";
 
 export default function PreviousPageButton({
   to,

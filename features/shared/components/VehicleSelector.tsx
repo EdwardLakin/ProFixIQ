@@ -71,7 +71,7 @@ export default function VehicleSelector() {
       {vehicleInfo && (
         <button
           onClick={clearVehicle}
-          className="text-sm text-[var(--accent-copper-light)] underline underline-offset-2 transition hover:text-white"
+          className="text-sm text-[var(--accent-copper-light)] underline underline-offset-2 transition hover:text-[color:var(--theme-text-primary)]"
         >
           Change Vehicle
         </button>

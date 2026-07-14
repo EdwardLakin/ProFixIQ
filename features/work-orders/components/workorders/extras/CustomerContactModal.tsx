@@ -96,7 +96,7 @@ export default function CustomerContactModal({
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-[color:var(--theme-border-soft)] dark:bg-[color:var(--theme-surface-panel)] dark:text-[color:var(--theme-text-primary)]"
           placeholder="Subject line…"
         />
       </label>
@@ -109,7 +109,7 @@ export default function CustomerContactModal({
           rows={6}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-[color:var(--theme-border-soft)] dark:bg-[color:var(--theme-surface-panel)] dark:text-[color:var(--theme-text-primary)]"
           placeholder="Write your email to the customer…"
         />
       </label>
@@ -122,7 +122,7 @@ export default function CustomerContactModal({
           rows={3}
           value={sms}
           onChange={(e) => setSms(e.target.value)}
-          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-[color:var(--theme-border-soft)] dark:bg-[color:var(--theme-surface-panel)] dark:text-[color:var(--theme-text-primary)]"
           placeholder="Quick text message…"
         />
       </label>

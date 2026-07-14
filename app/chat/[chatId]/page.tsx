@@ -64,7 +64,7 @@ export default function ChatThreadPage(): JSX.Element {
   return (
     <PageShell title={title}>
       {!userId ? (
-        <div className="rounded border border-[#3b2a21] bg-[#0b0806] p-4 text-sm text-[#d5b9a0]">
+        <div className="rounded border border-[#3b2a21] bg-[var(--theme-surface-page)] p-4 text-sm text-[#d5b9a0]">
           Loading…
         </div>
       ) : (

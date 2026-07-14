@@ -120,7 +120,7 @@ export default function JobPunchButton({
         : "Start job";
 
   const startClasses =
-    "bg-emerald-600 text-white border-emerald-500 hover:bg-emerald-500 hover:border-emerald-400 focus-visible:ring-emerald-400";
+    "bg-emerald-600 text-[color:var(--theme-text-primary)] border-emerald-500 hover:bg-emerald-500 hover:border-emerald-400 focus-visible:ring-emerald-400";
   const finishClasses =
     "border-[var(--accent-copper-light)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-faint)]";
 
@@ -149,7 +149,7 @@ export default function JobPunchButton({
             ${
               flash === "started"
                 ? "bg-emerald-700/80 text-emerald-100"
-                : "bg-[rgba(184,115,51,0.9)] text-black shadow-[0_0_15px_rgba(184,115,51,0.9)]"
+                : "bg-[rgba(184,115,51,0.9)] text-[color:var(--theme-text-on-accent)] shadow-[0_0_15px_rgba(184,115,51,0.9)]"
             }`}
         >
           {flash === "started" ? "✓ Started" : "✓ Finish requested"}

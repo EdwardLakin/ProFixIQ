@@ -14,7 +14,7 @@ export default async function OwnerMarketingPage() {
   if (!user) {
     return (
       <PageShell title="Marketing">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
           You must be signed in.
         </div>
       </PageShell>
@@ -32,7 +32,7 @@ export default async function OwnerMarketingPage() {
   if (!membership?.shop_id) {
     return (
       <PageShell title="Marketing">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
           Owner access is required.
         </div>
       </PageShell>
@@ -48,9 +48,9 @@ export default async function OwnerMarketingPage() {
   return (
     <PageShell title="Marketing">
       <div className="space-y-6">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
           <h1 className="text-2xl font-semibold">Marketing</h1>
-          <p className="mt-2 text-sm text-white/70">
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
             Connect ProFixIQ to ShopReel and control automated story syncing.
           </p>
         </div>

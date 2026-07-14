@@ -262,19 +262,19 @@ function getValue(it: InspectionItem): string {
 
 function inputCls() {
   return [
-    "h-[34px] w-full rounded-lg border border-white/10 bg-black/55",
-    "px-3 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500",
+    "h-[34px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
+    "px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
     "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
     "disabled:opacity-50 disabled:cursor-not-allowed",
   ].join(" ");
 }
 
 function unitCls() {
-  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400";
+  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[color:var(--theme-text-secondary)]";
 }
 
 function cornerShellCls() {
-  return "rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)] backdrop-blur-xl";
+  return "rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 }
 
 function axleTitleCls() {
@@ -282,7 +282,7 @@ function axleTitleCls() {
 }
 
 function tinyLabelCls() {
-  return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400";
+  return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]";
 }
 
 export default function TireGridHydraulic(props: Props) {
@@ -431,7 +431,7 @@ export default function TireGridHydraulic(props: Props) {
 
   return;
 }
-      
+
 
       const grp = side === "Left" ? row.dual.left : row.dual.right;
       if (kind === "condition" && !grp.condition) grp.condition = cell;
@@ -471,7 +471,7 @@ export default function TireGridHydraulic(props: Props) {
     return (
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">{leftLabel}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">{leftLabel}</div>
           <div className="relative">
             <input value={leftCell ? valOf(leftCell) : ""} className={inputCls()} placeholder={leftCell ? "Value" : "—"} inputMode={isText(leftCell) ? "text" : "decimal"} type={isText(leftCell) ? "text" : "number"} onChange={(e) => leftCell && commitValue(leftCell.idx, e.currentTarget.value)} disabled={!leftCell} />
             <span className={unitCls()}>{U(leftCell)}</span>
@@ -479,7 +479,7 @@ export default function TireGridHydraulic(props: Props) {
         </div>
         {rightLabel ? (
           <div className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-2">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">{rightLabel}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">{rightLabel}</div>
             <div className="relative">
               <input value={rightCell ? valOf(rightCell) : ""} className={inputCls()} placeholder={rightCell ? "Value" : "—"} inputMode={isText(rightCell) ? "text" : "decimal"} type={isText(rightCell) ? "text" : "number"} onChange={(e) => rightCell && commitValue(rightCell.idx, e.currentTarget.value)} disabled={!rightCell} />
               <span className={unitCls()}>{U(rightCell)}</span>
@@ -499,14 +499,14 @@ export default function TireGridHydraulic(props: Props) {
     return (
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
-        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
           Tire Grid – Hydraulic
         </div>
 
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -550,7 +550,7 @@ export default function TireGridHydraulic(props: Props) {
                   <div className={axleTitleCls()} style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
                     {t.axle}
                   </div>
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                     TP / TD capture only
                   </div>
                 </div>
@@ -558,7 +558,7 @@ export default function TireGridHydraulic(props: Props) {
                 <div className="space-y-4">
                   <div>
                     <div className={tinyLabelCls()}>Tread Depth</div>
-                    <div className="space-y-2 rounded-xl border border-white/10 bg-black/35 p-2.5">
+                    <div className="space-y-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
                       {isDual
                         ? (
                           <>
@@ -571,7 +571,7 @@ export default function TireGridHydraulic(props: Props) {
                   </div>
                   <div>
                     <div className={tinyLabelCls()}>Pressure</div>
-                    <div className="space-y-2 rounded-xl border border-white/10 bg-black/35 p-2.5">
+                    <div className="space-y-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
                       {isDual
                         ? (
                           <>

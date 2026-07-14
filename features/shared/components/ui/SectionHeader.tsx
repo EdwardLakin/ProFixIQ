@@ -30,17 +30,17 @@ export default function SectionHeader({
     >
       <div className="min-w-0">
         {eyebrow ? (
-          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
             {eyebrow}
           </div>
         ) : null}
 
-        <h2 className="mt-1 text-base font-semibold text-white sm:text-lg">
+        <h2 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)] sm:text-lg">
           {title}
         </h2>
 
         {subtitle ? (
-          <p className="mt-1 max-w-2xl text-xs text-neutral-400 sm:text-sm">
+          <p className="mt-1 max-w-2xl text-xs text-[color:var(--theme-text-secondary)] sm:text-sm">
             {subtitle}
           </p>
         ) : null}

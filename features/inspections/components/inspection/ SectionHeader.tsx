@@ -39,13 +39,13 @@ export default function SectionHeader(props: any) {
   return (
     <div
       className={clsx(
-        "flex items-center gap-3 px-3 py-2 border-b border-neutral-700/80 bg-black/70 backdrop-blur supports-[backdrop-filter]:bg-black/50",
+        "flex items-center gap-3 px-3 py-2 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] backdrop-blur supports-[backdrop-filter]:bg-[color:var(--theme-surface-inset)]",
         sticky && "sticky top-0 z-20",
         className
       )}
     >
       {typeof section === "number" && (
-        <span className="text-xs uppercase tracking-wide text-neutral-400 shrink-0">
+        <span className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)] shrink-0">
           Section {section + 1}
         </span>
       )}
@@ -53,18 +53,18 @@ export default function SectionHeader(props: any) {
       <div className="min-w-0 flex-1">
         {title && (
           <div className="flex items-center gap-2">
-            <h2 className="text-sm sm:text-base font-semibold text-white truncate">
+            <h2 className="text-sm sm:text-base font-semibold text-[color:var(--theme-text-primary)] truncate">
               {title}
             </h2>
             {typeof count === "number" && (
-              <span className="inline-flex items-center justify-center text-[10px] px-1.5 py-0.5 rounded-full bg-orange-600/90 text-white">
+              <span className="inline-flex items-center justify-center text-[10px] px-1.5 py-0.5 rounded-full bg-orange-600/90 text-[color:var(--theme-text-primary)]">
                 {count}
               </span>
             )}
           </div>
         )}
         {subtitle && (
-          <p className="text-xs text-neutral-400 truncate">{subtitle}</p>
+          <p className="text-xs text-[color:var(--theme-text-secondary)] truncate">{subtitle}</p>
         )}
       </div>
 
@@ -75,7 +75,7 @@ export default function SectionHeader(props: any) {
         onClick={onToggle}
         className={clsx(
           "ml-1 inline-flex items-center justify-center rounded-md p-1.5",
-          "text-neutral-300 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+          "text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] focus:outline-none focus:ring-2 focus:ring-orange-500/60"
         )}
         aria-expanded={!isCollapsed}
         aria-controls={controlsId}

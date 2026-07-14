@@ -56,16 +56,16 @@ export function MobileOwnerHome({
   return (
     <div className="space-y-6 px-4 py-4">
       {/* hero – shop overview */}
-      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
         <div className="space-y-3 text-center">
           <h1 className="text-xl font-semibold leading-tight">
-            <span className="text-neutral-100">Welcome back, </span>
+            <span className="text-[color:var(--theme-text-primary)]">Welcome back, </span>
             <span className="text-[var(--accent-copper)]">
               {firstName}
             </span>{" "}
             <span className="align-middle">📊</span>
           </h1>
-          <p className="text-xs text-neutral-300">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
             High-level view of shop revenue, profit, and technician
             performance.
           </p>
@@ -122,11 +122,11 @@ export function MobileOwnerHome({
 
       {/* AI summary (optional) */}
       {aiSummary && (
-        <section className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-xs text-neutral-100 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
+        <section className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
           <div className="mb-1 text-[0.65rem] uppercase tracking-[0.18em] text-[var(--accent-copper-soft)]">
             AI summary
           </div>
-          <p className="text-[0.78rem] text-neutral-200 whitespace-pre-wrap">
+          <p className="text-[0.78rem] text-[color:var(--theme-text-primary)] whitespace-pre-wrap">
             {aiSummary}
           </p>
         </section>
@@ -135,20 +135,20 @@ export function MobileOwnerHome({
       {/* Top technicians */}
       <section className="space-y-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Top technicians
           </h2>
-          <span className="text-[0.7rem] text-neutral-500">
+          <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
             Sorted by revenue
           </span>
         </div>
 
         {loadingTech ? (
-          <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-3 text-xs text-neutral-300">
+          <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-3 text-xs text-[color:var(--theme-text-secondary)]">
             Loading technician leaderboard…
           </div>
         ) : topThree.length === 0 ? (
-          <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-3 text-xs text-neutral-400">
+          <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-3 text-xs text-[color:var(--theme-text-secondary)]">
             No technician activity for this range.
           </div>
         ) : (
@@ -164,7 +164,7 @@ export function MobileOwnerHome({
 
       {/* Efficiency strip */}
       {!loadingTech && topThree.length > 0 && (
-        <section className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-[0.75rem] text-neutral-200 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
+        <section className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-[0.75rem] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
           <p>
             Shop average tech efficiency is{" "}
             <span className="font-semibold text-[var(--accent-copper-soft)]">
@@ -200,11 +200,11 @@ function RangePill({
       : "This year";
 
   return (
-    <div className="inline-flex flex-col items-center justify-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-black/40 px-4 py-1 text-[0.7rem] shadow-[0_0_18px_rgba(212,118,49,0.5)]">
+    <div className="inline-flex flex-col items-center justify-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-inset)] px-4 py-1 text-[0.7rem] shadow-[0_0_18px_rgba(212,118,49,0.5)]">
       <span className="text-[0.6rem] uppercase tracking-[0.18em] text-[var(--accent-copper-soft)]">
         {rangeText}
       </span>
-      <span className="text-[0.7rem] text-neutral-200">{label}</span>
+      <span className="text-[0.7rem] text-[color:var(--theme-text-primary)]">{label}</span>
     </div>
   );
 }
@@ -233,11 +233,11 @@ function MetricCard({
     : value.toFixed(2);
 
   return (
-    <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-3 shadow-[0_16px_32px_rgba(0,0,0,0.75)]">
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
+    <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-3 shadow-[var(--theme-shadow-medium)]">
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
-      <div className={`mt-1 text-lg font-semibold text-white ${accent ?? ""}`}>
+      <div className={`mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)] ${accent ?? ""}`}>
         {prefix}
         {display}
         {suffix}
@@ -255,18 +255,18 @@ function TechRowCard({ rank, row }: { rank: number; row: TechLeaderboardRow }) {
       : 0;
 
   return (
-    <div className="metal-card flex items-center justify-between rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-xs text-neutral-100">
+    <div className="metal-card flex items-center justify-between rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]">
       <div className="flex items-center gap-3">
-        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--accent-copper-soft)] bg-black/60 text-[0.8rem] font-semibold text-[var(--accent-copper-soft)]">
+        <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-overlay)] text-[0.8rem] font-semibold text-[var(--accent-copper-soft)]">
           #{rank}
         </div>
         <div className="flex flex-col">
           <span className="text-sm font-medium">{row.name}</span>
-          <span className="text-[0.7rem] text-neutral-400">
+          <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
             Rev: ${row.revenue.toFixed(0)} • Jobs: {row.jobs} • Rev/hr: $
             {row.revenuePerHour.toFixed(0)}
           </span>
-          <span className="text-[0.7rem] text-neutral-500">
+          <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
             Billed {row.billedHours.toFixed(1)}h • Clocked{" "}
             {row.clockedHours.toFixed(1)}h (
             {billedVsClockedPct.toFixed(0)}
@@ -307,7 +307,7 @@ function efficiencyBadge(
     return {
       label: "Silver",
       className:
-        "bg-slate-200/10 border-slate-200 text-slate-100 shadow-[0_0_16px_rgba(148,163,184,0.4)]",
+        "bg-[color:var(--theme-surface-subtle)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] shadow-[0_0_16px_rgba(148,163,184,0.4)]",
       emoji: "🥈",
     };
   }

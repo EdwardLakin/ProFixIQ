@@ -195,7 +195,7 @@ export default function OwnerSettingsSidebar({
                 ? "Manage payout setup"
                 : "Connect payouts"}
             </Button>
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-[11px] text-[color:var(--theme-text-muted)]">
               Set up or resume Stripe Connect for shop payouts.
             </p>
 
@@ -214,7 +214,7 @@ export default function OwnerSettingsSidebar({
                   ? "Manage subscription"
                   : "Start subscription"}
             </Button>
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-[11px] text-[color:var(--theme-text-muted)]">
               {isLinkageState
                 ? "An existing Stripe subscription was detected but must finish linking before checkout or portal actions."
                 : hasManagedSubscription
@@ -229,7 +229,7 @@ export default function OwnerSettingsSidebar({
             >
               {portalLoading ? "Opening portal..." : "Open billing portal"}
             </Button>
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-[11px] text-[color:var(--theme-text-muted)]">
               Review invoices, payment methods, and subscription billing history.
             </p>
 
@@ -253,7 +253,7 @@ export default function OwnerSettingsSidebar({
                   >
                     {cancelLoading ? "Scheduling cancellation..." : "Cancel subscription"}
                   </Button>
-                  <p className="text-[11px] text-neutral-500">
+                  <p className="text-[11px] text-[color:var(--theme-text-muted)]">
                     Schedule cancellation at period end. Access stays active until then.
                   </p>
                 </>
@@ -292,13 +292,13 @@ export default function OwnerSettingsSidebar({
         }
         action={
           <div className="flex items-center gap-2">
-            <div className="text-xs text-neutral-300">
+            <div className="text-xs text-[color:var(--theme-text-secondary)]">
               {orgId ? (
-                <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
-                  Org: <span className="text-neutral-100">{orgName || "—"}</span>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">
+                  Org: <span className="text-[color:var(--theme-text-primary)]">{orgName || "—"}</span>
                 </span>
               ) : (
-                <span className="rounded-full border border-white/10 bg-black/30 px-3 py-1">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">
                   No organization linked
                 </span>
               )}
@@ -315,7 +315,7 @@ export default function OwnerSettingsSidebar({
         {orgId ? (
           <div className="space-y-2">
             {locations.length === 0 ? (
-              <div className="text-xs text-neutral-500">No locations found.</div>
+              <div className="text-xs text-[color:var(--theme-text-muted)]">No locations found.</div>
             ) : (
               <ul className="space-y-2">
                 {locations.map((loc) => {
@@ -325,19 +325,19 @@ export default function OwnerSettingsSidebar({
                   return (
                     <li
                       key={loc.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2"
+                      className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2"
                     >
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-neutral-100">
+                        <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                           {locationName(loc)}
                         </div>
-                        <div className="text-xs text-neutral-400">
+                        <div className="text-xs text-[color:var(--theme-text-secondary)]">
                           {formatLocationLine({
                             city: loc.city ?? null,
                             province: loc.province ?? null,
                           })}
                         </div>
-                        <div className="mt-1 text-[10px] text-neutral-500">
+                        <div className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
                           {String(status).toUpperCase()}
                         </div>
                       </div>
@@ -357,7 +357,7 @@ export default function OwnerSettingsSidebar({
             )}
           </div>
         ) : (
-          <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-xs text-neutral-400">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
             Create an organization when you want to manage multiple locations together.
             Your current shop will be linked automatically.
           </div>
@@ -369,7 +369,7 @@ export default function OwnerSettingsSidebar({
       ) : null}
 
       <OwnerSettingsPanel tone="passive" title="Invoice preview">
-        <div className="space-y-2 rounded-xl bg-white p-3 text-xs text-black shadow">
+        <div className="space-y-2 rounded-xl bg-[color:var(--theme-surface-panel-strong)] p-3 text-xs text-[color:var(--theme-text-on-accent)] shadow">
           {logoUrl ? (
             <Image
               src={logoUrl}
@@ -389,9 +389,9 @@ export default function OwnerSettingsSidebar({
             {phone} {phone && email ? "•" : ""} {email}
           </div>
           <hr className="my-2" />
-          <div className="font-semibold text-black">Invoice terms</div>
+          <div className="font-semibold text-[color:var(--theme-text-on-accent)]">Invoice terms</div>
           <p>{invoiceTerms || "—"}</p>
-          <div className="font-semibold text-black">Footer</div>
+          <div className="font-semibold text-[color:var(--theme-text-on-accent)]">Footer</div>
           <p>{invoiceFooter || "—"}</p>
         </div>
       </OwnerSettingsPanel>
@@ -413,28 +413,28 @@ export default function OwnerSettingsSidebar({
         }
       >
         {emailLogsLoading ? (
-          <div className="text-xs text-neutral-500">Loading…</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">Loading…</div>
         ) : emailLogs.length === 0 ? (
-          <div className="text-xs text-neutral-500">No emails yet.</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">No emails yet.</div>
         ) : (
           <div className="max-h-[300px] space-y-2 overflow-y-auto">
             {emailLogs.map((e) => (
               <div
                 key={e.id}
-                className="rounded-lg border border-white/10 bg-black/25 p-2 text-xs"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-xs"
               >
                 <div className="flex justify-between">
-                  <span className="text-neutral-200">
+                  <span className="text-[color:var(--theme-text-primary)]">
                     {e.template_key.replaceAll("_", " ")}
                   </span>
-                  <span className="text-neutral-500">
+                  <span className="text-[color:var(--theme-text-muted)]">
                     {new Date(e.created_at).toLocaleDateString()}
                   </span>
                 </div>
 
-                <div className="text-neutral-400">{e.to_email}</div>
+                <div className="text-[color:var(--theme-text-secondary)]">{e.to_email}</div>
 
-                <div className="text-[10px] text-neutral-500">{e.status}</div>
+                <div className="text-[10px] text-[color:var(--theme-text-muted)]">{e.status}</div>
               </div>
             ))}
           </div>

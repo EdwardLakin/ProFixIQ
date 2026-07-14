@@ -11,7 +11,7 @@
 // - ✅ Search filters BOTH Requests + This week list
 // - ✅ Pending requests look “actionable” (subtle highlight)
 // - ✅ Approve/Decline first; Edit/Delete tucked into “…” menu
-// - ✅ Newer theme: border-white/10, divide-white/10, bg-black/40, copper glow
+// - ✅ Newer theme: border-[color:var(--theme-border-soft)], divide-[color:var(--theme-border-soft)], bg-[color:var(--theme-surface-inset)], copper glow
 //
 // Code:
 // - ✅ Big bug fixed: EditForm time fields are NO LONGER UTC-shifted
@@ -85,9 +85,9 @@ const COPPER_FOCUS =
 
 function cardClass() {
   return [
-    "rounded-2xl border border-white/10",
-    "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.08),rgba(2,6,23,0.92))]",
-    "shadow-[0_18px_45px_rgba(0,0,0,0.75)]",
+    "rounded-2xl border border-[color:var(--theme-border-soft)]",
+    "bg-[var(--theme-gradient-panel)]",
+    "shadow-[var(--theme-shadow-medium)]",
     "backdrop-blur-xl",
     "p-4",
   ].join(" ");
@@ -97,7 +97,7 @@ function fieldClass() {
   return [
     "mt-1 w-full rounded-md",
     "border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
-    "px-2 py-2 text-sm text-white outline-none",
+    "px-2 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none",
     COPPER_FOCUS,
   ].join(" ");
 }
@@ -105,8 +105,8 @@ function fieldClass() {
 function subtleButtonClass() {
   return [
     "rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
-    "px-2 py-1 text-xs text-white/90",
-    "hover:bg-white/10",
+    "px-2 py-1 text-xs text-[color:var(--theme-text-primary)]",
+    "hover:bg-[color:var(--theme-surface-subtle)]",
     COPPER_FOCUS,
   ].join(" ");
 }
@@ -530,8 +530,8 @@ export default function PortalAppointmentsPage(): JSX.Element {
       <Toaster position="top-center" />
 
       <header className="space-y-1">
-        <h1 className="text-2xl font-blackops text-white">Appointments</h1>
-        <p className="text-sm text-neutral-400">
+        <h1 className="text-2xl font-blackops text-[color:var(--theme-text-primary)]">Appointments</h1>
+        <p className="text-sm text-[color:var(--theme-text-secondary)]">
           Admin / manager view of customer bookings for the week.
         </p>
       </header>
@@ -541,7 +541,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
             <div className="flex items-center gap-3">
-              <div className="text-[0.7rem] uppercase tracking-[0.12em] text-white/60">
+              <div className="text-[0.7rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 Shop
               </div>
               <select
@@ -564,17 +564,17 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
             <div className="flex flex-wrap items-center gap-2">
               <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
-                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-white/55">
+                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
                   Week
                 </div>
-                <div className="text-sm font-semibold text-white/90">{weekLabel}</div>
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{weekLabel}</div>
               </div>
 
               <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
-                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-white/55">
+                <div className="text-[0.65rem] uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
                   This week
                 </div>
-                <div className="text-sm font-semibold text-white/90">
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {totalForWeek} booking{totalForWeek === 1 ? "" : "s"}
                 </div>
               </div>
@@ -604,7 +604,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
             <div className="w-full sm:w-[320px]">
-              <label className="text-[0.7rem] uppercase tracking-[0.12em] text-white/60">
+              <label className="text-[0.7rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 Search
               </label>
               <input
@@ -663,9 +663,9 @@ export default function PortalAppointmentsPage(): JSX.Element {
         {/* Left: Calendar big */}
         <div className={cardClass()}>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white/95">Weekly calendar</h2>
+            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Weekly calendar</h2>
             {loadingBookings ? (
-              <span className="text-[0.75rem] text-white/60">Loading…</span>
+              <span className="text-[0.75rem] text-[color:var(--theme-text-muted)]">Loading…</span>
             ) : null}
           </div>
 
@@ -679,7 +679,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
             />
           </div>
 
-          <p className="mt-3 text-[0.75rem] text-white/55">
+          <p className="mt-3 text-[0.75rem] text-[color:var(--theme-text-muted)]">
             Click a day to create. Click an appointment to edit.
           </p>
         </div>
@@ -689,20 +689,20 @@ export default function PortalAppointmentsPage(): JSX.Element {
           {/* Requests (pending) */}
           <div className={cardClass()}>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white/95">
+              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Requests (pending)
               </h2>
-              <div className="text-[0.75rem] text-white/60">
+              <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
                 {filteredPending.length}
               </div>
             </div>
 
             {filteredPending.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-white/60">
+              <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-[color:var(--theme-text-muted)]">
                 No pending requests{query.trim() ? " matching your search." : " for this week."}
               </div>
             ) : (
-              <ul className="divide-y divide-white/10">
+              <ul className="divide-y divide-[color:var(--theme-border-soft)]">
                 {filteredPending
                   .slice()
                   .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))
@@ -719,7 +719,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <div className="font-medium text-white/95">
+                            <div className="font-medium text-[color:var(--theme-text-primary)]">
                               {b.customer_name || "Customer"}
                             </div>
                             <span
@@ -732,17 +732,17 @@ export default function PortalAppointmentsPage(): JSX.Element {
                             </span>
                           </div>
 
-                          <div className="mt-0.5 text-[0.75rem] text-white/65">
+                          <div className="mt-0.5 text-[0.75rem] text-[color:var(--theme-text-muted)]">
                             {formatRange(b.starts_at, b.ends_at)}
                           </div>
 
-                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.75rem] text-white/55">
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
                             {b.customer_phone ? <span>{b.customer_phone}</span> : null}
                             {b.customer_email ? <span>{b.customer_email}</span> : null}
                           </div>
 
                           {b.notes ? (
-                            <div className="mt-1 text-[0.75rem] text-white/55">
+                            <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
                               {b.notes}
                             </div>
                           ) : null}
@@ -799,10 +799,10 @@ export default function PortalAppointmentsPage(): JSX.Element {
                             </button>
 
                             {menuOpenFor === b.id ? (
-                              <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
+                              <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
                                 <button
                                   type="button"
-                                  className="w-full px-3 py-2 text-left text-sm text-white/90 hover:bg-white/5"
+                                  className="w-full px-3 py-2 text-left text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
                                   onClick={() => {
                                     setMenuOpenFor(null);
                                     openEdit(b);
@@ -852,10 +852,10 @@ export default function PortalAppointmentsPage(): JSX.Element {
               />
             ) : (
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-white/95">
+                <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   Create / Edit
                 </h3>
-                <p className="text-sm text-white/60">
+                <p className="text-sm text-[color:var(--theme-text-muted)]">
                   Select a day (create) or click an appointment (edit).
                 </p>
                 <Button
@@ -875,7 +875,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
       {/* Bottom: This week list with tabs */}
       <div className={cardClass()}>
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-semibold text-white/95">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             This week ({filteredBookings.length})
           </h2>
 
@@ -896,18 +896,18 @@ export default function PortalAppointmentsPage(): JSX.Element {
         </div>
 
         {loadingBookings ? (
-          <p className="text-sm text-white/60">Fetching appointments…</p>
+          <p className="text-sm text-[color:var(--theme-text-muted)]">Fetching appointments…</p>
         ) : filteredListByTab.length === 0 ? (
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-[color:var(--theme-text-muted)]">
             No appointments{query.trim() ? " matching your search." : " for this week."}
           </p>
         ) : (
-          <ul className="divide-y divide-white/10">
+          <ul className="divide-y divide-[color:var(--theme-border-soft)]">
             {filteredListByTab.map((b) => (
               <li key={b.id} className="flex flex-wrap items-start gap-3 py-3 text-sm">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-medium text-white/95">
+                    <div className="font-medium text-[color:var(--theme-text-primary)]">
                       {b.customer_name || "Customer"}
                     </div>
                     <span
@@ -920,12 +920,12 @@ export default function PortalAppointmentsPage(): JSX.Element {
                     </span>
                   </div>
 
-                  <div className="text-[0.75rem] text-white/65">
+                  <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
                     {formatRange(b.starts_at, b.ends_at)}
                   </div>
 
                   {b.notes ? (
-                    <div className="mt-1 text-[0.75rem] text-white/55">{b.notes}</div>
+                    <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">{b.notes}</div>
                   ) : null}
                 </div>
 
@@ -990,15 +990,15 @@ export default function PortalAppointmentsPage(): JSX.Element {
       {panelMode ? (
         <div className="lg:hidden">
           <div
-            className="fixed inset-0 z-40 bg-black/70"
+            className="fixed inset-0 z-40 bg-[color:var(--theme-surface-overlay)]"
             onClick={closePanel}
             role="button"
             tabIndex={-1}
             aria-label="Close panel overlay"
           />
-          <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-auto rounded-t-3xl border border-[color:var(--desktop-border)] bg-[var(--desktop-panel-bg)] p-4 shadow-[0_-18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
+          <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-auto rounded-t-3xl border border-[color:var(--desktop-border)] bg-[var(--desktop-panel-bg)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-sm font-semibold text-white/95">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 {panelMode === "edit" ? "Edit appointment" : "Create appointment"}
               </div>
               <Button type="button" size="xs" variant="outline" onClick={closePanel}>
@@ -1051,7 +1051,7 @@ function TabButton({
         "transition",
         active
           ? "border-sky-400/35 bg-sky-500/10 text-sky-100"
-          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-white/75 hover:bg-white/10",
+          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
       ].join(" ")}
     >
       {children}
@@ -1131,10 +1131,10 @@ function CreateForm({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-white/95">Create appointment</h3>
+      <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Create appointment</h3>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-xs text-white/70">
+        <label className="text-xs text-[color:var(--theme-text-secondary)]">
           Date
           <input
             type="date"
@@ -1145,7 +1145,7 @@ function CreateForm({
         </label>
 
         <div className="flex gap-2">
-          <label className="flex-1 text-xs text-white/70">
+          <label className="flex-1 text-xs text-[color:var(--theme-text-secondary)]">
             Start
             <input
               type="time"
@@ -1154,7 +1154,7 @@ function CreateForm({
               className={fieldClass()}
             />
           </label>
-          <label className="flex-1 text-xs text-white/70">
+          <label className="flex-1 text-xs text-[color:var(--theme-text-secondary)]">
             End
             <input
               type="time"
@@ -1166,7 +1166,7 @@ function CreateForm({
         </div>
       </div>
 
-      <label className="text-xs text-white/70">
+      <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Customer (from database)
         <select
           value={customerId}
@@ -1182,7 +1182,7 @@ function CreateForm({
         </select>
       </label>
 
-      <label className="text-xs text-white/70">
+      <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Customer name
         <input
           value={customerName}
@@ -1193,7 +1193,7 @@ function CreateForm({
       </label>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-xs text-white/70">
+        <label className="text-xs text-[color:var(--theme-text-secondary)]">
           Email
           <input
             type="email"
@@ -1202,7 +1202,7 @@ function CreateForm({
             className={fieldClass()}
           />
         </label>
-        <label className="text-xs text-white/70">
+        <label className="text-xs text-[color:var(--theme-text-secondary)]">
           Phone
           <input
             value={customerPhone}
@@ -1212,7 +1212,7 @@ function CreateForm({
         </label>
       </div>
 
-      <label className="text-xs text-white/70">
+      <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Notes
         <textarea
           value={notes}
@@ -1308,10 +1308,10 @@ function EditForm({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-white/95">Edit appointment</h3>
+      <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Edit appointment</h3>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-xs text-white/70">
+        <label className="text-xs text-[color:var(--theme-text-secondary)]">
           Date
           <input
             type="date"
@@ -1322,7 +1322,7 @@ function EditForm({
         </label>
 
         <div className="flex gap-2">
-          <label className="flex-1 text-xs text-white/70">
+          <label className="flex-1 text-xs text-[color:var(--theme-text-secondary)]">
             Start
             <input
               type="time"
@@ -1331,7 +1331,7 @@ function EditForm({
               className={fieldClass()}
             />
           </label>
-          <label className="flex-1 text-xs text-white/70">
+          <label className="flex-1 text-xs text-[color:var(--theme-text-secondary)]">
             End
             <input
               type="time"
@@ -1343,7 +1343,7 @@ function EditForm({
         </div>
       </div>
 
-      <label className="text-xs text-white/70">
+      <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Customer (from database)
         <select
           value={customerId}
@@ -1359,7 +1359,7 @@ function EditForm({
         </select>
       </label>
 
-      <label className="text-xs text-white/70">
+      <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Customer name
         <input
           value={customerName}
@@ -1369,7 +1369,7 @@ function EditForm({
       </label>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-xs text-white/70">
+        <label className="text-xs text-[color:var(--theme-text-secondary)]">
           Email
           <input
             type="email"
@@ -1378,7 +1378,7 @@ function EditForm({
             className={fieldClass()}
           />
         </label>
-        <label className="text-xs text-white/70">
+        <label className="text-xs text-[color:var(--theme-text-secondary)]">
           Phone
           <input
             value={customerPhone}
@@ -1388,7 +1388,7 @@ function EditForm({
         </label>
       </div>
 
-      <label className="text-xs text-white/70">
+      <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Notes
         <textarea
           value={notes}
@@ -1398,7 +1398,7 @@ function EditForm({
         />
       </label>
 
-      <label className="text-xs text-white/70">
+      <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Status
         <select value={status} onChange={(e) => setStatus(e.target.value)} className={fieldClass()}>
           <option value="pending">Pending</option>
@@ -1425,10 +1425,10 @@ function EditForm({
         </Button>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-[0.75rem] text-white/60">
-        <div className="font-semibold text-white/80">Current time window</div>
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-[0.75rem] text-[color:var(--theme-text-muted)]">
+        <div className="font-semibold text-[color:var(--theme-text-secondary)]">Current time window</div>
         <div className="mt-1">{formatRange(booking.starts_at, booking.ends_at)}</div>
-        <div className="mt-2 text-white/55">
+        <div className="mt-2 text-[color:var(--theme-text-muted)]">
           Tip: If times looked “shifted” before, that was UTC slicing. This form now uses local time.
         </div>
       </div>

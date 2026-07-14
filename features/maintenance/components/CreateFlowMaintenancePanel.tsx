@@ -126,13 +126,13 @@ export default function CreateFlowMaintenancePanel({
   if (!vehicleId) return null;
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-black/30 p-4">
+    <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.16em] text-neutral-400">
+          <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             Maintenance suggestions
           </div>
-          <div className="mt-1 text-sm text-neutral-300">
+          <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             Add maintenance items into the pending approval quote flow before work begins.
           </div>
         </div>
@@ -142,7 +142,7 @@ export default function CreateFlowMaintenancePanel({
             type="button"
             onClick={() => toggleAll(true)}
             disabled={!items.length || busy}
-            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-200 disabled:opacity-50"
+            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] disabled:opacity-50"
           >
             Select all
           </button>
@@ -150,7 +150,7 @@ export default function CreateFlowMaintenancePanel({
             type="button"
             onClick={() => toggleAll(false)}
             disabled={!items.length || busy}
-            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-200 disabled:opacity-50"
+            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] disabled:opacity-50"
           >
             Clear
           </button>
@@ -172,15 +172,15 @@ export default function CreateFlowMaintenancePanel({
       ) : null}
 
       {loading ? (
-        <div className="mt-4 text-sm text-neutral-400">Loading suggestions...</div>
+        <div className="mt-4 text-sm text-[color:var(--theme-text-secondary)]">Loading suggestions...</div>
       ) : items.length === 0 ? (
-        <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/20 px-3 py-4 text-sm text-neutral-400">
+        <div className="mt-4 rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
           No active maintenance suggestions.
         </div>
       ) : (
         <div className="mt-4 space-y-3">
           {items.map((item) => (
-            <div key={item.code} className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+            <div key={item.code} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <label className="flex min-w-0 flex-1 items-start gap-3">
                   <input
@@ -193,16 +193,16 @@ export default function CreateFlowMaintenancePanel({
                   />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-semibold text-white">{item.title}</div>
-                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-300">
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{item.title}</div>
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                         {item.code}
                       </span>
                     </div>
-                    <div className="mt-1 text-xs text-neutral-400">
+                    <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                       maintenance • {item.laborHours.toFixed(1)}h
                       {item.priority ? ` • ${item.priority}` : ""}
                     </div>
-                    <div className="mt-2 text-sm text-neutral-300">{item.description}</div>
+                    <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">{item.description}</div>
                   </div>
                 </label>
 
@@ -210,7 +210,7 @@ export default function CreateFlowMaintenancePanel({
                   type="button"
                   onClick={() => void dismissOne(item.code)}
                   disabled={busy}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-200 disabled:opacity-50"
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] disabled:opacity-50"
                 >
                   Mark done elsewhere
                 </button>

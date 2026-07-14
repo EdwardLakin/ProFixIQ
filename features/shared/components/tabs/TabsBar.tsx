@@ -36,7 +36,7 @@ export default function TabsBar({ subdued = false }: TabsBarProps) {
       aria-hidden={subdued}
       className={cn(
         "sticky top-0 z-20 -mt-1 w-full min-w-0 border-b px-2 transition-all duration-200",
-        "border-slate-700/30 bg-[linear-gradient(180deg,rgba(2,6,23,0.84),rgba(2,6,23,0.68))] backdrop-blur-lg",
+        "border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] backdrop-blur-lg",
         subdued && "pointer-events-none opacity-25 saturate-50",
       )}
     >
@@ -58,8 +58,8 @@ export default function TabsBar({ subdued = false }: TabsBarProps) {
                     className={cn(
                       "group inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px] transition-colors",
                       active
-                        ? "border-[var(--brand-accent,#E39A6E)]/45 bg-[linear-gradient(140deg,rgba(30,41,59,0.55),rgba(15,23,42,0.86))] text-slate-100 shadow-[inset_0_1px_0_rgba(148,163,184,0.16)]"
-                        : "border-slate-700/40 bg-slate-950/50 text-slate-400 hover:border-slate-600/50 hover:bg-slate-900/60 hover:text-slate-200",
+                        ? "border-[var(--brand-accent,#E39A6E)]/45 bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] shadow-[inset_0_1px_0_rgba(148,163,184,0.16)]"
+                        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-secondary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-panel)] hover:text-[color:var(--theme-text-primary)]",
                     )}
                   >
                     <button
@@ -71,7 +71,7 @@ export default function TabsBar({ subdued = false }: TabsBarProps) {
                       {pinned && (
                         <span
                           aria-label="Default dashboard tab"
-                          className="rounded-sm border border-slate-500/35 px-1 py-px text-[8px] uppercase tracking-[0.1em] text-slate-300"
+                          className="rounded-sm border border-[color:var(--theme-border-soft)] px-1 py-px text-[8px] uppercase tracking-[0.1em] text-[color:var(--theme-text-secondary)]"
                         >
                           Base
                         </span>
@@ -82,7 +82,7 @@ export default function TabsBar({ subdued = false }: TabsBarProps) {
                       <button
                         type="button"
                         onClick={() => closeTab(t.href)}
-                        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded text-[10px] leading-none text-slate-500 transition hover:bg-slate-700/45 hover:text-slate-100"
+                        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded text-[10px] leading-none text-[color:var(--theme-text-muted)] transition hover:bg-[color:var(--theme-surface-hover)] hover:text-[color:var(--theme-text-primary)]"
                         aria-label="Close tab"
                       >
                         ✕
@@ -94,7 +94,7 @@ export default function TabsBar({ subdued = false }: TabsBarProps) {
             </AnimatePresence>
 
             {safeTabs.length === 0 && (
-              <div className="px-2 py-1 text-xs text-neutral-500">No tabs yet</div>
+              <div className="px-2 py-1 text-xs text-[color:var(--theme-text-muted)]">No tabs yet</div>
             )}
           </div>
         </div>
@@ -103,14 +103,14 @@ export default function TabsBar({ subdued = false }: TabsBarProps) {
           <button
             type="button"
             onClick={() => closeOthers(activeHref)}
-            className="inline-flex h-6 items-center rounded border border-slate-700/45 px-1.5 text-[10px] text-slate-400 transition hover:border-slate-600/55 hover:bg-slate-900/75 hover:text-slate-200"
+            className="inline-flex h-6 items-center rounded border border-[color:var(--theme-border-soft)] px-1.5 text-[10px] text-[color:var(--theme-text-secondary)] transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-panel)] hover:text-[color:var(--theme-text-primary)]"
           >
             Close others
           </button>
           <button
             type="button"
             onClick={closeAll}
-            className="inline-flex h-6 items-center rounded border border-slate-700/45 px-1.5 text-[10px] text-slate-400 transition hover:border-slate-600/55 hover:bg-slate-900/75 hover:text-slate-200"
+            className="inline-flex h-6 items-center rounded border border-[color:var(--theme-border-soft)] px-1.5 text-[10px] text-[color:var(--theme-text-secondary)] transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-panel)] hover:text-[color:var(--theme-text-primary)]"
           >
             Close all
           </button>

@@ -73,16 +73,16 @@ export default function ForgotPasswordPage() {
       className="
         min-h-screen px-4 text-foreground
         bg-background
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+        bg-[var(--theme-gradient-panel)]
       "
     >
       <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
         <div
           className="
             w-full rounded-3xl border
-            border-[color:var(--metal-border-soft,#1f2937)]
-            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.2),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
-            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
+            border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+            bg-[var(--theme-gradient-panel)]
+            shadow-[var(--theme-shadow-medium)]
             px-6 py-7 sm:px-8 sm:py-9
           "
         >
@@ -93,10 +93,10 @@ export default function ForgotPasswordPage() {
               disabled={status === "sending"}
               className="
                 inline-flex items-center gap-2 rounded-full border
-                border-[color:var(--metal-border-soft,#1f2937)]
-                bg-black/60 px-3 py-1.5 text-[11px]
-                uppercase tracking-[0.2em] text-neutral-200
-                hover:bg-black/70 hover:text-white
+                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+                bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px]
+                uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)]
+                hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]
                 disabled:cursor-not-allowed disabled:opacity-60
               "
             >
@@ -104,18 +104,18 @@ export default function ForgotPasswordPage() {
               Back
             </button>
 
-            <div className="text-[10px] text-neutral-500">Shop access</div>
+            <div className="text-[10px] text-[color:var(--theme-text-muted)]">Shop access</div>
           </div>
 
           <div className="mb-6 space-y-2 text-center">
             <div
               className="
                 inline-flex items-center gap-1 rounded-full border
-                border-[color:var(--metal-border-soft,#1f2937)]
-                bg-black/70
+                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+                bg-[color:var(--theme-surface-overlay)]
                 px-3 py-1 text-[11px]
                 uppercase tracking-[0.22em]
-                text-neutral-300
+                text-[color:var(--theme-text-secondary)]
               "
             >
               <span
@@ -129,7 +129,7 @@ export default function ForgotPasswordPage() {
             </div>
 
             <h1
-              className="mt-2 text-3xl sm:text-4xl font-semibold text-white"
+              className="mt-2 text-3xl sm:text-4xl font-semibold text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops), system-ui" }}
             >
               Forgot password
@@ -147,13 +147,13 @@ export default function ForgotPasswordPage() {
           )}
 
           {notice && (
-            <div className="mb-3 rounded-lg border border-emerald-500/60 bg-emerald-950/70 px-3 py-2 text-xs text-emerald-100 shadow-[0_0_18px_rgba(6,95,70,0.5)]">
+            <div className="mb-3 rounded-lg border border-emerald-500/60 bg-emerald-950/70 px-3 py-2 text-xs text-emerald-100 shadow-[var(--theme-shadow-medium)]">
               {notice}
             </div>
           )}
 
           {status === "sent" ? (
-            <div className="mt-2 rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-4 py-3 text-xs text-neutral-200">
+            <div className="mt-2 rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-xs text-[color:var(--theme-text-primary)]">
               If the email exists, you’ll receive a reset link shortly.
               <div className="mt-3 text-center">
                 <button
@@ -173,7 +173,7 @@ export default function ForgotPasswordPage() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1 text-sm">
-                <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Email
                 </label>
                 <input
@@ -184,9 +184,9 @@ export default function ForgotPasswordPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="
                     w-full rounded-lg border
-                    border-[color:var(--metal-border-soft,#1f2937)]
-                    bg-black/70 px-3 py-2 text-sm text-white
-                    placeholder:text-neutral-500
+                    border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+                    bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]
+                    placeholder:text-[color:var(--theme-text-muted)]
                     focus:outline-none focus:ring-2
                     focus:ring-[var(--accent-copper-soft)]
                     focus:border-[var(--accent-copper-soft)]
@@ -202,7 +202,7 @@ export default function ForgotPasswordPage() {
                   mt-3 w-full rounded-full
                   bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]
                   py-2.5 text-center text-sm
-                  font-semibold uppercase tracking-[0.22em] text-black
+                  font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-on-accent)]
                   shadow-[0_0_26px_rgba(212,118,49,0.9)]
                   hover:brightness-110
                   disabled:cursor-not-allowed disabled:opacity-60

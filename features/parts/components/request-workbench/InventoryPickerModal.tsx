@@ -127,26 +127,26 @@ export function InventoryPickerModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[70] bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" onClick={onClose} />
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="fixed left-1/2 top-1/2 z-[71] flex max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)] w-[min(920px,calc(100vw-env(safe-area-inset-left)-env(safe-area-inset-right)-1rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-white/10 bg-neutral-950/95 shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)]"
+        className="fixed left-1/2 top-1/2 z-[71] flex max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)] w-[min(920px,calc(100vw-env(safe-area-inset-left)-env(safe-area-inset-right)-1rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-2xl supports-[height:100dvh]:max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)]"
       >
-        <div className="shrink-0 border-b border-white/10 bg-neutral-950/98 px-4 py-3 sm:px-5">
+        <div className="shrink-0 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-3 sm:px-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Parts Workbench</div>
-              <h2 id={titleId} className="mt-1 truncate text-lg font-semibold text-white">{title}</h2>
+              <div className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Parts Workbench</div>
+              <h2 id={titleId} className="mt-1 truncate text-lg font-semibold text-[color:var(--theme-text-primary)]">{title}</h2>
             </div>
-            <button type="button" onClick={onClose} className="min-h-11 shrink-0 rounded-lg border border-white/10 px-3 py-2 text-sm text-white hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-sky-500/50">
+            <button type="button" onClick={onClose} className="min-h-11 shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] focus:outline-none focus:ring-2 focus:ring-sky-500/50">
               Close
             </button>
           </div>
-          <p id={descriptionId} className="mt-2 text-sm text-neutral-300">Search existing parts by description, SKU, part number, or manufacturer.</p>
+          <p id={descriptionId} className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Search existing parts by description, SKU, part number, or manufacturer.</p>
           <input
             ref={searchRef}
             className={`${modalInput} mt-3 min-h-11`}
@@ -155,7 +155,7 @@ export function InventoryPickerModal({
             aria-label="Search inventory"
             onChange={(event) => onQueryChange?.(event.target.value)}
           />
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
             <span>{resultCountSummary}</span>
             {selected ? <span className="rounded-full border border-orange-400/30 bg-orange-500/10 px-2 py-1 text-orange-100">Selected: {selected.label}</span> : null}
           </div>
@@ -181,7 +181,7 @@ export function InventoryPickerModal({
               return (
                 <label
                   key={result.value}
-                  className={`block min-h-11 cursor-pointer rounded-xl border px-3 py-2 focus-within:ring-2 focus-within:ring-sky-500/50 ${checked ? "border-orange-400/70 bg-orange-500/15 shadow-[0_0_0_1px_rgba(251,146,60,0.35)]" : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"}`}
+                  className={`block min-h-11 cursor-pointer rounded-xl border px-3 py-2 focus-within:ring-2 focus-within:ring-sky-500/50 ${checked ? "border-orange-400/70 bg-orange-500/15 shadow-[0_0_0_1px_rgba(251,146,60,0.35)]" : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] hover:bg-[color:var(--theme-surface-subtle)]"}`}
                 >
                   <div className="flex items-center gap-3">
                     <input
@@ -194,26 +194,26 @@ export function InventoryPickerModal({
                     />
                     <div className="grid min-w-0 flex-1 gap-0.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-x-3">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-white">{result.label}</div>
-                        <div className="truncate text-xs text-neutral-400">{metadata}</div>
+                        <div className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">{result.label}</div>
+                        <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">{metadata}</div>
                       </div>
-                      <div className="text-xs font-medium text-neutral-200 sm:text-right">{onHandText}</div>
+                      <div className="text-xs font-medium text-[color:var(--theme-text-primary)] sm:text-right">{onHandText}</div>
                     </div>
                     {checked ? <span className="text-xs font-semibold text-orange-100">Selected</span> : null}
                   </div>
                 </label>
               );
             }) : (
-              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-neutral-400">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
                 No inventory results loaded yet.
               </div>
             )}
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-white/10 bg-neutral-950/98 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5">
-          <div className="mb-2 min-h-5 text-xs text-neutral-300">
-            {selected ? <>Ready to attach <span className="font-semibold text-white">{selected.label}</span>{selected.partNumber || selected.sku ? <> · {selected.partNumber || selected.sku}</> : null}</> : "Select an inventory part to enable attachment."}
+        <div className="shrink-0 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5">
+          <div className="mb-2 min-h-5 text-xs text-[color:var(--theme-text-secondary)]">
+            {selected ? <>Ready to attach <span className="font-semibold text-[color:var(--theme-text-primary)]">{selected.label}</span>{selected.partNumber || selected.sku ? <> · {selected.partNumber || selected.sku}</> : null}</> : "Select an inventory part to enable attachment."}
           </div>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button type="button" className={`${modalButton} min-h-11`} onClick={onClose}>Cancel</button>

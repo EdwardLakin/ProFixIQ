@@ -24,7 +24,7 @@ const STATUS_CLASS: Record<string, string> = {
   open: "border-sky-500/70 bg-sky-500/10 text-sky-100",
   in_progress: "border-orange-500/70 bg-orange-500/10 text-orange-100",
   completed: "border-emerald-500/70 bg-emerald-500/10 text-emerald-100",
-  archived: "border-neutral-500/70 bg-neutral-800/80 text-neutral-200",
+  archived: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)]",
 };
 
 function statusChip(status: string | null | undefined): string {
@@ -78,20 +78,20 @@ export default function MobileInspectionsListPage() {
   }, [supabase]);
 
   return (
-    <div className="min-h-screen space-y-4 bg-neutral-950 px-4 py-4 text-foreground">
+    <div className="min-h-screen space-y-4 bg-[color:var(--theme-surface-page)] px-4 py-4 text-foreground">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="font-blackops text-lg uppercase tracking-[0.18em] text-neutral-200">
+          <h1 className="font-blackops text-lg uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
             Inspections
           </h1>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Quick mobile view of recent inspections for this shop.
           </p>
         </div>
         <Link
           href="/inspections"
-          className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-[0.7rem] text-neutral-200 hover:border-orange-400 hover:bg-neutral-800"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)] hover:border-orange-400 hover:bg-[color:var(--theme-surface-panel-strong)]"
         >
           Desktop view
         </Link>
@@ -104,11 +104,11 @@ export default function MobileInspectionsListPage() {
       )}
 
       {loading ? (
-        <div className="rounded-lg border border-white/10 bg-black/40 px-3 py-4 text-sm text-neutral-300">
+        <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
           Loading inspections…
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-white/15 bg-black/40 px-3 py-6 text-sm text-neutral-400">
+        <div className="rounded-lg border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-6 text-sm text-[color:var(--theme-text-secondary)]">
           No inspections found yet.
         </div>
       ) : (
@@ -124,12 +124,12 @@ export default function MobileInspectionsListPage() {
               <Link
                 key={r.id}
                 href={href}
-                className="block rounded-xl border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm text-neutral-100 shadow-sm shadow-black/30 hover:border-orange-500/70 hover:bg-neutral-900/80"
+                className="block rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)] shadow-sm shadow-[var(--theme-shadow-medium)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-panel)]"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-semibold text-neutral-50">
+                      <span className="font-semibold text-[color:var(--theme-text-primary)]">
                         {r.custom_id ?? `Inspect ${r.id.slice(0, 6)}`}
                       </span>
 
@@ -138,14 +138,14 @@ export default function MobileInspectionsListPage() {
                       </span>
                     </div>
 
-                    <div className="mt-1 truncate text-[0.75rem] text-neutral-300">
+                    <div className="mt-1 truncate text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                       {r.customer_name ?? "No customer"}{" "}
-                      <span className="mx-1 text-neutral-600">•</span>
+                      <span className="mx-1 text-[color:var(--theme-text-muted)]">•</span>
                       {r.vehicle_label ?? "No vehicle"}
                     </div>
                   </div>
 
-                  <span className="ml-2 shrink-0 text-[0.7rem] text-neutral-400">
+                  <span className="ml-2 shrink-0 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                     {created}
                   </span>
                 </div>

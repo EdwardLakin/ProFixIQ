@@ -34,7 +34,7 @@ function riskTone(score: number | null | undefined) {
   if (n === null) {
     return {
       label: "No score yet",
-      chip: "border-white/10 bg-white/5 text-neutral-300",
+      chip: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]",
     };
   }
 
@@ -146,11 +146,11 @@ export default function OwnerReportsWidget({
   const tone = riskTone(score);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-gradient-to-r from-black/80 via-slate-950/90 to-black/80 px-4 py-4 shadow-[0_20px_40px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+    <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Reports & shop health
             </div>
 
@@ -162,21 +162,21 @@ export default function OwnerReportsWidget({
             </span>
           </div>
 
-          <h2 className="mt-2 text-lg font-semibold text-white">
+          <h2 className="mt-2 text-lg font-semibold text-[color:var(--theme-text-primary)]">
             Owner snapshot
           </h2>
 
-          <p className="mt-2 max-w-3xl text-sm text-neutral-300">
+          <p className="mt-2 max-w-3xl text-sm text-[color:var(--theme-text-secondary)]">
             {loading ? "Loading latest owner snapshot…" : shortText(summary)}
           </p>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-              Specialty: <span className="text-white">{specialty}</span>
+            <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+              Specialty: <span className="text-[color:var(--theme-text-primary)]">{specialty}</span>
             </div>
-            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+            <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
               Last analyzed:{" "}
-              <span className="text-white">{fmtDate(snapshot?.created_at ?? null)}</span>
+              <span className="text-[color:var(--theme-text-primary)]">{fmtDate(snapshot?.created_at ?? null)}</span>
             </div>
           </div>
         </div>
@@ -184,7 +184,7 @@ export default function OwnerReportsWidget({
         <div className="flex shrink-0 flex-wrap gap-2">
           <Link
             href="/dashboard/owner/reports"
-            className="rounded-xl border border-white/10 bg-black/35 px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:bg-black/50"
+            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
           >
             Open reports
           </Link>

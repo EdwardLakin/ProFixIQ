@@ -31,14 +31,14 @@ export default function ProfileIdentityCard({
   subtitle = "Set the photo and name your team sees across the workspace.",
 }: Props): JSX.Element {
   return (
-    <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+    <section className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-white">{title}</h2>
-          <p className="text-xs text-neutral-400">{subtitle}</p>
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</h2>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">{subtitle}</p>
         </div>
         {roleLabel ? (
-          <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 text-[10px] uppercase tracking-wider text-neutral-300">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] uppercase tracking-wider text-[color:var(--theme-text-secondary)]">
             {roleLabel}
           </span>
         ) : null}
@@ -53,7 +53,7 @@ export default function ProfileIdentityCard({
         onChange={onAvatarChange}
       />
 
-      {email ? <p className="text-xs text-neutral-500">Signed in as {email}</p> : null}
+      {email ? <p className="text-xs text-[color:var(--theme-text-muted)]">Signed in as {email}</p> : null}
     </section>
   );
 }

@@ -467,8 +467,8 @@ export default function SavedInspectionsPage(): JSX.Element {
   const inProgressCount = rows.length - completedCount;
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),#020617_82%)] px-4 py-6 text-white">
-      <div className="mx-auto max-w-6xl rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_65%,_#000)] px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.95)] sm:px-6 sm:py-6">
+    <div className="min-h-[calc(100vh-4rem)] bg-[var(--theme-gradient-panel)] px-4 py-6 text-[color:var(--theme-text-primary)]">
+      <div className="mx-auto max-w-6xl rounded-2xl border border-[var(--metal-border-soft)] bg-[var(--theme-gradient-panel)] px-4 py-5 shadow-[var(--theme-shadow-medium)] sm:px-6 sm:py-6">
         {/* Top nav */}
         <div className="mb-4">
           <PreviousPageButton to="/inspection" />
@@ -477,25 +477,25 @@ export default function SavedInspectionsPage(): JSX.Element {
         {/* Header */}
         <div className="mb-5 flex flex-wrap items-start gap-3">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-1">
-              <span className="text-[0.7rem] font-blackops uppercase tracking-[0.22em] text-neutral-200">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1">
+              <span className="text-[0.7rem] font-blackops uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)]">
                 Inspection History
               </span>
               <span className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--accent-copper-light,#f6d2b3)]">
                 Compliance
               </span>
             </div>
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
               Shop-scoped audit log of inspections. Filter, search, export, and open PDFs for compliance records.
             </p>
           </div>
 
-          <div className="ml-auto text-right text-xs text-neutral-400">
-            <div className="font-mono text-[11px] text-neutral-500">
+          <div className="ml-auto text-right text-xs text-[color:var(--theme-text-secondary)]">
+            <div className="font-mono text-[11px] text-[color:var(--theme-text-muted)]">
               {rows.length} loaded • {completedCount} completed • {inProgressCount} in progress
             </div>
             {from || to ? (
-              <div className="mt-0.5 font-mono text-[11px] text-neutral-500">
+              <div className="mt-0.5 font-mono text-[11px] text-[color:var(--theme-text-muted)]">
                 Range: {from || "…"} → {to || "…"}
               </div>
             ) : null}
@@ -503,10 +503,10 @@ export default function SavedInspectionsPage(): JSX.Element {
         </div>
 
         {/* Filters */}
-        <div className="mb-5 rounded-2xl border border-[var(--metal-border-soft)] bg-black/60 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-4">
+        <div className="mb-5 rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] sm:p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[220px] flex-1">
-              <label className="mb-1 block text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Search
               </label>
               <input
@@ -514,18 +514,18 @@ export default function SavedInspectionsPage(): JSX.Element {
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void load()}
                 placeholder="Plate, VIN, unit, customer, template, WO, status…"
-                className="w-full rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 transition-colors focus:border-slate-400 focus:ring-1 focus:ring-slate-500/70"
+                className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 transition-colors focus:border-[color:var(--theme-border-soft)] focus:ring-1 focus:ring-[color:var(--theme-border-strong)]"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Status
               </label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-slate-400 focus:ring-1 focus:ring-slate-500/70"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 focus:border-[color:var(--theme-border-soft)] focus:ring-1 focus:ring-[color:var(--theme-border-strong)]"
               >
                 <option value="all">All</option>
                 <option value="completed">Completed</option>
@@ -535,27 +535,27 @@ export default function SavedInspectionsPage(): JSX.Element {
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 From
               </label>
               <input
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-slate-400 focus:ring-1 focus:ring-slate-500/70"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 focus:border-[color:var(--theme-border-soft)] focus:ring-1 focus:ring-[color:var(--theme-border-strong)]"
                 aria-label="From date"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 To
               </label>
               <input
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                className="rounded-lg border border-neutral-800 bg-black/70 px-3 py-1.5 text-sm text-neutral-100 outline-none ring-0 focus:border-slate-400 focus:ring-1 focus:ring-slate-500/70"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 focus:border-[color:var(--theme-border-soft)] focus:ring-1 focus:ring-[color:var(--theme-border-strong)]"
                 aria-label="To date"
               />
             </div>
@@ -564,7 +564,7 @@ export default function SavedInspectionsPage(): JSX.Element {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-slate-400 hover:bg-black/80"
+                className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-overlay)]"
               >
                 Apply
               </button>
@@ -572,7 +572,7 @@ export default function SavedInspectionsPage(): JSX.Element {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="rounded-full border border-neutral-700 bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
               >
                 Print
               </button>
@@ -580,7 +580,7 @@ export default function SavedInspectionsPage(): JSX.Element {
               <button
                 type="button"
                 onClick={exportCSV}
-                className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-black shadow-[0_0_18px_rgba(212,118,49,0.7)] hover:brightness-110"
+                className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(212,118,49,0.7)] hover:brightness-110"
               >
                 Export CSV
               </button>
@@ -597,11 +597,11 @@ export default function SavedInspectionsPage(): JSX.Element {
 
         {/* Content */}
         {loading ? (
-          <div className="rounded-2xl border border-dashed border-[var(--metal-border-soft)] bg-black/60 p-6 text-sm text-neutral-400">
+          <div className="rounded-2xl border border-dashed border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
             Loading inspection history…
           </div>
         ) : rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--metal-border-soft)] bg-black/60 p-6 text-sm text-neutral-400">
+          <div className="rounded-2xl border border-dashed border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
             No inspections found for this shop and filters.
           </div>
         ) : (
@@ -632,7 +632,7 @@ export default function SavedInspectionsPage(): JSX.Element {
               return (
                 <div
                   key={r.id}
-                  className="flex flex-col gap-2 rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.24),_#020617_75%)]/90 p-3 shadow-[0_14px_38px_rgba(0,0,0,0.9)] sm:flex-row sm:items-center"
+                  className="flex flex-col gap-2 rounded-2xl border border-[var(--metal-border-soft)] bg-[var(--theme-gradient-panel)]/90 p-3 shadow-[var(--theme-shadow-medium)] sm:flex-row sm:items-center"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -656,28 +656,28 @@ export default function SavedInspectionsPage(): JSX.Element {
                         {status}
                       </span>
 
-                      <span className="text-[11px] text-neutral-400">{created}</span>
+                      <span className="text-[11px] text-[color:var(--theme-text-secondary)]">{created}</span>
 
                       {woLabel ? (
-                        <span className="rounded-full border border-white/10 bg-black/60 px-2 py-0.5 text-[10px] font-mono text-neutral-400">
+                        <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-0.5 text-[10px] font-mono text-[color:var(--theme-text-secondary)]">
                           WO {woLabel}
                         </span>
                       ) : null}
                     </div>
 
-                    <div className="mt-1 truncate text-sm text-neutral-300">
+                    <div className="mt-1 truncate text-sm text-[color:var(--theme-text-secondary)]">
                       {vehicle} {plate} {unit ? `• ${unit}` : ""} {vin ? `• ${vin}` : ""}
                     </div>
 
                     {custName || biz ? (
-                      <div className="mt-0.5 text-[11px] text-neutral-400">
+                      <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         Customer:{" "}
                         {biz ? `${biz}${custName ? ` • ${custName}` : ""}` : custName}
                       </div>
                     ) : null}
 
                     {safeStr(r.summary).trim() ? (
-                      <div className="mt-1 line-clamp-2 text-[11px] text-white/55">
+                      <div className="mt-1 line-clamp-2 text-[11px] text-[color:var(--theme-text-muted)]">
                         {safeStr(r.summary).trim()}
                       </div>
                     ) : null}
@@ -687,7 +687,7 @@ export default function SavedInspectionsPage(): JSX.Element {
                     {wo?.id ? (
                       <Link
                         href={`/work-orders/${wo.id}`}
-                        className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-slate-400 hover:bg-black/80"
+                        className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-overlay)]"
                         title="Open related work order"
                       >
                         Open WO
@@ -699,13 +699,13 @@ export default function SavedInspectionsPage(): JSX.Element {
                         href={pdfHref}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_14px_rgba(212,118,49,0.6)] hover:brightness-110"
+                        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_14px_rgba(212,118,49,0.6)] hover:brightness-110"
                         title="Open finalized PDF (compliance record)"
                       >
                         PDF
                       </a>
                     ) : (
-                      <span className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                         No PDF
                       </span>
                     )}

@@ -161,7 +161,7 @@ export default function ProfileAvatarUploader({
               Remove
             </Button>
           </div>
-          <p className="text-[11px] text-neutral-400">
+          <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
             Used in work orders, chat, queue views, and technician activity surfaces.
           </p>
         </div>

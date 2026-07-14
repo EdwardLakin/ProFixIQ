@@ -15,7 +15,7 @@ const Legend = () => {
   const [showCommands, setShowCommands] = useState(true);
 
   return (
-    <div className="bg-gray-800 bg-opacity-60 p-4 rounded-lg shadow-md text-sm text-white mt-4">
+    <div className="bg-[color:var(--theme-surface-panel-strong)] bg-opacity-60 p-4 rounded-lg shadow-md text-sm text-[color:var(--theme-text-primary)] mt-4">
       <div className="flex flex-wrap gap-4 items-center">
         <span className="flex items-center gap-1">
           <span className="text-green-400 text-lg">✅</span> OK
@@ -38,7 +38,7 @@ const Legend = () => {
       </div>
 
       {showCommands && (
-        <div className="mt-2 text-xs text-gray-300">
+        <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
           <div className="font-semibold mb-1">Voice Commands:</div>
           <ul className="list-disc pl-5 space-y-1">
             {voiceCommands.map((cmd, idx) => (

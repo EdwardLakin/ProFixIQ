@@ -45,21 +45,21 @@ export function MobileJobLineAdd({
   if (!workOrderId) return null;
 
   return (
-    <section className="glass-card rounded-2xl border border-white/12 bg-black/40 px-3 py-3 shadow-card">
+    <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-card">
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <div className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Add job line
         </div>
         {shopId ? (
-          <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 font-mono text-[10px] text-neutral-300">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 font-mono text-[10px] text-[color:var(--theme-text-secondary)]">
             shop {String(shopId).slice(0, 8)}…
           </span>
         ) : (
-          <span className="text-[10px] text-neutral-500">—</span>
+          <span className="text-[10px] text-[color:var(--theme-text-muted)]">—</span>
         )}
       </div>
 
-      <div className="h-px w-full bg-white/10" />
+      <div className="h-px w-full bg-[color:var(--theme-surface-subtle)]" />
 
       <div className="pt-3">
         <NewWorkOrderLineForm

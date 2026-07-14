@@ -71,9 +71,9 @@ export default function ApprovalConfirmPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-2xl p-6 text-white">
-        <div className="mb-4 h-8 w-48 animate-pulse rounded-lg bg-black/30 backdrop-blur-sm border border-white/10" />
-        <div className="h-24 animate-pulse rounded-lg bg-black/30 backdrop-blur-sm border border-white/10" />
+      <div className="mx-auto max-w-2xl p-6 text-[color:var(--theme-text-primary)]">
+        <div className="mb-4 h-8 w-48 animate-pulse rounded-lg bg-[color:var(--theme-surface-inset)] backdrop-blur-sm border border-[color:var(--theme-border-soft)]" />
+        <div className="h-24 animate-pulse rounded-lg bg-[color:var(--theme-surface-inset)] backdrop-blur-sm border border-[color:var(--theme-border-soft)]" />
       </div>
     );
   }
@@ -93,19 +93,19 @@ export default function ApprovalConfirmPage() {
   /* ---------------------------------------------------------------------- */
 
   return (
-    <div className="mx-auto max-w-xl p-6 text-white">
+    <div className="mx-auto max-w-xl p-6 text-[color:var(--theme-text-primary)]">
       <div className="
-        rounded-2xl border border-green-500/40 
-        bg-green-500/10 
-        backdrop-blur-lg 
-        shadow-xl shadow-black/40 
+        rounded-2xl border border-green-500/40
+        bg-green-500/10
+        backdrop-blur-lg
+        shadow-xl shadow-[var(--theme-shadow-medium)]
         p-6
       ">
         <div className="text-xl font-blackops text-green-300 tracking-wide">
           Approval Received ✓
         </div>
 
-        <div className="mt-2 text-sm text-neutral-300">
+        <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
           This work order is now marked{" "}
           <span className="font-semibold text-green-200">
             {(wo.status ?? "queued").replaceAll("_", " ")}
@@ -116,13 +116,13 @@ export default function ApprovalConfirmPage() {
           <Link
             href={viewHref}
             className="
-              rounded-full 
-              bg-orange-500 
-              px-5 
-              py-2 
-              font-semibold 
-              text-black 
-              shadow 
+              rounded-full
+              bg-orange-500
+              px-5
+              py-2
+              font-semibold
+              text-[color:var(--theme-text-on-accent)]
+              shadow
               shadow-orange-900/40
               hover:bg-orange-400
               transition
@@ -134,14 +134,14 @@ export default function ApprovalConfirmPage() {
           <Link
             href="/work-orders"
             className="
-              rounded-full 
-              border border-white/10 
-              bg-white/5 
-              px-5 
-              py-2 
-              text-white 
-              shadow-sm 
-              hover:bg-white/10
+              rounded-full
+              border border-[color:var(--theme-border-soft)]
+              bg-[color:var(--theme-surface-subtle)]
+              px-5
+              py-2
+              text-[color:var(--theme-text-primary)]
+              shadow-sm
+              hover:bg-[color:var(--theme-surface-subtle)]
               transition
               backdrop-blur-sm
             "
@@ -150,7 +150,7 @@ export default function ApprovalConfirmPage() {
           </Link>
         </div>
 
-        <div className="mt-4 text-xs text-neutral-400">
+        <div className="mt-4 text-xs text-[color:var(--theme-text-secondary)]">
           Redirecting and closing window…
         </div>
       </div>

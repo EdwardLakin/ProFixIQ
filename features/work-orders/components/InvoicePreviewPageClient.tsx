@@ -789,40 +789,40 @@ export default function InvoicePreviewPageClient({
   ]);
 
   return (
-    <div className="min-h-[calc(100vh-0px)] bg-black px-3 py-3 sm:px-4 sm:py-4">
+    <div className="min-h-[calc(100vh-0px)] bg-[color:var(--theme-surface-page)] px-3 py-3 sm:px-4 sm:py-4">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-3">
         {/* Top action row */}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={handleBack}
-              className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5 active:scale-95"
+              className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] active:scale-95"
             >
               Back
             </button>
 
-            <div className="text-[0.7rem] uppercase tracking-[0.22em] text-neutral-300">
+            <div className="text-[0.7rem] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
               Invoice
-              <span className="ml-2 rounded-full border border-[var(--metal-border-soft)] bg-black/40 px-2 py-0.5 text-[0.65rem] text-neutral-200">
+              <span className="ml-2 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[0.65rem] text-[color:var(--theme-text-primary)]">
                 #{workOrderId}
               </span>
             </div>
 
             {loading ? (
-              <span className="text-[0.7rem] text-neutral-400">Loading shop…</span>
+              <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Loading shop…</span>
             ) : canTakePayment ? (
-              <span className="text-[0.7rem] text-neutral-400">
+              <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                 Payments enabled ({currency.toUpperCase()})
               </span>
             ) : (
-              <span className="text-[0.7rem] text-neutral-500">
+              <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                 Payments unavailable (shop not connected)
               </span>
             )}
 
             {reviewLoading ? (
-              <span className="text-[0.7rem] text-neutral-400">Reviewing…</span>
+              <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Reviewing…</span>
             ) : reviewOk ? (
               <span className="text-[0.7rem] text-emerald-300">Invoice ready</span>
             ) : (
@@ -838,7 +838,7 @@ export default function InvoicePreviewPageClient({
               className={
                 "rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] shadow-[0_0_12px_rgba(212,118,49,0.35)] " +
                 (reviewOk && !reviewLoading
-                  ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black hover:brightness-110"
+                  ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] hover:brightness-110"
                   : "border border-amber-500/40 bg-amber-500/10 text-amber-200 opacity-60")
               }
               title={reviewOk ? "Email invoice (SendGrid)" : "Blocked until required info is complete"}
@@ -877,11 +877,11 @@ export default function InvoicePreviewPageClient({
 
         {/* Review issues panel */}
         {!reviewOk ? (
-          <div className="rounded-xl border border-amber-500/30 bg-black/35 px-3 py-2">
+          <div className="rounded-xl border border-amber-500/30 bg-[color:var(--theme-surface-inset)] px-3 py-2">
             <div className="text-[0.7rem] uppercase tracking-[0.18em] text-amber-200">
               Invoice blocked
             </div>
-            <div className="mt-1 text-[0.75rem] text-neutral-300">
+            <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
               Fix the items below, then refresh this page.
             </div>
 
@@ -889,7 +889,7 @@ export default function InvoicePreviewPageClient({
               <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div>
             ) : null}
 
-            <ul className="mt-2 space-y-1 text-[0.8rem] text-neutral-200">
+            <ul className="mt-2 space-y-1 text-[0.8rem] text-[color:var(--theme-text-primary)]">
               {(reviewIssues ?? []).slice(0, 12).map((i, idx) => (
                 <li key={`${i.kind}-${idx}`} className="flex gap-2">
                   <span className="text-amber-300">•</span>
@@ -899,11 +899,11 @@ export default function InvoicePreviewPageClient({
             </ul>
 
             {issuesByLineId.size > 0 ? (
-              <div className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
-                <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-300">
+              <div className="mt-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+                <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Line issues
                 </div>
-                <ul className="mt-2 space-y-2 text-[0.8rem] text-neutral-200">
+                <ul className="mt-2 space-y-2 text-[0.8rem] text-[color:var(--theme-text-primary)]">
                   {(effectiveLines ?? [])
                     .map((l) => ({ l, id: getLineIdFromRepairLine(l) }))
                     .filter((x) => !!x.id && issuesByLineId.has(x.id as string))
@@ -919,13 +919,13 @@ export default function InvoicePreviewPageClient({
                       return (
                         <li
                           key={`line-issue-${id}`}
-                          className="rounded-md border border-white/10 bg-black/30 px-2 py-1.5"
+                          className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1.5"
                         >
                           <div className="flex items-center gap-2">
                             <span className="text-amber-300">⚠</span>
                             <span className="font-medium">{label}</span>
                           </div>
-                          <div className="mt-1 space-y-0.5 pl-6 text-neutral-300">
+                          <div className="mt-1 space-y-0.5 pl-6 text-[color:var(--theme-text-secondary)]">
                             {list.slice(0, 3).map((it, idx2) => (
                               <div key={`${id}-${idx2}`}>• {it.message}</div>
                             ))}
@@ -940,18 +940,18 @@ export default function InvoicePreviewPageClient({
         ) : null}
 
         {/* Inspection PDF Panel (works even when invoice doesn't exist yet) */}
-        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/30 p-4">
+        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+              <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Inspection PDF
               </div>
-              <div className="mt-1 text-sm text-neutral-200">
+              <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                 Download the finalized inspection report (if available).
               </div>
               {inspectionPdf?.storagePath ? (
-                <div className="mt-1 text-[0.75rem] text-neutral-500">
-                  Stored: <span className="text-neutral-400">{inspectionPdf.storagePath}</span>
+                <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
+                  Stored: <span className="text-[color:var(--theme-text-secondary)]">{inspectionPdf.storagePath}</span>
                 </div>
               ) : null}
             </div>
@@ -960,7 +960,7 @@ export default function InvoicePreviewPageClient({
               <button
                 type="button"
                 onClick={() => void refreshInspectionPdf()}
-                className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5 active:scale-95"
+                className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] active:scale-95"
                 disabled={inspectionPdfLoading}
                 title="Reload inspection PDF status"
               >
@@ -974,8 +974,8 @@ export default function InvoicePreviewPageClient({
                 className={
                   "rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] " +
                   (inspectionPdf?.pdfUrl
-                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black hover:brightness-110"
-                    : "border border-white/10 bg-black/40 text-neutral-400 opacity-60")
+                    ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] hover:brightness-110"
+                    : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] opacity-60")
                 }
                 title={inspectionPdf?.pdfUrl ? "Open inspection PDF" : "No inspection PDF found yet"}
               >
@@ -985,20 +985,20 @@ export default function InvoicePreviewPageClient({
           </div>
 
           {!inspectionPdf?.pdfUrl ? (
-            <div className="mt-3 text-[0.75rem] text-neutral-400">
+            <div className="mt-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
               No inspection PDF is attached to this work order yet. Finish/finalize an inspection to generate it.
             </div>
           ) : null}
         </div>
 
         {/* PDF Download Panel */}
-        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/30 p-4">
+        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+              <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Invoice PDF
               </div>
-              <div className="mt-1 text-sm text-neutral-200">
+              <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                 Download a copy for your records.
               </div>
             </div>

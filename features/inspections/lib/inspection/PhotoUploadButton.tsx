@@ -123,7 +123,7 @@ export default function PhotoUploadButton({
 
   return (
     <div className="mt-2">
-      <label className="mb-1 block text-xs font-bold text-white">
+      <label className="mb-1 block text-xs font-bold text-[color:var(--theme-text-primary)]">
         Upload Photos
       </label>
 
@@ -139,7 +139,7 @@ export default function PhotoUploadButton({
         accept="image/*"
         onChange={handleFileChange}
         disabled={uploading || !canUpload}
-        className="mt-2 block text-sm text-gray-300 file:rounded-full file:border-0 file:bg-orange-700 file:text-sm file:font-semibold file:text-white hover:file:bg-orange-600 disabled:opacity-60"
+        className="mt-2 block text-sm text-[color:var(--theme-text-secondary)] file:rounded-full file:border-0 file:bg-orange-700 file:text-sm file:font-semibold file:text-[color:var(--theme-text-primary)] hover:file:bg-orange-600 disabled:opacity-60"
       />
 
       {!canUpload && (

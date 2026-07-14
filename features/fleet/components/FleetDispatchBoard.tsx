@@ -13,8 +13,8 @@ type TowerPayload = {
 type DispatchFilter = "all" | DispatchAssignment["state"];
 
 const card =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] " +
-  "bg-black/70 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+  "rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] " +
+  "bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 
 export default function FleetDispatchBoard({
   uiContext,
@@ -102,11 +102,11 @@ export default function FleetDispatchBoard({
   const inShop = assignments.filter((a) => a.state === "in_shop").length;
 
   return (
-    <div className="px-4 py-6 text-white">
+    <div className="px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto w-full max-w-6xl space-y-5">
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+          className="pointer-events-none fixed inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
         />
 
         <div className={card + " relative overflow-hidden px-4 py-4 md:px-6 md:py-5"}>
@@ -122,19 +122,19 @@ export default function FleetDispatchBoard({
               >
                 Fleet Dispatch
               </h1>
-              <p className="mt-1 text-xs text-neutral-300">
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Assign units, drivers and routes. Dispatch, shop and drivers
                 stay in sync from one screen.
               </p>
-              <p className="mt-1 text-[11px] text-neutral-500">
+              <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                 Actor surface: {uiContext.actorLabel}
               </p>
             </div>
 
-            <div className="flex flex-col gap-2 text-right text-[11px] text-neutral-400 md:items-end">
+            <div className="flex flex-col gap-2 text-right text-[11px] text-[color:var(--theme-text-secondary)] md:items-end">
               <span>
                 Total assignments:{" "}
-                <span className="font-semibold text-neutral-100">{total}</span>
+                <span className="font-semibold text-[color:var(--theme-text-primary)]">{total}</span>
               </span>
               <span>
                 Pre-trip due:{" "}
@@ -162,8 +162,8 @@ export default function FleetDispatchBoard({
                   onClick={() => setStateFilter(f)}
                   className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
                     stateFilter === f
-                      ? "bg-[color:var(--accent-copper)] text-black shadow-[0_0_16px_rgba(193,102,59,0.7)]"
-                      : "border border-neutral-700 bg-black/60 text-neutral-300 hover:bg-neutral-900"
+                      ? "bg-[color:var(--accent-copper)] text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)]"
+                      : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]"
                   }`}
                 >
                   {f === "all"
@@ -182,7 +182,7 @@ export default function FleetDispatchBoard({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search driver, unit, route…"
-                className="w-52 rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-xs text-white placeholder:text-neutral-500 shadow-card backdrop-blur-xl focus:outline-none focus:ring-2 focus:ring-sky-400/40"
+                className="w-52 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] shadow-card backdrop-blur-xl focus:outline-none focus:ring-2 focus:ring-sky-400/40"
               />
             </div>
           </div>
@@ -194,17 +194,17 @@ export default function FleetDispatchBoard({
           )}
 
           {loading && !error && (
-            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-4 text-sm text-neutral-300">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
               Loading dispatch board…
             </div>
           )}
 
           {!loading && !error && filteredAssignments.length === 0 && (
-            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-6 text-center text-sm text-neutral-300">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-6 text-center text-sm text-[color:var(--theme-text-secondary)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                 No dispatch assignments
               </div>
-              <p className="mt-2 text-xs text-neutral-400">
+              <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                 Create fleet service requests or assign units from the Fleet
                 Tower to see them here.
               </p>
@@ -214,7 +214,7 @@ export default function FleetDispatchBoard({
           {!loading && !error && filteredAssignments.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full border-separate border-spacing-y-1 text-xs">
-                <thead className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                <thead className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   <tr>
                     <th className="px-3 py-1 text-left">Driver</th>
                     <th className="px-3 py-1 text-left">Unit</th>
@@ -227,19 +227,19 @@ export default function FleetDispatchBoard({
                 <tbody>
                   {filteredAssignments.map((a) => (
                     <tr key={a.id} className="align-middle">
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-100">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
                         {a.driverName}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {a.unitLabel}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {a.routeLabel ?? "—"}
                       </td>
                       <td className="px-3 py-1.5">
                         <DispatchStatePill state={a.state} />
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {a.nextPreTripDue
                           ? new Date(a.nextPreTripDue).toLocaleDateString()
                           : "—"}
@@ -254,14 +254,14 @@ export default function FleetDispatchBoard({
                         {uiContext.capabilities.canCreateFleetWorkOrders && (
                           <Link
                             href={`/work-orders/create?unitId=${encodeURIComponent(a.unitId)}`}
-                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
                           >
                             New WO
                           </Link>
                         )}
                         <Link
                           href={`${routePrefix}/units/${encodeURIComponent(a.unitId)}`}
-                          className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                          className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
                         >
                           Open unit
                         </Link>

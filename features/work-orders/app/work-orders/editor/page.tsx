@@ -210,12 +210,12 @@ export default function WorkOrderEditorPage() {
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(300px,0.9fr)]">
         <section className={cn(PANEL_VARIANTS.primary, "space-y-4 px-4 py-4 md:px-5 md:py-5")}>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,#334155)] pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-3">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,#64748B)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,var(--theme-text-muted))]">
                 Primary workflow zone
               </p>
-              <h2 className="text-lg font-semibold text-[var(--theme-text-primary,#E2E8F0)]">
+              <h2 className="text-lg font-semibold text-[var(--theme-text-primary,var(--theme-text-primary))]">
                 Compose and stage work-order lines
               </h2>
             </div>
@@ -234,7 +234,7 @@ export default function WorkOrderEditorPage() {
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-text-muted,#64748B)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-text-muted,var(--theme-text-muted))]">
                     Line {idx + 1}
                   </p>
                   <button
@@ -303,7 +303,7 @@ export default function WorkOrderEditorPage() {
         <aside className="space-y-4">
           <section className={cn(PANEL_VARIANTS.secondary, "space-y-3 px-4 py-4") }>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,#64748B)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,var(--theme-text-muted))]">
                 Secondary context
               </p>
               <h3 className="text-sm font-semibold">Target work order</h3>
@@ -316,14 +316,14 @@ export default function WorkOrderEditorPage() {
                 </option>
               ))}
             </select>
-            <p className="text-xs text-[var(--theme-text-muted,#64748B)]">
+            <p className="text-xs text-[var(--theme-text-muted,var(--theme-text-muted))]">
               Select one active order, then commit staged lines when ready.
             </p>
           </section>
 
           <section className={cn(PANEL_VARIANTS.passive, "space-y-3 px-4 py-4") }>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,#64748B)]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,var(--theme-text-muted))]">
                 Passive support
               </p>
               <h3 className="text-sm font-semibold">Quick add from menu</h3>
@@ -340,7 +340,7 @@ export default function WorkOrderEditorPage() {
                   <li key={mi.id}>
                     <button
                       type="button"
-                    className="desktop-panel-soft w-full rounded-md px-2.5 py-2 text-left text-xs text-[var(--theme-text-secondary,#94A3B8)] hover:border-[var(--brand-accent,#E39A6E)]/70"
+                    className="desktop-panel-soft w-full rounded-md px-2.5 py-2 text-left text-xs text-[var(--theme-text-secondary,var(--theme-text-muted))] hover:border-[var(--brand-accent,#E39A6E)]/70"
                       onClick={() => addFromMenu(mi)}
                     >
                       {(mi.name ?? mi.complaint ?? "Untitled")}

@@ -26,48 +26,48 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 const base =
   "inline-flex items-center justify-center rounded-[var(--theme-radius-md,0.5rem)] font-semibold transition duration-150 ease-in-out " +
   "backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-offset-2 " +
-  "focus:ring-[var(--desktop-focus-ring,var(--brand-primary,#C97A3D))] focus:ring-offset-black";
+  "focus:ring-[var(--desktop-focus-ring,var(--brand-primary,#C97A3D))] focus:ring-offset-[color:var(--theme-surface-page)]";
 
 const variantClasses: Record<Exclude<Variant, "copper">, string> = {
   default: clsx(
     "border",
-    "text-[#020617]",
+    "text-[var(--theme-surface-page)]",
     "border-[color:color-mix(in_srgb,var(--brand-primary,#C97A3D)_58%,#fbbf24)]",
-    "bg-[linear-gradient(to_right,color-mix(in_srgb,var(--brand-primary,#C97A3D)_88%,#f3f4f6),color-mix(in_srgb,var(--brand-primary,#C97A3D)_60%,#f59e0b))]",
+    "bg-[linear-gradient(to_right,color-mix(in_srgb,var(--brand-primary,#C97A3D)_88%,var(--theme-text-primary)),color-mix(in_srgb,var(--brand-primary,#C97A3D)_60%,#f59e0b))]",
     "hover:brightness-105",
   ),
   secondary: clsx(
     "border",
-    "text-[var(--theme-button-secondary-text,#FFFFFF)]",
-    "border-[color:var(--desktop-border,var(--theme-card-border,#334155))]",
-    "bg-[color:rgba(3,8,16,0.72)]",
-    "hover:bg-[rgba(3,8,16,0.84)]",
+    "text-[var(--theme-button-secondary-text,var(--theme-text-inverse))]",
+    "border-[color:var(--desktop-border,var(--theme-card-border,var(--theme-border-soft)))]",
+    "bg-[color:var(--theme-surface-inset)]",
+    "hover:bg-[var(--theme-surface-inset)]",
   ),
   destructive: clsx(
-    "text-white",
+    "text-[color:var(--theme-text-primary)]",
     "border border-red-500/50",
     "bg-red-700/60",
     "hover:bg-red-600/70",
   ),
   ghost: clsx(
     "border",
-    "text-[var(--theme-text-primary,#FFFFFF)]",
-    "border-[color:var(--desktop-border,var(--theme-card-border,#334155))]",
-    "bg-transparent hover:bg-white/5",
+    "text-[var(--theme-text-primary,var(--theme-text-inverse))]",
+    "border-[color:var(--desktop-border,var(--theme-card-border,var(--theme-border-soft)))]",
+    "bg-transparent hover:bg-[color:var(--theme-surface-subtle)]",
   ),
   outline: clsx(
     "border",
-    "text-[var(--theme-text-primary,#FFFFFF)]",
-    "border-[color:var(--desktop-border,var(--theme-card-border,#334155))]",
+    "text-[var(--theme-text-primary,var(--theme-text-inverse))]",
+    "border-[color:var(--desktop-border,var(--theme-card-border,var(--theme-border-soft)))]",
     "bg-transparent",
-    "hover:bg-white/5",
+    "hover:bg-[color:var(--theme-surface-subtle)]",
   ),
 };
 
 const copperClass = clsx(
   "border",
-  "text-[#020617]",
-  "bg-[linear-gradient(to_right,color-mix(in_srgb,var(--brand-primary,#C97A3D)_88%,#f3f4f6),color-mix(in_srgb,var(--brand-primary,#C97A3D)_60%,#f59e0b))]",
+  "text-[var(--theme-surface-page)]",
+  "bg-[linear-gradient(to_right,color-mix(in_srgb,var(--brand-primary,#C97A3D)_88%,var(--theme-text-primary)),color-mix(in_srgb,var(--brand-primary,#C97A3D)_60%,#f59e0b))]",
   "border-[color:color-mix(in_srgb,var(--brand-primary,#C97A3D)_58%,#fbbf24)]",
   "hover:brightness-105",
   "shadow-[var(--theme-shadow-soft,0_0_0_1px_rgba(193,102,59,0.12),0_0_16px_rgba(193,102,59,0.18))]",

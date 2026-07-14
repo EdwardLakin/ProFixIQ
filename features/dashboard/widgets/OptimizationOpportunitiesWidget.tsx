@@ -72,7 +72,7 @@ function priorityBadgeTone(band: OptimizationOpportunity["priorityBand"]): strin
   if (band === "critical") return "border-red-400/40 bg-red-500/15 text-red-200";
   if (band === "high") return "border-orange-400/40 bg-orange-500/15 text-orange-200";
   if (band === "medium") return "border-yellow-400/40 bg-yellow-500/15 text-yellow-100";
-  return "border-white/15 bg-black/35 text-neutral-300";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]";
 }
 
 function toNumber(value: unknown): number | null {
@@ -702,7 +702,7 @@ function OptimizationOpportunitiesWidgetInner({
         rightSlot={
           <Link
             href="/dashboard/owner/reports"
-            className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
           >
             Open full view →
           </Link>
@@ -710,33 +710,33 @@ function OptimizationOpportunitiesWidgetInner({
         compact
       >
         {loading ? (
-          <div className="text-sm text-neutral-300">Scanning pricing, inspections, and revenue patterns…</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">Scanning pricing, inspections, and revenue patterns…</div>
         ) : error ? (
           <div className="text-sm text-[color:var(--brand-accent)]">{error}</div>
         ) : (
           <div className="space-y-2.5">
             <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Open</div>
-                <div className="mt-1 text-base font-semibold text-white">{summary?.totalOpportunities ?? opportunities.length}</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Open</div>
+                <div className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{summary?.totalOpportunities ?? opportunities.length}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Critical</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Critical</div>
                 <div className="mt-1 text-base font-semibold text-[color:var(--brand-accent)]">{summary?.criticalCount ?? 0}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/25 px-2.5 py-2">
-                <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Value</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Value</div>
                 <div className="mt-1 text-base font-semibold text-[color:var(--brand-primary)]">
                   {summary ? formatEstimatedImpact(summary.potentialMonthlyValue).replace("Estimated impact: ", "") : "—"}
                 </div>
               </div>
             </div>
-            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-neutral-200">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm text-[color:var(--theme-text-primary)]">
               {topOpportunity ? (
                 <>
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Top opportunity</div>
-                  <div className="mt-1 font-semibold text-white">{topOpportunity.title}</div>
-                  <div className="mt-0.5 text-xs text-neutral-400">{topOpportunity.impactLabel ?? formatEstimatedImpact(topOpportunity.estimatedValue)}</div>
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Top opportunity</div>
+                  <div className="mt-1 font-semibold text-[color:var(--theme-text-primary)]">{topOpportunity.title}</div>
+                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{topOpportunity.impactLabel ?? formatEstimatedImpact(topOpportunity.estimatedValue)}</div>
                 </>
               ) : (
                 "No active optimization opportunities right now."
@@ -757,14 +757,14 @@ function OptimizationOpportunitiesWidgetInner({
         rightSlot={
           <Link
             href="/dashboard/owner/reports"
-            className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
           >
             Review data →
           </Link>
         }
       >
         {loading ? (
-          <div className="rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-neutral-300">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
             Scanning pricing, inspections, and revenue patterns…
           </div>
         ) : error ? (
@@ -772,9 +772,9 @@ function OptimizationOpportunitiesWidgetInner({
             {error}
           </div>
         ) : opportunities.length === 0 ? (
-          <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-primary)_25%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,transparent)] px-4 py-4 text-sm text-neutral-200">
+          <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-primary)_25%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,transparent)] px-4 py-4 text-sm text-[color:var(--theme-text-primary)]">
             <div className="font-semibold text-[color:var(--brand-primary)]">Your shop is optimized</div>
-            <div className="mt-1 text-xs text-neutral-300">
+            <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               {resolvedStats.applied} optimizations applied · {resolvedStats.resolved} opportunities resolved
             </div>
           </div>
@@ -792,7 +792,7 @@ function OptimizationOpportunitiesWidgetInner({
               <button
                 type="button"
                 onClick={() => setShowRecentChanges((prev) => !prev)}
-                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-neutral-200"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)]"
               >
                 {showRecentChanges ? "Hide recent changes" : "Recent changes"}
               </button>
@@ -802,7 +802,7 @@ function OptimizationOpportunitiesWidgetInner({
                 <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--brand-primary)]">
                   Recommended next
                 </div>
-                <div className="mt-1.5 space-y-1 text-xs text-neutral-200">
+                <div className="mt-1.5 space-y-1 text-xs text-[color:var(--theme-text-primary)]">
                   {recommendedNext.map((opportunity) => (
                     <div key={opportunity.id}>
                       • {opportunity.title} ({Math.round(opportunity.priorityScore * 100)} priority)
@@ -812,26 +812,26 @@ function OptimizationOpportunitiesWidgetInner({
               </div>
             ) : null}
             {summary ? (
-              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-neutral-300">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                 {summary.totalOpportunities} opportunities · {summary.criticalCount} critical · {summary.highCount} high · Potential {formatEstimatedImpact(summary.potentialMonthlyValue).replace("Estimated impact: ", "")}
-                <div className="mt-1 text-[10px] text-neutral-500">
+                <div className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
                   Analyzed {new Date(summary.lastAnalyzedAt).toLocaleString()} · Data {summary.dataFreshness}
                 </div>
               </div>
             ) : null}
 
             {showRecentChanges ? (
-              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-neutral-300">
-                <div className="font-semibold text-neutral-100">Last 5 changes</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
+                <div className="font-semibold text-[color:var(--theme-text-primary)]">Last 5 changes</div>
                 <ul className="mt-1.5 space-y-1">
-                  {activityLog.length === 0 ? <li className="text-neutral-500">No actions yet.</li> : null}
+                  {activityLog.length === 0 ? <li className="text-[color:var(--theme-text-muted)]">No actions yet.</li> : null}
                   {activityLog.map((item) => (
                     <li key={`${item.opportunityId}:${item.createdAt}`} className="flex items-center justify-between gap-2">
-                      <span className="text-neutral-200">
+                      <span className="text-[color:var(--theme-text-primary)]">
                         {item.type} · {item.action}
                         {item.result ? ` · ${item.result}` : ""}
                       </span>
-                      <span className="text-[10px] text-neutral-500">{new Date(item.createdAt).toLocaleString()}</span>
+                      <span className="text-[10px] text-[color:var(--theme-text-muted)]">{new Date(item.createdAt).toLocaleString()}</span>
                     </li>
                   ))}
                 </ul>
@@ -854,7 +854,7 @@ function OptimizationOpportunitiesWidgetInner({
                     "rounded-full border px-2.5 py-1 text-[11px] transition",
                     filter === value
                       ? "border-[color:var(--brand-primary)] bg-[color:color-mix(in_srgb,var(--brand-primary)_24%,transparent)] text-[color:var(--brand-primary)]"
-                      : "border-white/10 bg-black/20 text-neutral-300 hover:border-white/20",
+                      : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:border-[color:var(--theme-border-soft)]",
                   ].join(" ")}
                 >
                   {label}
@@ -863,14 +863,14 @@ function OptimizationOpportunitiesWidgetInner({
             </div>
 
             {visibleOpportunities.length === 0 && hasOnlyCompleted && filter === "active" ? (
-              <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-primary)_25%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,transparent)] px-4 py-4 text-sm text-neutral-200">
+              <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-primary)_25%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_10%,transparent)] px-4 py-4 text-sm text-[color:var(--theme-text-primary)]">
                 <div className="font-semibold text-[color:var(--brand-primary)]">You&apos;re fully optimized (for now)</div>
-                <div className="mt-1 text-xs text-neutral-300">
+                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                   We&apos;ll surface new opportunities as your shop data evolves.
                 </div>
               </div>
             ) : visibleOpportunities.length === 0 ? (
-              <div className="rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-neutral-300">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
                 No opportunities in this filter right now.
               </div>
             ) : null}
@@ -888,10 +888,10 @@ function OptimizationOpportunitiesWidgetInner({
                   className={[
                     "rounded-2xl px-3 py-2.5 transition-all duration-500",
                     isApplied
-                      ? "border border-emerald-500/35 bg-[color:color-mix(in_srgb,rgba(16,185,129,0.18)_55%,black)]"
+                      ? "border border-emerald-500/35 bg-[color:color-mix(in_srgb,rgba(16,185,129,0.18)_55%,_var(--theme-surface-page))]"
                       : isDismissed
-                        ? "border border-white/8 bg-black/15"
-                        : "border border-white/10 bg-black/25",
+                        ? "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+                        : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
                     appliedPulseById[opportunity.id] ? "scale-[1.01] shadow-[0_0_0_1px_rgba(16,185,129,0.5)] opacity-90" : "",
                   ].join(" ")}
                 >
@@ -914,27 +914,27 @@ function OptimizationOpportunitiesWidgetInner({
                         </span>
                       ) : null}
                       {isDismissed ? (
-                        <span className="rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                        <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                           Dismissed
                         </span>
                       ) : null}
                       {!isApplied && !isDismissed ? (
-                        <span className="rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-300">
+                        <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                           Pending
                         </span>
                       ) : null}
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
                         {opportunity.impactLevel} impact
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-1 text-sm font-semibold text-neutral-100">{opportunity.title}</div>
+                  <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">{opportunity.title}</div>
 
                   {!isDismissed ? (
                     <>
-                      <div className="mt-1 text-xs text-neutral-300">{explanation?.summary ?? opportunity.summary}</div>
-                      <div className="mt-2 text-[11px] text-neutral-400">Suggested action: {opportunity.suggestedAction}</div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{explanation?.summary ?? opportunity.summary}</div>
+                      <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">Suggested action: {opportunity.suggestedAction}</div>
                       {story?.isStoryWorthy ? (
                         <div className="mt-1 inline-flex rounded-full border border-sky-300/35 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-200">
                           Ops + Story signal
@@ -943,16 +943,16 @@ function OptimizationOpportunitiesWidgetInner({
                       {opportunity.whyNow ? (
                         <div className="mt-1 text-[11px] text-[color:var(--brand-primary)]">Why now: {opportunity.whyNow}</div>
                       ) : null}
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-                        <span className="rounded-full border border-white/10 px-2 py-0.5">
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+                        <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5">
                           {opportunity.confidenceLabel ?? confidenceLabel(opportunity.confidence)}
                         </span>
                         <span>{opportunity.impactLabel ?? formatEstimatedImpact(opportunity.estimatedValue)}</span>
                       </div>
                       {opportunity.relatedIds?.length ? (
-                        <details className="mt-2 rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-[11px] text-neutral-300">
-                          <summary className="cursor-pointer text-neutral-200">Related ({opportunity.relatedIds.length})</summary>
-                          <ul className="mt-1 space-y-1 text-neutral-400">
+                        <details className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
+                          <summary className="cursor-pointer text-[color:var(--theme-text-primary)]">Related ({opportunity.relatedIds.length})</summary>
+                          <ul className="mt-1 space-y-1 text-[color:var(--theme-text-secondary)]">
                             {opportunity.relatedIds.slice(0, 3).map((relatedId) => (
                               <li key={relatedId}>• {relatedId}</li>
                             ))}
@@ -960,8 +960,8 @@ function OptimizationOpportunitiesWidgetInner({
                         </details>
                       ) : null}
 
-                      <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-[11px] text-neutral-300">
-                        <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">Why recommended</div>
+                      <div className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+                        <div className="font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)]">Why recommended</div>
                         <ul className="mt-1.5 space-y-1">
                           {whyThisMatters.slice(0, 3).map((item) => (
                             <li key={item}>• {item}</li>
@@ -969,8 +969,8 @@ function OptimizationOpportunitiesWidgetInner({
                         </ul>
                         {explanation?.evidence?.length ? (
                           <div className="mt-2">
-                            <div className="font-semibold uppercase tracking-[0.12em] text-neutral-200">What supports this</div>
-                            <ul className="mt-1 space-y-1 text-neutral-400">
+                            <div className="font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)]">What supports this</div>
+                            <ul className="mt-1 space-y-1 text-[color:var(--theme-text-secondary)]">
                               {explanation.evidence.slice(0, 3).map((evidence) => (
                                 <li key={`${evidence.label}:${evidence.value ?? ""}`}>• {evidence.label}{evidence.value != null ? `: ${evidence.value}` : ""}</li>
                               ))}
@@ -978,12 +978,12 @@ function OptimizationOpportunitiesWidgetInner({
                           </div>
                         ) : null}
                         {explanation?.riskIfIgnored ? (
-                          <div className="mt-2 text-neutral-400">What happens if deferred: {explanation.riskIfIgnored}</div>
+                          <div className="mt-2 text-[color:var(--theme-text-secondary)]">What happens if deferred: {explanation.riskIfIgnored}</div>
                         ) : null}
                       </div>
                     </>
                   ) : (
-                    <div className="mt-2 text-xs text-neutral-400">Hidden from active recommendations.</div>
+                    <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">Hidden from active recommendations.</div>
                   )}
 
                   <div className="mt-2.5 flex flex-wrap gap-2">
@@ -991,7 +991,7 @@ function OptimizationOpportunitiesWidgetInner({
                       type="button"
                       onClick={() => void openExecutionModal(opportunity)}
                       disabled={Boolean(actionState) || submittingId === opportunity.id}
-                      className="rounded-lg bg-[color:var(--brand-primary)] px-3 py-1.5 text-xs font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-lg bg-[color:var(--brand-primary)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-on-accent)] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {isApplied ? "Applied" : "Apply"}
                     </button>
@@ -999,14 +999,14 @@ function OptimizationOpportunitiesWidgetInner({
                       type="button"
                       onClick={() => void dismissOpportunity(opportunity)}
                       disabled={Boolean(actionState) || submittingId === opportunity.id}
-                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-neutral-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {isDismissed ? "Dismissed" : "Dismiss"}
                     </button>
                     <button
                       type="button"
                       onClick={() => void openExecutionModal(opportunity)}
-                      className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-neutral-300"
+                      className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs text-[color:var(--theme-text-secondary)]"
                     >
                       View details
                     </button>
@@ -1018,9 +1018,9 @@ function OptimizationOpportunitiesWidgetInner({
             {groups.length > 0 ? (
               <div className="grid gap-2">
                 {groups.map((group) => (
-                  <div key={`${group.type}:${group.groupKey}`} className="rounded-lg border border-white/10 bg-black/15 px-3 py-2">
-                    <div className="text-xs font-semibold text-neutral-100">{groupLabel(group)} Optimization</div>
-                    <div className="mt-1 text-[11px] text-neutral-400">
+                  <div key={`${group.type}:${group.groupKey}`} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+                    <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">{groupLabel(group)} Optimization</div>
+                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                       {group.opportunities.length} opportunities ·
                       {" "}~{formatEstimatedImpact(group.totalEstimatedValue).replace("Estimated impact: ", "")} ·
                       {" "}Avg confidence {Math.round(group.avgConfidence * 100)}%
@@ -1057,30 +1057,30 @@ function OptimizationOpportunitiesWidgetInner({
         }}
       />
       {bulkConfirmOpen ? (
-        <div className="fixed inset-0 z-[81] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-white/15 bg-[#101114] p-5 text-neutral-100 shadow-2xl">
-            <div className="text-xs uppercase tracking-[0.16em] text-neutral-400">Batch execution</div>
+        <div className="fixed inset-0 z-[81] flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-[color:var(--theme-border-soft)] bg-[var(--theme-surface-page)] p-5 text-[color:var(--theme-text-primary)] shadow-2xl">
+            <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Batch execution</div>
             <h3 className="mt-1 text-lg font-semibold">Apply all high-confidence changes?</h3>
-            <p className="mt-1 text-xs text-neutral-300">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               {highConfidenceCandidates.length} changes will run sequentially with normal guardrails.
             </p>
-            <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-lg border border-white/10 bg-black/25 p-2 text-xs">
+            <ul className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-xs">
               {highConfidenceCandidates.map((opportunity) => (
-                <li key={opportunity.id} className="rounded border border-white/10 bg-black/20 px-2 py-1.5">
-                  <div className="font-semibold text-neutral-100">{opportunity.title}</div>
-                  <div className="text-neutral-400">
+                <li key={opportunity.id} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1.5">
+                  <div className="font-semibold text-[color:var(--theme-text-primary)]">{opportunity.title}</div>
+                  <div className="text-[color:var(--theme-text-secondary)]">
                     {Math.round(opportunity.confidence * 100)}% confidence ·{" "}
                     {opportunity.impactLabel ?? formatEstimatedImpact(opportunity.estimatedValue)}
                   </div>
                 </li>
               ))}
-              {highConfidenceCandidates.length === 0 ? <li className="text-neutral-500">No eligible opportunities.</li> : null}
+              {highConfidenceCandidates.length === 0 ? <li className="text-[color:var(--theme-text-muted)]">No eligible opportunities.</li> : null}
             </ul>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setBulkConfirmOpen(false)}
-                className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-neutral-200"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)]"
               >
                 Cancel
               </button>
@@ -1088,7 +1088,7 @@ function OptimizationOpportunitiesWidgetInner({
                 type="button"
                 disabled={bulkApplying || highConfidenceCandidates.length === 0}
                 onClick={() => void applyAllHighConfidence()}
-                className="rounded-lg bg-[color:var(--brand-primary)] px-3 py-1.5 text-xs font-semibold text-black disabled:opacity-40"
+                className="rounded-lg bg-[color:var(--brand-primary)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-on-accent)] disabled:opacity-40"
               >
                 {bulkApplying ? "Applying…" : "Apply all safe"}
               </button>

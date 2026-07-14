@@ -269,28 +269,28 @@ export default function MobileAppointmentsPage() {
   /* -------------------------------- Render --------------------------------- */
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <Toaster position="top-center" />
 
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
         {/* Header */}
         <header className="space-y-1">
-          <div className="text-[0.7rem] uppercase tracking-[0.24em] text-neutral-500">
+          <div className="text-[0.7rem] uppercase tracking-[0.24em] text-[color:var(--theme-text-muted)]">
             ProFixIQ • Appointments
           </div>
           <h1 className="font-blackops text-lg uppercase tracking-[0.18em] text-orange-400">
             Today&apos;s bookings
           </h1>
-          <p className="text-[0.75rem] text-neutral-400">
+          <p className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">
             Mobile view for advisors / managers to manage the day&apos;s
             appointments.
           </p>
         </header>
 
         {/* Shop + day picker */}
-        <section className="space-y-3 rounded-2xl border border-white/10 bg-black/40 p-3 shadow-card backdrop-blur-md">
+        <section className="space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md">
           <div className="flex items-center justify-between gap-3">
-            <label className="flex-1 text-[0.65rem] uppercase tracking-[0.12em] text-neutral-400">
+            <label className="flex-1 text-[0.65rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
               Shop
               <select
                 value={shopSlug}
@@ -301,7 +301,7 @@ export default function MobileAppointmentsPage() {
                     `/mobile/appointments?shop=${encodeURIComponent(slug)}`,
                   );
                 }}
-                className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
                 {shops.map((s) => (
                   <option key={s.slug as string} value={s.slug as string}>
@@ -312,23 +312,23 @@ export default function MobileAppointmentsPage() {
             </label>
 
             <div className="flex flex-col items-end text-right">
-              <span className="text-[0.6rem] uppercase tracking-[0.12em] text-neutral-500">
+              <span className="text-[0.6rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 Today
               </span>
-              <span className="text-sm font-semibold text-neutral-100">
+              <span className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 {totalForDay} appt{totalForDay === 1 ? "" : "s"}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="flex-1 text-[0.65rem] uppercase tracking-[0.12em] text-neutral-400">
+            <label className="flex-1 text-[0.65rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
               Date
               <input
                 type="date"
                 value={day}
                 onChange={(e) => setDay(e.target.value)}
-                className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
               />
             </label>
             <div className="flex flex-col gap-1">
@@ -369,7 +369,7 @@ export default function MobileAppointmentsPage() {
         </section>
 
         {/* Create / edit form */}
-        <section className="space-y-2 rounded-2xl border border-white/10 bg-black/40 p-3 shadow-card backdrop-blur-md">
+        <section className="space-y-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md">
           {editing ? (
             <EditForm
               booking={editing}
@@ -389,22 +389,22 @@ export default function MobileAppointmentsPage() {
         </section>
 
         {/* List for the selected day */}
-        <section className="space-y-2 rounded-2xl border border-white/10 bg-black/40 p-3 shadow-card backdrop-blur-md">
+        <section className="space-y-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Appointments for this day
             </h2>
             {loadingBookings && (
-              <span className="text-[0.65rem] text-neutral-400">
+              <span className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">
                 Loading…
               </span>
             )}
           </div>
 
           {loadingBookings ? (
-            <p className="text-xs text-neutral-400">Fetching appointments…</p>
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">Fetching appointments…</p>
           ) : bookings.length === 0 ? (
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
               No appointments for this day.
             </p>
           ) : (
@@ -429,17 +429,17 @@ export default function MobileAppointmentsPage() {
                   return (
                     <li
                       key={b.id}
-                      className="flex items-start justify-between gap-2 rounded-xl border border-white/12 bg-black/50 px-3 py-2 text-xs"
+                      className="flex items-start justify-between gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs"
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium text-neutral-50">
+                        <div className="font-medium text-[color:var(--theme-text-primary)]">
                           {b.customer_name || "Customer"}
                         </div>
-                        <div className="mt-0.5 text-[0.7rem] text-neutral-400">
+                        <div className="mt-0.5 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                           {timeLabel}
                         </div>
                         {b.notes && (
-                          <div className="mt-0.5 line-clamp-2 text-[0.7rem] text-neutral-500">
+                          <div className="mt-0.5 line-clamp-2 text-[0.7rem] text-[color:var(--theme-text-muted)]">
                             {b.notes}
                           </div>
                         )}
@@ -470,7 +470,7 @@ export default function MobileAppointmentsPage() {
           )}
         </section>
 
-        <footer className="pt-1 text-center text-[0.65rem] text-neutral-500">
+        <footer className="pt-1 text-center text-[0.65rem] text-[color:var(--theme-text-muted)]">
           Mobile day planner • desktop view is available under Appointments in
           the main app.
         </footer>
@@ -560,49 +560,49 @@ function CreateForm({
         });
       }}
     >
-      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-300">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
         Create appointment
       </h3>
 
       <div className="space-y-2">
-        <label className="text-[0.7rem] text-neutral-300">
+        <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           Date
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+            className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
           />
         </label>
 
         <div className="flex gap-2">
-          <label className="flex-1 text-[0.7rem] text-neutral-300">
+          <label className="flex-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
             Start
             <input
               type="time"
               value={startsAt}
               onChange={(e) => setStartsAt(e.target.value)}
-              className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
           </label>
-          <label className="flex-1 text-[0.7rem] text-neutral-300">
+          <label className="flex-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
             End
             <input
               type="time"
               value={endsAt}
               onChange={(e) => setEndsAt(e.target.value)}
-              className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
           </label>
         </div>
       </div>
 
-      <label className="text-[0.7rem] text-neutral-300">
+      <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Customer (from database)
         <select
           value={customerId}
           onChange={(e) => handleSelectCustomer(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+          className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
         >
           <option value="">
             {loadingCustomers ? "Loading…" : "Select…"}
@@ -615,43 +615,43 @@ function CreateForm({
         </select>
       </label>
 
-      <label className="text-[0.7rem] text-neutral-300">
+      <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Customer name
         <input
           value={customerName}
           onChange={(e) => setCustomerName(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+          className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
           placeholder="John Smith"
         />
       </label>
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <label className="flex-1 text-[0.7rem] text-neutral-300">
+        <label className="flex-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           Email
           <input
             type="email"
             value={customerEmail}
             onChange={(e) => setCustomerEmail(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+            className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
           />
         </label>
-        <label className="flex-1 text-[0.7rem] text-neutral-300">
+        <label className="flex-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           Phone
           <input
             value={customerPhone}
             onChange={(e) => setCustomerPhone(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+            className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
           />
         </label>
       </div>
 
-      <label className="text-[0.7rem] text-neutral-300">
+      <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Notes
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+          className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
         />
       </label>
 
@@ -731,49 +731,49 @@ function EditForm({
         });
       }}
     >
-      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-300">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
         Edit appointment
       </h3>
 
       <div className="space-y-2">
-        <label className="text-[0.7rem] text-neutral-300">
+        <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           Date
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+            className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
           />
         </label>
 
         <div className="flex gap-2">
-          <label className="flex-1 text-[0.7rem] text-neutral-300">
+          <label className="flex-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
             Start
             <input
               type="time"
               value={startsAt}
               onChange={(e) => setStartsAt(e.target.value)}
-              className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+              className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
             />
           </label>
-          <label className="flex-1 text-[0.7rem] text-neutral-300">
+          <label className="flex-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
             End
             <input
               type="time"
               value={endsAt}
               onChange={(e) => setEndsAt(e.target.value)}
-              className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+              className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
             />
           </label>
         </div>
       </div>
 
-      <label className="text-[0.7rem] text-neutral-300">
+      <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Customer (from database)
         <select
           value={customerId}
           onChange={(e) => handleSelectCustomer(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+          className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
         >
           <option value="">
             {loadingCustomers ? "Loading…" : "Select…"}
@@ -786,51 +786,51 @@ function EditForm({
         </select>
       </label>
 
-      <label className="text-[0.7rem] text-neutral-300">
+      <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Customer name
         <input
           value={customerName}
           onChange={(e) => setCustomerName(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+          className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
         />
       </label>
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <label className="flex-1 text-[0.7rem] text-neutral-300">
+        <label className="flex-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           Email
           <input
             type="email"
             value={customerEmail}
             onChange={(e) => setCustomerEmail(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+            className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
           />
         </label>
-        <label className="flex-1 text-[0.7rem] text-neutral-300">
+        <label className="flex-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           Phone
           <input
             value={customerPhone}
             onChange={(e) => setCustomerPhone(e.target.value)}
-            className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+            className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
           />
         </label>
       </div>
 
-      <label className="text-[0.7rem] text-neutral-300">
+      <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Notes
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+          className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
         />
       </label>
 
-      <label className="text-[0.7rem] text-neutral-300">
+      <label className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
         Status
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white"
+          className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
         >
           <option value="pending">Pending</option>
           <option value="confirmed">Confirmed</option>

@@ -78,7 +78,7 @@ export default function InspectionDetailPage() {
   if (loading) {
     return (
       <PageShell title="Inspection details" description="Loading inspection result.">
-        <Card className="px-4 py-6 text-center text-sm text-[var(--theme-text-secondary,#94A3B8)]">
+        <Card className="px-4 py-6 text-center text-sm text-[var(--theme-text-secondary,var(--theme-text-muted))]">
           Loading inspection...
         </Card>
       </PageShell>
@@ -107,7 +107,7 @@ export default function InspectionDetailPage() {
           <StatusBadge variant={statusVariant(inspection.status)}>
             {inspection.status}
           </StatusBadge>
-          <span className="text-[var(--theme-text-secondary,#94A3B8)]">
+          <span className="text-[var(--theme-text-secondary,var(--theme-text-muted))]">
             Created: {format(new Date(inspection.created_at), "PPpp")}
           </span>
         </div>
@@ -119,8 +119,8 @@ export default function InspectionDetailPage() {
             <h2 className="mb-2 text-lg font-semibold">{section.title}</h2>
             <ul className="space-y-2">
               {section.items?.map((item, i) => (
-                <li key={i} className="text-sm text-[var(--theme-text-secondary,#94A3B8)]">
-                  <span className="font-semibold text-[var(--theme-text-primary,#E2E8F0)]">{item.name}:</span>{" "}
+                <li key={i} className="text-sm text-[var(--theme-text-secondary,var(--theme-text-muted))]">
+                  <span className="font-semibold text-[var(--theme-text-primary,var(--theme-text-primary))]">{item.name}:</span>{" "}
                   {item.status || "N/A"}
                   {item.notes && <span className="block">Note: {item.notes}</span>}
                   {item.value && (
@@ -135,7 +135,7 @@ export default function InspectionDetailPage() {
                           key={idx}
                           src={url}
                           alt="Photo"
-                          className="h-24 w-24 rounded border border-[var(--theme-card-border,#334155)] object-cover"
+                          className="h-24 w-24 rounded border border-[var(--theme-card-border,var(--theme-border-soft))] object-cover"
                         />
                       ))}
                     </div>

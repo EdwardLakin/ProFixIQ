@@ -46,20 +46,20 @@ const VehicleSelectorModal = () => {
   };
 
   return (
-    <div className="bg-white/10 rounded-xl p-6 shadow-xl w-full max-w-lg mx-auto mt-8 backdrop-blur">
-      <h2 className="text-2xl font-black text-white font-blackops text-center mb-4">
+    <div className="bg-[color:var(--theme-surface-subtle)] rounded-xl p-6 shadow-xl w-full max-w-lg mx-auto mt-8 backdrop-blur">
+      <h2 className="text-2xl font-black text-[color:var(--theme-text-primary)] font-blackops text-center mb-4">
         Vehicle Info
       </h2>
       <div className="flex justify-center mb-4">
         <button
           onClick={() => setUseVin(false)}
-          className={`px-4 py-2 mx-2 rounded ${!useVin ? "bg-white text-black" : "bg-gray-800 text-white"}`}
+          className={`px-4 py-2 mx-2 rounded ${!useVin ? "bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-on-accent)]" : "bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)]"}`}
         >
           Manual
         </button>
         <button
           onClick={() => setUseVin(true)}
-          className={`px-4 py-2 mx-2 rounded ${useVin ? "bg-white text-black" : "bg-gray-800 text-white"}`}
+          className={`px-4 py-2 mx-2 rounded ${useVin ? "bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-on-accent)]" : "bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)]"}`}
         >
           VIN
         </button>
@@ -68,14 +68,14 @@ const VehicleSelectorModal = () => {
       {useVin ? (
         <>
           <input
-            className="w-full p-2 rounded mb-2 text-black"
+            className="w-full p-2 rounded mb-2 text-[color:var(--theme-text-on-accent)]"
             placeholder="Enter VIN"
             value={vin}
             onChange={(e) => setVin(e.target.value)}
           />
           <button
             onClick={handleVinSubmit}
-            className="bg-blue-600 text-white w-full py-2 rounded font-blackops"
+            className="bg-blue-600 text-[color:var(--theme-text-primary)] w-full py-2 rounded font-blackops"
           >
             Decode VIN
           </button>
@@ -83,26 +83,26 @@ const VehicleSelectorModal = () => {
       ) : (
         <>
           <input
-            className="w-full p-2 rounded mb-2 text-black"
+            className="w-full p-2 rounded mb-2 text-[color:var(--theme-text-on-accent)]"
             placeholder="Year"
             value={manualYear}
             onChange={(e) => setManualYear(e.target.value)}
           />
           <input
-            className="w-full p-2 rounded mb-2 text-black"
+            className="w-full p-2 rounded mb-2 text-[color:var(--theme-text-on-accent)]"
             placeholder="Make"
             value={manualMake}
             onChange={(e) => setManualMake(e.target.value)}
           />
           <input
-            className="w-full p-2 rounded mb-4 text-black"
+            className="w-full p-2 rounded mb-4 text-[color:var(--theme-text-on-accent)]"
             placeholder="Model"
             value={manualModel}
             onChange={(e) => setManualModel(e.target.value)}
           />
           <button
             onClick={handleManualSubmit}
-            className="bg-blue-600 text-white w-full py-2 rounded font-blackops"
+            className="bg-blue-600 text-[color:var(--theme-text-primary)] w-full py-2 rounded font-blackops"
           >
             Set Vehicle
           </button>

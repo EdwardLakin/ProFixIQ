@@ -115,22 +115,22 @@ export default function LandingHero() {
       <div className="mx-auto w-full max-w-[1400px] px-4 pb-10 pt-14 sm:pt-16 md:pt-20">
         <div className="grid gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
           <div className="relative">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--theme-text-secondary)]">
               <SignalDot />
               <span style={{ color: COPPER_LIGHT }}>
                 Heavy-Duty &amp; Fleet Shop OS
               </span>
-              <span className="text-white/10">•</span>
-              <span className="text-neutral-400">
+              <span className="text-[color:var(--theme-text-muted)]">•</span>
+              <span className="text-[color:var(--theme-text-secondary)]">
                 Built for the floor — not forms
               </span>
             </div>
 
             <h1
-              className="mt-4 text-4xl leading-[1.03] text-white sm:text-6xl md:text-7xl"
+              className="mt-4 text-4xl leading-[1.03] text-[color:var(--theme-text-primary)] sm:text-6xl md:text-7xl"
               style={{
                 fontFamily: "var(--font-blackops)",
-                textShadow: "0 0 46px rgba(0,0,0,0.85)",
+                boxShadow: "var(--theme-shadow-medium)",
               }}
             >
               <span className="block">The</span>
@@ -146,11 +146,11 @@ export default function LandingHero() {
               <span className="block">for modern repair shops.</span>
             </h1>
 
-            <p className="mt-4 max-w-2xl text-sm font-semibold text-neutral-200 sm:text-base">
+            <p className="mt-4 max-w-2xl text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
               Built for heavy-duty, automotive, and fleet repair operations.
             </p>
 
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-neutral-300 sm:text-base md:text-lg">
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[color:var(--theme-text-secondary)] sm:text-base md:text-lg">
               Technicians capture evidence once. Quotes build automatically.
               Customers approve instantly. Parts and invoices stay in sync.
             </p>
@@ -168,7 +168,7 @@ export default function LandingHero() {
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
                 href="/demo/instant-shop-analysis"
-                className="rounded-xl px-5 py-3 text-sm font-extrabold text-black transition hover:brightness-110 active:scale-[0.99]"
+                className="rounded-xl px-5 py-3 text-sm font-extrabold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110 active:scale-[0.99]"
                 style={{
                   background:
                     "linear-gradient(to right, var(--accent-copper-soft), var(--accent-copper))",
@@ -181,44 +181,44 @@ export default function LandingHero() {
 
               <Link
                 href="#features"
-                className="rounded-xl border border-white/10 bg-black/20 px-5 py-3 text-sm font-semibold text-neutral-100 transition hover:border-white/20 hover:bg-black/30"
+                className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-5 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)]"
               >
                 See what’s included
               </Link>
             </div>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/12 px-4 py-3 backdrop-blur-sm">
+              <div className="flex items-start gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 backdrop-blur-sm">
                 <SignalDot />
                 <div>
-                  <div className="text-sm font-extrabold text-white">
+                  <div className="text-sm font-extrabold text-[color:var(--theme-text-primary)]">
                     Evidence-first inspections
                   </div>
-                  <div className="mt-0.5 text-xs text-neutral-300">
+                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
                     Photos + notes + measurements stay attached.
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/12 px-4 py-3 backdrop-blur-sm">
+              <div className="flex items-start gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 backdrop-blur-sm">
                 <SignalDot />
                 <div>
-                  <div className="text-sm font-extrabold text-white">
+                  <div className="text-sm font-extrabold text-[color:var(--theme-text-primary)]">
                     Build the job once
                   </div>
-                  <div className="mt-0.5 text-xs text-neutral-300">
+                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
                     Parts + labor flow forward — no re-entry.
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/12 px-4 py-3 backdrop-blur-sm">
+              <div className="flex items-start gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 backdrop-blur-sm">
                 <SignalDot />
                 <div>
-                  <div className="text-sm font-extrabold text-white">
+                  <div className="text-sm font-extrabold text-[color:var(--theme-text-primary)]">
                     Approvals that move work
                   </div>
-                  <div className="mt-0.5 text-xs text-neutral-300">
+                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
                     Portal decisions trigger the next step.
                   </div>
                 </div>
@@ -227,13 +227,13 @@ export default function LandingHero() {
           </div>
 
           <div className="relative">
-            <div className="rounded-2xl border border-white/10 bg-black/22 p-5 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.38)]">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-xl shadow-[var(--theme-shadow-medium)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                  <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                     System Snapshot
                   </div>
-                  <div className="mt-1 text-lg font-extrabold text-white">
+                  <div className="mt-1 text-lg font-extrabold text-[color:var(--theme-text-primary)]">
                     One workflow, end-to-end
                   </div>
                 </div>
@@ -250,22 +250,22 @@ export default function LandingHero() {
                 </div>
               </div>
 
-              <p className="mt-3 text-sm text-neutral-300">
+              <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
                 ProFixIQ ties together inspections, parts, approvals, and portals
                 — so fleets and customers see the same truth your bay sees.
               </p>
 
               <div className="mt-5">
-                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                <div className="flex items-center justify-between text-[11px] text-[color:var(--theme-text-secondary)]">
                   <span className="font-semibold uppercase tracking-[0.18em]">
                     Workflow rail
                   </span>
-                  <span className="text-neutral-500">Inspect → Portal</span>
+                  <span className="text-[color:var(--theme-text-muted)]">Inspect → Portal</span>
                 </div>
 
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-4">
+                <div className="mt-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
                   <div className="relative">
-                    <div className="absolute left-2 right-2 top-[13px] h-px bg-white/10" />
+                    <div className="absolute left-2 right-2 top-[13px] h-px bg-[color:var(--theme-surface-subtle)]" />
 
                     <div className="pointer-events-none absolute left-2 right-2 top-[12px] h-[3px] overflow-hidden">
                       <div
@@ -312,13 +312,13 @@ export default function LandingHero() {
                     <div className="relative grid grid-cols-6 gap-2">
                       {RAIL.map((step) => (
                         <div key={step.key} className="flex flex-col items-center text-center">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-black/30 text-[11px] font-extrabold text-white">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[11px] font-extrabold text-[color:var(--theme-text-primary)]">
                             {step.label.charAt(0)}
                           </div>
-                          <div className="mt-2 text-[11px] font-semibold text-white">
+                          <div className="mt-2 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
                             {step.label}
                           </div>
-                          <div className="mt-1 text-[10px] leading-tight text-neutral-500">
+                          <div className="mt-1 text-[10px] leading-tight text-[color:var(--theme-text-muted)]">
                             {step.hint}
                           </div>
                         </div>
@@ -329,29 +329,29 @@ export default function LandingHero() {
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-black/18 p-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                     Less screen time
                   </div>
-                  <div className="mt-1 text-sm text-neutral-100">
+                  <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                     Techs stay in flow.
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/18 p-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                     Faster approvals
                   </div>
-                  <div className="mt-1 text-sm text-neutral-100">
+                  <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                     Proof moves decisions.
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-white/10 bg-black/18 p-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                     One truth
                   </div>
-                  <div className="mt-1 text-sm text-neutral-100">
+                  <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                     Inspection to invoice.
                   </div>
                 </div>

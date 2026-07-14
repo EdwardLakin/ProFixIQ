@@ -32,8 +32,8 @@ function MetricTile(props: {
   const { label, value, tone = "neutral" } = props;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
         {label}
       </div>
       <div
@@ -43,7 +43,7 @@ function MetricTile(props: {
             ? "text-[color:var(--brand-accent)]"
             : tone === "accent"
               ? "text-[color:var(--brand-primary)]"
-              : "text-neutral-100",
+              : "text-[color:var(--theme-text-primary)]",
         )}
       >
         {value}
@@ -132,14 +132,14 @@ export default function ShopPulseWidget({
         <div className="mb-2 flex justify-end">
           <Link
             href="/work-orders/board"
-            className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--brand-accent)] hover:bg-black/45"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--brand-accent)] hover:bg-[color:var(--theme-surface-inset)]"
           >
             Open board →
           </Link>
         </div>
       ) : null}
       {loading ? (
-        <div className="rounded-xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-neutral-300">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
           Loading AI pulse…
         </div>
       ) : error ? (
@@ -148,8 +148,8 @@ export default function ShopPulseWidget({
         </div>
       ) : (
         <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[0.85fr_1.15fr]">
-          <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
               Live totals
             </div>
 
@@ -160,13 +160,13 @@ export default function ShopPulseWidget({
             </div>
           </div>
 
-          <div className="min-h-0 rounded-2xl border border-white/10 bg-black/25 p-4">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+          <div className="min-h-0 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
               AI summary
             </div>
 
             {pulse.messages.length === 0 ? (
-              <div className="mt-3 text-sm text-neutral-300">
+              <div className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
                 Nothing major is flagged right now. The shop flow looks stable.
               </div>
             ) : (
@@ -182,7 +182,7 @@ export default function ShopPulseWidget({
               </div>
             )}
 
-            <div className="mt-4 text-xs text-neutral-500">
+            <div className="mt-4 text-xs text-[color:var(--theme-text-muted)]">
               Compact action summary only. Use the work board and queue widgets below to drill in.
             </div>
           </div>
@@ -201,7 +201,7 @@ export default function ShopPulseWidget({
       rightSlot={
         <Link
           href="/work-orders/board"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--brand-accent)] hover:bg-black/45"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--brand-accent)] hover:bg-[color:var(--theme-surface-inset)]"
         >
           Open board →
         </Link>

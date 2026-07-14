@@ -49,17 +49,17 @@ export default function DashboardWidgetShell({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             {eyebrow ? (
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
                 {eyebrow}
               </div>
             ) : null}
 
-            <h2 className={cn("mt-1 font-semibold leading-tight text-white", compact ? "text-[14px] sm:text-[15px]" : "text-[17px] sm:text-[19px]")}>
+            <h2 className={cn("mt-1 font-semibold leading-tight text-[color:var(--theme-text-primary)]", compact ? "text-[14px] sm:text-[15px]" : "text-[17px] sm:text-[19px]")}>
               {title}
             </h2>
 
             {bodyText && !compact ? (
-              <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-neutral-300 sm:text-[13px]">
+              <p className="mt-1 max-w-2xl text-[12px] leading-relaxed text-[color:var(--theme-text-secondary)] sm:text-[13px]">
                 {bodyText}
               </p>
             ) : null}
@@ -70,7 +70,7 @@ export default function DashboardWidgetShell({
 
             {editing ? (
               <div
-                className="pfq-widget-drag-handle inline-flex h-8 w-8 cursor-move items-center justify-center rounded-md border border-white/10 bg-black/25 text-neutral-300"
+                className="pfq-widget-drag-handle inline-flex h-8 w-8 cursor-move items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]"
                 title="Drag widget"
               >
                 <GripVertical className="h-4 w-4" />
@@ -81,7 +81,7 @@ export default function DashboardWidgetShell({
               <button
                 type="button"
                 onClick={onHide}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-black/25 text-neutral-300 transition hover:text-white"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] transition hover:text-[color:var(--theme-text-primary)]"
                 title="Hide widget"
               >
                 <EyeOff className="h-4 w-4" />

@@ -288,12 +288,12 @@ export default function PayrollTimeClient() {
           title="Payroll Assistant"
           description="Deterministic review aid only. It cannot change payroll records, approval state, or blocking status."
         />
-        <div className="space-y-2 p-4 text-sm text-neutral-200">
+        <div className="space-y-2 p-4 text-sm text-[color:var(--theme-text-primary)]">
           {summary.blocking > 0 ? <p>{summary.blocking} blocking integrity issue{summary.blocking === 1 ? "" : "s"} must be resolved before payroll can be finalized.</p> : null}
           {Number(summary.overtimeHours) > 0 ? <p>{entries.filter((entry) => entry.overtime_minutes > 0).length} employee day{entries.filter((entry) => entry.overtime_minutes > 0).length === 1 ? "" : "s"} recorded overtime this period.</p> : null}
           {summary.warnings > 0 ? <p>{summary.warnings} advisory warning{summary.warnings === 1 ? "" : "s"} may need owner review, but do not remove recorded payable hours.</p> : null}
           {summary.blocking === 0 && summary.warnings === 0 ? <p>Payroll totals are ready for review.</p> : null}
-          <p className="text-xs text-neutral-500">Overtime, long shifts, missing lunch, and job-time ratio flags are advisory. Valid recorded attendance remains visible and payable for owner/admin decisions.</p>
+          <p className="text-xs text-[color:var(--theme-text-muted)]">Overtime, long shifts, missing lunch, and job-time ratio flags are advisory. Valid recorded attendance remains visible and payable for owner/admin decisions.</p>
         </div>
       </AdminPanel>
 
@@ -301,7 +301,7 @@ export default function PayrollTimeClient() {
         <AdminPanelTitle title="Pay Period Review" description="Open periods refresh from time records automatically. Approved, locked, and exported periods show their durable snapshot." />
         <AdminToolbar>
           <select
-            className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-80"
+            className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none md:w-80"
             value={activePeriodId ?? ""}
             onChange={(event) => void load(event.target.value)}
           >
@@ -312,7 +312,7 @@ export default function PayrollTimeClient() {
             ))}
           </select>
           <button
-            className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs uppercase tracking-[0.12em] text-neutral-100 disabled:opacity-50"
+            className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)] disabled:opacity-50"
             onClick={() => void handleRebuild()}
             disabled={!activePeriodId || busyAction !== null || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
           >
@@ -335,7 +335,7 @@ export default function PayrollTimeClient() {
         </AdminToolbar>
 
         {activePeriod ? (
-          <div className="px-4 pb-4 text-xs text-neutral-400">
+          <div className="px-4 pb-4 text-xs text-[color:var(--theme-text-secondary)]">
             <span className="mr-2">Period status:</span>
             <AdminBadge>{activePeriod.status}</AdminBadge>
             {activePeriod.approved_at ? <span className="ml-3">Approved: {new Date(activePeriod.approved_at).toLocaleString()}</span> : null}
@@ -360,7 +360,7 @@ export default function PayrollTimeClient() {
         <AdminToolbar>
           {personIdFilter ? <p className="text-xs text-orange-300">Filtered to person: {personIdFilter.slice(0, 8)}</p> : null}
           <input
-            className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-96"
+            className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none md:w-96"
             placeholder="Filter entries by employee name, email, or id"
             value={employeeSearch}
             onChange={(event) => setEmployeeSearch(event.target.value)}
@@ -373,7 +373,7 @@ export default function PayrollTimeClient() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Employee</th>
                   <th className="px-4 py-2.5 text-left">Date / clock</th>
@@ -391,16 +391,16 @@ export default function PayrollTimeClient() {
                   <th className="px-4 py-2.5 text-left">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                 {filteredEntries.map((entry) => (
-                  <tr key={entry.id} className="text-neutral-200">
+                  <tr key={entry.id} className="text-[color:var(--theme-text-primary)]">
                     <td className="px-4 py-2.5">
-                      <p className="font-medium text-neutral-100"><Link href={`/dashboard/admin/people/${entry.user_id}`} className="font-medium text-neutral-100 hover:text-orange-300">{entry.profiles?.full_name ?? entry.user_id}</Link></p>
-                      <p className="text-xs text-neutral-500">{entry.profiles?.email ?? ""}</p>
+                      <p className="font-medium text-[color:var(--theme-text-primary)]"><Link href={`/dashboard/admin/people/${entry.user_id}`} className="font-medium text-[color:var(--theme-text-primary)] hover:text-orange-300">{entry.profiles?.full_name ?? entry.user_id}</Link></p>
+                      <p className="text-xs text-[color:var(--theme-text-muted)]">{entry.profiles?.email ?? ""}</p>
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5">
                       <p>{entry.work_date}</p>
-                      <p className="text-xs text-neutral-500">{entry.source_snapshot?.shifts?.[0]?.start_time ? new Date(entry.source_snapshot.shifts[0].start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"} → {entry.source_snapshot?.shifts?.[0]?.end_time ? new Date(entry.source_snapshot.shifts[0].end_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "In progress"}</p>
+                      <p className="text-xs text-[color:var(--theme-text-muted)]">{entry.source_snapshot?.shifts?.[0]?.start_time ? new Date(entry.source_snapshot.shifts[0].start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"} → {entry.source_snapshot?.shifts?.[0]?.end_time ? new Date(entry.source_snapshot.shifts[0].end_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "In progress"}</p>
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.attendance_minutes)}h</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.paid_break_minutes)}h</td>
@@ -430,13 +430,13 @@ export default function PayrollTimeClient() {
         )}
       </AdminPanel>
 
-      <details className="rounded-2xl border border-white/10 bg-black/20">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-neutral-100">Advanced: exceptions, exports, source details</summary>
+      <details className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">Advanced: exceptions, exports, source details</summary>
       <AdminPanel>
         <AdminPanelTitle title="Exceptions" description="Only unresolved blocking integrity exceptions prevent final approval. Advisory warnings can be acknowledged by owner/admin decision." />
         <AdminToolbar>
           <select
-            className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none md:w-64"
+            className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none md:w-64"
             value={exceptionSeverityFilter}
             onChange={(event) => setExceptionSeverityFilter(event.target.value as "all" | "blocking" | "warning")}
           >
@@ -450,7 +450,7 @@ export default function PayrollTimeClient() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Severity</th>
                   <th className="px-4 py-2.5 text-left">Code</th>
@@ -459,9 +459,9 @@ export default function PayrollTimeClient() {
                   <th className="px-4 py-2.5 text-left">State</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                 {filteredExceptions.map((item) => (
-                  <tr key={item.id} className="text-neutral-200">
+                  <tr key={item.id} className="text-[color:var(--theme-text-primary)]">
                     <td className="px-4 py-2.5">
                       <AdminBadge>{item.severity}</AdminBadge>
                     </td>
@@ -486,7 +486,7 @@ export default function PayrollTimeClient() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Provider / Template</th>
                   <th className="px-4 py-2.5 text-left">Status</th>
@@ -498,16 +498,16 @@ export default function PayrollTimeClient() {
                   <th className="px-4 py-2.5 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                 {exportHistory.map((batch) => (
-                  <tr key={batch.id} className="text-neutral-200">
+                  <tr key={batch.id} className="text-[color:var(--theme-text-primary)]">
                     <td className="px-4 py-2.5">{batch.provider_type ?? "csv"} / {batch.provider_template_version ?? "—"}</td>
                     <td className="px-4 py-2.5">{batch.status ?? "—"} / {batch.handoff_status ?? "—"}</td>
                     <td className="px-4 py-2.5 text-right">{batch.row_count ?? 0}</td>
                     <td className="px-4 py-2.5">{batch.exported_at ? new Date(batch.exported_at).toLocaleString() : "—"}</td>
                     <td className="px-4 py-2.5">{fmtFileSize(batch.file_size_bytes)}</td>
                     <td className="px-4 py-2.5 text-right">{batch.download_count ?? 0}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-neutral-400">{batch.file_sha256 ? `${batch.file_sha256.slice(0, 12)}…` : "—"}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-[color:var(--theme-text-secondary)]">{batch.file_sha256 ? `${batch.file_sha256.slice(0, 12)}…` : "—"}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button
                         className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-sky-200 disabled:opacity-50"
@@ -529,7 +529,7 @@ export default function PayrollTimeClient() {
       {csvPreview ? (
         <AdminPanel>
           <AdminPanelTitle title="Latest CSV Snapshot" description="Export foundation artifact (provider adapter-compatible row shape)." />
-          <pre className="overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-4 text-xs text-neutral-300">{csvPreview}</pre>
+          <pre className="overflow-x-auto rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-xs text-[color:var(--theme-text-secondary)]">{csvPreview}</pre>
         </AdminPanel>
       ) : null}
     </AdminPageShell>

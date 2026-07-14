@@ -523,29 +523,29 @@ export default function PoReceivePage(): JSX.Element {
   const locLabel = locs.find((l) => String(l.id) === selectedLoc)?.code ?? "LOC";
 
   return (
-    <div className="p-6 space-y-4 text-white">
+    <div className="p-6 space-y-4 text-[color:var(--theme-text-primary)]">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <div className="text-xs uppercase tracking-[0.22em] text-neutral-400">Purchase order</div>
+          <div className="text-xs uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">Purchase order</div>
           <h1 className="text-2xl font-bold">Receive from PO</h1>
-          <div className="mt-1 text-xs text-neutral-500">Receive from PO: items tied to this purchase order.</div>
-          <div className="mt-1 text-sm text-neutral-400">
-            PO: <span className="font-mono text-neutral-200">{poId.slice(0, 8)}</span> • Status:{" "}
-            <span className="text-neutral-200">{poStatus}</span> • Supplier:{" "}
-            <span className="text-neutral-200">{supplierName}</span>
+          <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Receive from PO: items tied to this purchase order.</div>
+          <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+            PO: <span className="font-mono text-[color:var(--theme-text-primary)]">{poId.slice(0, 8)}</span> • Status:{" "}
+            <span className="text-[color:var(--theme-text-primary)]">{poStatus}</span> • Supplier:{" "}
+            <span className="text-[color:var(--theme-text-primary)]">{supplierName}</span>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/parts/po"
-            className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-sky-500/40"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-sky-500/40"
           >
             ← POs
           </Link>
           <button
             onClick={() => router.push("/parts/receive")}
-            className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm text-neutral-100 hover:border-sky-500/40"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-sky-500/40"
             type="button"
           >
             Generic Receive
@@ -554,28 +554,28 @@ export default function PoReceivePage(): JSX.Element {
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-400">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
           Loading…
         </div>
       ) : (
         <>
           {/* Summary */}
-          <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl shadow-[0_18px_40px_rgba(0,0,0,0.9)]">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl shadow-[var(--theme-shadow-medium)]">
             <div className="grid gap-3 md:grid-cols-4">
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3">
-                <div className="text-xs text-neutral-400">Total Ordered</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Total Ordered</div>
                 <div className="mt-1 text-lg font-semibold">{totalOrdered}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3">
-                <div className="text-xs text-neutral-400">Total Received</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Total Received</div>
                 <div className="mt-1 text-lg font-semibold">{totalReceived}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3">
-                <div className="text-xs text-neutral-400">Remaining</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Remaining</div>
                 <div className="mt-1 text-lg font-semibold text-[rgba(242,210,187,0.94)]">{remaining}</div>
               </div>
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3">
-                <div className="text-xs text-neutral-400">Receiving Location</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Receiving Location</div>
                 <div className="mt-1 text-lg font-semibold">{locLabel}</div>
               </div>
             </div>
@@ -584,12 +584,12 @@ export default function PoReceivePage(): JSX.Element {
           {/* Controls */}
           <div className="grid gap-4 lg:grid-cols-2">
             {/* Left: Scan */}
-            <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl shadow-[0_18px_40px_rgba(0,0,0,0.9)] space-y-3">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl shadow-[var(--theme-shadow-medium)] space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.22em] text-neutral-400">Scan</div>
+                  <div className="text-xs uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">Scan</div>
                   <div className="text-lg font-semibold">Scan to Receive</div>
-                  <div className="text-xs text-neutral-500">
+                  <div className="text-xs text-[color:var(--theme-text-muted)]">
                     UPC / EAN / Code128 mapped to parts_barcodes / part_barcodes.
                   </div>
                 </div>
@@ -615,9 +615,9 @@ export default function PoReceivePage(): JSX.Element {
 
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="md:col-span-2">
-                  <div className="text-xs text-neutral-400 mb-1">Location</div>
+                  <div className="text-xs text-[color:var(--theme-text-secondary)] mb-1">Location</div>
                   <select
-                    className="w-full rounded-xl border border-white/10 bg-black/60 p-2 text-white"
+                    className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-[color:var(--theme-text-primary)]"
                     value={selectedLoc}
                     onChange={(e) => setSelectedLoc(e.target.value)}
                   >
@@ -629,12 +629,12 @@ export default function PoReceivePage(): JSX.Element {
                   </select>
                 </div>
                 <div>
-                  <div className="text-xs text-neutral-400 mb-1">Quantity</div>
+                  <div className="text-xs text-[color:var(--theme-text-secondary)] mb-1">Quantity</div>
                   <input
                     type="number"
                     min={0.01}
                     step="0.01"
-                    className="w-full rounded-xl border border-white/10 bg-black/60 p-2 text-white"
+                    className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-[color:var(--theme-text-primary)]"
                     value={qty}
                     onChange={(e) => setQty(Math.max(0, Number(e.target.value || 0)))}
                   />
@@ -643,22 +643,22 @@ export default function PoReceivePage(): JSX.Element {
 
               <div
                 ref={videoRef}
-                className="aspect-video w-full overflow-hidden rounded-xl border border-white/10 bg-black"
+                className="aspect-video w-full overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]"
               />
 
               {lastScan ? (
-                <div className="text-xs text-neutral-500">
-                  Last scan: <span className="font-mono text-neutral-200">{lastScan}</span>
+                <div className="text-xs text-[color:var(--theme-text-muted)]">
+                  Last scan: <span className="font-mono text-[color:var(--theme-text-primary)]">{lastScan}</span>
                 </div>
               ) : null}
             </div>
 
             {/* Right: Manual receive */}
-            <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl shadow-[0_18px_40px_rgba(0,0,0,0.9)] space-y-3">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl shadow-[var(--theme-shadow-medium)] space-y-3">
               <div>
-                <div className="text-xs uppercase tracking-[0.22em] text-neutral-400">Manual</div>
+                <div className="text-xs uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">Manual</div>
                 <div className="text-lg font-semibold">Receive a Part</div>
-                <div className="text-xs text-neutral-500">
+                <div className="text-xs text-[color:var(--theme-text-muted)]">
                   Calls <span className="font-mono">receive_po_part_and_allocate</span> (stock move + PO receive + request
                   allocation).
                 </div>
@@ -666,9 +666,9 @@ export default function PoReceivePage(): JSX.Element {
 
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="md:col-span-2">
-                  <div className="text-xs text-neutral-400 mb-1">Search parts</div>
+                  <div className="text-xs text-[color:var(--theme-text-secondary)] mb-1">Search parts</div>
                   <input
-                    className="w-full rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+                    className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                     placeholder="Name, SKU, category…"
                     value={manualSearch}
                     onChange={(e) => setManualSearch(e.target.value)}
@@ -676,12 +676,12 @@ export default function PoReceivePage(): JSX.Element {
                 </div>
 
                 <div>
-                  <div className="text-xs text-neutral-400 mb-1">Quantity</div>
+                  <div className="text-xs text-[color:var(--theme-text-secondary)] mb-1">Quantity</div>
                   <input
                     type="number"
                     min={0.01}
                     step="0.01"
-                    className="w-full rounded-xl border border-white/10 bg-black/60 p-2 text-white"
+                    className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-[color:var(--theme-text-primary)]"
                     value={qty}
                     onChange={(e) => setQty(Math.max(0, Number(e.target.value || 0)))}
                   />
@@ -689,9 +689,9 @@ export default function PoReceivePage(): JSX.Element {
               </div>
 
               <div>
-                <div className="text-xs text-neutral-400 mb-1">Part</div>
+                <div className="text-xs text-[color:var(--theme-text-secondary)] mb-1">Part</div>
                 <select
-                  className="w-full rounded-xl border border-white/10 bg-black/60 p-2 text-white"
+                  className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-[color:var(--theme-text-primary)]"
                   value={manualPartId}
                   onChange={(e) => setManualPartId(e.target.value)}
                 >
@@ -702,12 +702,12 @@ export default function PoReceivePage(): JSX.Element {
                     </option>
                   ))}
                 </select>
-                <div className="mt-1 text-[11px] text-neutral-500">Showing up to {filteredParts.length} results.</div>
+                <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">Showing up to {filteredParts.length} results.</div>
               </div>
 
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-neutral-500">
-                  Location: <span className="text-neutral-200">{locLabel}</span>
+                <div className="text-xs text-[color:var(--theme-text-muted)]">
+                  Location: <span className="text-[color:var(--theme-text-primary)]">{locLabel}</span>
                 </div>
 
                 <button
@@ -723,20 +723,20 @@ export default function PoReceivePage(): JSX.Element {
           </div>
 
           {/* PO lines */}
-          <div className="rounded-2xl border border-white/10 bg-black/40 overflow-hidden backdrop-blur-xl shadow-[0_18px_40px_rgba(0,0,0,0.9)]">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] overflow-hidden backdrop-blur-xl shadow-[var(--theme-shadow-medium)]">
+            <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] px-4 py-3">
               <div>
-                <div className="text-xs uppercase tracking-[0.22em] text-neutral-400">PO lines</div>
-                <div className="text-sm text-neutral-300">{lines.length} lines</div>
+                <div className="text-xs uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">PO lines</div>
+                <div className="text-sm text-[color:var(--theme-text-secondary)]">{lines.length} lines</div>
               </div>
-              <div className="text-xs text-neutral-500">
+              <div className="text-xs text-[color:var(--theme-text-muted)]">
                 FIFO receive updates <span className="font-mono">purchase_order_lines.received_qty</span>
               </div>
             </div>
 
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-neutral-400 border-b border-white/10">
+                <tr className="text-left text-[color:var(--theme-text-secondary)] border-b border-[color:var(--theme-border-soft)]">
                   <th className="p-3">Part</th>
                   <th className="p-3">Ordered</th>
                   <th className="p-3">Received</th>
@@ -747,7 +747,7 @@ export default function PoReceivePage(): JSX.Element {
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td className="p-4 text-neutral-400" colSpan={5}>
+                    <td className="p-4 text-[color:var(--theme-text-secondary)]" colSpan={5}>
                       No PO lines yet.
                     </td>
                   </tr>
@@ -760,12 +760,12 @@ export default function PoReceivePage(): JSX.Element {
                     const recvState = toReceiveProgressDisplay({ qtyApproved: ordered, qtyReceived: received });
 
                     return (
-                      <tr key={String(ln.id)} className="border-t border-white/5 hover:bg-white/5">
+                      <tr key={String(ln.id)} className="border-t border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]">
                         <td className="p-3">
-                          <div className="font-mono text-xs text-neutral-300">{ln.part_id ? "Linked part" : "Unmapped part"}</div>
-                          <div className="text-xs text-neutral-500">{ln.description ?? "—"}</div>
+                          <div className="font-mono text-xs text-[color:var(--theme-text-secondary)]">{ln.part_id ? "Linked part" : "Unmapped part"}</div>
+                          <div className="text-xs text-[color:var(--theme-text-muted)]">{ln.description ?? "—"}</div>
                           <div className="mt-1 flex items-center gap-2">
-                            <span className="text-[11px] text-neutral-400">{receiveProgressLabel(recvState)}</span>
+                            <span className="text-[11px] text-[color:var(--theme-text-secondary)]">{receiveProgressLabel(recvState)}</span>
                             {trust ? <span className={`rounded-full border px-2 py-0.5 text-[10px] ${trustBadgeTone(trust.level)}`}>{trustLevelLabel(trust.level)}</span> : null}
                           </div>
                           {trust && trust.reasons.length > 0 ? <div className={`text-[11px] ${trustReasonTone(trust.level)}`}>{trust.reasons.slice(0, 1).join(" · ")}</div> : null}
@@ -776,19 +776,19 @@ export default function PoReceivePage(): JSX.Element {
                           {rem > 0 ? (
                             <span className="text-[rgba(242,210,187,0.94)]">{rem}</span>
                           ) : (
-                            <span className="text-neutral-500">0</span>
+                            <span className="text-[color:var(--theme-text-muted)]">0</span>
                           )}
                         </td>
                         <td className="p-3">
                           {ln.part_id ? (
-                            <span className="text-xs text-neutral-500">Inventory-linked line</span>
+                            <span className="text-xs text-[color:var(--theme-text-muted)]">Inventory-linked line</span>
                           ) : (
                             <div className="space-y-2">
                               <div className="text-[11px] uppercase tracking-[0.14em] text-amber-300/80">
                                 Non-inventory line
                               </div>
-                              <div className="text-[11px] text-neutral-400">Free-text / match later</div>
-                              <div className="text-[11px] text-neutral-500">
+                              <div className="text-[11px] text-[color:var(--theme-text-secondary)]">Free-text / match later</div>
+                              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                                 No stock movement will be created until this line is matched to an inventory part.
                               </div>
                               <div className="flex items-center gap-2">
@@ -797,7 +797,7 @@ export default function PoReceivePage(): JSX.Element {
                                   min={0}
                                   step="0.01"
                                   max={rem}
-                                  className="w-24 rounded-lg border border-white/10 bg-black/60 px-2 py-1 text-xs text-white"
+                                  className="w-24 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)]"
                                   value={freeTextQtyByLineId[String(ln.id)] ?? rem}
                                   onChange={(e) =>
                                     setFreeTextQtyByLineId((prev) => ({
@@ -833,29 +833,29 @@ export default function PoReceivePage(): JSX.Element {
 
           {/* Result */}
           {result ? (
-            <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl shadow-[0_18px_40px_rgba(0,0,0,0.9)] space-y-3">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl shadow-[var(--theme-shadow-medium)] space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.22em] text-neutral-400">Receive result</div>
-                  <div className="text-sm text-neutral-200">
+                  <div className="text-xs uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">Receive result</div>
+                  <div className="text-sm text-[color:var(--theme-text-primary)]">
                     Move:{" "}
                     <span className="font-mono">{result.move_id ? String(result.move_id).slice(0, 8) : "—"}</span> • PO
-                    status: <span className="text-neutral-200">{result.po_status ?? poStatus}</span>
+                    status: <span className="text-[color:var(--theme-text-primary)]">{result.po_status ?? poStatus}</span>
                   </div>
                 </div>
 
-                <div className="text-xs text-neutral-400">
-                  Unallocated remainder: <span className="text-neutral-200">{n(result.unallocated_qty)}</span>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                  Unallocated remainder: <span className="text-[color:var(--theme-text-primary)]">{n(result.unallocated_qty)}</span>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/50 p-3">
-                <div className="text-xs text-neutral-400 mb-2">Allocations applied to request items (FIFO)</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <div className="text-xs text-[color:var(--theme-text-secondary)] mb-2">Allocations applied to request items (FIFO)</div>
 
                 {Array.isArray(result.allocations) && result.allocations.length > 0 ? (
-                  <div className="overflow-hidden rounded-lg border border-white/10">
+                  <div className="overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)]">
                     <table className="w-full text-sm">
-                      <thead className="bg-white/5 text-left text-neutral-400">
+                      <thead className="bg-[color:var(--theme-surface-subtle)] text-left text-[color:var(--theme-text-secondary)]">
                         <tr>
                           <th className="p-2">Request item</th>
                           <th className="p-2">Qty allocated</th>
@@ -864,23 +864,23 @@ export default function PoReceivePage(): JSX.Element {
                       </thead>
                       <tbody>
                         {result.allocations.map((a, idx) => (
-                          <tr key={`${a.request_item_id ?? "x"}-${idx}`} className="border-t border-white/10">
-                            <td className="p-2 font-mono text-xs text-neutral-200">
+                          <tr key={`${a.request_item_id ?? "x"}-${idx}`} className="border-t border-[color:var(--theme-border-soft)]">
+                            <td className="p-2 font-mono text-xs text-[color:var(--theme-text-primary)]">
                               {a.request_item_id ? String(a.request_item_id).slice(0, 8) : "—"}
                             </td>
-                            <td className="p-2 font-mono text-neutral-200">{n(a.qty_allocated)}</td>
-                            <td className="p-2 text-neutral-300">{canonicalStatusLabel(a.status)}</td>
+                            <td className="p-2 font-mono text-[color:var(--theme-text-primary)]">{n(a.qty_allocated)}</td>
+                            <td className="p-2 text-[color:var(--theme-text-secondary)]">{canonicalStatusLabel(a.status)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <div className="text-sm text-neutral-400">No request items were allocated from this receive.</div>
+                  <div className="text-sm text-[color:var(--theme-text-secondary)]">No request items were allocated from this receive.</div>
                 )}
               </div>
 
-              <div className="text-[11px] text-neutral-500">
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                 Next layer after this: “Receive from PO and automatically apply received qty to matching request items
                 (batch allocation)”.
               </div>
@@ -889,7 +889,7 @@ export default function PoReceivePage(): JSX.Element {
 
           {/* Footer note */}
           {!shopId ? (
-            <div className="text-xs text-neutral-500">
+            <div className="text-xs text-[color:var(--theme-text-muted)]">
               No shop detected for this user. If you’re logged in as a different role, check profiles.shop_id.
             </div>
           ) : null}

@@ -52,21 +52,21 @@ export default function ShareBox({
   }
 
   return (
-    <div className="space-y-6 rounded-2xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl sm:p-5">
+    <div className="space-y-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl sm:p-5">
       <div className="space-y-2">
-        <label className="block text-xs font-medium uppercase tracking-[0.12em] text-neutral-400">
+        <label className="block text-xs font-medium uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
           Booking link
         </label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             readOnly
             value={bookingUrl}
-            className="flex-1 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+            className="flex-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
           />
           <button
             onClick={copyLink}
             disabled={copying}
-            className="rounded-full border border-white/10 bg-black/40 px-3 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-black/55 disabled:opacity-60"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)] disabled:opacity-60"
           >
             {copying ? "Copying…" : "Copy link"}
           </button>
@@ -78,10 +78,10 @@ export default function ShareBox({
         <img
           src={qrSrc}
           alt="Booking QR code"
-          className="h-44 w-44 rounded-xl border border-white/10 bg-black/40 p-2"
+          className="h-44 w-44 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2"
         />
 
-        <div className="space-y-3 text-sm text-neutral-300">
+        <div className="space-y-3 text-sm text-[color:var(--theme-text-secondary)]">
           <p>
             Print this QR and place it at your counter. Customers can scan it to
             open your booking page for{" "}
@@ -91,7 +91,7 @@ export default function ShareBox({
           <div className="flex flex-wrap gap-2">
             <LinkButton
               href={`/portal/booking?shop=${encodeURIComponent(slug)}`}
-              className="rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-3 py-2 text-sm font-semibold text-black transition hover:brightness-110"
+              className="rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110"
             >
               Open booking page
             </LinkButton>
@@ -99,7 +99,7 @@ export default function ShareBox({
             <button
               onClick={downloadQR}
               disabled={downloading}
-              className="rounded-full border border-white/10 bg-black/40 px-3 py-2 text-sm font-semibold text-neutral-200 transition hover:bg-black/55 disabled:opacity-60"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)] disabled:opacity-60"
             >
               {downloading ? "Downloading…" : "Download QR"}
             </button>

@@ -24,7 +24,7 @@ type VehicleLite = Pick<
 >;
 
 function cardClass() {
-  return "rounded-3xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card";
+  return "rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card";
 }
 
 function errorCardClass() {
@@ -32,7 +32,7 @@ function errorCardClass() {
 }
 
 function emptyCardClass() {
-  return "rounded-3xl border border-dashed border-white/12 bg-black/20 p-4 text-sm text-neutral-300 backdrop-blur-md shadow-card";
+  return "rounded-3xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)] backdrop-blur-md shadow-card";
 }
 
 function fmtDate(iso: string | null | undefined): string {
@@ -107,12 +107,12 @@ export default async function HistoryPage() {
     }
 
     return (
-      <div className="mx-auto max-w-3xl space-y-4 text-white">
+      <div className="mx-auto max-w-3xl space-y-4 text-[color:var(--theme-text-primary)]">
         <header className="space-y-1">
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
             Service history
           </h1>
-          <p className="text-xs text-neutral-400">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
             Read-only historical service records connected to your account.
           </p>
 
@@ -126,10 +126,10 @@ export default async function HistoryPage() {
         ) : (
           <div className={cardClass()}>
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Past service
               </div>
-              <div className="text-[11px] text-neutral-500">
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                 {history.length} item(s)
               </div>
             </div>
@@ -144,19 +144,19 @@ export default async function HistoryPage() {
                 return (
                   <div
                     key={item.id}
-                    className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3"
+                    className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-neutral-100">
+                        <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                           {historyLabel(item)}
                         </div>
-                        <div className="mt-0.5 text-[11px] text-neutral-500">
+                        <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                           {vehicleLabel(v)}
                         </div>
-                        <div className="mt-0.5 text-[11px] text-neutral-500">
+                        <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                           Service date:{" "}
-                          <span className="text-neutral-300">
+                          <span className="text-[color:var(--theme-text-secondary)]">
                             {fmtDate(item.service_date ?? item.created_at)}
                           </span>
                         </div>
@@ -168,7 +168,7 @@ export default async function HistoryPage() {
                     </div>
 
                     {item.notes ? (
-                      <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-[11px] leading-relaxed text-neutral-400">
+                      <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] leading-relaxed text-[color:var(--theme-text-secondary)]">
                         {item.notes}
                       </pre>
                     ) : null}
@@ -183,9 +183,9 @@ export default async function HistoryPage() {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to load history";
     return (
-      <div className="mx-auto max-w-xl space-y-3 text-white">
+      <div className="mx-auto max-w-xl space-y-3 text-[color:var(--theme-text-primary)]">
         <header className="space-y-1">
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
             Service history
           </h1>
         </header>
@@ -196,7 +196,7 @@ export default async function HistoryPage() {
           <div className="mt-3">
             <Link
               href="/portal"
-              className="inline-flex items-center rounded-xl border border-red-300/30 bg-black/20 px-3 py-2 text-xs font-semibold text-red-50 hover:bg-black/30"
+              className="inline-flex items-center rounded-xl border border-red-300/30 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-red-50 hover:bg-[color:var(--theme-surface-inset)]"
             >
               Back to portal
             </Link>

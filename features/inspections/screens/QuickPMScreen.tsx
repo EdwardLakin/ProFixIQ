@@ -563,7 +563,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
+    return <div className="p-4 text-sm text-[color:var(--theme-text-secondary)]">Loading inspection…</div>;
   }
 
   const isMeasurements = (t?: string): boolean =>
@@ -574,14 +574,14 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     : "max-w-5xl mx-auto px-3 md:px-6 pb-16";
 
   const cardBase =
-    "rounded-2xl border border-white/10 bg-black/30 backdrop-blur-md shadow-card";
+    "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] backdrop-blur-md shadow-card";
   const headerCard = `${cardBase} px-4 py-4 md:px-6 md:py-5 mb-6`;
   const sectionCard = `${cardBase} px-4 py-4 md:px-5 md:py-5 mb-6`;
 
   const sectionTitle =
     "text-lg md:text-xl font-semibold text-accent text-center tracking-wide";
   const hint =
-    "mt-1 block text-center text-[11px] uppercase tracking-[0.12em] text-neutral-500";
+    "mt-1 block text-center text-[11px] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]";
 
   const Body = (
     <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
@@ -597,10 +597,10 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       {/* Header */}
       <div className={headerCard}>
         <div className="mb-2 text-center">
-          <div className="text-xs font-blackops uppercase tracking-[0.18em] text-neutral-400">
+          <div className="text-xs font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Inspection
           </div>
-          <div className="mt-1 text-xl font-blackops text-white">
+          <div className="mt-1 text-xl font-blackops text-[color:var(--theme-text-primary)]">
             {session?.templateitem || templateName || "Maintenance 50"}
           </div>
         </div>
@@ -625,7 +625,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     resumeSession();
     void startListening(); // voice.start()
   }}
-/> 
+/>
         )}
 
         {/* Unit toggle on all views */}
@@ -642,7 +642,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       </div>
 
       {/* Progress */}
-      <div className="mb-6 rounded-2xl border border-white/5 bg-black/20 px-4 py-3 backdrop-blur">
+      <div className="mb-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 backdrop-blur">
         <ProgressTracker
           currentItem={session.currentItemIndex}
           currentSection={session.currentSectionIndex}
@@ -708,7 +708,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       </InspectionFormCtx.Provider>
 
       {/* Footer */}
-      <div className="mt-8 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
+      <div className="mt-8 flex flex-col gap-4 border-t border-[color:var(--theme-border-soft)] pt-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           <SaveInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
           <FinishInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
@@ -719,8 +719,8 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
           )}
         </div>
 
-        <div className="text-xs text-neutral-400 md:text-right">
-          <span className="font-semibold text-neutral-200">Legend:</span>{" "}
+        <div className="text-xs text-[color:var(--theme-text-secondary)] md:text-right">
+          <span className="font-semibold text-[color:var(--theme-text-primary)]">Legend:</span>{" "}
           P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
         </div>
       </div>

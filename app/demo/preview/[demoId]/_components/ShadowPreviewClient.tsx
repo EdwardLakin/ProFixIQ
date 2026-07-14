@@ -200,17 +200,17 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
   const gateCopy = gateAction ? gateCopyByAction[gateAction] : null;
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-black/85 backdrop-blur-xl">
+    <div className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
+      <header className="sticky top-0 z-30 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div>
             <p className="text-[11px] uppercase tracking-[0.22em] text-cyan-300">Preview mode • read only • no writes</p>
             <h1 className="text-xl font-semibold">{context.shopName} • Shadow Workspace</h1>
-            <p className="text-[11px] text-neutral-400">This operational sandbox is generated from your uploaded analysis data. No tenant rows were created.</p>
+            <p className="text-[11px] text-[color:var(--theme-text-secondary)]">This operational sandbox is generated from your uploaded analysis data. No tenant rows were created.</p>
             {shareMeta.enabled ? <p className="text-[11px] text-cyan-300/90">Shared analysis view{shareMeta.senderName ? ` • Sent by ${shareMeta.senderName}` : ""}</p> : null}
           </div>
           <div className="flex gap-2">
-            <Link href={comparePlansHref} className="rounded-md border border-white/20 px-3 py-1.5 text-xs hover:bg-white/[0.05]">See Plans</Link>
+            <Link href={comparePlansHref} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs hover:bg-[color:var(--theme-surface-subtle)]">See Plans</Link>
             <Link
               href={signupHref}
               onClick={() =>
@@ -222,7 +222,7 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
                   source: "preview_header",
                 })
               }
-              className="rounded-md bg-[var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black hover:brightness-110"
+              className="rounded-md bg-[var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-on-accent)] hover:brightness-110"
             >
               {mode === "sales" ? `Recover ${formatUsd(context.snapshot.roi.estimated_monthly_impact)}/month with activation` : activationCta.label}
             </Link>
@@ -231,14 +231,14 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
       </header>
 
       <div className="mx-auto grid max-w-7xl gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[220px_1fr_280px]">
-        <aside className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-          <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-neutral-400">Preview areas</p>
+        <aside className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
+          <p className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Preview areas</p>
           <nav className="space-y-1">
             {sections.map((section) => (
               <button
                 key={section.key}
                 onClick={() => setActive(section.key)}
-                className={`w-full rounded-md px-3 py-2 text-left text-xs ${active === section.key ? "bg-white/[0.08] text-white" : "text-neutral-300 hover:bg-white/[0.04]"}`}
+                className={`w-full rounded-md px-3 py-2 text-left text-xs ${active === section.key ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]" : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]"}`}
               >
                 {section.label}
               </button>
@@ -246,7 +246,7 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
           </nav>
         </aside>
 
-        <main className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <main className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
           <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
             This is a preview based on your uploaded data. No changes have been made yet. Activation will begin real import.
           </div>
@@ -267,10 +267,10 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
           {active === "setup" ? <SetupPanel issues={context.snapshot.setupIssues} onGate={setGateAction} /> : null}
         </main>
 
-        <aside className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Activation rail</p>
-          <p className="text-xs text-neutral-300">{activationCta.subtext}</p>
-          <p className="text-[11px] text-neutral-500">{activationCta.helper}</p>
+        <aside className="space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">Activation rail</p>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">{activationCta.subtext}</p>
+          <p className="text-[11px] text-[color:var(--theme-text-muted)]">{activationCta.helper}</p>
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
             <p className="font-semibold">{decisionSummary.heading}</p>
             <ul className="mt-1 list-disc space-y-1 pl-4 text-amber-50/90">
@@ -279,32 +279,32 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
               <li>{decisionSummary.blockerSummary}</li>
             </ul>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-[11px] text-neutral-300">
+          <div className="grid grid-cols-2 gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
             <MiniPill label="Confidence" value={`${activationContext.confidence}%`} />
             <MiniPill label="Readiness" value={activationContext.readiness.replace(/_/g, " ")} />
             <MiniPill label="Blockers" value={String(activationContext.blockers.length)} />
             <MiniPill label="Domains" value={String(activationContext.domains.length)} />
           </div>
-          <Link href={signupHref} className="block rounded-md bg-[var(--accent-copper)] px-3 py-2 text-center text-xs font-semibold text-black hover:brightness-110">{mode === "sales" ? `Recover ${formatUsd(context.snapshot.roi.estimated_monthly_impact)}/month with activation` : activationCta.label}</Link>
-          <Link href={comparePlansHref} className="block rounded-md border border-white/20 px-3 py-2 text-center text-xs hover:bg-white/[0.05]">See Plans</Link>
+          <Link href={signupHref} className="block rounded-md bg-[var(--accent-copper)] px-3 py-2 text-center text-xs font-semibold text-[color:var(--theme-text-on-accent)] hover:brightness-110">{mode === "sales" ? `Recover ${formatUsd(context.snapshot.roi.estimated_monthly_impact)}/month with activation` : activationCta.label}</Link>
+          <Link href={comparePlansHref} className="block rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2 text-center text-xs hover:bg-[color:var(--theme-surface-subtle)]">See Plans</Link>
           <button
             onClick={async () => {
               if (!shareLink) return;
               await navigator.clipboard.writeText(shareLink);
               setShareStatus("Share link copied.");
             }}
-            className="block w-full rounded-md border border-white/20 px-3 py-2 text-center text-xs hover:bg-white/[0.05]"
+            className="block w-full rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2 text-center text-xs hover:bg-[color:var(--theme-surface-subtle)]"
           >
             Copy share link
           </button>
-          <div className="space-y-2 rounded-md border border-white/15 p-2">
-            <p className="text-[11px] text-neutral-400">Share this analysis</p>
+          <div className="space-y-2 rounded-md border border-[color:var(--theme-border-soft)] p-2">
+            <p className="text-[11px] text-[color:var(--theme-text-secondary)]">Share this analysis</p>
             <input
               type="email"
               value={recipientEmail}
               onChange={(event) => setRecipientEmail(event.target.value)}
               placeholder="owner@shop.com"
-              className="w-full rounded border border-white/20 bg-black/30 px-2 py-1 text-xs outline-none"
+              className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs outline-none"
             />
             <button
               onClick={async () => {
@@ -321,19 +321,19 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
                 });
                 setShareStatus(response.ok ? "Share email sent." : "Unable to send share email.");
               }}
-              className="w-full rounded-md border border-white/20 px-3 py-1.5 text-xs hover:bg-white/[0.05]"
+              className="w-full rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs hover:bg-[color:var(--theme-surface-subtle)]"
             >
               Send via email
             </button>
             <Link
               href={`/api/shop-boost/intakes/${context.intakeId}/report?download=1`}
-              className="block w-full rounded-md border border-white/20 px-3 py-1.5 text-center text-xs hover:bg-white/[0.05]"
+              className="block w-full rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-center text-xs hover:bg-[color:var(--theme-surface-subtle)]"
             >
               Download report
             </Link>
             {shareStatus ? <p className="text-[11px] text-cyan-200">{shareStatus}</p> : null}
           </div>
-          <button onClick={() => setGateAction("settings")} className="w-full rounded-md border border-white/20 px-3 py-2 text-xs text-neutral-200 hover:bg-white/[0.05]">Start your real import (locked)</button>
+          <button onClick={() => setGateAction("settings")} className="w-full rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">Start your real import (locked)</button>
           <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-3 text-[11px] text-cyan-100">
             <p className="font-semibold">{objectionContent.title}</p>
             <ul className="mt-2 list-disc space-y-1 pl-4 text-cyan-50/90">
@@ -347,15 +347,15 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
       </div>
 
       {gateCopy ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#090909] p-5">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-[color:var(--theme-surface-overlay)] p-4">
+          <div className="w-full max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[var(--theme-surface-page)] p-5">
             <p className="text-lg font-semibold">{gateCopy.title}</p>
-            <p className="mt-2 text-sm text-neutral-300">{gateCopy.detail}</p>
-            <p className="mt-2 text-xs text-neutral-500">Preview is read-only. Nothing has been written to a live tenant or shop yet.</p>
+            <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">{gateCopy.detail}</p>
+            <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Preview is read-only. Nothing has been written to a live tenant or shop yet.</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link href={signupHref} className="rounded-md bg-[var(--accent-copper)] px-3 py-2 text-xs font-semibold text-black">{activationCta.label}</Link>
-              <Link href={comparePlansHref} className="rounded-md border border-white/20 px-3 py-2 text-xs">See Plans</Link>
-              <button onClick={() => setGateAction(null)} className="rounded-md border border-white/20 px-3 py-2 text-xs text-neutral-300">Stay in preview</button>
+              <Link href={signupHref} className="rounded-md bg-[var(--accent-copper)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-on-accent)]">{activationCta.label}</Link>
+              <Link href={comparePlansHref} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">See Plans</Link>
+              <button onClick={() => setGateAction(null)} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">Stay in preview</button>
             </div>
           </div>
         </div>
@@ -383,14 +383,14 @@ function Dashboard({
     <section className="space-y-4">
       <div className="rounded-xl border border-[rgba(214,176,150,0.35)] bg-[rgba(145,90,60,0.14)] p-4">
         <p className="text-[11px] uppercase tracking-[0.15em] text-[rgba(240,205,178,0.95)]">{decisionSummary.heading}</p>
-        <p className="mt-2 text-sm text-white">{decisionSummary.summary}</p>
+        <p className="mt-2 text-sm text-[color:var(--theme-text-primary)]">{decisionSummary.summary}</p>
         <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-          <p className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-neutral-200">Monthly value at risk: <span className="font-semibold text-white">{formatUsd(decisionSummary.monthlyValueAtRisk)}</span></p>
-          <p className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-neutral-200">Recoverable value: <span className="font-semibold text-emerald-300">{formatUsd(decisionSummary.recoverableValue)}</span></p>
+          <p className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[color:var(--theme-text-primary)]">Monthly value at risk: <span className="font-semibold text-[color:var(--theme-text-primary)]">{formatUsd(decisionSummary.monthlyValueAtRisk)}</span></p>
+          <p className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[color:var(--theme-text-primary)]">Recoverable value: <span className="font-semibold text-emerald-300">{formatUsd(decisionSummary.recoverableValue)}</span></p>
         </div>
-        <div className="mt-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-neutral-300">
+        <div className="mt-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
           <p>{decisionSummary.readinessSummary}</p>
-          <p className="mt-1 text-neutral-400">{decisionSummary.blockerSummary}</p>
+          <p className="mt-1 text-[color:var(--theme-text-secondary)]">{decisionSummary.blockerSummary}</p>
         </div>
       </div>
       <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-3 text-xs text-cyan-100">Operational preview: ProFixIQ inferred workflow states from your CSVs and preflight trust logic.</div>
@@ -403,7 +403,7 @@ function Dashboard({
       </div>
 
       <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm">
-        <p className="font-semibold text-white">Your shop impact with ProFixIQ</p>
+        <p className="font-semibold text-[color:var(--theme-text-primary)]">Your shop impact with ProFixIQ</p>
         <div className="mt-2 grid gap-2 text-xs text-emerald-100 sm:grid-cols-2">
           <p>+{formatUsd(snapshot.roi.estimated_monthly_impact)}/month recovered revenue</p>
           <p>+{snapshot.roi.approval_speed_gain}% faster approvals</p>
@@ -421,21 +421,21 @@ function Dashboard({
         </ul>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-200">
-        <p className="font-semibold text-white">Operational consequences from current state</p>
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)]">
+        <p className="font-semibold text-[color:var(--theme-text-primary)]">Operational consequences from current state</p>
         <div className="mt-2 space-y-2">
           {consequenceItems.slice(0, 5).map((item) => (
             <div key={item.key} className={`rounded-md border px-3 py-2 ${item.severity === "critical" ? "border-rose-500/35 bg-rose-500/10" : item.severity === "warning" ? "border-amber-500/35 bg-amber-500/10" : "border-emerald-500/35 bg-emerald-500/10"}`}>
-              <p className="font-semibold text-white">{item.title}</p>
-              <p className="mt-0.5 text-neutral-300">{item.detail}</p>
+              <p className="font-semibold text-[color:var(--theme-text-primary)]">{item.title}</p>
+              <p className="mt-0.5 text-[color:var(--theme-text-secondary)]">{item.detail}</p>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-200">
-        <p className="font-semibold text-white">Operational narrative</p>
-        <ul className="mt-2 space-y-1 text-xs text-neutral-300">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)]">
+        <p className="font-semibold text-[color:var(--theme-text-primary)]">Operational narrative</p>
+        <ul className="mt-2 space-y-1 text-xs text-[color:var(--theme-text-secondary)]">
           <li>{snapshot.operationalNarrative.jobsIdentified} jobs were identified from your uploaded history.</li>
           <li>{snapshot.operationalNarrative.approvalsLikelyNeeded} jobs look ready for approval routing.</li>
           <li>{snapshot.operationalNarrative.partsInventoryConflicts} parts signals need inventory reconciliation.</li>
@@ -443,9 +443,9 @@ function Dashboard({
         </ul>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-200">
-        <p className="font-semibold text-white">Why this is happening (based on your data)</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-neutral-300">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)]">
+        <p className="font-semibold text-[color:var(--theme-text-primary)]">Why this is happening (based on your data)</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-[color:var(--theme-text-secondary)]">
           {snapshot.roi.assumptions.map((assumption) => (
             <li key={assumption}>{assumption}</li>
           ))}
@@ -453,31 +453,31 @@ function Dashboard({
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
-          <p className="font-semibold text-white">Before vs after</p>
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
+          <p className="font-semibold text-[color:var(--theme-text-primary)]">Before vs after</p>
           <p className="mt-2">Approval rate: {snapshot.impactComparison.before.approval_rate}% → {snapshot.impactComparison.after.approval_rate}%</p>
           <p>Avg job completion time: {snapshot.impactComparison.before.avg_job_completion_time}d → {snapshot.impactComparison.after.avg_job_completion_time}d</p>
           <p>Parts sync rate: {snapshot.impactComparison.before.parts_sync_rate}% → {snapshot.impactComparison.after.parts_sync_rate}%</p>
         </div>
-        <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
-          <p className="font-semibold text-white">{decisionSummary.confidence.title}</p>
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
+          <p className="font-semibold text-[color:var(--theme-text-primary)]">{decisionSummary.confidence.title}</p>
           <p className="mt-1">{decisionSummary.confidence.explanation}</p>
           <p className="mt-1">Confidence score: <span className="font-semibold text-cyan-200">{snapshot.projectionConfidence.score}%</span></p>
           <p className="mt-1">Data completeness: {snapshot.projectionConfidence.factors.dataCompleteness}%</p>
           <p>Matching accuracy: {snapshot.projectionConfidence.factors.matchingAccuracy}%</p>
           <p>Domain coverage: {snapshot.projectionConfidence.factors.domainCoverage}%</p>
-          <p className="mt-1 text-neutral-400">Increases confidence: {decisionSummary.confidence.increasesConfidence}</p>
-          <p className="text-neutral-500">Lowers confidence: {decisionSummary.confidence.lowersConfidence}</p>
+          <p className="mt-1 text-[color:var(--theme-text-secondary)]">Increases confidence: {decisionSummary.confidence.increasesConfidence}</p>
+          <p className="text-[color:var(--theme-text-muted)]">Lowers confidence: {decisionSummary.confidence.lowersConfidence}</p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
-        <p className="font-semibold text-white">Plan alignment</p>
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
+        <p className="font-semibold text-[color:var(--theme-text-primary)]">Plan alignment</p>
         <p className="mt-1">Starter unlocks {snapshot.planAlignment.starterImpactUnlockPct}% of this impact. Pro unlocks {snapshot.planAlignment.proImpactUnlockPct}% with workflow automation + approvals + parts sync.</p>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-300">
-        <p className="font-semibold text-white">What we prepared for you</p>
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
+        <p className="font-semibold text-[color:var(--theme-text-primary)]">What we prepared for you</p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
           {snapshot.migrationStory.highlights.map((highlight) => (
             <li key={highlight}>{highlight}</li>
@@ -491,22 +491,22 @@ function Dashboard({
         <p className="mt-1 text-emerald-50/80">{snapshot.activationConfidence.confidenceCopy}</p>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-3 text-xs text-neutral-200">
-        <p className="font-semibold text-white">Stakeholder framing</p>
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)]">
+        <p className="font-semibold text-[color:var(--theme-text-primary)]">Stakeholder framing</p>
         <div className="mt-2 space-y-2">
           {stakeholderTakeaways.map((takeaway) => (
-            <div key={takeaway.role} className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-              <p className="font-semibold text-white">{takeaway.label}</p>
-              <p className="mt-1 text-neutral-300">{takeaway.message}</p>
+            <div key={takeaway.role} className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+              <p className="font-semibold text-[color:var(--theme-text-primary)]">{takeaway.label}</p>
+              <p className="mt-1 text-[color:var(--theme-text-secondary)]">{takeaway.message}</p>
             </div>
           ))}
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => onGate("start-work-order")} className="rounded-md bg-white/10 px-3 py-1.5 text-xs">Start work order (locked)</button>
-        <button onClick={() => onGate("send-approval")} className="rounded-md bg-white/10 px-3 py-1.5 text-xs">Send approval (locked)</button>
-        <button onClick={() => onGate("invoice")} className="rounded-md bg-white/10 px-3 py-1.5 text-xs">Create invoice (locked)</button>
+        <button onClick={() => onGate("start-work-order")} className="rounded-md bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs">Start work order (locked)</button>
+        <button onClick={() => onGate("send-approval")} className="rounded-md bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs">Send approval (locked)</button>
+        <button onClick={() => onGate("invoice")} className="rounded-md bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs">Create invoice (locked)</button>
       </div>
     </section>
   );
@@ -523,21 +523,21 @@ function WorkflowPanel({
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Shadow job flow</h2>
-        <button onClick={() => onGate("start-work-order")} className="rounded-md border border-white/15 px-3 py-1 text-xs">Run job flow (locked)</button>
+        <button onClick={() => onGate("start-work-order")} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1 text-xs">Run job flow (locked)</button>
       </div>
 
-      {jobs.length === 0 ? <p className="text-sm text-neutral-400">Upload history data to simulate workflow-ready jobs.</p> : null}
+      {jobs.length === 0 ? <p className="text-sm text-[color:var(--theme-text-secondary)]">Upload history data to simulate workflow-ready jobs.</p> : null}
 
       <div className="space-y-2">
         {jobs.map((job) => (
-          <div key={job.id} className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-neutral-200">
+          <div key={job.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)]">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <p className="text-sm font-semibold text-white">{job.roNumber}</p>
-                <p className="text-neutral-400">{job.customer} • {job.vehicle}</p>
-                <p className="mt-1 text-neutral-300">{job.concernSummary}</p>
+                <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{job.roNumber}</p>
+                <p className="text-[color:var(--theme-text-secondary)]">{job.customer} • {job.vehicle}</p>
+                <p className="mt-1 text-[color:var(--theme-text-secondary)]">{job.concernSummary}</p>
               </div>
-              <p className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] uppercase tracking-[0.08em] text-neutral-200">{job.status.replace(/_/g, " ")}</p>
+              <p className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[11px] uppercase tracking-[0.08em] text-[color:var(--theme-text-primary)]">{job.status.replace(/_/g, " ")}</p>
             </div>
             <div className="mt-2 grid gap-2 sm:grid-cols-4">
               <MiniPill label="Parts" value={job.hasParts ? "Present" : "None"} />
@@ -564,7 +564,7 @@ function ApprovalPanel({
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Approval flow preview</h2>
-        <button onClick={() => onGate("send-approval")} className="rounded-md border border-white/15 px-3 py-1 text-xs">Send approvals (locked)</button>
+        <button onClick={() => onGate("send-approval")} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1 text-xs">Send approvals (locked)</button>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Metric label="Inspection ready" value={String(flow.inspectionReady)} />
@@ -572,7 +572,7 @@ function ApprovalPanel({
         <Metric label="Waiting approval" value={String(flow.waitingCustomerApproval)} />
         <Metric label="Invoice ready" value={String(flow.invoiceReady)} />
       </div>
-      <p className="text-xs text-neutral-400">This path mirrors advisor → inspection findings → recommendation approval → invoice readiness in read-only mode.</p>
+      <p className="text-xs text-[color:var(--theme-text-secondary)]">This path mirrors advisor → inspection findings → recommendation approval → invoice readiness in read-only mode.</p>
     </section>
   );
 }
@@ -588,17 +588,17 @@ function PartsPanel({
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Parts & inventory signal</h2>
-        <button onClick={() => onGate("inventory")} className="rounded-md border border-white/15 px-3 py-1 text-xs">Receive part (locked)</button>
+        <button onClick={() => onGate("inventory")} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1 text-xs">Receive part (locked)</button>
       </div>
       <div className="space-y-2">
         {signals.map((signal) => (
-          <div key={signal.id} className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-neutral-200">
+          <div key={signal.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)]">
             <div className="flex items-center justify-between gap-3">
-              <p className="font-medium text-white">{signal.label}</p>
-              <p className="text-[11px] uppercase tracking-[0.08em] text-neutral-300">{signal.status.replace(/_/g, " ")}</p>
+              <p className="font-medium text-[color:var(--theme-text-primary)]">{signal.label}</p>
+              <p className="text-[11px] uppercase tracking-[0.08em] text-[color:var(--theme-text-secondary)]">{signal.status.replace(/_/g, " ")}</p>
             </div>
-            <p className="mt-1 text-neutral-300">{signal.confidenceNote}</p>
-            <p className="mt-1 text-neutral-500">Referenced by {signal.referencedByJobs} workflow jobs.</p>
+            <p className="mt-1 text-[color:var(--theme-text-secondary)]">{signal.confidenceNote}</p>
+            <p className="mt-1 text-[color:var(--theme-text-muted)]">Referenced by {signal.referencedByJobs} workflow jobs.</p>
           </div>
         ))}
       </div>
@@ -621,18 +621,18 @@ function DomainTable({
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">{title}</h2>
-        <button onClick={() => onGate(actionContext)} className="rounded-md border border-white/15 px-3 py-1 text-xs">Edit (locked)</button>
+        <button onClick={() => onGate(actionContext)} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1 text-xs">Edit (locked)</button>
       </div>
       <div className="space-y-2">
-        {items.length === 0 ? <p className="text-sm text-neutral-400">No preview rows were detected for this dataset.</p> : null}
+        {items.length === 0 ? <p className="text-sm text-[color:var(--theme-text-secondary)]">No preview rows were detected for this dataset.</p> : null}
         {items.map((item) => (
-          <div key={item.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border border-white/10 bg-black/30 p-3">
+          <div key={item.id} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
             <div>
               <p className="text-sm font-medium">{item.title}</p>
-              <p className="text-xs text-neutral-400">{item.subtitle}</p>
+              <p className="text-xs text-[color:var(--theme-text-secondary)]">{item.subtitle}</p>
             </div>
             <div className="text-right text-xs">
-              <p className="text-neutral-300">{item.confidence}% confidence</p>
+              <p className="text-[color:var(--theme-text-secondary)]">{item.confidence}% confidence</p>
               {item.blocked ? <p className="text-rose-300">Blocked</p> : item.reviewFlag ? <p className="text-amber-300">Needs review</p> : <p className="text-emerald-300">Clean</p>}
             </div>
           </div>
@@ -653,13 +653,13 @@ function SetupPanel({
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Migration setup issues</h2>
-        <button onClick={() => onGate("settings")} className="rounded-md border border-white/15 px-3 py-1 text-xs">Continue setup (locked)</button>
+        <button onClick={() => onGate("settings")} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1 text-xs">Continue setup (locked)</button>
       </div>
-      {issues.length === 0 ? <p className="text-sm text-neutral-400">No setup blockers were detected in this shadow pass.</p> : null}
+      {issues.length === 0 ? <p className="text-sm text-[color:var(--theme-text-secondary)]">No setup blockers were detected in this shadow pass.</p> : null}
       {issues.map((issue) => (
         <div key={issue.id} className={`rounded-lg border p-3 text-sm ${issue.severity === "blocker" ? "border-rose-500/30 bg-rose-500/10" : "border-amber-500/30 bg-amber-500/10"}`}>
           <p className="font-semibold capitalize">{issue.severity}: {issue.title}</p>
-          <p className="mt-1 text-neutral-200">{issue.detail}</p>
+          <p className="mt-1 text-[color:var(--theme-text-primary)]">{issue.detail}</p>
         </div>
       ))}
     </section>
@@ -668,8 +668,8 @@ function SetupPanel({
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-      <p className="text-[11px] uppercase tracking-[0.1em] text-neutral-400">{label}</p>
+    <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+      <p className="text-[11px] uppercase tracking-[0.1em] text-[color:var(--theme-text-secondary)]">{label}</p>
       <p className="mt-1 text-xl font-semibold">{value}</p>
     </div>
   );
@@ -677,9 +677,9 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function MiniPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1">
-      <p className="text-[10px] uppercase tracking-[0.08em] text-neutral-500">{label}</p>
-      <p className="text-xs text-neutral-200">{value}</p>
+    <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1">
+      <p className="text-[10px] uppercase tracking-[0.08em] text-[color:var(--theme-text-muted)]">{label}</p>
+      <p className="text-xs text-[color:var(--theme-text-primary)]">{value}</p>
     </div>
   );
 }

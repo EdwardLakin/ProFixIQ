@@ -7,7 +7,7 @@ export default function DashboardBookingsPage() {
     <div className="mx-auto flex max-w-7xl flex-col gap-6 p-6 text-foreground">
       <header className="space-y-1">
         <h1 className="text-2xl font-blackops text-orange-500">Bookings</h1>
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-[color:var(--theme-text-secondary)]">
           View and manage appointments across your shop.
         </p>
       </header>

@@ -28,14 +28,14 @@ export default function PhotoCapture({ onImageSelect }: Props) {
         <button
           type="button"
           onClick={() => captureInputRef.current?.click()}
-          className="rounded bg-blue-600 px-4 py-2 font-bold font-header text-white shadow-card hover:bg-blue-700"
+          className="rounded bg-blue-600 px-4 py-2 font-bold font-header text-[color:var(--theme-text-primary)] shadow-card hover:bg-blue-700"
         >
           📷 Capture Photo
         </button>
         <button
           type="button"
           onClick={() => uploadInputRef.current?.click()}
-          className="rounded bg-gray-700 px-4 py-2 font-bold font-header text-white shadow-card hover:bg-gray-800"
+          className="rounded bg-[color:var(--theme-surface-hover)] px-4 py-2 font-bold font-header text-[color:var(--theme-text-primary)] shadow-card hover:bg-[color:var(--theme-surface-panel-strong)]"
         >
           📁 Upload Photo
         </button>

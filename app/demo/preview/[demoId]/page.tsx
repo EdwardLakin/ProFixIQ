@@ -21,22 +21,22 @@ export default async function DemoPreviewPage({ params, searchParams }: PageProp
 
   if (!intakeId) {
     return (
-      <div className="grid min-h-screen place-items-center bg-black px-4 text-white">
-        <div className="max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
+      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
+        <div className="max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-center">
           <p className="text-lg font-semibold">Missing preview intake</p>
-          <p className="mt-2 text-sm text-neutral-400">This preview link is incomplete. Return to Instant Shop Analysis and relaunch preview mode.</p>
-          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-white/20 px-3 py-1.5 text-xs">Back to analysis</Link>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This preview link is incomplete. Return to Instant Shop Analysis and relaunch preview mode.</p>
+          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs">Back to analysis</Link>
         </div>
       </div>
     );
   }
   if (!isUuid(demoId) || !isUuid(intakeId)) {
     return (
-      <div className="grid min-h-screen place-items-center bg-black px-4 text-white">
-        <div className="max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
+      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
+        <div className="max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-center">
           <p className="text-lg font-semibold">Preview expired</p>
-          <p className="mt-2 text-sm text-neutral-400">This preview link is invalid or expired. Start a new analysis to continue.</p>
-          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-white/20 px-3 py-1.5 text-xs">Restart analysis</Link>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This preview link is invalid or expired. Start a new analysis to continue.</p>
+          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs">Restart analysis</Link>
         </div>
       </div>
     );
@@ -45,11 +45,11 @@ export default async function DemoPreviewPage({ params, searchParams }: PageProp
   const context = await loadShadowPreviewContext({ demoId, intakeId });
   if (!context) {
     return (
-      <div className="grid min-h-screen place-items-center bg-black px-4 text-white">
-        <div className="max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
+      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
+        <div className="max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-center">
           <p className="text-lg font-semibold">Preview expired</p>
-          <p className="mt-2 text-sm text-neutral-400">The demo snapshot is missing or no longer matches this intake link. Please restart Instant Shop Analysis.</p>
-          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-white/20 px-3 py-1.5 text-xs">Restart analysis</Link>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">The demo snapshot is missing or no longer matches this intake link. Please restart Instant Shop Analysis.</p>
+          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs">Restart analysis</Link>
         </div>
       </div>
     );
@@ -57,10 +57,10 @@ export default async function DemoPreviewPage({ params, searchParams }: PageProp
 
   if (shared && token && (!validatedToken || validatedToken.demoId !== demoId || validatedToken.intakeId !== intakeId)) {
     return (
-      <div className="grid min-h-screen place-items-center bg-black px-4 text-white">
-        <div className="max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-center">
+      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
+        <div className="max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-center">
           <p className="text-lg font-semibold">Share link expired</p>
-          <p className="mt-2 text-sm text-neutral-400">This shared link is no longer valid. Ask the sender for a fresh link.</p>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This shared link is no longer valid. Ask the sender for a fresh link.</p>
         </div>
       </div>
     );

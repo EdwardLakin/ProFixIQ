@@ -37,23 +37,23 @@ export default function CreateUserClient() {
   }
 
   return (
-    <div className="p-6 text-white max-w-xl">
+    <div className="p-6 text-[color:var(--theme-text-primary)] max-w-xl">
       <h1 className="text-2xl font-bold mb-4">Create User</h1>
 
       <form onSubmit={handleSubmit} className="space-y-3">
-        <input name="full_name" placeholder="Full name" className="w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700" required />
-        <input name="email" type="email" placeholder="Email" className="w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700" required />
-        <input name="password" type="text" placeholder="Temporary password" className="w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700" required />
-        <select name="role" defaultValue="mechanic" className="w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700">
+        <input name="full_name" placeholder="Full name" className="w-full px-3 py-2 rounded bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)]" required />
+        <input name="email" type="email" placeholder="Email" className="w-full px-3 py-2 rounded bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)]" required />
+        <input name="password" type="text" placeholder="Temporary password" className="w-full px-3 py-2 rounded bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)]" required />
+        <select name="role" defaultValue="mechanic" className="w-full px-3 py-2 rounded bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)]">
           <option value="mechanic">Mechanic</option>
           <option value="advisor">Advisor</option>
           <option value="manager">Manager</option>
           <option value="admin">Admin</option>
           <option value="owner">Owner</option>
         </select>
-        <input name="shop_id" type="text" placeholder="Shop ID (optional)" className="w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700" />
+        <input name="shop_id" type="text" placeholder="Shop ID (optional)" className="w-full px-3 py-2 rounded bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)]" />
 
-        <button type="submit" disabled={busy} className="rounded bg-orange-500 px-4 py-2 font-semibold text-black hover:bg-orange-600 disabled:opacity-60">
+        <button type="submit" disabled={busy} className="rounded bg-orange-500 px-4 py-2 font-semibold text-[color:var(--theme-text-on-accent)] hover:bg-orange-600 disabled:opacity-60">
           {busy ? "Creating…" : "Create User"}
         </button>
       </form>

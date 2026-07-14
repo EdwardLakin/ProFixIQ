@@ -258,7 +258,7 @@ export default function InspectionReviewPanel({
               return (
                 <div
                   key={`${sectionTitle}-${idx}-${item.item ?? item.name ?? "item"}`}
-                  className="rounded-md border border-zinc-800/80 bg-black/60 px-3 py-2"
+                  className="rounded-md border border-zinc-800/80 bg-[color:var(--theme-surface-overlay)] px-3 py-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">

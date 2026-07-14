@@ -82,9 +82,9 @@ export function stageAccent(
       };
     case "completed":
       return {
-        border: "border-slate-500/45",
-        badge: "bg-slate-500/15 text-slate-200 border-slate-500/30",
-        progress: "bg-slate-300",
+        border: "border-[color:var(--theme-border-soft)]",
+        badge: "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)]",
+        progress: "bg-[color:var(--theme-surface-subtle)]",
       };
     case "awaiting":
     default:

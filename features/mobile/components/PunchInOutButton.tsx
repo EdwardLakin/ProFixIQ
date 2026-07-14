@@ -45,7 +45,7 @@ const PunchInOutButton: React.FC<PunchInOutButtonProps> = ({
           "w-full justify-center rounded-2xl border px-4 py-3 text-sm shadow-card backdrop-blur-md",
           isPunchedIn
             ? "border-emerald-400/70 bg-emerald-500/5 text-emerald-100 hover:bg-emerald-500/10"
-            : "border-[var(--accent-copper-soft)]/70 bg-[var(--glass-bg)] text-white hover:bg-[var(--accent-copper-soft)]/18",
+            : "border-[var(--accent-copper-soft)]/70 bg-[var(--glass-bg)] text-[color:var(--theme-text-primary)] hover:bg-[var(--accent-copper-soft)]/18",
         ].join(" ")}
       >
         <div className="flex flex-col items-center">
@@ -53,7 +53,7 @@ const PunchInOutButton: React.FC<PunchInOutButtonProps> = ({
             {primaryLabel}
           </span>
           {secondaryLabel && (
-            <span className="mt-0.5 text-[0.7rem] text-neutral-200">
+            <span className="mt-0.5 text-[0.7rem] text-[color:var(--theme-text-primary)]">
               {secondaryLabel}
             </span>
           )}

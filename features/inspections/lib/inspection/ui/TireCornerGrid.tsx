@@ -301,19 +301,19 @@ function readLaborHours(it: InspectionItem): number | null {
 
 function inputCls() {
   return [
-    "h-[34px] w-full rounded-lg border border-white/10 bg-black/55",
-    "px-3 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500",
+    "h-[34px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
+    "px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
     "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
     "disabled:opacity-50 disabled:cursor-not-allowed",
   ].join(" ");
 }
 
 function unitCls() {
-  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400";
+  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[color:var(--theme-text-secondary)]";
 }
 
 function cornerShellCls() {
-  return "rounded-xl border border-white/10 bg-black/35 shadow-[0_12px_35px_rgba(0,0,0,0.55)] backdrop-blur-xl";
+  return "rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 }
 
 function axleTitleCls() {
@@ -321,7 +321,7 @@ function axleTitleCls() {
 }
 
 function tinyLabelCls() {
-  return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400";
+  return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]";
 }
 
 function axleFromRowStatusLabel(label: string): string | null {
@@ -531,12 +531,12 @@ export default function TireGrid(props: Props) {
       <>
         {/* Parts + Labor, only for FAIL / REC items */}
         {isFailOrRec ? (
-          <div className="mt-2 rounded-lg border border-white/10 bg-black/25 p-3">
+          <div className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold text-neutral-100">
+              <span className="text-[12px] font-semibold text-[color:var(--theme-text-primary)]">
                 Parts &amp; Labor
               </span>
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                 FAIL / REC only
               </span>
             </div>
@@ -546,10 +546,10 @@ export default function TireGrid(props: Props) {
               {currentParts.map((p, pIdx) => (
                 <div
                   key={pIdx}
-                  className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-2"
+                  className="flex flex-wrap items-center gap-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2"
                 >
                   <input
-                    className="min-w-0 flex-1 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                    className="min-w-0 flex-1 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                     placeholder="Part description"
                     value={p.description}
                     onChange={(e) =>
@@ -557,7 +557,7 @@ export default function TireGrid(props: Props) {
                     }
                   />
                   <input
-                    className="w-16 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                    className="w-16 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                     placeholder="Qty"
                     type="number"
                     min={1}
@@ -579,7 +579,7 @@ export default function TireGrid(props: Props) {
               <button
                 type="button"
                 onClick={addEmptyPart}
-                className="mt-1 inline-flex items-center rounded-full border border-white/20 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/80 hover:text-orange-200"
+                className="mt-1 inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-500/80 hover:text-orange-200"
               >
                 + Add Part
               </button>
@@ -587,9 +587,9 @@ export default function TireGrid(props: Props) {
 
             {/* Labor */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] text-neutral-400">Labor hours</span>
+              <span className="text-[11px] text-[color:var(--theme-text-secondary)]">Labor hours</span>
               <input
-                className="w-20 rounded-md border border-neutral-800 bg-neutral-950/70 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
+                className="w-20 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/60"
                 placeholder="0.0"
                 type="number"
                 min={0}
@@ -602,7 +602,7 @@ export default function TireGrid(props: Props) {
                   )
                 }
               />
-              <span className="text-[10px] text-neutral-500">
+              <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                 (rate + pricing handled later)
               </span>
             </div>
@@ -654,7 +654,7 @@ export default function TireGrid(props: Props) {
           const e = entry as { label: string; cell?: Cell };
           return (
             <div key={e.label} className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-2">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">{e.label}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">{e.label}</div>
               <div>
                 <div className="relative">
                   <input
@@ -685,14 +685,14 @@ export default function TireGrid(props: Props) {
     return (
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
-        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
           Tire Grid – Air Brake
         </div>
 
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -751,7 +751,7 @@ export default function TireGrid(props: Props) {
                   >
                     {t.axle}
                   </div>
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                     TP / TD capture only
                   </div>
                 </div>
@@ -759,7 +759,7 @@ export default function TireGrid(props: Props) {
                 <div className="space-y-4">
                   <div>
                     <div className={tinyLabelCls()}>Tread Depth</div>
-                    <div className="space-y-2 rounded-xl border border-white/10 bg-black/35 p-2.5">
+                    <div className="space-y-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
                       {isDual
                         ? (
                           <>
@@ -772,7 +772,7 @@ export default function TireGrid(props: Props) {
                   </div>
                   <div>
                     <div className={tinyLabelCls()}>Pressure</div>
-                    <div className="space-y-2 rounded-xl border border-white/10 bg-black/35 p-2.5">
+                    <div className="space-y-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
                       {isDual
                         ? (
                           <>
@@ -816,7 +816,7 @@ function AddAxlePicker({
   return (
     <div className="flex items-center gap-2 px-1">
       <select
-        className="rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-xs text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.85)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
+        className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/80"
         value={pending}
         onChange={(e) => setPending(e.target.value)}
       >
@@ -829,7 +829,7 @@ function AddAxlePicker({
       </select>
 
       <button
-        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
+        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#e17a3e),var(--accent-copper,#f97316))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(212,118,49,0.6)] hover:brightness-110 disabled:opacity-40"
         onClick={() => {
           if (pending) onAddAxle(pending);
         }}

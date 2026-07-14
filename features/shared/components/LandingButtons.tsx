@@ -4,9 +4,9 @@ import Link from "next/link";
 
 export default function LandingHero() {
   return (
-    <section className="relative bg-black text-white">
+    <section className="relative bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto max-w-6xl px-4 pt-24 pb-16 text-center">
-        <p className="text-sm tracking-wide text-neutral-300 uppercase">
+        <p className="text-sm tracking-wide text-[color:var(--theme-text-secondary)] uppercase">
           Repair Smarter. Diagnose Faster.
         </p>
 
@@ -26,7 +26,7 @@ export default function LandingHero() {
           ProFixIQ
         </h1>
 
-        <p className="mx-auto mt-3 max-w-3xl text-base sm:text-lg text-neutral-300">
+        <p className="mx-auto mt-3 max-w-3xl text-base sm:text-lg text-[color:var(--theme-text-secondary)]">
           From diagnostics to dispatch — AI handles the heavy lifting. Streamline
           every repair, inspection, and work order with smart automation.
         </p>
@@ -34,21 +34,21 @@ export default function LandingHero() {
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <Link
             href="/sign-in?redirectedFrom=/ai"
-            className="rounded-lg bg-orange-500 px-5 py-3 font-bold text-black shadow hover:bg-orange-600"
+            className="rounded-lg bg-orange-500 px-5 py-3 font-bold text-[color:var(--theme-text-on-accent)] shadow hover:bg-orange-600"
           >
             Try the AI
           </Link>
 
           <a
             href="#features"
-            className="rounded-lg border border-neutral-600 px-5 py-3 font-bold text-white hover:bg-white hover:text-black"
+            className="rounded-lg border border-[color:var(--theme-border-soft)] px-5 py-3 font-bold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)] hover:text-[color:var(--theme-text-on-accent)]"
           >
             Explore Features
           </a>
 
           <a
             href="#why"
-            className="rounded-lg border border-neutral-600 px-5 py-3 font-bold text-white hover:bg-white hover:text-black"
+            className="rounded-lg border border-[color:var(--theme-border-soft)] px-5 py-3 font-bold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)] hover:text-[color:var(--theme-text-on-accent)]"
           >
             Why ProFixIQ?
           </a>

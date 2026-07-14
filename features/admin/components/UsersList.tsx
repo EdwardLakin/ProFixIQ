@@ -169,7 +169,7 @@ export default function UsersList(): JSX.Element {
         <AdminToolbar>
           <AdminField label="Search" className="flex-1">
             <input
-              className="w-full rounded-lg border border-[color:var(--metal-border-soft,#334155)] bg-slate-950/70 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)]"
+              className="w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)]"
               placeholder="Search name, email, or phone…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -177,7 +177,7 @@ export default function UsersList(): JSX.Element {
           </AdminField>
           <AdminField label="Role" className="w-full md:w-52">
             <select
-              className="w-full rounded-lg border border-[color:var(--metal-border-soft,#334155)] bg-slate-950/70 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-[var(--accent-copper-soft)]"
+              className="w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-[var(--accent-copper-soft)]"
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value as UserRole | "all")}
             >
@@ -211,7 +211,7 @@ export default function UsersList(): JSX.Element {
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+            <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
               <tr>
                 <th className="px-4 py-2.5 text-left">Name</th>
                 <th className="px-4 py-2.5 text-left">Email</th>
@@ -221,19 +221,19 @@ export default function UsersList(): JSX.Element {
                 <th className="px-4 py-2.5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/10">
+            <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
               {filteredRows.map((u) => (
-                <tr key={u.id} className="text-neutral-200">
+                <tr key={u.id} className="text-[color:var(--theme-text-primary)]">
                   <td className="px-4 py-2.5">
-                    <div className="font-medium text-neutral-100">{u.full_name ?? "—"}</div>
-                    <div className="text-xs text-neutral-500">{u.id.slice(0, 8)}</div>
+                    <div className="font-medium text-[color:var(--theme-text-primary)]">{u.full_name ?? "—"}</div>
+                    <div className="text-xs text-[color:var(--theme-text-muted)]">{u.id.slice(0, 8)}</div>
                   </td>
                   <td className="px-4 py-2.5">{u.email ?? "—"}</td>
                   <td className="px-4 py-2.5">{u.phone ?? "—"}</td>
                   <td className="px-4 py-2.5">
                     <AdminBadge>{u.role ?? "—"}</AdminBadge>
                   </td>
-                  <td className="px-4 py-2.5 text-neutral-300">
+                  <td className="px-4 py-2.5 text-[color:var(--theme-text-secondary)]">
                     {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
                   </td>
                   <td className="px-4 py-2.5 text-right">
@@ -280,31 +280,31 @@ export default function UsersList(): JSX.Element {
       </AdminPanel>
 
       {editOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--theme-surface-overlay)] px-4">
           <AdminPanel className="w-full max-w-md p-4">
-            <p className="text-[0.7rem] uppercase tracking-[0.14em] text-neutral-400">User management</p>
-            <h3 className="mt-1 text-lg font-semibold text-neutral-100">Edit User</h3>
+            <p className="text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">User management</p>
+            <h3 className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">Edit User</h3>
             <div className="mt-4 space-y-3">
-              <label className="block text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <label className="block text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 Full name
                 <input
-                  className="mt-1 w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"
                   value={editFullName}
                   onChange={(e) => setEditFullName(e.target.value)}
                 />
               </label>
-              <label className="block text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <label className="block text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 Phone
                 <input
-                  className="mt-1 w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
                 />
               </label>
-              <label className="block text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <label className="block text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 Role
                 <select
-                  className="mt-1 w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as UserRole | "")}
                 >

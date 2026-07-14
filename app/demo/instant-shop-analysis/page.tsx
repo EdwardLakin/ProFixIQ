@@ -70,25 +70,25 @@ function normalizeAnalysisPayload(payload: unknown): InstantAnalysisPayload | nu
 }
 
 const THEME = {
-  page: "min-h-screen bg-black text-white",
-  header: "border-b border-white/5 bg-black/60 px-4 py-5 sm:px-6",
+  page: "min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]",
+  header: "border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-5 sm:px-6",
   max: "mx-auto max-w-6xl",
   glassCard:
-    "rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-[0_18px_45px_rgba(0,0,0,0.75)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-  label: "text-[11px] font-medium text-neutral-300",
-  help: "text-[11px] text-neutral-400",
+    "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] backdrop-blur-xl shadow-[var(--theme-shadow-medium)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+  label: "text-[11px] font-medium text-[color:var(--theme-text-secondary)]",
+  help: "text-[11px] text-[color:var(--theme-text-secondary)]",
   input:
-    "w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20",
+    "w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-1 focus:ring-[color:var(--theme-border-strong)] focus:border-[color:var(--theme-border-soft)]",
   select:
-    "w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20",
+    "w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-1 focus:ring-[color:var(--theme-border-strong)] focus:border-[color:var(--theme-border-soft)]",
   badge:
-    "inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-[11px] text-neutral-300",
+    "inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-2 text-[11px] text-[color:var(--theme-text-secondary)]",
   cta:
-    "bg-[linear-gradient(180deg,rgba(214,176,150,0.95),rgba(150,92,60,0.95))] text-black",
+    "bg-[linear-gradient(180deg,rgba(214,176,150,0.95),rgba(150,92,60,0.95))] text-[color:var(--theme-text-on-accent)]",
   ctaHover: "hover:brightness-110",
   ctaDisabled: "disabled:cursor-not-allowed disabled:opacity-60",
   subtleBtn:
-    "inline-flex items-center justify-center rounded-md border border-white/10 bg-black/40 px-4 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-white/[0.04] hover:border-white/20",
+    "inline-flex items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:border-[color:var(--theme-border-soft)]",
   copperText: "text-[rgba(214,176,150,0.95)]",
   copperMuted: "text-[rgba(210,210,210,0.75)]",
 };
@@ -319,8 +319,8 @@ export default function InstantShopAnalysisPage() {
         <div className={THEME.max}>
           <div className={[THEME.glassCard, "px-5 py-5"].join(" ")}>
             <div className="flex flex-col items-center gap-2 text-center">
-              <p className="text-[11px] uppercase tracking-[0.25em] text-neutral-300">ProFixIQ</p>
-              <h1 className="text-2xl sm:text-3xl text-white" style={{ fontFamily: "var(--font-blackops)" }}>
+              <p className="text-[11px] uppercase tracking-[0.25em] text-[color:var(--theme-text-secondary)]">ProFixIQ</p>
+              <h1 className="text-2xl sm:text-3xl text-[color:var(--theme-text-primary)]" style={{ fontFamily: "var(--font-blackops)" }}>
                 Instant <span className={THEME.copperText}>Import Analysis</span>
               </h1>
               <p className={`max-w-2xl text-xs sm:text-sm ${THEME.copperMuted}`}>
@@ -356,7 +356,7 @@ export default function InstantShopAnalysisPage() {
             <section className={[THEME.glassCard, "p-4 sm:p-5"].join(" ")}>
               <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-white">
+                  <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     Shop profile <span className={THEME.copperText}>context</span>
                   </h2>
                   <p className={THEME.help}>We use this to tune interpretation and recommendations.</p>
@@ -403,10 +403,10 @@ export default function InstantShopAnalysisPage() {
                             )
                           }
                           className={[
-                            "rounded-md border px-3 py-2 text-left text-[11px] transition border-white/10 bg-black/40",
+                            "rounded-md border px-3 py-2 text-left text-[11px] transition border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
                             active
-                              ? "border-[rgba(150,92,60,0.55)] bg-white/[0.05] text-white"
-                              : "text-neutral-200 hover:border-white/20 hover:bg-white/[0.04]",
+                              ? "border-[rgba(150,92,60,0.55)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+                              : "text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]",
                           ].join(" ")}
                         >
                           {opt.label}
@@ -432,7 +432,7 @@ export default function InstantShopAnalysisPage() {
 
             <section className={[THEME.glassCard, "p-4 sm:p-5"].join(" ")}>
               <div className="mb-4">
-                <h2 className="text-sm font-semibold text-white">
+                <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   Upload exports for <span className={THEME.copperText}>import analysis</span>
                 </h2>
                 <p className={THEME.help}>
@@ -482,7 +482,7 @@ export default function InstantShopAnalysisPage() {
               </button>
 
               {step === "analyzing" && (
-                <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-neutral-300">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                   Running parser + matching heuristics to build your import readiness report…
                 </span>
               )}
@@ -494,8 +494,8 @@ export default function InstantShopAnalysisPage() {
 
         <aside className="w-full space-y-4 lg:w-72">
           <div className={[THEME.glassCard, "p-4"].join(" ")}>
-            <h3 className="mb-2 text-sm font-semibold text-white">What this report includes</h3>
-            <ul className="space-y-1 text-[11px] text-neutral-400">
+            <h3 className="mb-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">What this report includes</h3>
+            <ul className="space-y-1 text-[11px] text-[color:var(--theme-text-secondary)]">
               <li>• Estimated auto-import coverage</li>
               <li>• Records likely needing review</li>
               <li>• Potential blockers before safe materialization</li>
@@ -504,8 +504,8 @@ export default function InstantShopAnalysisPage() {
           </div>
 
           <div className={[THEME.glassCard, "p-4"].join(" ")}>
-            <h3 className="mb-2 text-sm font-semibold text-white">Flow after preview</h3>
-            <ol className="space-y-1 text-[11px] text-neutral-400">
+            <h3 className="mb-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">Flow after preview</h3>
+            <ol className="space-y-1 text-[11px] text-[color:var(--theme-text-secondary)]">
               <li>1. Review importability preview</li>
               <li>2. Continue to signup + plan selection</li>
               <li>3. Activate billing / trial</li>
@@ -524,11 +524,11 @@ export default function InstantShopAnalysisPage() {
 
             {step === "preview" && (
               <div className="-mt-20 flex justify-center">
-                <div className="pointer-events-auto max-w-lg rounded-2xl border border-white/15 bg-black/75 px-5 py-4 text-center backdrop-blur-xl">
-                  <p className="text-xs font-semibold text-white">
+                <div className="pointer-events-auto max-w-lg rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-5 py-4 text-center backdrop-blur-xl">
+                  <p className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
                     Unlock the full import readiness report
                   </p>
-                  <p className="mt-1 text-[11px] text-neutral-400">
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                     We&apos;ll reveal full confidence details and save your analysis handoff for
                     signup.
                   </p>
@@ -538,7 +538,7 @@ export default function InstantShopAnalysisPage() {
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
                       placeholder="you@example.com"
-                      className="flex-1 rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20"
+                      className="flex-1 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-1 focus:ring-[color:var(--theme-border-strong)] focus:border-[color:var(--theme-border-soft)]"
                     />
 
                     <button
@@ -559,7 +559,7 @@ export default function InstantShopAnalysisPage() {
                   {claimError ? <p className="mt-2 text-[11px] text-red-400">{claimError}</p> : null}
                   <a
                     href={`/demo/preview/${encodeURIComponent(demoId ?? "")}?intakeId=${encodeURIComponent(intakeId ?? analysis.intakeId ?? "")}`}
-                    className="mt-3 inline-flex items-center justify-center rounded-md border border-white/15 px-3 py-1.5 text-[11px] text-neutral-200 transition hover:bg-white/[0.04]"
+                    className="mt-3 inline-flex items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
                   >
                     Enter your system preview
                   </a>
@@ -570,15 +570,15 @@ export default function InstantShopAnalysisPage() {
             {step === "unlocked" && (
               <div className={[THEME.glassCard, "mt-4 flex flex-wrap items-center gap-3 px-4 py-3"].join(" ")}>
                 <div className="flex-1 text-[11px]">
-                  <p className="font-semibold text-white">
+                  <p className="font-semibold text-[color:var(--theme-text-primary)]">
                     Start your real import with this analysis context
                   </p>
-                  <p className="mt-0.5 text-[11px] text-neutral-400">
+                  <p className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                     Continue with signup, select a plan, and we&apos;ll run full Shop Boost migration
                     using this analysis context.
                   </p>
                   {demoId ? (
-                    <p className="mt-1 text-[10px] text-neutral-500">
+                    <p className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
                       Analysis reference: {demoId}
                       {intakeId ? ` • Intake: ${intakeId}` : ""}
                     </p>
@@ -626,7 +626,7 @@ function PreflightTrustReport({ report }: { report: ShopBoostPreflightReport }) 
         : "text-rose-300";
 
   return (
-    <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl sm:p-6">
+    <div className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl sm:p-6">
       <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 text-[11px] text-cyan-100">
         Nothing has been imported yet. This preview shows how ProFixIQ expects to interpret your
         data before activation.
@@ -640,21 +640,21 @@ function PreflightTrustReport({ report }: { report: ShopBoostPreflightReport }) 
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
-          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Import confidence</p>
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">Import confidence</p>
           <p className={`mt-2 text-2xl font-semibold ${confidenceTone}`}>{report.confidence.score}%</p>
-          <p className="mt-1 text-[11px] text-neutral-300">Readiness: {report.confidence.readiness}</p>
-          <p className="text-[11px] text-neutral-400">Integrity expectation: {report.confidence.integrityStatus}</p>
+          <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">Readiness: {report.confidence.readiness}</p>
+          <p className="text-[11px] text-[color:var(--theme-text-secondary)]">Integrity expectation: {report.confidence.integrityStatus}</p>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
-          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Potential blockers</p>
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">Potential blockers</p>
           {report.blockers.length > 0 ? (
-            <ul className="mt-2 space-y-2 text-[11px] text-neutral-200">
+            <ul className="mt-2 space-y-2 text-[11px] text-[color:var(--theme-text-primary)]">
               {report.blockers.map((blocker) => (
                 <li key={blocker.code} className="rounded-md border border-rose-500/20 bg-rose-500/10 px-3 py-2">
                   <div className="font-semibold">{blocker.count.toLocaleString()} • {blocker.code.replace(/_/g, " ")}</div>
-                  <div className="text-neutral-300">{blocker.guidance}</div>
+                  <div className="text-[color:var(--theme-text-secondary)]">{blocker.guidance}</div>
                 </li>
               ))}
             </ul>
@@ -664,13 +664,13 @@ function PreflightTrustReport({ report }: { report: ShopBoostPreflightReport }) 
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/35 p-4">
-        <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">By dataset domain</p>
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+        <p className="text-[11px] uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">By dataset domain</p>
         <div className="mt-3 space-y-2">
           {report.domains.map((domain) => (
-            <div key={domain.domain} className="grid grid-cols-5 gap-2 rounded-md border border-white/10 bg-black/40 px-3 py-2 text-[11px]">
-              <div className="col-span-2 text-white">{domain.domain}</div>
-              <div className="text-neutral-300">{domain.detected.toLocaleString()} detected</div>
+            <div key={domain.domain} className="grid grid-cols-5 gap-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px]">
+              <div className="col-span-2 text-[color:var(--theme-text-primary)]">{domain.domain}</div>
+              <div className="text-[color:var(--theme-text-secondary)]">{domain.detected.toLocaleString()} detected</div>
               <div className="text-emerald-300">{domain.likelyAutoImport.toLocaleString()} auto</div>
               <div className="text-amber-300">{domain.likelyNeedsReview.toLocaleString()} review</div>
             </div>
@@ -679,18 +679,18 @@ function PreflightTrustReport({ report }: { report: ShopBoostPreflightReport }) 
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
-          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">What ProFixIQ can prepare</p>
-          <ul className="mt-2 space-y-1 text-[11px] text-neutral-200">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">What ProFixIQ can prepare</p>
+          <ul className="mt-2 space-y-1 text-[11px] text-[color:var(--theme-text-primary)]">
             {report.projectedPreparation.map((item) => (
               <li key={item}>• {item}</li>
             ))}
           </ul>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-black/35 p-4">
-          <p className="text-[11px] uppercase tracking-[0.15em] text-neutral-400">Review notes</p>
-          <ul className="mt-2 space-y-1 text-[11px] text-neutral-300">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+          <p className="text-[11px] uppercase tracking-[0.15em] text-[color:var(--theme-text-secondary)]">Review notes</p>
+          <ul className="mt-2 space-y-1 text-[11px] text-[color:var(--theme-text-secondary)]">
             {report.reviewNotes.map((item) => (
               <li key={item}>• {item}</li>
             ))}
@@ -703,9 +703,9 @@ function PreflightTrustReport({ report }: { report: ShopBoostPreflightReport }) 
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-3">
-      <p className="text-[11px] text-neutral-400">{label}</p>
-      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <p className="text-[11px] text-[color:var(--theme-text-secondary)]">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{value}</p>
     </div>
   );
 }
@@ -719,13 +719,13 @@ type NumberInputProps = {
 function NumberInput({ label, value, onChange }: NumberInputProps) {
   return (
     <div className="space-y-1">
-      <label className="text-[11px] font-medium text-neutral-300">{label}</label>
+      <label className="text-[11px] font-medium text-[color:var(--theme-text-secondary)]">{label}</label>
       <input
         type="number"
         min={0}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-md border border-white/10 bg-black/40 px-3 py-2 text-[11px] text-white placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-white/20 focus:border-white/20"
+        className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-1 focus:ring-[color:var(--theme-border-strong)] focus:border-[color:var(--theme-border-soft)]"
       />
     </div>
   );
@@ -739,16 +739,16 @@ type YesNoRowProps = {
 
 function YesNoRow({ label, value, onChange }: YesNoRowProps) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-      <p className="text-[11px] text-neutral-200">{label}</p>
-      <div className="inline-flex gap-1 rounded-full border border-white/10 bg-black/40 p-1 text-[10px]">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2">
+      <p className="text-[11px] text-[color:var(--theme-text-primary)]">{label}</p>
+      <div className="inline-flex gap-1 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-1 text-[10px]">
         <button
           type="button"
           className={[
             "rounded-full px-2 py-1 transition",
             value
-              ? "bg-[rgba(150,92,60,0.9)] text-white"
-              : "text-neutral-300 hover:bg-white/[0.05]",
+              ? "bg-[rgba(150,92,60,0.9)] text-[color:var(--theme-text-primary)]"
+              : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
           ].join(" ")}
           onClick={() => onChange(true)}
         >
@@ -759,8 +759,8 @@ function YesNoRow({ label, value, onChange }: YesNoRowProps) {
           className={[
             "rounded-full px-2 py-1 transition",
             !value
-              ? "bg-[rgba(150,92,60,0.9)] text-white"
-              : "text-neutral-300 hover:bg-white/[0.05]",
+              ? "bg-[rgba(150,92,60,0.9)] text-[color:var(--theme-text-primary)]"
+              : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)]",
           ].join(" ")}
           onClick={() => onChange(false)}
         >
@@ -782,15 +782,15 @@ type FileRowProps = {
 
 function FileRow({ id, label, description, file, accept, onChange }: FileRowProps) {
   return (
-    <label htmlFor={id} className="block rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 hover:border-white/20">
+    <label htmlFor={id} className="block rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 hover:border-[color:var(--theme-border-soft)]">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[12px] font-medium text-white">{label}</p>
-          <p className="mt-0.5 text-[11px] text-neutral-400">{description}</p>
+          <p className="truncate text-[12px] font-medium text-[color:var(--theme-text-primary)]">{label}</p>
+          <p className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">{description}</p>
           {file ? <p className="mt-1 text-[10px] text-emerald-300">Selected: {file.name}</p> : null}
         </div>
 
-        <span className="rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[10px] text-neutral-300">
+        <span className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[10px] text-[color:var(--theme-text-secondary)]">
           {file ? "Replace" : "Upload"}
         </span>
       </div>

@@ -188,14 +188,14 @@ export default function MobileCustomerProfilePage() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-full border border-neutral-700 bg-neutral-950 px-3 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
           >
             ← Back
           </button>
 
           <Link
             href={`/customers/${customerId}`}
-            className="rounded-full border border-orange-500/70 bg-orange-500 px-3 py-1 text-[0.7rem] font-semibold text-black hover:bg-orange-400"
+            className="rounded-full border border-orange-500/70 bg-orange-500 px-3 py-1 text-[0.7rem] font-semibold text-[color:var(--theme-text-on-accent)] hover:bg-orange-400"
           >
             Open full view
           </Link>
@@ -203,10 +203,10 @@ export default function MobileCustomerProfilePage() {
 
         {/* Heading */}
         <div className="space-y-1">
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
             Customer
           </h1>
-          <p className="text-xs text-neutral-400">{displayName}</p>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">{displayName}</p>
         </div>
 
         {err && (
@@ -216,38 +216,38 @@ export default function MobileCustomerProfilePage() {
         )}
 
         {loading ? (
-          <div className="rounded-lg border border-white/10 bg-black/40 px-3 py-4 text-sm text-neutral-300">
+          <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
             Loading customer…
           </div>
         ) : !customer ? (
-          <div className="rounded-lg border border-dashed border-white/15 bg-black/40 px-3 py-6 text-sm text-neutral-400">
+          <div className="rounded-lg border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-6 text-sm text-[color:var(--theme-text-secondary)]">
             Customer not found.
           </div>
         ) : (
           <>
             {/* Customer details */}
-            <section className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
-              <div className="mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
+            <section className="space-y-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-3 text-sm">
+              <div className="mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                 Contact
               </div>
-              <div className="space-y-1 text-xs text-neutral-200">
+              <div className="space-y-1 text-xs text-[color:var(--theme-text-primary)]">
                 <div>
-                  <span className="text-neutral-500">Name:</span> {displayName}
+                  <span className="text-[color:var(--theme-text-muted)]">Name:</span> {displayName}
                 </div>
                 <div>
-                  <span className="text-neutral-500">Email:</span>{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">Email:</span>{" "}
                   {customer.email ?? "—"}
                 </div>
                 <div>
-                  <span className="text-neutral-500">Phone:</span>{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">Phone:</span>{" "}
                   {customer.phone ?? "—"}
                 </div>
               </div>
 
-              <div className="mt-3 mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
+              <div className="mt-3 mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                 Address
               </div>
-              <div className="space-y-1 text-xs text-neutral-200">
+              <div className="space-y-1 text-xs text-[color:var(--theme-text-primary)]">
                 <div>{customer.address || "—"}</div>
                 <div>
                   {[
@@ -262,20 +262,20 @@ export default function MobileCustomerProfilePage() {
             </section>
 
             {/* Vehicles */}
-            <section className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
+            <section className="space-y-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-3 text-sm">
               <div className="mb-1 flex items-center justify-between">
-                <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
+                <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   Vehicles
                 </div>
                 {vehicles.length > 0 && (
-                  <div className="text-[0.7rem] text-neutral-500">
+                  <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                     {vehicles.length} total
                   </div>
                 )}
               </div>
 
               {vehicles.length === 0 ? (
-                <p className="text-xs text-neutral-400">No vehicles yet.</p>
+                <p className="text-xs text-[color:var(--theme-text-secondary)]">No vehicles yet.</p>
               ) : (
                 <div className="space-y-2">
                   {vehicles.map((v) => {
@@ -290,56 +290,56 @@ export default function MobileCustomerProfilePage() {
                     return (
                       <div
                         key={v.id}
-                        className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                        className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]"
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="font-medium text-neutral-50">
+                          <div className="font-medium text-[color:var(--theme-text-primary)]">
                             {title || "Vehicle"}
                           </div>
                           {v.license_plate && (
-                            <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[0.65rem] text-neutral-200">
+                            <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[0.65rem] text-[color:var(--theme-text-primary)]">
                               {v.license_plate}
                             </span>
                           )}
                         </div>
 
-                        <div className="mt-2 grid grid-cols-2 gap-1 text-[0.7rem] text-neutral-400">
+                        <div className="mt-2 grid grid-cols-2 gap-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                           <div>
-                            <span className="text-neutral-500">VIN:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">VIN:</span>{" "}
                             {v.vin || "—"}
                           </div>
                           <div>
-                            <span className="text-neutral-500">Mileage:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Mileage:</span>{" "}
                             {v.mileage || "—"}
                           </div>
                           <div>
-                            <span className="text-neutral-500">Unit #:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Unit #:</span>{" "}
                             {v.unit_number || "—"}
                           </div>
                           <div>
-                            <span className="text-neutral-500">Color:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Color:</span>{" "}
                             {v.color || "—"}
                           </div>
                           <div>
-                            <span className="text-neutral-500">Engine hrs:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Engine hrs:</span>{" "}
                             {v.engine_hours != null
                               ? String(v.engine_hours)
                               : "—"}
                           </div>
                           <div>
-                            <span className="text-neutral-500">Engine:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Engine:</span>{" "}
                             {v.engine || "—"}
                           </div>
                           <div>
-                            <span className="text-neutral-500">Trans:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Trans:</span>{" "}
                             {v.transmission || "—"}
                           </div>
                           <div>
-                            <span className="text-neutral-500">Fuel:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Fuel:</span>{" "}
                             {v.fuel_type || "—"}
                           </div>
                           <div className="col-span-2">
-                            <span className="text-neutral-500">Drivetrain:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">Drivetrain:</span>{" "}
                             {v.drivetrain || "—"}
                           </div>
                         </div>
@@ -351,20 +351,20 @@ export default function MobileCustomerProfilePage() {
             </section>
 
             {/* Work order history */}
-            <section className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
+            <section className="space-y-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-3 text-sm">
               <div className="mb-1 flex items-center justify-between">
-                <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
+                <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   Work Orders
                 </div>
                 {workOrders.length > 0 && (
-                  <div className="text-[0.7rem] text-neutral-500">
+                  <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                     {workOrders.length} total
                   </div>
                 )}
               </div>
 
               {workOrders.length === 0 ? (
-                <p className="text-xs text-neutral-400">
+                <p className="text-xs text-[color:var(--theme-text-secondary)]">
                   No work orders yet for this customer.
                 </p>
               ) : (
@@ -374,16 +374,16 @@ export default function MobileCustomerProfilePage() {
                       key={wo.id}
                       type="button"
                       onClick={() => router.push(`/mobile/work-orders/${wo.id}`)}
-                      className="w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-left text-xs text-neutral-200 hover:border-orange-500/80"
+                      className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-left text-xs text-[color:var(--theme-text-primary)] hover:border-orange-500/80"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="font-medium text-neutral-50 truncate">
+                          <div className="font-medium text-[color:var(--theme-text-primary)] truncate">
                             {wo.custom_id
                               ? `WO ${wo.custom_id}`
                               : `WO #${wo.id.slice(0, 8)}`}
                           </div>
-                          <div className="text-[0.7rem] text-neutral-400">
+                          <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                             {wo.created_at
                               ? format(new Date(wo.created_at), "PP p")
                               : "—"}

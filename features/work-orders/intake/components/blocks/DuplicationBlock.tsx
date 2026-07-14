@@ -36,7 +36,7 @@ export function DuplicationBlock(props: {
             style={{
               padding: "10px 14px",
               borderRadius: 999,
-              border: "1px solid rgba(0,0,0,0.15)",
+              border: "1px solid var(--theme-surface-inset)",
               opacity: intake.duplication.duplicable === v ? 1 : 0.65,
             }}
           >

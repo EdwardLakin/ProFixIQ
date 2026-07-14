@@ -500,10 +500,10 @@ export default function ApproveWorkOrderPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+      <div className="min-h-screen bg-[color:var(--theme-surface-page)] px-4 py-8 text-[color:var(--theme-text-primary)]">
         <div className="mx-auto max-w-4xl space-y-4">
-          <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-800/80" />
-          <div className="h-24 animate-pulse rounded-2xl bg-slate-900/80" />
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-[color:var(--theme-surface-panel-strong)]" />
+          <div className="h-24 animate-pulse rounded-2xl bg-[color:var(--theme-surface-panel)]" />
         </div>
       </div>
     );
@@ -511,7 +511,7 @@ export default function ApproveWorkOrderPage() {
 
   if (!wo) {
     return (
-      <div className="min-h-screen bg-slate-950 px-4 py-8 text-red-100">
+      <div className="min-h-screen bg-[color:var(--theme-surface-page)] px-4 py-8 text-red-100">
         <div className="mx-auto max-w-3xl rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm">
           Work order not found.
         </div>
@@ -520,24 +520,24 @@ export default function ApproveWorkOrderPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+    <div className="min-h-screen bg-[color:var(--theme-surface-page)] px-4 py-8 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto max-w-4xl space-y-5">
-        <section className="rounded-2xl border border-slate-700/70 bg-slate-900/85 p-5 shadow-[0_18px_50px_rgba(2,6,23,0.45)]">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-medium)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-1">
-              <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
+              <p className="text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Approval review
               </p>
-              <h1 className="text-xl font-semibold text-slate-100">
+              <h1 className="text-xl font-semibold text-[color:var(--theme-text-primary)]">
                 {shop?.name ?? "ProFixIQ Work Order"}
               </h1>
-              <p className="text-sm text-slate-300">
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">
                 Review selected items, confirm totals, and submit your decision.
               </p>
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/80 px-4 py-2 text-right">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-2 text-right">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Estimate total
               </p>
               <p className="text-lg font-semibold text-[var(--accent-copper-light)]">
@@ -549,28 +549,28 @@ export default function ApproveWorkOrderPage() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-3">
-            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-              <span className="text-xs uppercase tracking-[0.12em] text-slate-500">
+          <div className="mt-4 grid gap-2 text-sm text-[color:var(--theme-text-secondary)] sm:grid-cols-3">
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2">
+              <span className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 Work order
               </span>
-              <div className="font-medium text-slate-100">
+              <div className="font-medium text-[color:var(--theme-text-primary)]">
                 {wo.custom_id ?? `#${wo.id.slice(0, 8)}`}
               </div>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-              <span className="text-xs uppercase tracking-[0.12em] text-slate-500">
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2">
+              <span className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 Selected labor
               </span>
-              <div className="font-medium text-slate-100">
+              <div className="font-medium text-[color:var(--theme-text-primary)]">
                 {hours.toFixed(1)}h
               </div>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2">
-              <span className="text-xs uppercase tracking-[0.12em] text-slate-500">
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2">
+              <span className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 Currency
               </span>
-              <div className="font-medium text-slate-100">{currencyCode}</div>
+              <div className="font-medium text-[color:var(--theme-text-primary)]">{currencyCode}</div>
             </div>
           </div>
 
@@ -590,13 +590,13 @@ export default function ApproveWorkOrderPage() {
           ) : null}
         </section>
 
-        <section className="rounded-2xl border border-slate-700/70 bg-slate-900/85 p-5 shadow-[0_14px_42px_rgba(2,6,23,0.35)]">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-medium)]">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h2 className="text-base font-semibold text-slate-100">
+              <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
                 Approval items
               </h2>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">
                 Select the priced work you want approved. Unselected priced
                 lines will be declined.
               </p>
@@ -604,7 +604,7 @@ export default function ApproveWorkOrderPage() {
           </div>
 
           {items.length === 0 ? (
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-sm text-slate-400">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
               No items available for approval.
             </div>
           ) : (
@@ -633,23 +633,23 @@ export default function ApproveWorkOrderPage() {
                         ? "border-sky-400/40 bg-sky-500/10"
                         : disabled
                           ? "cursor-not-allowed border-amber-400/30 bg-amber-500/10"
-                          : "cursor-pointer border-slate-700 bg-slate-950/70 hover:border-slate-500"
+                          : "cursor-pointer border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] hover:border-[color:var(--theme-border-soft)]"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
                         <input
                           type="checkbox"
-                          className="mt-1 h-4 w-4 rounded border-slate-500 bg-slate-950 text-[var(--accent-copper)] focus:ring-[var(--accent-copper)] disabled:cursor-not-allowed"
+                          className="mt-1 h-4 w-4 rounded border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[var(--accent-copper)] focus:ring-[var(--accent-copper)] disabled:cursor-not-allowed"
                           checked={isSelected}
                           onChange={() => toggle(item)}
                           disabled={disabled}
                         />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-100">
+                          <p className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                             {title}
                           </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--theme-text-secondary)]">
                             <span>{getJobTypeLabel(item.row.job_type)}</span>
                             <span>
                               Labor{" "}
@@ -671,8 +671,8 @@ export default function ApproveWorkOrderPage() {
                             </span>
                           </div>
                           {detail ? (
-                            <p className="mt-2 line-clamp-2 text-xs text-slate-300/90">
-                              <span className="font-medium text-slate-200">
+                            <p className="mt-2 line-clamp-2 text-xs text-[color:var(--theme-text-secondary)]">
+                              <span className="font-medium text-[color:var(--theme-text-primary)]">
                                 Details:
                               </span>{" "}
                               {detail}
@@ -694,8 +694,8 @@ export default function ApproveWorkOrderPage() {
                       </div>
 
                       <div className="shrink-0 text-right text-xs">
-                        <p className="text-slate-400">Line total</p>
-                        <p className="text-sm font-semibold text-slate-100">
+                        <p className="text-[color:var(--theme-text-secondary)]">Line total</p>
+                        <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                           {fmt.format(pricing.grandTotal)}
                         </p>
                         {pricing.totalLabelSuffix ? (
@@ -703,10 +703,10 @@ export default function ApproveWorkOrderPage() {
                             {pricing.totalLabelSuffix}
                           </p>
                         ) : null}
-                        <p className="mt-1 text-slate-400">
+                        <p className="mt-1 text-[color:var(--theme-text-secondary)]">
                           Labor {fmt.format(pricing.laborTotal)}
                         </p>
-                        <p className="text-slate-400">
+                        <p className="text-[color:var(--theme-text-secondary)]">
                           Parts{" "}
                           {pricing.pendingParts
                             ? "pending"
@@ -721,31 +721,31 @@ export default function ApproveWorkOrderPage() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-slate-700/70 bg-slate-900/85 p-5 shadow-[0_14px_42px_rgba(2,6,23,0.35)]">
-          <h2 className="text-base font-semibold text-slate-100">Totals</h2>
-          <div className="mt-3 space-y-2 text-sm text-slate-300">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-medium)]">
+          <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">Totals</h2>
+          <div className="mt-3 space-y-2 text-sm text-[color:var(--theme-text-secondary)]">
             <div className="flex items-center justify-between">
               <span>Labor ({hours.toFixed(1)}h)</span>
-              <span className="font-medium text-slate-100">
+              <span className="font-medium text-[color:var(--theme-text-primary)]">
                 {fmt.format(laborTotal)}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span>Parts</span>
-              <span className="font-medium text-slate-100">
+              <span className="font-medium text-[color:var(--theme-text-primary)]">
                 {fmt.format(partsTotal)}
               </span>
             </div>
             {taxTotal > 0 ? (
               <div className="flex items-center justify-between">
                 <span>Tax</span>
-                <span className="font-medium text-slate-100">
+                <span className="font-medium text-[color:var(--theme-text-primary)]">
                   {fmt.format(taxTotal)}
                 </span>
               </div>
             ) : null}
-            <div className="mt-2 flex items-center justify-between border-t border-slate-700 pt-2">
-              <span className="font-semibold text-slate-100">Total</span>
+            <div className="mt-2 flex items-center justify-between border-t border-[color:var(--theme-border-soft)] pt-2">
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">Total</span>
               <span className="text-base font-semibold text-[var(--accent-copper-light)]">
                 {fmt.format(grandTotal)}
               </span>
@@ -753,14 +753,14 @@ export default function ApproveWorkOrderPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-700/70 bg-slate-900/85 p-5 shadow-[0_14px_42px_rgba(2,6,23,0.35)]">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-medium)]">
           <LegalTerms onAgreeChange={setAgreed} defaultOpen />
         </section>
 
-        <section className="rounded-2xl border border-slate-700/70 bg-slate-900/85 p-5 shadow-[0_14px_42px_rgba(2,6,23,0.35)]">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-medium)]">
           <div className="flex flex-wrap items-center gap-3">
             <button
-              className="rounded-lg bg-[var(--accent-copper)] px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-[var(--accent-copper-light)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-[var(--accent-copper)] px-5 py-2.5 text-sm font-semibold text-[color:var(--theme-text-on-accent)] transition hover:bg-[var(--accent-copper-light)] disabled:cursor-not-allowed disabled:opacity-60"
               onClick={async () => {
                 const base64: string | null = await openSignaturePad({
                   shopName: shop?.name || "",
@@ -774,7 +774,7 @@ export default function ApproveWorkOrderPage() {
             </button>
 
             <button
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm font-medium text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-panel-strong)] disabled:cursor-not-allowed disabled:opacity-60"
               onClick={() => void handleSubmit()}
               disabled={!canSubmit}
               title={submitDisabledReason}
@@ -782,7 +782,7 @@ export default function ApproveWorkOrderPage() {
               Approve without signature
             </button>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
               {canSubmit
                 ? "Your approval will be linked to this work order record."
                 : submitDisabledReason}

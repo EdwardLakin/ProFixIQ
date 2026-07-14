@@ -162,12 +162,12 @@ export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) 
   };
 
   if (loading) {
-    return <div className="p-4 text-sm text-neutral-400">Loading public profile…</div>;
+    return <div className="p-4 text-sm text-[color:var(--theme-text-secondary)]">Loading public profile…</div>;
   }
 
   /** UI */
   return (
-    <section className="space-y-3 rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6">
+    <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card sm:p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Public Profile</h2>
         <Button onClick={onSave} disabled={!isUnlocked || saving}>

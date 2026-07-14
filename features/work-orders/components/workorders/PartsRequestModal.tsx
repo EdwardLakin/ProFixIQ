@@ -204,23 +204,23 @@ export default function PartsRequestModal({
       submitText={submitting ? "Submitting…" : "Submit to Parts"}
     >
       <div className="space-y-4">
-        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
             Parts request
           </div>
-          <div className="mt-1 text-xs text-neutral-400">
+          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Send a clean request to parts without losing the work order and job context.
           </div>
         </div>
 
         {/* Header meta */}
-        <div className="flex flex-col gap-2 text-[0.7rem] text-neutral-400 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 text-[0.7rem] text-[color:var(--theme-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            <span className="font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Work order
             </span>
             <span
-              className="max-w-[60vw] truncate rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 font-mono text-[0.7rem] text-neutral-100 sm:max-w-[340px]"
+              className="max-w-[60vw] truncate rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 font-mono text-[0.7rem] text-[color:var(--theme-text-primary)] sm:max-w-[340px]"
               title={woDisplay}
             >
               {woDisplay}
@@ -228,11 +228,11 @@ export default function PartsRequestModal({
           </div>
 
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            <span className="font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Job
             </span>
             <span
-              className="max-w-[60vw] truncate rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[0.75rem] font-medium text-neutral-100 sm:max-w-[420px]"
+              className="max-w-[60vw] truncate rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.75rem] font-medium text-[color:var(--theme-text-primary)] sm:max-w-[420px]"
               title={jobDisplay}
             >
               {jobDisplay}
@@ -242,12 +242,12 @@ export default function PartsRequestModal({
 
         {/* Note to parts */}
         <div className="space-y-1">
-          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Note to parts (optional)
           </label>
           <textarea
             rows={2}
-            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={headerNotes}
             onChange={(e) => setHeaderNotes(e.target.value)}
             placeholder="Anything they should know before filling this request…"
@@ -255,23 +255,23 @@ export default function PartsRequestModal({
         </div>
 
         {/* Items grid */}
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/55 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+        <div className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)]">
           {/* Header row */}
-          <div className="grid grid-cols-12 bg-gradient-to-r from-slate-900/90 via-slate-950 to-black px-3 py-2 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+          <div className="grid grid-cols-12 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-3 py-2 text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             <div className="col-span-8">Description*</div>
             <div className="col-span-3 text-right">Qty*</div>
             <div className="col-span-1 text-center"> </div>
           </div>
 
           {/* Rows */}
-          <div className="max-h-64 overflow-auto bg-black/70">
+          <div className="max-h-64 overflow-auto bg-[color:var(--theme-surface-overlay)]">
             {rows.map((r) => (
               <div
                 key={r.id}
-                className="grid grid-cols-12 gap-2 border-t border-white/5 px-3 py-2"
+                className="grid grid-cols-12 gap-2 border-t border-[color:var(--theme-border-soft)] px-3 py-2"
               >
                 <input
-                  className="col-span-8 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
+                  className="col-span-8 rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.description}
                   onChange={(e) => setCell(r.id, { description: e.target.value })}
                   placeholder="e.g. rear pads, serp belt…"
@@ -281,7 +281,7 @@ export default function PartsRequestModal({
                 <input
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  className="col-span-3 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-right text-sm text-neutral-100 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
+                  className="col-span-3 rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-right text-sm text-[color:var(--theme-text-primary)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.qty}
                   onChange={(e) => {
                     // keep only digits, allow empty while editing
@@ -299,7 +299,7 @@ export default function PartsRequestModal({
 
                 <div className="col-span-1 flex items-center justify-center">
                   <button
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/70 text-[0.7rem] text-neutral-300 transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-40 disabled:hover:bg-black/70 disabled:hover:text-neutral-300"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[0.7rem] text-[color:var(--theme-text-secondary)] transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-40 disabled:hover:bg-[color:var(--theme-surface-overlay)] disabled:hover:text-[color:var(--theme-text-secondary)]"
                     onClick={() => removeRow(r.id)}
                     disabled={rows.length <= 1}
                     title={rows.length <= 1 ? "At least one row is required" : "Remove row"}
@@ -313,9 +313,9 @@ export default function PartsRequestModal({
           </div>
 
           {/* Add row footer */}
-          <div className="border-t border-white/5 bg-black/80 px-3 py-2">
+          <div className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2">
             <button
-              className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.16em] text-neutral-100 transition hover:border-[var(--accent-copper-soft)] hover:bg-[var(--accent-copper-faint)] hover:text-[var(--accent-copper-soft)]"
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[var(--accent-copper-faint)] hover:text-[var(--accent-copper-soft)]"
               onClick={addRow}
               type="button"
             >
@@ -325,7 +325,7 @@ export default function PartsRequestModal({
           </div>
         </div>
 
-        <p className="text-[0.7rem] text-neutral-500">
+        <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
           Only lines with a description and quantity &gt; 0 will be sent.
         </p>
       </div>

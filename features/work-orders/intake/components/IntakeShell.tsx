@@ -56,7 +56,7 @@ export function IntakeShell(props: {
           display: "flex",
           gap: 10,
           justifyContent: "space-between",
-          borderTop: "1px solid rgba(0,0,0,0.08)",
+          borderTop: "1px solid var(--theme-surface-inset)",
         }}
       >
         <button

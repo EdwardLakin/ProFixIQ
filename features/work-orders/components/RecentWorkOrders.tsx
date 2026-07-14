@@ -62,16 +62,16 @@ export default function RecentWorkOrders() {
   return (
     <Card className="mb-8 px-5 py-5">
       <div className="mb-4">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
           Work orders
         </div>
-        <h2 className="mt-1 text-base font-semibold text-white sm:text-lg">
+        <h2 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)] sm:text-lg">
           Recent work orders
         </h2>
       </div>
 
       {workOrders.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-neutral-400">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
           No recent work orders found.
         </div>
       ) : (
@@ -86,11 +86,11 @@ export default function RecentWorkOrders() {
                 <button
                   type="button"
                   onClick={() => router.push(`/work-orders/${order.id}`)}
-                  className="flex w-full items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/20 p-4 text-left transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/30"
+                  className="flex w-full items-start justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-left transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-inset)]"
                 >
                   <div className="min-w-0">
-                    <div className="font-medium text-white">{vehicleLabel}</div>
-                    <div className="mt-1 text-xs text-neutral-400">
+                    <div className="font-medium text-[color:var(--theme-text-primary)]">{vehicleLabel}</div>
+                    <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                       Status: {order.status.replaceAll("_", " ")}
                     </div>
                   </div>

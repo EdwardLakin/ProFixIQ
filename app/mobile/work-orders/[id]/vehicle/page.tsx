@@ -210,7 +210,7 @@ export default function MobileWorkOrderVehiclePage() {
 
   if (loading) {
     return (
-      <div className="p-4 text-sm text-neutral-200">
+      <div className="p-4 text-sm text-[color:var(--theme-text-primary)]">
         Loading customer &amp; vehicle…
       </div>
     );
@@ -221,7 +221,7 @@ export default function MobileWorkOrderVehiclePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] px-3 py-4 text-white">
+    <div className="min-h-screen bg-[var(--theme-surface-page)] px-3 py-4 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto max-w-xl">
         <MobileCustomerVehicleForm
           wo={wo}

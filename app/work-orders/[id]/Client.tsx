@@ -1431,7 +1431,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const showPanel = prefersPanel && !!panelLineId;
 
   return (
-    <div className="w-full bg-[var(--theme-surface-2,#0B1220)] px-3 py-4 text-foreground sm:px-5 lg:px-8 xl:px-10">
+    <div className="w-full bg-[var(--theme-surface-2,var(--theme-surface-page))] px-3 py-4 text-foreground sm:px-5 lg:px-8 xl:px-10">
       <VoiceContextSetter
         currentView="work_order_page"
         workOrderId={wo?.id}
@@ -1444,7 +1444,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         {authChecked && !currentUserId && (
           <section className={cn(PANEL_VARIANTS.secondary, "p-3 text-sm text-amber-100")}>
             You appear signed out on this tab. If actions fail, open{" "}
-            <Link href="/sign-in" className="underline hover:text-white">
+            <Link href="/sign-in" className="underline hover:text-[color:var(--theme-text-primary)]">
               Sign In
             </Link>{" "}
             and return here.
@@ -1493,10 +1493,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                   : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">State: {formatDecisionStatus({ workStatus: wo.status }).label}</span>
-                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">Active jobs: {sortedLines.length}</span>
-                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">In progress: {inProgressCount}</span>
-                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-muted-foreground">Blocked: {blockedCount}</span>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">State: {formatDecisionStatus({ workStatus: wo.status }).label}</span>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Active jobs: {sortedLines.length}</span>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">In progress: {inProgressCount}</span>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Blocked: {blockedCount}</span>
                 {hasAnyApprovalItems ? (
                   <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">Approval queue: {approvalPending.length + approvalPendingQuotes.length}</span>
                 ) : null}
@@ -1504,7 +1504,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             </section>
 
             {loading ? (
-              <div className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/50 px-3 py-2 text-xs text-muted-foreground">
+              <div className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-muted-foreground">
                 Refreshing work order data…
               </div>
             ) : null}
@@ -2056,20 +2056,20 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 {inspectionStatus} • {sourceFinding}
                               </div>
                             </div>
-                            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] uppercase tracking-wide text-neutral-300">
+                            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                               {String(q.stage ?? q.status ?? "advisor_pending").replaceAll("_", " ")}
                             </span>
                           </div>
-                          <div className="mt-3 grid gap-2 text-xs text-neutral-300 sm:grid-cols-2">
-                            <div>Tech notes: <span className="text-neutral-100">{technicianNotes}</span></div>
-                            <div>Labor: <span className="text-neutral-100">{typeof q.labor_hours === "number" ? `${q.labor_hours}h` : typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"}</span></div>
-                            <div>Parts: <span className="text-neutral-100">{parts.length > 0 ? `${parts.length} requirement(s)` : "None / labor-only"}</span></div>
-                            <div>Evidence: <span className="text-neutral-100">{photoCount}</span></div>
-                            <div>Parts Request: <span className="text-neutral-100">{partRequests.length > 0 ? partRequests.map((r) => r.status ?? "requested").join(", ") : "Not required / not created"}</span></div>
+                          <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)] sm:grid-cols-2">
+                            <div>Tech notes: <span className="text-[color:var(--theme-text-primary)]">{technicianNotes}</span></div>
+                            <div>Labor: <span className="text-[color:var(--theme-text-primary)]">{typeof q.labor_hours === "number" ? `${q.labor_hours}h` : typeof q.est_labor_hours === "number" ? `${q.est_labor_hours}h` : "—"}</span></div>
+                            <div>Parts: <span className="text-[color:var(--theme-text-primary)]">{parts.length > 0 ? `${parts.length} requirement(s)` : "None / labor-only"}</span></div>
+                            <div>Evidence: <span className="text-[color:var(--theme-text-primary)]">{photoCount}</span></div>
+                            <div>Parts Request: <span className="text-[color:var(--theme-text-primary)]">{partRequests.length > 0 ? partRequests.map((r) => r.status ?? "requested").join(", ") : "Not required / not created"}</span></div>
                             <div>Pricing: <span className={pricingReviewRequired ? "text-amber-200" : "text-emerald-200"}>{pricingReviewRequired ? "Review required" : "Pricing available"}</span></div>
                           </div>
                           {menuMatch ? (
-                            <div className="mt-2 text-[11px] text-neutral-400">
+                            <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                               Menu source: {asString(menuMatch.label) ?? asString(menuMatch.menu_repair_item_id) ?? asString(menuMatch.menu_item_id) ?? "matched repair"}
                             </div>
                           ) : null}
@@ -2078,7 +2078,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                               Review
                             </Link>
                             {partRequests[0]?.id ? (
-                              <Link href={`/parts/requests?requestId=${encodeURIComponent(partRequests[0].id)}`} className="rounded-md border border-neutral-500/40 px-2.5 py-1 text-[11px] font-semibold text-neutral-200 hover:bg-white/5">
+                              <Link href={`/parts/requests?requestId=${encodeURIComponent(partRequests[0].id)}`} className="rounded-md border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">
                                 View Parts Request
                               </Link>
                             ) : null}
@@ -2097,7 +2097,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   </div>
                   <div className="space-y-2">
                     {infoLines.map((line) => (
-                      <div key={line.id} className="rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-2.5">
+                      <div key={line.id} className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-2.5">
                         <div className="text-sm text-foreground">
                           {line.description || line.complaint || "Context line"}
                         </div>

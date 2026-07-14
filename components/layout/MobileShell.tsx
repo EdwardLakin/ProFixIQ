@@ -55,9 +55,9 @@ export function MobileShell({ children, title }: Props) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col app-metal-bg text-white">
+    <div className="flex min-h-screen flex-col app-metal-bg text-[color:var(--theme-text-primary)]">
       {/* Top bar – dark “metal” strip with hamburger + title + home */}
-      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[0_6px_20px_rgba(0,0,0,0.9)]">
+      <header className="metal-bar sticky top-0 z-40 flex items-center justify-between px-4 py-2 shadow-[var(--theme-shadow-medium)]">
         {/* Left: menu + title */}
         <div className="flex items-center gap-3">
           <button
@@ -68,13 +68,13 @@ export function MobileShell({ children, title }: Props) {
           >
             <span className="sr-only">Open menu</span>
             <div className="flex flex-col gap-[3px]">
-              <span className="h-[2px] w-[14px] rounded-full bg-white" />
-              <span className="h-[2px] w-[14px] rounded-full bg-white" />
-              <span className="h-[2px] w-[14px] rounded-full bg-white" />
+              <span className="h-[2px] w-[14px] rounded-full bg-[color:var(--theme-surface-panel-strong)]" />
+              <span className="h-[2px] w-[14px] rounded-full bg-[color:var(--theme-surface-panel-strong)]" />
+              <span className="h-[2px] w-[14px] rounded-full bg-[color:var(--theme-surface-panel-strong)]" />
             </div>
           </button>
 
-          <span className="text-[0.75rem] font-medium text-neutral-100">
+          <span className="text-[0.75rem] font-medium text-[color:var(--theme-text-primary)]">
             {resolvedTitle}
           </span>
         </div>
@@ -84,9 +84,9 @@ export function MobileShell({ children, title }: Props) {
           <button
             type="button"
             onClick={handleHome}
-            className="desktop-btn-secondary inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.7rem] text-neutral-100 active:scale-95"
+            className="desktop-btn-secondary inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)] active:scale-95"
           >
-            <span className="block h-[10px] w-[10px] rounded-[3px] border border-white/70 bg-white/10" />
+            <span className="block h-[10px] w-[10px] rounded-[3px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]" />
             <span className="uppercase tracking-[0.16em]">Home</span>
           </button>
 
@@ -94,7 +94,7 @@ export function MobileShell({ children, title }: Props) {
             <span className="font-blackops text-xs tracking-[0.22em] text-[var(--accent-copper-light)]">
               PROFIXIQ
             </span>
-            <span className="text-[0.65rem] text-neutral-300">Tech Suite</span>
+            <span className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">Tech Suite</span>
           </div>
         </div>
       </header>
@@ -108,7 +108,7 @@ export function MobileShell({ children, title }: Props) {
 
       {/* Footer – simple metal strip with sign-out */}
       <footer className="metal-bar sticky bottom-0 z-30 flex items-center justify-between px-4 py-2 text-[0.7rem] pb-[calc(0.5rem+var(--safe-bottom))]">
-        <span className="text-neutral-400">
+        <span className="text-[color:var(--theme-text-secondary)]">
           ProFixIQ Mobile
         </span>
         <button

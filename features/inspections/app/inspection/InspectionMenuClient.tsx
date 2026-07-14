@@ -30,7 +30,7 @@ function TileLink({ href, title, subtitle }: Tile) {
       <Card className="h-full px-5 py-5 transition hover:border-[color:var(--brand-accent,#E39A6E)]/60">
         <h3 className="text-base font-semibold">{title}</h3>
         {subtitle ? (
-          <p className="mt-1 text-sm text-[var(--theme-text-secondary,#94A3B8)]">{subtitle}</p>
+          <p className="mt-1 text-sm text-[var(--theme-text-secondary,var(--theme-text-muted))]">{subtitle}</p>
         ) : null}
       </Card>
     </Link>
@@ -116,7 +116,7 @@ export default function InspectionMenuClient() {
             ))}
           </div>
 
-          <h3 className="mt-6 text-sm font-semibold text-[var(--theme-text-secondary,#94A3B8)]">More</h3>
+          <h3 className="mt-6 text-sm font-semibold text-[var(--theme-text-secondary,var(--theme-text-muted))]">More</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {NAV_UTIL.map((t) => (
               <TileLink key={t.href} {...t} />
@@ -145,7 +145,7 @@ export default function InspectionMenuClient() {
                   <Link
                     href={`/inspections/templates?id=${t.id}`}
                     className="rounded border px-3 py-2 text-sm transition"
-                    style={{ borderColor: "var(--theme-card-border,#334155)" }}
+                    style={{ borderColor: "var(--theme-card-border,var(--theme-border-soft))" }}
                   >
                     Open
                   </Link>
@@ -153,7 +153,7 @@ export default function InspectionMenuClient() {
               </Card>
             ))}
             {templates.length === 0 && (
-              <p className="text-sm text-[var(--theme-text-secondary,#94A3B8)]">
+              <p className="text-sm text-[var(--theme-text-secondary,var(--theme-text-muted))]">
                 No templates yet. Create one under{" "}
                 <span style={{ color: "var(--brand-accent,#E39A6E)" }}>Templates</span>.
               </p>
@@ -164,7 +164,7 @@ export default function InspectionMenuClient() {
             <Card className="p-4">
               <h3
                 className="mb-3 text-base font-semibold"
-                style={{ color: "var(--theme-text-primary,#F8FAFC)" }}
+                style={{ color: "var(--theme-text-primary,var(--theme-text-primary))" }}
               >
                 Preview
               </h3>

@@ -28,10 +28,10 @@ export default function FleetIssueTables({
       <section className="metal-card rounded-3xl p-4">
         <header className="flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Open fleet issues
             </p>
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               Pre-trip failures, portal requests, and inspection findings that
               still need a plan.
             </p>
@@ -39,7 +39,7 @@ export default function FleetIssueTables({
           {uiContext.capabilities.canCreateFleetWorkOrders && (
             <Link
               href="/work-orders/create"
-              className="rounded-xl bg-[color:var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_18px_rgba(193,102,59,0.7)] hover:opacity-95"
+              className="rounded-xl bg-[color:var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(193,102,59,0.7)] hover:opacity-95"
             >
               New service request
             </Link>
@@ -48,7 +48,7 @@ export default function FleetIssueTables({
 
         <div className="mt-3 overflow-x-auto">
           <table className="min-w-full border-separate border-spacing-y-1 text-xs">
-            <thead className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+            <thead className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
               <tr>
                 <th className="px-3 py-1 text-left">Unit</th>
                 <th className="px-3 py-1 text-left">Issue</th>
@@ -59,7 +59,7 @@ export default function FleetIssueTables({
             <tbody>
               {openIssues.map((issue) => (
                 <tr key={issue.id} className="align-middle">
-                  <td className="px-3 py-1.5 text-[11px] text-neutral-200">
+                  <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
                     <Link
                       href={`/fleet/assets/${issue.unitId}`}
                       className="hover:underline"
@@ -67,7 +67,7 @@ export default function FleetIssueTables({
                       {issue.unitLabel}
                     </Link>
                   </td>
-                  <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                  <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                     {issue.summary}
                   </td>
                   <td className="px-3 py-1.5">
@@ -83,7 +83,7 @@ export default function FleetIssueTables({
                 <tr>
                   <td
                     colSpan={4}
-                    className="px-3 py-6 text-center text-[12px] text-neutral-500"
+                    className="px-3 py-6 text-center text-[12px] text-[color:var(--theme-text-muted)]"
                   >
                     No open issues. Fleet is all clear.
                   </td>
@@ -98,15 +98,15 @@ export default function FleetIssueTables({
       <section className="metal-card rounded-3xl p-4">
         <header className="flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Dispatch & pre-trip
             </p>
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               Who is in which truck, pre-trip status, and quick links back into
               the portal.
             </p>
           </div>
-          <span className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-neutral-300">
+          <span className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Syncs with portal
           </span>
         </header>
@@ -115,18 +115,18 @@ export default function FleetIssueTables({
           {assignments.map((a) => (
             <div
               key={a.id}
-              className="flex flex-col gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2"
+              className="flex flex-col gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2"
             >
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <div className="text-[12px] font-semibold text-neutral-100">
+                  <div className="text-[12px] font-semibold text-[color:var(--theme-text-primary)]">
                     {a.driverName}
                   </div>
-                  <div className="text-[11px] text-neutral-400">
+                  <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                     Assigned to{" "}
                     <Link
                       href={`/fleet/assets/${a.unitId}`}
-                      className="font-medium text-neutral-100 hover:underline"
+                      className="font-medium text-[color:var(--theme-text-primary)] hover:underline"
                     >
                       {a.unitLabel}
                     </Link>
@@ -136,13 +136,13 @@ export default function FleetIssueTables({
               </div>
 
               {a.routeLabel && (
-                <div className="text-[11px] text-neutral-400">
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                   Route: {a.routeLabel}
                 </div>
               )}
 
               {a.nextPreTripDue && (
-                <div className="flex items-center justify-between text-[11px] text-neutral-400">
+                <div className="flex items-center justify-between text-[11px] text-[color:var(--theme-text-secondary)]">
                   <span>Next pre-trip</span>
                   <span className="accent-chip px-2 py-[2px] text-[10px]">
                     {new Date(a.nextPreTripDue).toLocaleString()}
@@ -154,14 +154,14 @@ export default function FleetIssueTables({
                 {uiContext.capabilities.canSubmitPretrip && (
                   <Link
                     href={`/mobile/fleet/pretrip/${a.unitId}`}
-                    className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
+                    className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
                   >
                     Send pre-trip link
                   </Link>
                 )}
                 <Link
                   href={`${routePrefix}/units/${a.unitId}`}
-                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold text-neutral-200 hover:bg-neutral-900/50"
+                  className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
                 >
                   Open unit view
                 </Link>
@@ -170,7 +170,7 @@ export default function FleetIssueTables({
           ))}
 
           {assignments.length === 0 && (
-            <p className="py-4 text-center text-xs text-neutral-500">
+            <p className="py-4 text-center text-xs text-[color:var(--theme-text-muted)]">
               No active dispatch assignments yet.
             </p>
           )}

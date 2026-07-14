@@ -26,13 +26,13 @@ export function OwnerSettingsPanel({
 }) {
   return (
     <section id={id} className={cn(PANEL_VARIANTS[tone], "space-y-4 p-5", className)}>
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--theme-card-border,#334155)]/70 pb-3">
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--theme-card-border,var(--theme-border-soft))]/70 pb-3">
         <div>
-          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary,#E2E8F0)]">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary,var(--theme-text-primary))]">
             {title}
           </h2>
           {description ? (
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary,#94A3B8)]">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary,var(--theme-text-muted))]">
               {description}
             </p>
           ) : null}
@@ -54,10 +54,10 @@ export function OwnerSettingsSectionIntro({
 }) {
   return (
     <div className="space-y-1">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted,#64748B)]">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted,var(--theme-text-muted))]">
         {title}
       </p>
-      <p className="text-sm text-[color:var(--theme-text-secondary,#94A3B8)]">{description}</p>
+      <p className="text-sm text-[color:var(--theme-text-secondary,var(--theme-text-muted))]">{description}</p>
     </div>
   );
 }
@@ -70,9 +70,9 @@ export function OwnerSettingsStat({
   value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-[var(--theme-card-border,#334155)]/70 bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_85%,transparent)] p-3">
-      <div className="text-[11px] text-[color:var(--theme-text-muted,#64748B)]">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary,#E2E8F0)]">
+    <div className="rounded-xl border border-[var(--theme-card-border,var(--theme-border-soft))]/70 bg-[color:color-mix(in_srgb,var(--theme-surface-2,var(--theme-surface-page))_85%,transparent)] p-3">
+      <div className="text-[11px] text-[color:var(--theme-text-muted,var(--theme-text-muted))]">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary,var(--theme-text-primary))]">
         {value}
       </div>
     </div>

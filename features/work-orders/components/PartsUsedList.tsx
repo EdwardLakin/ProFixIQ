@@ -55,11 +55,11 @@ function pickLabel(a: AllocationRow): string {
 
 export function PartsUsedList({ allocations }: PartsUsedListProps): JSX.Element {
   if (!allocations.length) {
-    return <div className="text-[11px] text-neutral-500">No parts used yet.</div>;
+    return <div className="text-[11px] text-[color:var(--theme-text-muted)]">No parts used yet.</div>;
   }
 
   return (
-    <ul className="mt-1 divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
+    <ul className="mt-1 divide-y divide-[color:var(--theme-border-soft)] rounded border border-[color:var(--theme-border-soft)] text-sm">
       {allocations.map((a) => {
         const label = pickLabel(a);
 
@@ -76,12 +76,12 @@ export function PartsUsedList({ allocations }: PartsUsedListProps): JSX.Element 
         return (
           <li
             key={String((a as any).id)}
-            className="flex items-center justify-between bg-neutral-900/70 p-2"
+            className="flex items-center justify-between bg-[color:var(--theme-surface-panel)] p-2"
           >
             <div className="min-w-0">
-              <div className="truncate text-sm text-white">{label}</div>
+              <div className="truncate text-sm text-[color:var(--theme-text-primary)]">{label}</div>
 
-              <div className="text-[11px] text-neutral-500">
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                 loc {locShort}
                 {unit != null && (
                   <span className="ml-2">@{unit.toFixed(2)}</span>
@@ -89,10 +89,10 @@ export function PartsUsedList({ allocations }: PartsUsedListProps): JSX.Element 
               </div>
             </div>
 
-            <div className="pl-3 text-right text-sm font-semibold text-neutral-100">
+            <div className="pl-3 text-right text-sm font-semibold text-[color:var(--theme-text-primary)]">
               {qty != null ? <span>× {qty}</span> : null}
               {line != null && (
-                <div className="text-[11px] text-neutral-300">
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                   ${line.toFixed(2)}
                 </div>
               )}

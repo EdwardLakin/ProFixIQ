@@ -42,16 +42,16 @@ const InspectionModal = dynamic(
 const COPPER = "#C57A4A";
 
 const card =
-  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium,0_22px_52px_rgba(0,0,0,0.5))] backdrop-blur-xl";
+  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 const divider = "border-[color:var(--desktop-border)]";
 const sectionPanel =
-  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5";
+  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-medium)] sm:p-5";
 const childPanel =
   "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
 const subtlePanel =
   "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]";
 const softButton =
-  "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-200 hover:bg-black/75";
+  "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]";
 
 /* =============================================================================
    Types & helpers
@@ -2052,7 +2052,7 @@ useEffect(() => {
   return (
     <div
       className="
-        min-h-screen bg-[var(--theme-surface-2,#0B1220)] px-4 py-6 text-foreground
+        min-h-screen bg-[var(--theme-surface-2,var(--theme-surface-page))] px-4 py-6 text-foreground
       "
       style={{ ["--copper" as never]: COPPER }}
     >
@@ -2061,18 +2061,18 @@ useEffect(() => {
         <div className={cx(card, "px-5 py-4")}>
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
+              <div className="text-xs uppercase tracking-[0.25em] text-[color:var(--theme-text-secondary)]">
                 Work Orders
               </div>
-                <h1 className="mt-1 text-2xl font-semibold text-white">
+                <h1 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
                   Create Work Order
                 </h1>
-                <p className="mt-1 text-sm text-neutral-400">
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                   Intake and plan the visit, then continue to approvals once the order is ready.
                 </p>
 
               {wo?.custom_id && (
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   Current WO:{" "}
                   <span className="font-mono text-[color:var(--copper)]">
                     {wo.custom_id}
@@ -2106,17 +2106,17 @@ useEffect(() => {
           )}
 
           {uploadSummary && (
-            <div className={cx("mb-4 px-4 py-3 text-sm text-neutral-200", subtlePanel)}>
+            <div className={cx("mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]", subtlePanel)}>
               Uploaded {uploadSummary.uploaded} file(s)
               {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
             </div>
           )}
 
           {inviteNotice && (
-            <div className={cx("mb-4 px-4 py-3 text-sm text-neutral-200", subtlePanel)}>
+            <div className={cx("mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]", subtlePanel)}>
               <div>{inviteNotice}</div>
               {bookingPrefill ? (
-                <div className="mt-1 text-xs text-neutral-400">
+                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                   Appointment: {formatBookingWindow(bookingPrefill.starts_at, bookingPrefill.ends_at)}
                   {bookingPrefill.vehicle_id ? " · vehicle preselected" : " · vehicle can be selected or created below"}
                 </div>
@@ -2128,20 +2128,20 @@ useEffect(() => {
             {/* Visit setup */}
             <section className={sectionPanel}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                   Visit Setup
                 </h2>
-                <span className="text-[11px] text-neutral-500">Planning controls</span>
+                <span className="text-[11px] text-[color:var(--theme-text-muted)]">Planning controls</span>
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
                 <div className={cx("p-4", childPanel)}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                         Customer waiting
                       </div>
-                      <p className="mt-1 text-[11px] text-neutral-500">
+                      <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                         Marks this work order as a waiter across queues and boards.
                       </p>
                     </div>
@@ -2157,7 +2157,7 @@ useEffect(() => {
                         isWaiter
                           ? "border-[color:var(--copper)]/70 bg-[color:var(--copper)]/20"
                           : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
-                        loading ? "opacity-60" : "hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)]",
+                        loading ? "opacity-60" : "hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))]",
                       ].join(" ")}
                     >
                       <span
@@ -2165,7 +2165,7 @@ useEffect(() => {
                           "inline-block h-5 w-5 rounded-full transition",
                           isWaiter
                             ? "translate-x-8 bg-[color:var(--copper)] shadow-[0_0_16px_rgba(197,122,74,0.55)]"
-                            : "translate-x-1 bg-neutral-500",
+                            : "translate-x-1 bg-[color:var(--theme-surface-subtle)]",
                         ].join(" ")}
                       />
                     </button>
@@ -2177,7 +2177,7 @@ useEffect(() => {
                         "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]",
                         isWaiter
                           ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
-                          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-400",
+                          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]",
                       ].join(" ")}
                     >
                       {isWaiter ? "Waiter" : "Drop-off"}
@@ -2186,7 +2186,7 @@ useEffect(() => {
                 </div>
 
                 <div className={cx("p-3.5", childPanel)}>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                     Priority
                   </label>
                   <select
@@ -2200,13 +2200,13 @@ useEffect(() => {
                     <option value={3}>Normal</option>
                     <option value={4}>Low</option>
                   </select>
-                  <p className="mt-1 text-[11px] text-neutral-500">
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                     Used to highlight urgent jobs in queues and dashboards.
                   </p>
                 </div>
 
                 <div className={cx("p-3.5", childPanel)}>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                     Default job type
                   </label>
                   <select
@@ -2219,13 +2219,13 @@ useEffect(() => {
                     <option value="diagnosis">Diagnosis</option>
                     <option value="inspection">Inspection</option>
                   </select>
-                  <p className="mt-1 text-[11px] text-neutral-500">
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                     Sets the default for new lines you add on this work order.
                   </p>
                 </div>
 
                 <div className={cx("p-3.5", childPanel)}>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                     Target completion
                   </label>
                   <input
@@ -2235,7 +2235,7 @@ useEffect(() => {
                     className="input"
                     disabled={loading}
                   />
-                  <p className="mt-1 text-[11px] text-neutral-500">
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                     Internal advisor planning target in create flow (read-only on technician work-order surfaces).
                   </p>
                 </div>
@@ -2245,10 +2245,10 @@ useEffect(() => {
             {/* Customer & Vehicle */}
             <section className={sectionPanel}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-sm font-semibold tracking-[0.08em] text-neutral-100">
+                <h2 className="text-sm font-semibold tracking-[0.08em] text-[color:var(--theme-text-primary)]">
                   Customer &amp; Vehicle
                 </h2>
-                <span className="text-[11px] text-neutral-500">
+                <span className="text-[11px] text-[color:var(--theme-text-muted)]">
                   Primary intake section
                 </span>
               </div>
@@ -2292,7 +2292,7 @@ useEffect(() => {
                 <button
                   type="button"
                   onClick={handleClearForm}
-                  className={cx("px-4 py-2 text-sm font-semibold text-neutral-300 hover:text-neutral-100", softButton)}
+                  className={cx("px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]", softButton)}
                 >
                   Clear form
                 </button>
@@ -2368,7 +2368,7 @@ useEffect(() => {
                 </VinCaptureModal>
               </div>
 
-              <label className="mt-3 flex items-center gap-2 text-xs text-neutral-300">
+              <label className="mt-3 flex items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
                 <input
                   id="send-invite"
                   type="checkbox"
@@ -2393,15 +2393,15 @@ useEffect(() => {
             {/* Uploads */}
             <section className={sectionPanel}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                   Uploads
                 </h2>
-                <span className="text-[11px] text-neutral-500">Editable before save</span>
+                <span className="text-[11px] text-[color:var(--theme-text-muted)]">Editable before save</span>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                     Vehicle Photos
                   </label>
                   <input
@@ -2414,7 +2414,7 @@ useEffect(() => {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                     Documents (PDF/JPG/PNG)
                   </label>
                   <input
@@ -2432,13 +2432,13 @@ useEffect(() => {
             {/* Internal notes */}
             <section className={sectionPanel}>
               <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                   Internal Notes
                 </h2>
-                <span className="text-[11px] text-neutral-500">Saved with the work order</span>
+                <span className="text-[11px] text-[color:var(--theme-text-muted)]">Saved with the work order</span>
               </div>
 
-              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+              <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                 Notes
               </label>
               <textarea
@@ -2455,10 +2455,10 @@ useEffect(() => {
             {wo?.id && (
               <section className={sectionPanel}>
                 <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                     Reusable adds: menu items & inspection templates
                   </h2>
-                  <span className="text-[11px] text-neutral-500">
+                  <span className="text-[11px] text-[color:var(--theme-text-muted)]">
                     Catalog lane: menu_items • Template lane: inspection_templates
                   </span>
                 </div>
@@ -2470,10 +2470,10 @@ useEffect(() => {
             {wo?.id && (
               <section className={sectionPanel}>
                 <div className={cx("mb-3 flex items-center justify-between border-b pb-3", divider)}>
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                     Manual entry line
                   </h2>
-                  <span className="text-[11px] text-neutral-500">
+                  <span className="text-[11px] text-[color:var(--theme-text-muted)]">
                     Direct custom line with optional smart repair suggestion
                   </span>
                 </div>
@@ -2490,7 +2490,7 @@ useEffect(() => {
             {/* Current lines */}
             <section className={sectionPanel}>
               <div className={cx("mb-3 flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between", divider)}>
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                   Current lines
                 </h2>
 
@@ -2510,13 +2510,13 @@ useEffect(() => {
               </div>
 
               {!wo?.id || lines.length === 0 ? (
-                <div className={cx("px-4 py-5 text-sm text-neutral-400", subtlePanel)}>
+                <div className={cx("px-4 py-5 text-sm text-[color:var(--theme-text-secondary)]", subtlePanel)}>
                   No lines yet.
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div>
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                       Jobs (Punchable)
                     </div>
                     <div className="space-y-2">
@@ -2531,16 +2531,16 @@ useEffect(() => {
                       )}
                     >
                       <div className="min-w-0">
-                        <div className="truncate font-medium text-neutral-100">
+                        <div className="truncate font-medium text-[color:var(--theme-text-primary)]">
                           {ln.description || ln.complaint || "Untitled job"}
                         </div>
-                        <div className="text-xs text-neutral-500">
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">
                           {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
                           {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
                           {(ln.status ?? "awaiting").replaceAll("_", " ")}
                         </div>
                         {(ln.complaint || ln.cause || ln.correction) && (
-                          <div className="mt-1 text-xs text-neutral-500">
+                          <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                             {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
                             {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
                             {ln.correction ? `| Corr: ${ln.correction}` : ""}
@@ -2567,7 +2567,7 @@ useEffect(() => {
                           type="button"
                           onClick={() => void handleDeleteLine(ln.id)}
                           className={cx(
-                            "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_62%,transparent)] px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10",
+                            "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,var(--theme-surface-page))_62%,transparent)] px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10",
                           )}
                         >
                           Delete
@@ -2579,7 +2579,7 @@ useEffect(() => {
                   </div>
 
                   <div>
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                       Info / Context
                     </div>
                     <div className="space-y-2">
@@ -2588,20 +2588,20 @@ useEffect(() => {
                         .map((ln) => (
                           <div
                             key={ln.id}
-                            className={cx("p-3 text-sm text-neutral-300", subtlePanel)}
+                            className={cx("p-3 text-sm text-[color:var(--theme-text-secondary)]", subtlePanel)}
                           >
-                            <div className="font-medium text-neutral-200">
+                            <div className="font-medium text-[color:var(--theme-text-primary)]">
                               {ln.description || ln.complaint || "Context line"}
                             </div>
                             {(ln.complaint || ln.notes) && (
-                              <div className="mt-1 text-xs text-neutral-500">
+                              <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                                 {ln.complaint ?? ln.notes}
                               </div>
                             )}
                           </div>
                         ))}
                       {lines.every((ln) => (ln.line_type ?? "job") !== "info") && (
-                        <p className="text-xs text-neutral-500">No info/context lines.</p>
+                        <p className="text-xs text-[color:var(--theme-text-muted)]">No info/context lines.</p>
                       )}
                     </div>
                   </div>
@@ -2628,7 +2628,7 @@ useEffect(() => {
               <button
                 type="button"
                 onClick={() => router.push("/work-orders")}
-                className="text-sm text-neutral-400 hover:text-white"
+                className="text-sm text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
                 disabled={loading}
               >
                 Cancel
@@ -2663,22 +2663,22 @@ useEffect(() => {
           {intakeOpen && (
             <div className="fixed inset-0 z-[90] flex items-end justify-center p-3 sm:items-center">
               <div
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
                 onClick={dismissIntakeOnce}
               />
-              <div className="relative w-full max-w-2xl rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-4 shadow-[0_0_40px_rgba(0,0,0,0.85)] backdrop-blur-md">
+              <div className="relative w-full max-w-2xl rounded-3xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-md">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
+                    <div className="text-xs uppercase tracking-[0.25em] text-[color:var(--theme-text-secondary)]">
                       Intake (quick)
                     </div>
                     <h3
-                      className="mt-1 text-xl font-semibold text-white"
+                      className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]"
                       style={{ fontFamily: "var(--font-blackops), system-ui" }}
                     >
                       What brought them in?
                     </h3>
-                    <p className="mt-1 text-sm text-neutral-400">
+                    <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                       Saves to WO notes and creates a diagnostic line for the tech.
                     </p>
                   </div>
@@ -2686,7 +2686,7 @@ useEffect(() => {
                   <button
                     type="button"
                     onClick={dismissIntakeOnce}
-                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,black)]"
+                    className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,_var(--theme-surface-page))]"
                   >
                     Skip
                   </button>
@@ -2694,7 +2694,7 @@ useEffect(() => {
 
                 <div className="mt-4 grid gap-3">
                   <div>
-                    <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                    <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                       Concern (required)
                     </label>
                     <input
@@ -2707,7 +2707,7 @@ useEffect(() => {
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                    <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                       Details (optional)
                     </label>
                     <textarea
@@ -2722,7 +2722,7 @@ useEffect(() => {
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                      <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                         Contact preference
                       </label>
                       <select
@@ -2739,7 +2739,7 @@ useEffect(() => {
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                      <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                         Mileage (optional)
                       </label>
                       <input
@@ -2771,7 +2771,7 @@ useEffect(() => {
                       type="button"
                       onClick={dismissIntakeOnce}
                       disabled={intakeSaving}
-                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,black)] disabled:opacity-60"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,_var(--theme-surface-page))] disabled:opacity-60"
                     >
                       Skip for now
                     </button>
@@ -2780,7 +2780,7 @@ useEffect(() => {
                       type="button"
                       onClick={dismissIntakeForever}
                       disabled={intakeSaving}
-                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-400 hover:text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,black)] disabled:opacity-60"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_78%,_var(--theme-surface-page))] disabled:opacity-60"
                     >
                       Don’t ask again
                     </button>

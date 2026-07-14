@@ -235,10 +235,10 @@ export default function ReceivingInboxPage(): JSX.Element {
       description="Shared receive flow for request items with consistent status and trust context."
       actions={<button onClick={() => void load(page)} className={ui.buttonSecondary}>Refresh</button>}
     >
-      <div className="space-y-4 text-white">
+      <div className="space-y-4 text-[color:var(--theme-text-primary)]">
 
-      <div className="text-xs text-neutral-500">
-        Last updated <span className="text-neutral-300">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span> · {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? <span className="text-neutral-300">stale</span> : <span className="text-emerald-300">fresh</span>}
+      <div className="text-xs text-[color:var(--theme-text-muted)]">
+        Last updated <span className="text-[color:var(--theme-text-secondary)]">{lastUpdated ? lastUpdated.toLocaleTimeString() : "—"}</span> · {lastUpdated && nowTs - lastUpdated.getTime() > 120000 ? <span className="text-[color:var(--theme-text-secondary)]">stale</span> : <span className="text-emerald-300">fresh</span>}
       </div>
 
       <div className="desktop-toolbar-row p-4">
@@ -250,7 +250,7 @@ export default function ReceivingInboxPage(): JSX.Element {
             <option value="">PO optional</option>
             {pos.map((po) => <option key={String(po.id)} value={String(po.id)}>{String(po.id).slice(0, 8)} • {String(po.status ?? "draft")}</option>)}
           </select>
-          <div className="text-xs text-neutral-500 flex items-center">Rows where remaining qty is greater than zero.</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)] flex items-center">Rows where remaining qty is greater than zero.</div>
         </div>
       </div>
 
@@ -259,9 +259,9 @@ export default function ReceivingInboxPage(): JSX.Element {
 
       {!loading && items.length > 0 ? (
         <div className="desktop-panel-soft overflow-hidden">
-          <div className="border-b border-[color:var(--desktop-border)] px-4 py-3 text-xs text-neutral-500">{items.length} of {totalCount} rows loaded · page {page}</div>
+          <div className="border-b border-[color:var(--desktop-border)] px-4 py-3 text-xs text-[color:var(--theme-text-muted)]">{items.length} of {totalCount} rows loaded · page {page}</div>
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-neutral-400"><th className="p-3">Part / Context</th><th className="p-3">Receive state</th><th className="p-3">Qty</th><th className="p-3"/></tr></thead>
+            <thead><tr className="text-left text-[color:var(--theme-text-secondary)]"><th className="p-3">Part / Context</th><th className="p-3">Receive state</th><th className="p-3">Qty</th><th className="p-3"/></tr></thead>
             <tbody>
               {items.map((it) => {
                 const p = it.part_id ? partsMap[it.part_id] : null;
@@ -272,10 +272,10 @@ export default function ReceivingInboxPage(): JSX.Element {
                 return (
                   <tr key={it.id} className="border-t border-[color:var(--desktop-border)] align-top">
                     <td className="p-3.5">
-                      <div className="font-semibold text-neutral-100">{partSummary?.name ?? it.description}</div>
-                      <div className="mt-1 text-[11px] text-neutral-500">
+                      <div className="font-semibold text-[color:var(--theme-text-primary)]">{partSummary?.name ?? it.description}</div>
+                      <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                         {partSummary && partSummary.labeledIdentifiers.length > 0 ? `${partIdentifierLabel(partSummary)} · ` : ""}
-                        {itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-neutral-300 hover:text-white" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}
+                        {itemFlowLabel(itemState)} · {receiveProgressLabel(recvState)} {it.work_order_id ? <>· <Link className="text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]" href={`/work-orders/${encodeURIComponent(it.work_order_id)}`}>WO {it.work_order_id.slice(0,8)}</Link></> : null}
                       </div>
                       {trust && trust.reasons.length > 0 ? <div className={`mt-1 text-[11px] ${trustReasonTone(trust.level)}`}>{trust.reasons.slice(0,2).join(" · ")}</div> : null}
                     </td>
@@ -283,7 +283,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                       <span className="desktop-link-chip">{receiveProgressLabel(recvState)}</span>
                       {trust ? <span className={`ml-2 inline-flex rounded-full border px-2 py-1 text-xs ${trustBadgeTone(trust.level)}`}>{trustLevelLabel(trust.level)}</span> : null}
                     </td>
-                    <td className="p-3.5 tabular-nums text-neutral-200">{it.qty_received} / {it.qty_approved} <span className="text-neutral-500">({it.qty_remaining} rem)</span></td>
+                    <td className="p-3.5 tabular-nums text-[color:var(--theme-text-primary)]">{it.qty_received} / {it.qty_approved} <span className="text-[color:var(--theme-text-muted)]">({it.qty_remaining} rem)</span></td>
                     <td className="p-3.5"><button onClick={() => {setDrawerItem({ ...it, part_name: partSummary?.name ?? null, sku: partSummary?.sku ?? null, trust_level: trust?.level, trust_reasons: trust?.reasons ?? [] }); setDrawerOpen(true);}} className="rounded-lg border border-sky-500/35 px-3 py-1 text-sky-200">Receive</button></td>
                   </tr>
                 );

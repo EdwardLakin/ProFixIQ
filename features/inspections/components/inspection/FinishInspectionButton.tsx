@@ -94,9 +94,9 @@ export default function FinishInspectionButton({ session, workOrderLineId, disab
       className={[
         "font-semibold tracking-[0.18em] uppercase text-[11px]",
         "border border-[var(--accent-copper-light)]",
-        "bg-[var(--accent-copper)] text-black",
+        "bg-[var(--accent-copper)] text-[color:var(--theme-text-on-accent)]",
         "hover:bg-[var(--accent-copper)]/90",
-        "shadow-[0_0_18px_rgba(0,0,0,0.9)]",
+        "shadow-[var(--theme-shadow-medium)]",
       ].join(" ")}
     >
       Review findings

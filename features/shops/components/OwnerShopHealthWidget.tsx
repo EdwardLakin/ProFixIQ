@@ -17,8 +17,8 @@ type Props = {
 
 // Theme tokens (new glass + slate + orange)
 const cardBase =
-  "rounded-3xl border border-slate-700/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(15,23,42,0.98))] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
-const cardInner = "rounded-xl border border-slate-700/60 bg-slate-950/60";
+  "rounded-3xl border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
+const cardInner = "rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]";
 
 type RunOk = { ok: true; shopId: string; intakeId: string; snapshot: unknown };
 type RunErr = { ok: false; error: string };
@@ -153,10 +153,10 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
     <section className={`space-y-3 p-4 sm:p-5 ${cardBase}`}>
       <header className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-300/70">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
             Shop Health
           </p>
-          <h2 className="mt-1 text-lg text-white" style={{ fontFamily: "var(--font-blackops)" }}>
+          <h2 className="mt-1 text-lg text-[color:var(--theme-text-primary)]" style={{ fontFamily: "var(--font-blackops)" }}>
             AI view of your shop
           </h2>
         </div>
@@ -176,9 +176,9 @@ export default function OwnerShopHealthWidget({ shopId }: Props) {
       </header>
 
       <div className={`${cardInner} px-3 py-3`}>
-        <p className="text-[11px] text-slate-200/80">{displaySummary}</p>
+        <p className="text-[11px] text-[color:var(--theme-text-secondary)]">{displaySummary}</p>
 
-        {bootLoading ? <p className="mt-2 text-[11px] text-slate-300/70">Loading latest snapshot…</p> : null}
+        {bootLoading ? <p className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">Loading latest snapshot…</p> : null}
 
         {error ? <p className="mt-2 text-[11px] text-rose-300">{error}</p> : null}
       </div>

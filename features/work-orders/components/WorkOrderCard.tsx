@@ -35,9 +35,9 @@ const statusConfig: Record<
 > = {
   awaiting: {
     badgeVariant: "info",
-    railClass: "bg-slate-400/80",
+    railClass: "bg-[color:var(--theme-surface-subtle)]",
     surfaceClass:
-      "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(15,23,42,0.96))]",
+      "bg-[var(--theme-gradient-panel)]",
     label: "Awaiting",
   },
   in_progress: {
@@ -45,21 +45,21 @@ const statusConfig: Record<
     railClass:
       "bg-[linear-gradient(180deg,var(--accent-copper,#f97316),var(--accent-copper-light,#fdba74))]",
     surfaceClass:
-      "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),rgba(15,23,42,0.96))]",
+      "bg-[var(--theme-gradient-panel)]",
     label: "In Progress",
   },
   on_hold: {
     badgeVariant: "warning",
     railClass: "bg-amber-400/85",
     surfaceClass:
-      "bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.14),rgba(15,23,42,0.96))]",
+      "bg-[var(--theme-gradient-panel)]",
     label: "On Hold",
   },
   completed: {
     badgeVariant: "success",
     railClass: "bg-emerald-400/85",
     surfaceClass:
-      "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(15,23,42,0.96))]",
+      "bg-[var(--theme-gradient-panel)]",
     label: "Completed",
   },
 };
@@ -79,11 +79,11 @@ function normalizeStatus(status: string | null | undefined): NormalizedStatus {
 
 function labelValue(label: string, value: string) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
         {label}
       </div>
-      <div className="mt-1 text-sm text-neutral-100">{value}</div>
+      <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">{value}</div>
     </div>
   );
 }
@@ -117,7 +117,7 @@ export default function WorkOrderCard({ job }: WorkOrderCardProps) {
       <Card
         className={cn(
           "relative overflow-hidden p-0 transition hover:-translate-y-[1px]",
-          "border-white/10 hover:border-[color:var(--accent-copper-soft,#fdba74)]",
+          "border-[color:var(--theme-border-soft)] hover:border-[color:var(--accent-copper-soft,#fdba74)]",
           config.surfaceClass,
         )}
       >
@@ -131,20 +131,20 @@ export default function WorkOrderCard({ job }: WorkOrderCardProps) {
               </StatusBadge>
 
               <div>
-                <div className="text-base font-semibold text-white">
+                <div className="text-base font-semibold text-[color:var(--theme-text-primary)]">
                   {vehicleInfo}
                 </div>
-                <div className="mt-1 text-xs uppercase tracking-[0.16em] text-neutral-500">
+                <div className="mt-1 text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   Work order
                 </div>
               </div>
             </div>
 
             <div className="text-right">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                 Created
               </div>
-              <div className="mt-1 text-xs text-neutral-300">
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 {created ? format(created, "PPp") : "—"}
               </div>
             </div>
@@ -158,8 +158,8 @@ export default function WorkOrderCard({ job }: WorkOrderCardProps) {
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3">
-            <div className="text-xs text-neutral-400">
+          <div className="flex items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] pt-3">
+            <div className="text-xs text-[color:var(--theme-text-secondary)]">
               Open work order details and continue workflow.
             </div>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--accent-copper-light,#fdba74)]">

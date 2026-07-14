@@ -16,20 +16,20 @@ function Tile(props: TileProps) {
   return (
     <Link
       href={props.href}
-      className="block rounded-lg border border-white/10 bg-neutral-900 p-4 transition
+      className="block rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 transition
                  hover:-translate-y-0.5 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10"
       aria-label={props.title}
     >
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">{props.title}</h2>
+        <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">{props.title}</h2>
         {props.cta ? (
-          <span className="rounded bg-orange-500 px-3 py-1 text-sm font-semibold text-black">
+          <span className="rounded bg-orange-500 px-3 py-1 text-sm font-semibold text-[color:var(--theme-text-on-accent)]">
             {props.cta}
           </span>
         ) : null}
       </div>
       {props.subtitle ? (
-        <p className="mt-1 text-sm text-white/70">{props.subtitle}</p>
+        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{props.subtitle}</p>
       ) : null}
     </Link>
   );
@@ -37,7 +37,7 @@ function Tile(props: TileProps) {
 
 export default function WorkOrdersHome() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 text-white">
+    <div className="mx-auto max-w-3xl px-4 py-8 text-[color:var(--theme-text-primary)]">
       <h1 className="mb-6 text-3xl font-bold text-orange-400">Work Orders</h1>
 
       <div className="grid grid-cols-1 gap-4">

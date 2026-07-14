@@ -76,13 +76,13 @@ export default function AdminEmployeeDocsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 text-white">
+    <div className="p-6 space-y-6 text-[color:var(--theme-text-primary)]">
       <h1 className="text-2xl font-bold">Employee Documents</h1>
 
-      <div className="rounded border border-neutral-700 p-4 space-y-3">
+      <div className="rounded border border-[color:var(--theme-border-soft)] p-4 space-y-3">
         <div className="flex gap-3 items-center">
           <select
-            className="bg-neutral-900 border border-neutral-700 rounded px-2 py-1"
+            className="bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)] rounded px-2 py-1"
             value={docType}
             onChange={(e) => setDocType(e.target.value as EmployeeDocType)}
           >
@@ -106,7 +106,7 @@ export default function AdminEmployeeDocsPage() {
           </button>
         </div>
         {!shopId && (
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             Join or create a shop to enable uploads.
           </p>
         )}
@@ -115,9 +115,9 @@ export default function AdminEmployeeDocsPage() {
       <div className="space-y-2">
         <h2 className="text-lg font-semibold">All Documents (shop)</h2>
         {docs.length === 0 ? (
-          <p className="text-sm text-neutral-400">No documents yet.</p>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">No documents yet.</p>
         ) : (
-          <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded">
+          <ul className="divide-y divide-[color:var(--theme-border-soft)] border border-[color:var(--theme-border-soft)] rounded">
             {docs.map((d) => (
               <DocRow key={d.id} doc={d} urlFor={urlFor} />
             ))}
@@ -144,14 +144,14 @@ function DocRow({
     <li className="p-3 flex items-center justify-between">
       <div className="text-sm">
         <div className="font-medium capitalize">{doc.doc_type}</div>
-        <div className="text-neutral-400">
+        <div className="text-[color:var(--theme-text-secondary)]">
           {doc.status} • {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleString() : "—"}
           {doc.expires_at ? ` • expires ${doc.expires_at}` : ""}
         </div>
       </div>
       <a
         href={href}
-        className="text-sm px-3 py-1 rounded bg-neutral-700 hover:bg-neutral-600"
+        className="text-sm px-3 py-1 rounded bg-[color:var(--theme-surface-hover)] hover:bg-[color:var(--theme-surface-subtle)]"
         target="_blank"
         rel="noreferrer"
       >

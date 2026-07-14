@@ -110,28 +110,28 @@ export default function HoldModal({
       submitText="Apply Hold"
     >
       <div className="space-y-4">
-        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
             Operational hold
           </div>
-          <div className="mt-1 text-xs text-neutral-400">
+          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Pause the line with a clear reason so advisors, parts, and technicians all see the same state.
           </div>
         </div>
 
-        <p className="text-[0.8rem] text-neutral-300">
+        <p className="text-[0.8rem] text-[color:var(--theme-text-secondary)]">
           Park this job with a clear reason so advisors and techs know why it&apos;s
           on hold.
         </p>
 
         {/* Reason */}
         <div className="space-y-1">
-          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Reason
           </label>
           <div className="relative">
             <select
-              className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/70 px-3 py-2 text-sm text-neutral-100 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+              className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
             >
@@ -144,7 +144,7 @@ export default function HoldModal({
                 <option value={reason}>{reason}</option>
               )}
             </select>
-            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-neutral-500">
+            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-[color:var(--theme-text-muted)]">
               ▼
             </div>
           </div>
@@ -152,12 +152,12 @@ export default function HoldModal({
 
         {/* Notes */}
         <div className="space-y-1">
-          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Notes
           </label>
           <textarea
             rows={3}
-            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional notes for this hold…"
@@ -165,20 +165,20 @@ export default function HoldModal({
         </div>
 
         {/* Auto-release card */}
-        <div className="rounded-2xl border border-white/10 bg-black/40 px-3 py-3 shadow-[0_12px_30px_rgba(0,0,0,0.75)]">
-          <div className="mb-2 flex items-center justify-between text-[0.7rem] text-neutral-400">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[var(--theme-shadow-medium)]">
+          <div className="mb-2 flex items-center justify-between text-[0.7rem] text-[color:var(--theme-text-secondary)]">
             <span>
               Hold placed at:{" "}
-              <span className="text-neutral-100">{holdPlacedAt || "—"}</span>
+              <span className="text-[color:var(--theme-text-primary)]">{holdPlacedAt || "—"}</span>
             </span>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-[0.7rem] text-neutral-100">
+          <label className="inline-flex items-center gap-2 text-[0.7rem] text-[color:var(--theme-text-primary)]">
             <input
               type="checkbox"
               checked={autoRelease}
               onChange={(e) => setAutoRelease(e.target.checked)}
-              className="h-4 w-4 rounded border-[var(--metal-border-soft)] bg-black text-[var(--accent-copper-soft)] focus:ring-[var(--accent-copper-soft)]"
+              className="h-4 w-4 rounded border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-page)] text-[var(--accent-copper-soft)] focus:ring-[var(--accent-copper-soft)]"
             />
             Auto-release this hold
           </label>
@@ -186,7 +186,7 @@ export default function HoldModal({
           {autoRelease && (
             <div className="mt-3 space-y-3 text-[0.75rem]">
               <div className="flex flex-wrap items-center gap-2">
-                <label className="text-neutral-400">
+                <label className="text-[color:var(--theme-text-secondary)]">
                   After (minutes)
                 </label>
                 <input
@@ -197,23 +197,23 @@ export default function HoldModal({
                   onChange={(e) =>
                     setReleaseAfterMinutes(Number(e.target.value) || 0)
                   }
-                  className="w-24 rounded-md border border-[var(--metal-border-soft)] bg-black/70 px-2 py-1 text-sm text-neutral-100 outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/70"
+                  className="w-24 rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/70"
                   disabled={releaseAt !== ""}
                 />
-                <span className="text-[0.65rem] text-neutral-500">
+                <span className="text-[0.65rem] text-[color:var(--theme-text-muted)]">
                   Leave empty if using a specific date/time.
                 </span>
               </div>
 
               <div>
-                <label className="mb-1 block text-[0.7rem] text-neutral-400">
+                <label className="mb-1 block text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                   Or release at date / time
                 </label>
                 <input
                   type="datetime-local"
                   value={releaseAt}
                   onChange={(e) => setReleaseAt(e.target.value)}
-                  className="w-full rounded-md border border-[var(--metal-border-soft)] bg-black/70 px-2 py-1 text-sm text-neutral-100 outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/70"
+                  className="w-full rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/70"
                 />
               </div>
             </div>

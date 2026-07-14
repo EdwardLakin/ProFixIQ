@@ -210,76 +210,76 @@ export default function WorkOrderViewer({
   const partCount = parts.reduce((acc, p) => acc + (Number.isFinite(p.qty) ? p.qty : 0), 0);
 
   return (
-    <div className="min-h-screen px-4 text-foreground bg-background bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]">
+    <div className="min-h-screen px-4 text-foreground bg-background bg-[var(--theme-gradient-panel)]">
       <div className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center py-10">
-        <div className="w-full rounded-3xl border border-[color:var(--metal-border-soft,#1f2937)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)] shadow-[0_32px_80px_rgba(0,0,0,0.95)] px-6 py-7 sm:px-8 sm:py-9">
+        <div className="var(--theme-gradient-panel)">
 
           {/* Header */}
           <div className="mb-5 flex items-center justify-between gap-3">
             <Link
               href={backHref}
-              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/70 hover:text-white"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]"
             >
               <span aria-hidden className="text-base leading-none">←</span>
               Back
             </Link>
 
             <div
-              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-neutral-300"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]"
               style={{ color: COPPER }}
             >
               <span>{title}</span>
-              <span className="text-neutral-500">•</span>
-              <span className="text-neutral-300">{titleLabel}</span>
+              <span className="text-[color:var(--theme-text-muted)]">•</span>
+              <span className="text-[color:var(--theme-text-secondary)]">{titleLabel}</span>
             </div>
           </div>
 
           <div className="mb-6 space-y-1">
             <h1
-              className="text-2xl font-semibold text-white sm:text-3xl"
+              className="text-2xl font-semibold text-[color:var(--theme-text-primary)] sm:text-3xl"
               style={{ fontFamily: "var(--font-blackops), system-ui" }}
             >
               {titleLabel}
             </h1>
-            <p className="text-xs text-neutral-400 sm:text-sm">
+            <p className="text-xs text-[color:var(--theme-text-secondary)] sm:text-sm">
               {subtitle ?? (kind === "portal" ? "Read-only work order view." : "Work order viewer (read-only).")}
             </p>
           </div>
 
           {/* Top meta */}
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Total
               </div>
-              <div className="mt-1 text-lg font-semibold text-white">
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
                 {formatCurrency(total ?? null, currency)}
               </div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                 Currency: {currency}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Status
               </div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">
+              <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 {(workOrder.status ?? "—") as string}
               </div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                 Updated: {formatDate(workOrder.updated_at ?? workOrder.created_at)}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Parts total (allocations)
               </div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">
+              <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 {formatCurrency(partsGrandTotal, currency)}
               </div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                 {parts.length === 0 ? "No allocations" : `${parts.length} items • Qty ${partCount}`}
               </div>
             </div>
@@ -294,7 +294,7 @@ export default function WorkOrderViewer({
                 href={invoicePdfUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-100 hover:bg-black/80"
+                className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
               >
                 <span>View PDF</span>
               </a>
@@ -303,39 +303,39 @@ export default function WorkOrderViewer({
 
           {/* Party + Vehicle */}
           <div className="mb-6 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Customer
               </div>
-              <div className="mt-2 space-y-1 text-sm text-neutral-200">
-                <div className="font-medium text-neutral-100">
+              <div className="mt-2 space-y-1 text-sm text-[color:var(--theme-text-primary)]">
+                <div className="font-medium text-[color:var(--theme-text-primary)]">
                   {compactCsv([
                     (customer?.business_name ?? "").trim() || undefined,
                     (customer?.name ?? "").trim() || undefined,
                   ]) || "—"}
                 </div>
-                <div className="text-[12px] text-neutral-400">
+                <div className="text-[12px] text-[color:var(--theme-text-secondary)]">
                   {compactCsv([
                     (customer?.phone ?? "").trim() || undefined,
                     (customer?.email ?? "").trim() || undefined,
                   ]) || "—"}
                 </div>
-                <div className="text-[12px] text-neutral-400">
+                <div className="text-[12px] text-[color:var(--theme-text-secondary)]">
                   {addressLine(customer?.street, customer?.city, customer?.province, customer?.postal_code)}
                 </div>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Vehicle
               </div>
-              <div className="mt-2 space-y-1 text-sm text-neutral-200">
-                <div className="font-medium text-neutral-100">{vehicleLabel(vehicle)}</div>
-                <div className="text-[12px] text-neutral-400">
+              <div className="mt-2 space-y-1 text-sm text-[color:var(--theme-text-primary)]">
+                <div className="font-medium text-[color:var(--theme-text-primary)]">{vehicleLabel(vehicle)}</div>
+                <div className="text-[12px] text-[color:var(--theme-text-secondary)]">
                   VIN: {(vehicle?.vin ?? "").trim() || "—"}
                 </div>
-                <div className="text-[12px] text-neutral-400">
+                <div className="text-[12px] text-[color:var(--theme-text-secondary)]">
                   {compactCsv([
                     vehicle?.mileage != null ? `Mileage ${String(vehicle.mileage)}` : undefined,
                     vehicle?.engine_hours != null ? `Engine Hrs ${String(vehicle.engine_hours)}` : undefined,
@@ -347,12 +347,12 @@ export default function WorkOrderViewer({
           </div>
 
           {/* Lines */}
-          <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 sm:px-5 sm:py-5">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Line Items
               </div>
-              <div className="text-[11px] text-neutral-500">
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                 {lines.length === 0 ? "No line items recorded yet" : `${lines.length} items`}
               </div>
             </div>
@@ -370,14 +370,14 @@ export default function WorkOrderViewer({
                   return (
                     <div
                       key={line.id}
-                      className="rounded-xl border border-white/5 bg-black/40 px-3 py-3"
+                      className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3"
                     >
                       <div className="flex items-baseline justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-neutral-100">
+                          <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
                             {label}
                           </div>
-                          <div className="mt-0.5 text-[11px] text-neutral-500">
+                          <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                             Line #{line.line_no ?? "—"}
                             {line.labor_time != null ? ` • ${String(line.labor_time)} hr` : ""}
                           </div>
@@ -386,25 +386,25 @@ export default function WorkOrderViewer({
 
                       {(line.cause ?? "").trim().length ||
                       (line.correction ?? "").trim().length ? (
-                        <div className="mt-2 space-y-1 text-[12px] text-neutral-300">
+                        <div className="mt-2 space-y-1 text-[12px] text-[color:var(--theme-text-secondary)]">
                           {(line.cause ?? "").trim().length ? (
                             <div>
-                              <span className="text-neutral-500">Cause:</span>{" "}
-                              <span className="text-neutral-200">{String(line.cause)}</span>
+                              <span className="text-[color:var(--theme-text-muted)]">Cause:</span>{" "}
+                              <span className="text-[color:var(--theme-text-primary)]">{String(line.cause)}</span>
                             </div>
                           ) : null}
                           {(line.correction ?? "").trim().length ? (
                             <div>
-                              <span className="text-neutral-500">Correction:</span>{" "}
-                              <span className="text-neutral-200">{String(line.correction)}</span>
+                              <span className="text-[color:var(--theme-text-muted)]">Correction:</span>{" "}
+                              <span className="text-[color:var(--theme-text-primary)]">{String(line.correction)}</span>
                             </div>
                           ) : null}
                         </div>
                       ) : null}
 
                       {lp.length > 0 ? (
-                        <div className="mt-3 rounded-lg border border-white/5 bg-black/35 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                        <div className="mt-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+                          <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                             Parts (allocations)
                           </div>
                           <div className="mt-2 space-y-1">
@@ -413,14 +413,14 @@ export default function WorkOrderViewer({
                                 key={p.id}
                                 className="flex items-baseline justify-between gap-2 text-sm"
                               >
-                                <div className="min-w-0 text-neutral-200">
-                                  <span className="text-neutral-500">x{p.qty}</span>{" "}
+                                <div className="min-w-0 text-[color:var(--theme-text-primary)]">
+                                  <span className="text-[color:var(--theme-text-muted)]">x{p.qty}</span>{" "}
                                   {p.name}
                                   {p.partNumber ? (
-                                    <span className="text-neutral-500"> ({p.partNumber})</span>
+                                    <span className="text-[color:var(--theme-text-muted)]"> ({p.partNumber})</span>
                                   ) : null}
                                 </div>
-                                <div className="whitespace-nowrap font-semibold text-neutral-100">
+                                <div className="whitespace-nowrap font-semibold text-[color:var(--theme-text-primary)]">
                                   {formatCurrency(p.totalCost, currency)}
                                 </div>
                               </div>
@@ -433,19 +433,19 @@ export default function WorkOrderViewer({
                 })}
               </div>
             ) : (
-              <div className="text-xs text-neutral-400">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">
                 Line items will appear here when they’re added to the work order.
               </div>
             )}
           </div>
 
           {/* Parts list */}
-          <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
+          <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 sm:px-5 sm:py-5">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Parts
               </div>
-              <div className="text-[11px] text-neutral-500">
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                 {parts.length === 0 ? "No parts recorded" : `${parts.length} parts • Qty ${partCount}`}
               </div>
             </div>
@@ -471,18 +471,18 @@ export default function WorkOrderViewer({
                   return (
                     <div
                       key={p.id}
-                      className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-white/5 bg-black/40 px-3 py-2"
+                      className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2"
                     >
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-neutral-100">{p.name}</div>
+                        <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{p.name}</div>
                         {meta.length ? (
-                          <div className="text-[11px] text-neutral-500">{meta}</div>
+                          <div className="text-[11px] text-[color:var(--theme-text-muted)]">{meta}</div>
                         ) : null}
-                        <div className="text-[11px] text-neutral-500">Qty: {p.qty}</div>
+                        <div className="text-[11px] text-[color:var(--theme-text-muted)]">Qty: {p.qty}</div>
                       </div>
 
-                      <div className="text-right text-xs text-neutral-300">
-                        <div className="text-[11px] text-neutral-500">
+                      <div className="text-right text-xs text-[color:var(--theme-text-secondary)]">
+                        <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                           Unit: {formatCurrency(p.unitCost, currency)}
                         </div>
                         <div className="text-sm font-semibold">
@@ -494,7 +494,7 @@ export default function WorkOrderViewer({
                 })}
               </div>
             ) : (
-              <div className="text-xs text-neutral-400">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">
                 Parts will appear here from allocations when they’re added to the work order.
               </div>
             )}
@@ -502,21 +502,21 @@ export default function WorkOrderViewer({
 
           {/* Footer shop info (optional) */}
           {shop ? (
-            <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 px-4 py-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Shop
               </div>
-              <div className="mt-2 text-sm text-neutral-200">
-                <div className="font-medium text-neutral-100">
+              <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">
+                <div className="font-medium text-[color:var(--theme-text-primary)]">
                   {(shop.name ?? "").trim() || "—"}
                 </div>
-                <div className="text-[12px] text-neutral-400">
+                <div className="text-[12px] text-[color:var(--theme-text-secondary)]">
                   {compactCsv([
                     (shop.phone_number ?? "").trim() || undefined,
                     (shop.email ?? "").trim() || undefined,
                   ]) || "—"}
                 </div>
-                <div className="text-[12px] text-neutral-400">
+                <div className="text-[12px] text-[color:var(--theme-text-secondary)]">
                   {addressLine(shop.street, shop.city, shop.province, shop.postal_code)}
                 </div>
               </div>

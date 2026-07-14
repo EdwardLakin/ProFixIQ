@@ -72,8 +72,8 @@ export default function DtcSuggestionPopup({ jobId, vehicle, punchedInAt }: Prop
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-lg space-y-4 rounded-lg bg-white p-6 text-black shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm">
+      <div className="w-full max-w-lg space-y-4 rounded-lg bg-[color:var(--theme-surface-panel-strong)] p-6 text-[color:var(--theme-text-on-accent)] shadow-lg">
         <h2 className="text-xl font-bold text-orange-600">AI DTC Suggestion</h2>
 
         <input
@@ -86,7 +86,7 @@ export default function DtcSuggestionPopup({ jobId, vehicle, punchedInAt }: Prop
         <button
           onClick={handleSubmit}
           disabled={loading}
-          className="w-full rounded bg-orange-600 px-4 py-2 font-semibold text-white disabled:opacity-60"
+          className="w-full rounded bg-orange-600 px-4 py-2 font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-60"
         >
           {loading ? "Analyzing..." : "Get Suggestion"}
         </button>
@@ -94,7 +94,7 @@ export default function DtcSuggestionPopup({ jobId, vehicle, punchedInAt }: Prop
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         {result && (
-          <div className="space-y-2 rounded bg-gray-100 p-3 text-sm">
+          <div className="space-y-2 rounded bg-[color:var(--theme-surface-subtle)] p-3 text-sm">
             <div>
               <strong>Cause:</strong> {result.cause}
             </div>
@@ -108,13 +108,13 @@ export default function DtcSuggestionPopup({ jobId, vehicle, punchedInAt }: Prop
             <div className="mt-2 flex gap-4">
               <button
                 onClick={handleConfirm}
-                className="w-full rounded bg-green-600 px-4 py-2 font-bold text-white"
+                className="w-full rounded bg-green-600 px-4 py-2 font-bold text-[color:var(--theme-text-primary)]"
               >
                 Save to Job
               </button>
               <button
                 onClick={() => setShow(false)}
-                className="w-full rounded bg-gray-400 px-4 py-2 text-black"
+                className="w-full rounded bg-[color:var(--theme-surface-subtle)] px-4 py-2 text-[color:var(--theme-text-on-accent)]"
               >
                 Dismiss
               </button>

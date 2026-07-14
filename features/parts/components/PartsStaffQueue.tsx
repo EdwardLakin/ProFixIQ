@@ -203,9 +203,9 @@ export default function PartsStaffQueue() {
     }
   }
 
-  if (loading) return <div className="text-sm text-neutral-400">Loading parts queue…</div>;
+  if (loading) return <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading parts queue…</div>;
   if (err) return <div className="text-sm text-red-300">{err}</div>;
-  if (rows.length === 0) return <div className="text-sm text-neutral-400">No queued parts right now.</div>;
+  if (rows.length === 0) return <div className="text-sm text-[color:var(--theme-text-secondary)]">No queued parts right now.</div>;
 
   return (
     <div className="grid gap-3">
@@ -226,46 +226,46 @@ export default function PartsStaffQueue() {
         return (
           <div
             key={String(it.id)}
-            className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl"
+            className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-neutral-50">
+                <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {it.description ?? "Part"}
                 </div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  Status: <span className="text-neutral-200">{status || "—"}</span>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                  Status: <span className="text-[color:var(--theme-text-primary)]">{status || "—"}</span>
                   {req?.work_order_id ? (
                     <>
                       {" "}
                       • WO:{" "}
-                      <span className="text-neutral-200">{String(req.work_order_id).slice(0, 8)}…</span>
+                      <span className="text-[color:var(--theme-text-primary)]">{String(req.work_order_id).slice(0, 8)}…</span>
                     </>
                   ) : null}
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-neutral-200">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[color:var(--theme-text-primary)]">
                   Req {qtyRequested}
                 </span>
-                <span className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-neutral-200">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[color:var(--theme-text-primary)]">
                   App {qtyApproved}
                 </span>
-                <span className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-neutral-200">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[color:var(--theme-text-primary)]">
                   Res {qtyReserved}
                 </span>
-                <span className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-neutral-200">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[color:var(--theme-text-primary)]">
                   Rcv {qtyReceived}
                 </span>
-                <span className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-neutral-200">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[color:var(--theme-text-primary)]">
                   Rem {remaining}
                 </span>
 
                 <button
                   type="button"
                   onClick={() => openReceive(r)}
-                  className="rounded-full border border-[color:var(--accent-copper,#f97316)]/70 bg-[color:var(--accent-copper,#f97316)]/10 px-3 py-1 text-neutral-50 hover:bg-[color:var(--accent-copper,#f97316)]/20"
+                  className="rounded-full border border-[color:var(--accent-copper,#f97316)]/70 bg-[color:var(--accent-copper,#f97316)]/10 px-3 py-1 text-[color:var(--theme-text-primary)] hover:bg-[color:var(--accent-copper,#f97316)]/20"
                 >
                   Receive
                 </button>
@@ -278,21 +278,21 @@ export default function PartsStaffQueue() {
       {/* Receive Modal */}
       {receiving.open ? (
         <div className="fixed inset-0 z-[700] flex items-center justify-center" onClick={() => setReceiving({ open: false, itemId: null, shopId: null, partName: "", qtyRemaining: 0 })}>
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" />
           <div
-            className="relative z-[710] w-full max-w-lg rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-5 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl"
+            className="relative z-[710] w-full max-w-lg rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-5 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Receive</div>
-            <div className="mt-1 text-lg font-semibold text-white">{receiving.partName}</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Receive</div>
+            <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{receiving.partName}</div>
 
             <div className="mt-3 grid gap-3">
               <div className="grid gap-1.5">
-                <div className="text-xs text-neutral-500">Location</div>
+                <div className="text-xs text-[color:var(--theme-text-muted)]">Location</div>
                 <select
                   value={locationId || mainLocId || ""}
                   onChange={(e) => setLocationId(e.target.value)}
-                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100"
+                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
                 >
                   <option value="">Select…</option>
                   {locs.map((l) => (
@@ -304,7 +304,7 @@ export default function PartsStaffQueue() {
               </div>
 
               <div className="grid gap-1.5">
-                <div className="text-xs text-neutral-500">
+                <div className="text-xs text-[color:var(--theme-text-muted)]">
                   Quantity (remaining {receiving.qtyRemaining})
                 </div>
                 <input
@@ -313,7 +313,7 @@ export default function PartsStaffQueue() {
                   step="0.01"
                   value={qty}
                   onChange={(e) => setQty(Number(e.target.value || 0))}
-                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100"
+                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
                 />
               </div>
 
@@ -321,7 +321,7 @@ export default function PartsStaffQueue() {
                 <button
                   type="button"
                   onClick={() => setReceiving({ open: false, itemId: null, shopId: null, partName: "", qtyRemaining: 0 })}
-                  className="rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm text-neutral-200 hover:bg-black/60"
+                  className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
                   disabled={submitting}
                 >
                   Cancel
@@ -329,7 +329,7 @@ export default function PartsStaffQueue() {
                 <button
                   type="button"
                   onClick={submitReceive}
-                  className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-[color:var(--accent-copper,#f97316)]/15 px-4 py-2 text-sm font-semibold text-neutral-50 hover:bg-[color:var(--accent-copper,#f97316)]/25 disabled:opacity-60"
+                  className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-[color:var(--accent-copper,#f97316)]/15 px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--accent-copper,#f97316)]/25 disabled:opacity-60"
                   disabled={submitting}
                 >
                   {submitting ? "Receiving…" : "Receive"}

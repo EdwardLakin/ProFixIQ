@@ -107,12 +107,12 @@ export default function PortalHomePage() {
   }, [supabase]);
 
   if (loading) {
-    return <div className="space-y-5 text-white"><PortalPageHeader eyebrow="Customer portal" title="What needs your attention today?" subtitle="Loading your latest status and activity." /></div>;
+    return <div className="space-y-5 text-[color:var(--theme-text-primary)]"><PortalPageHeader eyebrow="Customer portal" title="What needs your attention today?" subtitle="Loading your latest status and activity." /></div>;
   }
 
   if (requiresInvite) {
     return (
-      <div className="space-y-5 text-white">
+      <div className="space-y-5 text-[color:var(--theme-text-primary)]">
         <PortalPageHeader
           eyebrow="Customer portal"
           title="Portal invite required"
@@ -125,21 +125,21 @@ export default function PortalHomePage() {
   const hasInvoice = !!activeWo && !!activeWo.invoice_sent_at && (activeWo.status === "ready_to_invoice" || activeWo.status === "invoiced");
   const hasQuote = !!activeWo && (activeWo.status === "awaiting_approval" || activeWo.approval_state === "awaiting_customer" || activeWo.approval_state === "requested");
 
-  return <div className="space-y-5 text-white">
+  return <div className="space-y-5 text-[color:var(--theme-text-primary)]">
     <PortalPageHeader eyebrow="Customer portal" title="What needs your attention today?" subtitle="Track active work, approve recommendations, and request service in one place." actions={<><PortalPrimaryButton href="/portal/request/when">Request service</PortalPrimaryButton><PortalSecondaryButton href="/portal/customer-appointments">Appointments</PortalSecondaryButton></>} />
 
     <PortalSectionCard title="Current status" subtitle="Your latest request and next appointment.">
       <div className="grid gap-3 sm:grid-cols-3"><PortalStatCard title="Active request" value={formatWoRef(activeWo)} sub={activeWo?.status ? `Status: ${activeWo.status}` : "No open request"} /><PortalStatCard title="Next appointment" value={nextBookingAt ? formatWhen(nextBookingAt) : "—"} /><PortalStatCard title="Vehicles" value={vehiclesCount == null ? "—" : String(vehiclesCount)} sub="Saved to your account" /></div>
     </PortalSectionCard>
 
-    <PortalSectionCard title="Live work status" right={<Link href="/portal/status" className="text-xs text-neutral-300 underline">Details</Link>}>
+    <PortalSectionCard title="Live work status" right={<Link href="/portal/status" className="text-xs text-[color:var(--theme-text-secondary)] underline">Details</Link>}>
       <WorkOrderBoardWidget variant="portal" href="/portal/status" />
     </PortalSectionCard>
 
     <div className="grid gap-3 sm:grid-cols-3"><PortalActionCard href="/portal/request/when" title="Request service" subtitle="Start a new service request now." prominent /><PortalActionCard href="/portal/vehicles" title="Manage vehicles" subtitle="Update VIN, mileage, and details." /><PortalActionCard href="/portal/customer-appointments" title="Appointments" subtitle="View upcoming and past bookings." /></div>
 
     <PortalSectionCard title="Recent activity" subtitle="Quote and invoice milestones are highlighted here." right={<PortalStatusChip label="Live" />}>
-      {hasInvoice && activeWo ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Invoice ready</p><p className="text-sm text-neutral-100">Work Order {formatWoRef(activeWo)} sent {activeWo.invoice_sent_at ? formatWhen(activeWo.invoice_sent_at) : "recently"}</p></div><PortalPrimaryButton href={`/portal/invoices/${activeWo.id}`}>View invoice</PortalPrimaryButton></div> : hasQuote && activeWo ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs uppercase tracking-[0.18em] text-neutral-500">Quote ready</p><p className="text-sm text-neutral-100">Work Order {formatWoRef(activeWo)} is waiting for your approval.</p></div><PortalPrimaryButton href={`/portal/quotes/${activeWo.id}`}>Review quote</PortalPrimaryButton></div> : <PortalEmptyState title="No recent activity" body="After you submit a request, updates will appear here." />}
+      {hasInvoice && activeWo ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Invoice ready</p><p className="text-sm text-[color:var(--theme-text-primary)]">Work Order {formatWoRef(activeWo)} sent {activeWo.invoice_sent_at ? formatWhen(activeWo.invoice_sent_at) : "recently"}</p></div><PortalPrimaryButton href={`/portal/invoices/${activeWo.id}`}>View invoice</PortalPrimaryButton></div> : hasQuote && activeWo ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Quote ready</p><p className="text-sm text-[color:var(--theme-text-primary)]">Work Order {formatWoRef(activeWo)} is waiting for your approval.</p></div><PortalPrimaryButton href={`/portal/quotes/${activeWo.id}`}>Review quote</PortalPrimaryButton></div> : <PortalEmptyState title="No recent activity" body="After you submit a request, updates will appear here." />}
     </PortalSectionCard>
   </div>;
 }

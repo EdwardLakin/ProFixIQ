@@ -75,30 +75,30 @@ export default function InspectionGroupList({
                   key={`${section.title}-${iIdx}`}
                   className="flex items-center justify-between border-b border-zinc-700 pb-2"
                 >
-                  <span className="text-white">{item.item ?? item.name}</span>
+                  <span className="text-[color:var(--theme-text-primary)]">{item.item ?? item.name}</span>
 
                   {editable && (
                     <div className="flex space-x-2">
                       <button
-                        className="rounded bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700"
+                        className="rounded bg-green-600 px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-green-700"
                         onClick={() => handleStatus(sIdx, iIdx, "ok")}
                       >
                         OK
                       </button>
                       <button
-                        className="rounded bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700"
+                        className="rounded bg-red-600 px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-red-700"
                         onClick={() => handleStatus(sIdx, iIdx, "fail")}
                       >
                         Fail
                       </button>
                       <button
-                        className="rounded bg-yellow-500 px-3 py-1 text-xs text-white hover:bg-yellow-600"
+                        className="rounded bg-yellow-500 px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-yellow-600"
                         onClick={() => handleStatus(sIdx, iIdx, "na")}
                       >
                         N/A
                       </button>
                       <button
-                        className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600"
+                        className="rounded bg-blue-500 px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-blue-600"
                         onClick={() => handleStatus(sIdx, iIdx, "recommend")}
                       >
                         Rec

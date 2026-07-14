@@ -290,7 +290,7 @@ export default function ReportsPage() {
     if (efficiencyPct >= 130) {
       return {
         label: "Silver",
-        className: "bg-slate-200/10 border-slate-200/35 text-slate-100",
+        className: "bg-[color:var(--theme-surface-subtle)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)]",
         emoji: "🥈",
       };
     }
@@ -311,16 +311,16 @@ export default function ReportsPage() {
     >
       <div className="mx-auto max-w-6xl space-y-6 text-foreground">
         {/* Header + tabs */}
-        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-4 backdrop-blur">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 backdrop-blur">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                 Dashboard · Owner
               </div>
-              <h1 className="mt-1 text-xl font-blackops text-white">
+              <h1 className="mt-1 text-xl font-blackops text-[color:var(--theme-text-primary)]">
                 Reports &amp; Shop Health
               </h1>
-              <p className="text-xs text-neutral-400">
+              <p className="text-xs text-[color:var(--theme-text-secondary)]">
                 Performance trends + AI-driven shop scoring and setup suggestions.
               </p>
             </div>
@@ -333,7 +333,7 @@ export default function ReportsPage() {
                   "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition",
                   activeTab === "performance"
                     ? "border-orange-500/60 bg-orange-500/10 text-orange-100"
-                    : "border-white/10 bg-black/20 text-neutral-300 hover:bg-black/35 hover:text-white",
+                    : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-inset)] hover:text-[color:var(--theme-text-primary)]",
                 ].join(" ")}
               >
                 Performance
@@ -345,7 +345,7 @@ export default function ReportsPage() {
                   "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition",
                   activeTab === "health"
                     ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-100"
-                    : "border-white/10 bg-black/20 text-neutral-300 hover:bg-black/35 hover:text-white",
+                    : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-inset)] hover:text-[color:var(--theme-text-primary)]",
                 ].join(" ")}
               >
                 Shop Health
@@ -355,8 +355,8 @@ export default function ReportsPage() {
 
           {/* Export / Health header actions */}
           {activeTab === "performance" ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-              <div className="text-[11px] text-neutral-400">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] pt-4">
+              <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                 Export a PDF of the current performance view.
               </div>
               <Button
@@ -365,14 +365,14 @@ export default function ReportsPage() {
                 variant="outline"
                 disabled={!stats || exporting}
                 onClick={handleExportPDF}
-                className="border-orange-500/60 bg-black/40 text-xs font-medium text-orange-100 hover:bg-orange-500 hover:text-black"
+                className="border-orange-500/60 bg-[color:var(--theme-surface-inset)] text-xs font-medium text-orange-100 hover:bg-orange-500 hover:text-[color:var(--theme-text-on-accent)]"
               >
                 {exporting ? "Generating…" : "🧾 Export PDF"}
               </Button>
             </div>
           ) : (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-              <div className="text-[11px] text-neutral-400">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] pt-4">
+              <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                 Shop Health is a diagnostics surface. Snapshot health is informational and should be reviewed before acting.
               </div>
 
@@ -385,7 +385,7 @@ export default function ReportsPage() {
                     el?.scrollIntoView({ behavior: "smooth", block: "start" });
                     toast.message("Scroll down to run the snapshot in Shop Health.");
                   }}
-                  className="rounded-full border border-orange-500/60 bg-orange-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-100 transition hover:bg-orange-500 hover:text-black"
+                  className="rounded-full border border-orange-500/60 bg-orange-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-100 transition hover:bg-orange-500 hover:text-[color:var(--theme-text-on-accent)]"
                 >
                   ⚡ Run snapshot
                 </button>
@@ -412,7 +412,7 @@ export default function ReportsPage() {
         {activeTab === "performance" ? (
           <>
             {/* Top controls */}
-            <div className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-slate-950/80 via-slate-900/70 to-slate-950/80 px-4 py-4 shadow-[0_0_0_1px_rgba(15,23,42,0.9)] shadow-black/60">
+            <div className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-4 shadow-[var(--theme-shadow-medium)] shadow-[var(--theme-shadow-medium)]">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-300/80">
@@ -421,7 +421,7 @@ export default function ReportsPage() {
                   <h2 className="mt-1 text-xl font-blackops text-orange-400">
                     Financial & Technician Performance
                   </h2>
-                  <p className="text-xs text-neutral-400">
+                  <p className="text-xs text-[color:var(--theme-text-secondary)]">
                     Revenue, profit, expenses and per-tech efficiency for the selected period.
                   </p>
                 </div>
@@ -430,7 +430,7 @@ export default function ReportsPage() {
               <div className="flex flex-wrap items-start gap-4 border-t border-orange-500/20 pt-4">
                 {/* Time range */}
                 <div className="space-y-2">
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Time range
                   </div>
 
@@ -445,8 +445,8 @@ export default function ReportsPage() {
                           variant={isActive ? "default" : "outline"}
                           className={
                             isActive
-                              ? "border-orange-500 bg-gradient-to-b from-orange-500 to-amber-400 text-black shadow-[0_0_18px_rgba(248,150,69,0.6)]"
-                              : "border-zinc-700 bg-black/40 text-xs text-neutral-200 hover:border-orange-500/70 hover:text-orange-100"
+                              ? "border-orange-500 bg-gradient-to-b from-orange-500 to-amber-400 text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(248,150,69,0.6)]"
+                              : "border-zinc-700 bg-[color:var(--theme-surface-inset)] text-xs text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:text-orange-100"
                           }
                           onClick={() => setRange(r)}
                         >
@@ -457,14 +457,14 @@ export default function ReportsPage() {
 
                     {/* Year selector (only for yearly) */}
                     {range === "yearly" ? (
-                      <div className="ml-1 inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-black/40 px-3 py-1.5">
-                        <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                      <div className="ml-1 inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-[color:var(--theme-surface-inset)] px-3 py-1.5">
+                        <span className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                           Year
                         </span>
                         <select
                           value={year}
                           onChange={(e) => setYear(Number(e.target.value))}
-                          className="bg-transparent text-xs text-neutral-200 focus:outline-none"
+                          className="bg-transparent text-xs text-[color:var(--theme-text-primary)] focus:outline-none"
                           aria-label="Select year"
                         >
                           {yearOptions.map((y) => (
@@ -477,18 +477,18 @@ export default function ReportsPage() {
                     ) : null}
                   </div>
 
-                  <div className="text-[11px] text-neutral-400">{dateRangeLabel}</div>
+                  <div className="text-[11px] text-[color:var(--theme-text-secondary)]">{dateRangeLabel}</div>
                 </div>
 
                 {/* Filters */}
                 <div className="ml-auto grid gap-3 text-xs sm:grid-cols-3">
                   <div>
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                       Filter by tech ID
                     </label>
                     <input
                       type="text"
-                      className="w-full rounded-md border border-zinc-700 bg-black/40 px-2 py-1 text-xs text-foreground placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500/70"
+                      className="w-full rounded-md border border-zinc-700 bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs text-foreground placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500/70"
                       value={filters.technicianId ?? ""}
                       onChange={(e) =>
                         setFilters((prev) => ({ ...prev, technicianId: e.target.value }))
@@ -497,12 +497,12 @@ export default function ReportsPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                       Filter by invoice #
                     </label>
                     <input
                       type="text"
-                      className="w-full rounded-md border border-zinc-700 bg-black/40 px-2 py-1 text-xs text-foreground placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500/70"
+                      className="w-full rounded-md border border-zinc-700 bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs text-foreground placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500/70"
                       value={filters.invoiceId ?? ""}
                       onChange={(e) =>
                         setFilters((prev) => ({ ...prev, invoiceId: e.target.value }))
@@ -511,7 +511,7 @@ export default function ReportsPage() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                       Revenue goal (per period)
                     </label>
                     <div className="flex items-center gap-1 rounded-md border border-emerald-500/50 bg-emerald-500/5 px-2 py-1">
@@ -536,13 +536,13 @@ export default function ReportsPage() {
             </div>
 
             {loading && (
-              <div className="rounded-xl border border-zinc-800 bg-slate-950/60 px-4 py-6 text-sm text-neutral-400">
+              <div className="rounded-xl border border-zinc-800 bg-[color:var(--theme-surface-page)] px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]">
                 Loading stats for your shop…
               </div>
             )}
 
             {!loading && !error && !hasData && (
-              <div className="rounded-xl border border-zinc-800 bg-slate-950/60 px-4 py-6 text-sm text-neutral-400">
+              <div className="rounded-xl border border-zinc-800 bg-[color:var(--theme-surface-page)] px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]">
                 No data found for this range and filter. Try widening the date range or clearing filters.
               </div>
             )}
@@ -584,14 +584,14 @@ export default function ReportsPage() {
 
                 <div
                   ref={chartRef}
-                  className="rounded-2xl border border-zinc-800/80 bg-slate-950/70 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.9)] backdrop-blur"
+                  className="rounded-2xl border border-zinc-800/80 bg-[color:var(--theme-surface-page)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur"
                 >
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h2 className="text-sm font-semibold text-orange-200">
                         Revenue, Profit, Labor & Expenses Over Time
                       </h2>
-                      <p className="text-[11px] text-neutral-400">
+                      <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
                         Compare revenue, profit, labor cost, and expenses per period.
                       </p>
                     </div>
@@ -604,16 +604,16 @@ export default function ReportsPage() {
                   <div className="h-[320px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData}>
-                        <XAxis dataKey="label" stroke="#a3a3a3" tick={{ fontSize: 11 }} />
+                        <XAxis dataKey="label" stroke="var(--theme-text-muted)" tick={{ fontSize: 11 }} />
                         <YAxis
-                          stroke="#a3a3a3"
+                          stroke="var(--theme-text-muted)"
                           tick={{ fontSize: 11 }}
                           tickFormatter={(v: number) => `$${v.toLocaleString()}`}
                         />
                         <Tooltip
                           contentStyle={{
-                            backgroundColor: "#020617",
-                            border: "1px solid #3f3f46",
+                            backgroundColor: "var(--theme-surface-panel)",
+                            border: "1px solid var(--theme-border-soft)",
                             borderRadius: "0.75rem",
                             fontSize: "11px",
                           }}
@@ -687,14 +687,14 @@ export default function ReportsPage() {
                 </div>
 
                 {aiSummary ? (
-                  <div className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-slate-950/80 via-slate-950/60 to-slate-950/80 px-4 py-4">
+                  <div className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-4">
                     <h2 className="mb-1 text-sm font-semibold text-orange-300">
                       AI summary
                     </h2>
-                    <p className="text-xs text-neutral-400">
+                    <p className="text-xs text-[color:var(--theme-text-secondary)]">
                       Generated from your financial stats and time range.
                     </p>
-                    <p className="mt-2 whitespace-pre-wrap text-sm text-neutral-100">
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-[color:var(--theme-text-primary)]">
                       {aiSummary}
                     </p>
                   </div>
@@ -703,13 +703,13 @@ export default function ReportsPage() {
             ) : null}
 
             {/* Technician Leaderboard */}
-            <div className="rounded-2xl border border-zinc-800/80 bg-slate-950/70 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.9)] backdrop-blur">
+            <div className="rounded-2xl border border-zinc-800/80 bg-[color:var(--theme-surface-page)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-orange-200">
                     Technician Leaderboard
                   </h2>
-                  <p className="text-[11px] text-neutral-400">
+                  <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
                     Earnings per tech, billed vs clocked hours, and efficiency for this time
                     range.
                   </p>
@@ -723,13 +723,13 @@ export default function ReportsPage() {
               ) : null}
 
               {techLoading && !techError ? (
-                <div className="rounded-md border border-zinc-800 bg-slate-950/70 px-3 py-3 text-xs text-neutral-400">
+                <div className="rounded-md border border-zinc-800 bg-[color:var(--theme-surface-page)] px-3 py-3 text-xs text-[color:var(--theme-text-secondary)]">
                   Loading technician performance…
                 </div>
               ) : null}
 
               {!techLoading && !techError && techRows.length === 0 ? (
-                <div className="rounded-md border border-zinc-800 bg-slate-950/70 px-3 py-3 text-xs text-neutral-400">
+                <div className="rounded-md border border-zinc-800 bg-[color:var(--theme-surface-page)] px-3 py-3 text-xs text-[color:var(--theme-text-secondary)]">
                   No technician activity found for this range.
                 </div>
               ) : null}
@@ -738,7 +738,7 @@ export default function ReportsPage() {
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse text-xs sm:text-sm">
                     <thead>
-                      <tr className="border-b border-zinc-700 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                      <tr className="border-b border-zinc-700 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                         <th className="px-2 py-2 text-left">Tech</th>
                         <th className="px-2 py-2 text-right">Jobs</th>
                         <th className="px-2 py-2 text-right">Revenue</th>
@@ -767,7 +767,7 @@ export default function ReportsPage() {
                               <div className="flex flex-col">
                                 <span className="font-medium text-foreground">{row.name}</span>
                                 {row.role ? (
-                                  <span className="text-[11px] text-neutral-500">
+                                  <span className="text-[11px] text-[color:var(--theme-text-muted)]">
                                     {row.role}
                                   </span>
                                 ) : null}
@@ -780,7 +780,7 @@ export default function ReportsPage() {
                             <td className="px-2 py-2 text-right">
                               {row.clockedHours.toFixed(1)}
                               {row.clockedHours > 0 ? (
-                                <span className="ml-1 text-[11px] text-neutral-500">
+                                <span className="ml-1 text-[11px] text-[color:var(--theme-text-muted)]">
                                   ({billedVsClockedPct.toFixed(0)}% billed)
                                 </span>
                               ) : null}
@@ -800,7 +800,7 @@ export default function ReportsPage() {
                                   {badge.label}
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-neutral-500">—</span>
+                                <span className="text-[10px] text-[color:var(--theme-text-muted)]">—</span>
                               )}
                             </td>
                           </tr>
@@ -828,8 +828,8 @@ function SummaryCard({
   accent?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-800/80 bg-slate-950/70 px-4 py-3 text-sm shadow-[0_16px_32px_rgba(0,0,0,0.9)] backdrop-blur">
-      <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500">{label}</div>
+    <div className="rounded-2xl border border-zinc-800/80 bg-[color:var(--theme-surface-page)] px-4 py-3 text-sm shadow-[var(--theme-shadow-medium)] backdrop-blur">
+      <div className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">{label}</div>
       <div className={`mt-1 text-xl font-semibold ${accent ?? ""}`}>{value}</div>
     </div>
   );

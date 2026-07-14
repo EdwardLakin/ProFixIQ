@@ -175,22 +175,22 @@ function SignaturePadHost() {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4">
       <div
-        className="w-full max-w-md rounded-lg border-2 border-orange-400 bg-neutral-900 p-6 shadow-xl"
+        className="w-full max-w-md rounded-lg border-2 border-orange-400 bg-[color:var(--theme-surface-panel)] p-6 shadow-xl"
         style={{ fontFamily: "Roboto, ui-sans-serif, system-ui" }}
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
-          className="mb-1 text-center text-lg font-semibold text-white"
+          className="mb-1 text-center text-lg font-semibold text-[color:var(--theme-text-primary)]"
           style={{ fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
         >
           {shopName ? `${shopName} — Customer Approval` : "Customer Approval"}
         </h2>
 
-        <p className="mb-4 text-center text-xs text-neutral-300">
+        <p className="mb-4 text-center text-xs text-[color:var(--theme-text-secondary)]">
           By signing, I approve the described work and acknowledge the estimate.
         </p>
 
@@ -204,13 +204,13 @@ function SignaturePadHost() {
               canvasProps={{
                 width: size.w,
                 height: size.h,
-                className: "w-full rounded-md border border-neutral-700 bg-neutral-950",
+                className: "w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]",
                 role: "img",
                 "aria-label": "Signature input area",
               }}
             />
           ) : (
-            <div className="h-[220px] w-full animate-pulse rounded-md border border-neutral-800 bg-neutral-950" />
+            <div className="h-[220px] w-full animate-pulse rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]" />
           )}
         </div>
 
@@ -219,8 +219,8 @@ function SignaturePadHost() {
             type="button"
             onClick={handleClear}
             disabled={saving}
-            className="rounded px-4 py-2 text-neutral-900 hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: "#e5e7eb", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
+            className="rounded px-4 py-2 text-[color:var(--theme-text-primary)] hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: "var(--theme-text-primary)", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
           >
             Clear
           </button>
@@ -229,7 +229,7 @@ function SignaturePadHost() {
               type="button"
               onClick={() => closeWith(null)}
               disabled={saving}
-              className="rounded px-4 py-2 text-white disabled:opacity-50"
+              className="rounded px-4 py-2 text-[color:var(--theme-text-primary)] disabled:opacity-50"
               style={{ backgroundColor: "#ef4444", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
             >
               Cancel
@@ -241,15 +241,15 @@ function SignaturePadHost() {
                 e.stopPropagation();
                 handleSave();
               }}
-              className="rounded px-4 py-2 text-white"
-              style={{ backgroundColor: "#16a34a", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
+              className="rounded px-4 py-2 text-[color:var(--theme-text-primary)]"
+              style={{ backgroundColor: "var(--theme-surface-panel)", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
             >
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
 
-        <p className="mt-3 text-center text-[10px] leading-snug text-neutral-400">
+        <p className="mt-3 text-center text-[10px] leading-snug text-[color:var(--theme-text-secondary)]">
           Signature is stored securely and associated to this work order.
         </p>
       </div>

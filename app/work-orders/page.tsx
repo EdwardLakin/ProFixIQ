@@ -58,7 +58,7 @@ export default async function WorkOrdersHome() {
                   <div>
                     <h2 className="text-base font-semibold">{tile.title}</h2>
                     {tile.subtitle ? (
-                      <p className="mt-1 text-sm text-[var(--theme-text-secondary,#94A3B8)]">
+                      <p className="mt-1 text-sm text-[var(--theme-text-secondary,var(--theme-text-muted))]">
                         {tile.subtitle}
                       </p>
                     ) : null}

@@ -14,7 +14,7 @@ export default function FocusedJobPanelClient(props: {
 
   return (
     <div className="sticky top-4">
-      <div className="rounded-2xl border border-white/10 bg-black/40 p-2 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl">
+      <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
         <FocusedJobModal
           isOpen={true}
           variant="panel"

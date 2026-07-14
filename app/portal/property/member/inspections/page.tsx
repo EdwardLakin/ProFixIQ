@@ -22,7 +22,7 @@ export default async function PropertyMemberInspectionsPage() {
   if (!user) redirect("/sign-in");
 
   const { data: memberships } = await supabase.from("property_members").select("id,shop_id,user_id,property_id,unit_id").eq("user_id", user.id);
-  if (!(memberships ?? []).length) return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-neutral-100">Inspections</h1><p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p></section>;
+  if (!(memberships ?? []).length) return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-[color:var(--theme-text-primary)]">Inspections</h1><p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No property portal access is assigned to this account.</p></section>;
 
   const shopIds = [...new Set((memberships ?? []).map((m) => m.shop_id))];
   const { data: rows } = await supabase.from("property_inspections").select("id,shop_id,property_id,unit_id,inspection_type,status,findings,completed_at,created_at").in("shop_id", shopIds).order("created_at", { ascending: false }).limit(100);
@@ -39,21 +39,21 @@ export default async function PropertyMemberInspectionsPage() {
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Property Portal</p>
-      <h1 className="mt-2 text-2xl text-neutral-100">Inspections</h1>
-      <p className="mt-2 text-sm text-neutral-300">View property inspection records and acknowledgements.</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Property Portal</p>
+      <h1 className="mt-2 text-2xl text-[color:var(--theme-text-primary)]">Inspections</h1>
+      <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">View property inspection records and acknowledgements.</p>
       <div className="mt-4 flex flex-wrap gap-2 text-sm">
-        <Link href="/portal/property/member" className="text-neutral-300 underline">Portal Home</Link>
-        <Link href="/portal/property/member/requests" className="text-neutral-300 underline">Requests</Link>
-        <Link href="/portal/property/member/requests/new" className="text-neutral-300 underline">Submit Request</Link>
+        <Link href="/portal/property/member" className="text-[color:var(--theme-text-secondary)] underline">Portal Home</Link>
+        <Link href="/portal/property/member/requests" className="text-[color:var(--theme-text-secondary)] underline">Requests</Link>
+        <Link href="/portal/property/member/requests/new" className="text-[color:var(--theme-text-secondary)] underline">Submit Request</Link>
         <Link href="/portal/property/member/inspections" className="text-cyan-200 underline">Inspections</Link>
       </div>
 
-      {visible.length === 0 ? <p className="mt-6 text-sm text-neutral-300">No inspections are available yet.</p> : (
-        <div className="mt-5 divide-y divide-white/10 rounded-xl border border-white/10 bg-black/20">
+      {visible.length === 0 ? <p className="mt-6 text-sm text-[color:var(--theme-text-secondary)]">No inspections are available yet.</p> : (
+        <div className="mt-5 divide-y divide-[color:var(--theme-border-soft)] rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
           {visible.map((r) => {
             const failCount = parse(r.findings).filter((f) => f.status === "fail").length;
-            return <article key={r.id} className="p-4 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-neutral-100">{r.inspection_type} · {r.status}</div><div className="text-xs text-neutral-500">{r.completed_at ? new Date(r.completed_at).toLocaleString() : "Not completed"}</div></div><div className="mt-1 text-neutral-400">Property: {propertyById.get(r.property_id) ?? "—"} · Unit: {r.unit_id ? (unitById.get(r.unit_id) ?? "—") : "—"}</div><div className="mt-1 text-neutral-500">Fail count: {failCount}</div><Link href={`/portal/property/member/inspections/${r.id}`} className="mt-2 inline-block text-cyan-300 underline">View details</Link></article>;
+            return <article key={r.id} className="p-4 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><div className="text-[color:var(--theme-text-primary)]">{r.inspection_type} · {r.status}</div><div className="text-xs text-[color:var(--theme-text-muted)]">{r.completed_at ? new Date(r.completed_at).toLocaleString() : "Not completed"}</div></div><div className="mt-1 text-[color:var(--theme-text-secondary)]">Property: {propertyById.get(r.property_id) ?? "—"} · Unit: {r.unit_id ? (unitById.get(r.unit_id) ?? "—") : "—"}</div><div className="mt-1 text-[color:var(--theme-text-muted)]">Fail count: {failCount}</div><Link href={`/portal/property/member/inspections/${r.id}`} className="mt-2 inline-block text-cyan-300 underline">View details</Link></article>;
           })}
         </div>
       )}

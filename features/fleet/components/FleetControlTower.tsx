@@ -171,10 +171,10 @@ export default function FleetControlTower({
           <div className="metal-card rounded-3xl p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Work board</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">Fleet jobs in progress</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Work board</div>
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">Fleet jobs in progress</div>
               </div>
-              <Link href={`${routePrefix}/board`} className="text-xs text-neutral-300 underline decoration-white/20 underline-offset-4 hover:text-neutral-100">
+              <Link href={`${routePrefix}/board`} className="text-xs text-[color:var(--theme-text-secondary)] underline decoration-[color:var(--theme-border-strong)] underline-offset-4 hover:text-[color:var(--theme-text-primary)]">
                 Open full board →
               </Link>
             </div>
@@ -187,7 +187,7 @@ export default function FleetControlTower({
           <div className="rounded-2xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">{error}</div>
         ) : null
       }
-      loading={<div className="metal-card rounded-3xl px-4 py-4 text-xs text-neutral-400">Loading fleet data…</div>}
+      loading={<div className="metal-card rounded-3xl px-4 py-4 text-xs text-[color:var(--theme-text-secondary)]">Loading fleet data…</div>}
       isLoading={loading && !error}
       aiSummary={
         <div className="metal-card rounded-3xl p-4">

@@ -6,7 +6,7 @@ import InspectionMenuClient from "@/features/inspections/app/inspection/Inspecti
 
 export default function InspectionsPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-white">Loading…</div>}>
+    <Suspense fallback={<div className="p-6 text-[color:var(--theme-text-primary)]">Loading…</div>}>
       <InspectionMenuClient />
     </Suspense>
   );

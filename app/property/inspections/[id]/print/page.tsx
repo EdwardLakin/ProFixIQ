@@ -19,10 +19,10 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!user) redirect("/sign-in");
 
   const { data: profile } = await supabase.from("profiles").select("id,shop_id").eq("id", user.id).maybeSingle();
-  if (!profile?.shop_id) return <main className="p-6 text-neutral-900">Missing shop context.</main>;
+  if (!profile?.shop_id) return <main className="p-6 text-[color:var(--theme-text-primary)]">Missing shop context.</main>;
 
   const { data: inspection } = await supabase.from("property_inspections").select("id,shop_id,property_id,unit_id,inspection_type,status,summary,performed_by_profile_id,findings,completed_at,created_at").eq("id", id).maybeSingle();
-  if (!inspection || inspection.shop_id !== profile.shop_id) return <main className="p-6 text-neutral-900">Inspection not found.</main>;
+  if (!inspection || inspection.shop_id !== profile.shop_id) return <main className="p-6 text-[color:var(--theme-text-primary)]">Inspection not found.</main>;
 
   const [{ data: property }, { data: unit }, { data: signatures }] = await Promise.all([
     supabase.from("property_properties").select("id,name").eq("id", inspection.property_id).maybeSingle(),
@@ -48,15 +48,15 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const counts = findings.reduce((acc, finding) => ({ ...acc, [finding.status]: acc[finding.status] + 1 }), { ok: 0, fail: 0, na: 0 });
 
   return (
-    <main className="min-h-screen bg-white p-6 text-neutral-900">
+    <main className="min-h-screen bg-[color:var(--theme-surface-panel-strong)] p-6 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center justify-between print:hidden">
           <Link href={`/property/inspections/${inspection.id}`} className="text-sm underline">Back to inspection</Link>
           <PrintButton />
         </div>
-        <header className="border-b border-neutral-300 pb-4">
+        <header className="border-b border-[color:var(--theme-border-soft)] pb-4">
           <h1 className="text-3xl font-semibold">Property Inspection Report</h1>
-          <p className="mt-1 text-sm text-neutral-600">Browser print/export only. No generated PDF service.</p>
+          <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">Browser print/export only. No generated PDF service.</p>
         </header>
 
         <section className="grid gap-2 text-sm sm:grid-cols-2">
@@ -68,26 +68,26 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           <div><span className="font-semibold">Summary:</span> {inspection.summary || "—"}</div>
         </section>
 
-        <section className="grid grid-cols-3 gap-3 rounded border border-neutral-300 p-3 text-sm">
+        <section className="grid grid-cols-3 gap-3 rounded border border-[color:var(--theme-border-soft)] p-3 text-sm">
           <div><span className="font-semibold">OK:</span> {counts.ok}</div>
           <div><span className="font-semibold">Fail:</span> {counts.fail}</div>
           <div><span className="font-semibold">N/A:</span> {counts.na}</div>
         </section>
 
         {Object.entries(bySection).map(([section, items]) => (
-          <section key={section} className="break-inside-avoid rounded border border-neutral-300 p-4">
+          <section key={section} className="break-inside-avoid rounded border border-[color:var(--theme-border-soft)] p-4">
             <h2 className="mb-3 text-lg font-semibold">{section}</h2>
             <div className="space-y-3">
               {items.map((finding) => (
-                <article key={`${finding.section}-${finding.item}`} className="rounded border border-neutral-200 p-3 text-sm">
+                <article key={`${finding.section}-${finding.item}`} className="rounded border border-[color:var(--theme-border-soft)] p-3 text-sm">
                   <div className="flex justify-between gap-4"><div className="font-medium">{finding.item}</div><div className="uppercase">{finding.status}</div></div>
-                  <div className="mt-1 text-neutral-700">{finding.notes || "No notes"}</div>
+                  <div className="mt-1 text-[color:var(--theme-text-muted)]">{finding.notes || "No notes"}</div>
                   {(finding.photos ?? []).length > 0 ? (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {finding.photos?.map((photo) => (
-                        <div key={photo.storage_path} className="w-32 rounded border border-neutral-200 p-1">
+                        <div key={photo.storage_path} className="w-32 rounded border border-[color:var(--theme-border-soft)] p-1">
                           {signedUrls.get(photo.storage_path) ? <Image src={signedUrls.get(photo.storage_path) ?? ""} alt={photo.original_filename} width={120} height={120} className="h-24 w-full object-cover" unoptimized /> : null}
-                          <div className="mt-1 text-[10px] text-neutral-600">{photo.original_filename}</div>
+                          <div className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">{photo.original_filename}</div>
                         </div>
                       ))}
                     </div>
@@ -98,12 +98,12 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
           </section>
         ))}
 
-        <section className="break-inside-avoid rounded border border-neutral-300 p-4">
+        <section className="break-inside-avoid rounded border border-[color:var(--theme-border-soft)] p-4">
           <h2 className="mb-3 text-lg font-semibold">Signatures</h2>
-          {(signatures ?? []).length === 0 ? <p className="text-sm text-neutral-600">No signatures recorded.</p> : (
+          {(signatures ?? []).length === 0 ? <p className="text-sm text-[color:var(--theme-text-muted)]">No signatures recorded.</p> : (
             <div className="space-y-2 text-sm">
               {signatures?.map((sig) => (
-                <div key={sig.id} className="rounded border border-neutral-200 p-2">
+                <div key={sig.id} className="rounded border border-[color:var(--theme-border-soft)] p-2">
                   <div><span className="font-semibold">Signer:</span> {sig.signer_name}</div>
                   <div><span className="font-semibold">Role:</span> {sig.signer_role}</div>
                   <div><span className="font-semibold">Signature Type:</span> {sig.signature_type}</div>

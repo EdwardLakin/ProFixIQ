@@ -78,31 +78,31 @@ export function QuoteLineCard(props: {
         ? "bg-amber-500"
         : statusTone === "ok"
           ? "bg-emerald-500"
-          : "bg-neutral-500";
+          : "bg-[color:var(--theme-surface-subtle)]";
 
   const card =
-    "rounded-2xl border border-slate-300/15 bg-slate-950/55 shadow-[0_20px_48px_rgba(2,6,23,0.65)]";
+    "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[var(--theme-shadow-medium)]";
   const codeBox =
-    "mt-2 rounded-xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-neutral-200 whitespace-pre-wrap";
+    "mt-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)] whitespace-pre-wrap";
 
   return (
     <div className={card} style={{ ["--copper" as never]: COPPER }}>
       <div className="px-4 pt-4 sm:px-5 sm:pt-5">
-        <div className="text-xl font-semibold text-white">{title}</div>
+        <div className="text-xl font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
 
         <div className="mt-2 flex items-center gap-2">
           <span className={`h-3.5 w-3.5 rounded-full ${dotCls}`} />
-          <div className="text-sm font-semibold text-white">{statusLabel}</div>
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{statusLabel}</div>
         </div>
 
         {/* Issue found */}
         <div className="mt-4">
-          <div className="text-sm font-semibold text-neutral-200">Issue Found</div>
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Issue Found</div>
           <div className={codeBox}>{safeTrim(issueText) || "—"}</div>
         </div>
 
         <div className="mt-4">
-          <div className="text-sm font-semibold text-neutral-200">Evidence photo</div>
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Evidence photo</div>
           {imageList.length > 0 ? (
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
               {imageList.slice(0, 3).map((url, idx) => (
@@ -111,7 +111,7 @@ export function QuoteLineCard(props: {
                   href={url}
                   target="_blank"
                   rel="noreferrer"
-                  className="overflow-hidden rounded-xl border border-white/10 bg-slate-900/70"
+                  className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -123,7 +123,7 @@ export function QuoteLineCard(props: {
               ))}
             </div>
           ) : (
-            <div className="mt-2 rounded-xl border border-dashed border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-neutral-400">
+            <div className="mt-2 rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
               No photo attached for this recommendation.
             </div>
           )}
@@ -131,7 +131,7 @@ export function QuoteLineCard(props: {
 
         {/* Recommended */}
         <div className="mt-4">
-          <div className="text-sm font-semibold text-neutral-200">
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             🛠 Recommended Repair
           </div>
           <div className={codeBox}>{safeTrim(recommendedText) || "—"}</div>
@@ -139,11 +139,11 @@ export function QuoteLineCard(props: {
 
 
         {(whyRecommended.length > 0 || supportingEvidence.length > 0 || deferredConsequence) ? (
-          <div className="mt-4 rounded-xl border border-white/10 bg-black/55 px-4 py-3 text-sm text-neutral-200">
+          <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)]">
             {whyRecommended.length > 0 ? (
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">Why recommended</div>
-                <ul className="mt-1 space-y-1 text-xs text-neutral-300">
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Why recommended</div>
+                <ul className="mt-1 space-y-1 text-xs text-[color:var(--theme-text-secondary)]">
                   {whyRecommended.slice(0, 3).map((item) => (
                     <li key={item}>• {item}</li>
                   ))}
@@ -152,8 +152,8 @@ export function QuoteLineCard(props: {
             ) : null}
             {supportingEvidence.length > 0 ? (
               <div className="mt-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">What supports this</div>
-                <ul className="mt-1 space-y-1 text-xs text-neutral-400">
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">What supports this</div>
+                <ul className="mt-1 space-y-1 text-xs text-[color:var(--theme-text-secondary)]">
                   {supportingEvidence.slice(0, 3).map((item) => (
                     <li key={item}>• {item}</li>
                   ))}
@@ -161,14 +161,14 @@ export function QuoteLineCard(props: {
               </div>
             ) : null}
             {deferredConsequence ? (
-              <div className="mt-2 text-xs text-neutral-400">What happens if deferred: {deferredConsequence}</div>
+              <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">What happens if deferred: {deferredConsequence}</div>
             ) : null}
           </div>
         ) : null}
 
         {/* Cost */}
         <div className="mt-4">
-          <div className="text-sm font-semibold text-neutral-200">$ Cost</div>
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">$ Cost</div>
           <div className={codeBox}>
             {`Parts: ${fmtCurrency(partsTotal)}\nLabor: ${fmtCurrency(
               laborTotal,
@@ -178,7 +178,7 @@ export function QuoteLineCard(props: {
 
         {showActions ? (
           <div className="mt-5">
-            <div className="text-sm font-semibold text-neutral-200">Decision</div>
+            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Decision</div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -207,7 +207,7 @@ export function QuoteLineCard(props: {
       </div>
 
       {footerNote ? (
-        <div className="mt-4 border-t border-white/10 px-4 py-2.5 text-xs text-neutral-500 sm:px-5">
+        <div className="mt-4 border-t border-[color:var(--theme-border-soft)] px-4 py-2.5 text-xs text-[color:var(--theme-text-muted)] sm:px-5">
           {footerNote}
         </div>
       ) : (

@@ -41,9 +41,9 @@ type VehicleSearchRow = Pick<
 };
 
 const CARD_BASE =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+  "rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 const CARD_INNER =
-  "rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-[color:var(--desktop-item-bg)]";
+  "rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--desktop-item-bg)]";
 
 function customerDisplayName(
   c: CustomerSummary | null | undefined,
@@ -220,18 +220,18 @@ export default function VehicleFilesPage() {
   }, [allRows, query]);
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 text-neutral-100">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 text-[color:var(--theme-text-primary)]">
       <GuidedPageStepPanel />
 
       <div className="flex items-center justify-between">
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-200 hover:border-[var(--accent-copper-soft)]/70 hover:text-white"
+          className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/70 hover:text-[color:var(--theme-text-primary)]"
         >
           ← Back
         </button>
-        <div className="text-xs text-neutral-500">Vehicles</div>
+        <div className="text-xs text-[color:var(--theme-text-muted)]">Vehicles</div>
       </div>
 
       <VehicleCsvImportCard guidedQuery={vehicleGuidedQuery} />
@@ -240,12 +240,12 @@ export default function VehicleFilesPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1
-              className="text-2xl font-semibold text-white"
+              className="text-2xl font-semibold text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops), system-ui" }}
             >
               Vehicle Files
             </h1>
-            <p className="mt-1 text-xs text-neutral-400">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Search by unit, VIN, plate, year, make, model, or customer.
             </p>
           </div>
@@ -254,7 +254,7 @@ export default function VehicleFilesPage() {
             <button
               type="button"
               onClick={() => router.push("/customers/directory")}
-              className="rounded-xl border border-[var(--accent-copper-soft)]/55 bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper)] hover:bg-black/55"
+              className="rounded-xl border border-[var(--accent-copper-soft)]/55 bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper)] hover:bg-[color:var(--theme-surface-inset)]"
               title="Select a customer file to add a vehicle."
             >
               + Create Vehicle
@@ -263,14 +263,14 @@ export default function VehicleFilesPage() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search vehicles..."
-              className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+              className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
             />
           </div>
         </div>
 
         <div className="mt-4">
           {visibleRows.length === 0 ? (
-            <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
+            <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
               {loading
                 ? "Loading vehicles…"
                 : allRows.length === 0
@@ -296,24 +296,24 @@ export default function VehicleFilesPage() {
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-white">
+                        <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                           {yearMakeModel}
                         </div>
-                        <div className="mt-0.5 truncate text-[11px] text-neutral-400">
+                        <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-secondary)]">
                           {vehicle.unit_number?.trim()
                             ? `Unit ${vehicle.unit_number}`
                             : "No unit number"}
                         </div>
-                        <div className="mt-0.5 text-[11px] text-neutral-400">
+                        <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                           VIN: {vehicle.vin?.trim() || "—"} · Plate:{" "}
                           {vehicle.license_plate?.trim() || "—"}
                         </div>
                       </div>
-                      <div className="text-left text-[11px] text-neutral-400 sm:text-right">
-                        <div className="text-neutral-300">
+                      <div className="text-left text-[11px] text-[color:var(--theme-text-secondary)] sm:text-right">
+                        <div className="text-[color:var(--theme-text-secondary)]">
                           {customerName ?? "No linked customer"}
                         </div>
-                        <div className="mt-0.5 text-neutral-500">
+                        <div className="mt-0.5 text-[color:var(--theme-text-muted)]">
                           {vehicleDisplayLabel(vehicle)}
                         </div>
                       </div>

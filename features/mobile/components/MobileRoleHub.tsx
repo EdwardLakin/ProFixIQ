@@ -32,11 +32,11 @@ export function MobileRoleHub({
   return (
     <section className="space-y-2">
       <div>
-        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           {title}
         </h2>
         {subtitle && (
-          <p className="mt-1 text-[0.7rem] text-neutral-500">{subtitle}</p>
+          <p className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">{subtitle}</p>
         )}
       </div>
 
@@ -45,13 +45,13 @@ export function MobileRoleHub({
           <Link
             key={tile.href}
             href={tile.href}
-            className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-left shadow-card backdrop-blur-md"
+            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 text-left shadow-card backdrop-blur-md"
           >
-            <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+            <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               {tile.title}
             </div>
             {tile.subtitle && (
-              <div className="mt-1 text-xs text-neutral-300 line-clamp-2">
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)] line-clamp-2">
                 {tile.subtitle}
               </div>
             )}

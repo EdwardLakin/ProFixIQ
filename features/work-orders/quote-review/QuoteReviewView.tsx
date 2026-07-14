@@ -66,7 +66,7 @@ type QuoteMetadata = {
 const card = ui.panel;
 const divider = "border-[color:var(--desktop-border)]";
 const inputBase =
-  "mt-1 w-full desktop-input px-2.5 py-2 text-sm text-white placeholder:text-neutral-500 outline-none";
+  "mt-1 w-full desktop-input px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none";
 const inputFocus =
   "focus:border-[color:var(--brand-accent,#E39A6E)]/60 focus:ring-2 focus:ring-[color:var(--brand-accent,#E39A6E)]/15";
 const inputCls = `${inputBase} ${inputFocus}`;
@@ -280,7 +280,7 @@ function badgeClass(tone: ReturnType<typeof workflowDisplay>["tone"]): string {
     case "info":
       return "border-sky-300/40 bg-sky-400/10 text-sky-100";
     default:
-      return "border-neutral-500/40 bg-white/5 text-neutral-200";
+      return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
   }
 }
 
@@ -732,7 +732,7 @@ export default function QuoteReviewView(props: {
   }
 
   if (!woId) return <div className="p-6 text-red-300">Missing work order id.</div>;
-  if (loading && !loadedOnce) return <div className="p-6 text-neutral-300">Loading…</div>;
+  if (loading && !loadedOnce) return <div className="p-6 text-[color:var(--theme-text-secondary)]">Loading…</div>;
   if (!wo) return <div className="p-6 text-red-300">Work order not found.</div>;
 
   const outerCls = embedded ? "min-h-full w-full px-0 py-0 text-foreground" : "min-h-screen px-4 py-6 text-foreground";
@@ -747,7 +747,7 @@ export default function QuoteReviewView(props: {
     <div className={outerCls} style={{ ["--copper" as never]: COPPER }}>
       <div className={containerCls}>
         {loading ? (
-          <div className="mb-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-neutral-300">
+          <div className="mb-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
             Refreshing canonical quote lines…
           </div>
         ) : null}
@@ -766,7 +766,7 @@ export default function QuoteReviewView(props: {
               {saving ? "Saving…" : "Save"}
             </button>
             {!embedded && (
-              <a href={`/work-orders/${woId}`} className="desktop-btn-secondary rounded-full px-4 py-2 text-sm font-semibold text-neutral-200" title="Open the work order">
+              <a href={`/work-orders/${woId}`} className="desktop-btn-secondary rounded-full px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)]" title="Open the work order">
                 Open WO
               </a>
             )}
@@ -776,35 +776,35 @@ export default function QuoteReviewView(props: {
         <div className={`${card} ${padX} ${padY}`}>
           <div className={embedded ? "grid gap-3" : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.15fr)_auto]"}>
             <div className="min-w-0">
-              <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">Advisor quote review</div>
-              <div className={embedded ? "mt-1 text-xl font-semibold text-white" : "mt-1 text-2xl font-semibold text-white"}>
-                <span className="text-white">#</span>
+              <div className="text-xs uppercase tracking-[0.25em] text-[color:var(--theme-text-secondary)]">Advisor quote review</div>
+              <div className={embedded ? "mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]" : "mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]"}>
+                <span className="text-[color:var(--theme-text-primary)]">#</span>
                 <span style={{ color: COPPER }}>{wo.custom_id ? wo.custom_id : wo.id.slice(0, 8)}</span>
               </div>
-              <div className="mt-1 text-sm text-neutral-400">Canonical quote lines: {quoteLines.length} • Active work lines: {workLines.length}</div>
+              <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Canonical quote lines: {quoteLines.length} • Active work lines: {workLines.length}</div>
             </div>
 
             <div className="desktop-panel-soft w-full px-4 py-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-500">Customer contact</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Customer contact</div>
               <div className={embedded ? "mt-2 grid gap-2" : "mt-2 grid gap-2 sm:grid-cols-3"}>
                 <div className="min-w-0">
-                  <div className="text-[11px] text-neutral-500">Name</div>
-                  <div className="truncate text-sm font-semibold text-white">{customerDisplayName(customer)}</div>
+                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">Name</div>
+                  <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{customerDisplayName(customer)}</div>
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[11px] text-neutral-500">Phone</div>
-                  {tel ? <a href={`tel:${tel}`} className="truncate text-sm font-semibold text-[color:var(--copper)] hover:underline">{customerPhone}</a> : <div className="truncate text-sm font-semibold text-white/70">—</div>}
+                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">Phone</div>
+                  {tel ? <a href={`tel:${tel}`} className="truncate text-sm font-semibold text-[color:var(--copper)] hover:underline">{customerPhone}</a> : <div className="truncate text-sm font-semibold text-[color:var(--theme-text-secondary)]">—</div>}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[11px] text-neutral-500">Email</div>
-                  {customerEmail ? <a href={`mailto:${customerEmail}`} className="block break-all text-sm font-semibold leading-tight text-[color:var(--copper)] hover:underline">{customerEmail}</a> : <div className="truncate text-sm font-semibold text-white/70">—</div>}
+                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">Email</div>
+                  {customerEmail ? <a href={`mailto:${customerEmail}`} className="block break-all text-sm font-semibold leading-tight text-[color:var(--copper)] hover:underline">{customerEmail}</a> : <div className="truncate text-sm font-semibold text-[color:var(--theme-text-secondary)]">—</div>}
                 </div>
               </div>
             </div>
 
             <div className={embedded ? "text-left" : "text-right self-start"}>
-              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Shop labor rate</div>
-              <div className="mt-1 text-lg font-semibold text-white">{fmt(laborRate)}/hr</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Shop labor rate</div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{fmt(laborRate)}/hr</div>
             </div>
           </div>
         </div>
@@ -812,11 +812,11 @@ export default function QuoteReviewView(props: {
         <div className={mainGridCls}>
           <div>
             <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>
                 Canonical quote lines
               </div>
               {quoteLines.length === 0 ? (
-                <div className={`${padX} py-4 text-sm text-neutral-400`}>
+                <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
                   No canonical quote lines exist for this work order yet. Phase 5B does not create temporary work_order_lines for portal visibility; customer portal rendering remains Phase 5C.
                 </div>
               ) : (
@@ -841,37 +841,37 @@ export default function QuoteReviewView(props: {
                           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">Quote line {index + 1}</div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Quote line {index + 1}</div>
                                 <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(workflow.tone)}`}>{workflow.label}</span>
                                 {partsWorkflow ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClass(partsWorkflow.tone)}`}>{partsWorkflow.label}</span> : null}
                                 {line._dirty ? <span className="rounded-full border border-amber-300/40 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-100">Unsaved</span> : null}
                               </div>
-                              <h3 className="mt-2 text-base font-semibold text-white">{safeTrim(line.description) || "Untitled quote line"}</h3>
-                              {safeTrim(line.ai_complaint) ? <p className="mt-1 text-sm text-neutral-300">Complaint: {line.ai_complaint}</p> : null}
-                              {safeTrim(line.notes) ? <p className="mt-1 text-sm text-neutral-300">Notes: {line.notes}</p> : null}
-                              {techNotes ? <p className="mt-1 text-sm text-neutral-400">Technician notes: {techNotes}</p> : null}
-                              <p className="mt-2 text-xs text-neutral-500">{workflow.detail}</p>
+                              <h3 className="mt-2 text-base font-semibold text-[color:var(--theme-text-primary)]">{safeTrim(line.description) || "Untitled quote line"}</h3>
+                              {safeTrim(line.ai_complaint) ? <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Complaint: {line.ai_complaint}</p> : null}
+                              {safeTrim(line.notes) ? <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Notes: {line.notes}</p> : null}
+                              {techNotes ? <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Technician notes: {techNotes}</p> : null}
+                              <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">{workflow.detail}</p>
                             </div>
-                            <div className="min-w-[180px] rounded-2xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-sm">
-                              <div className="flex justify-between gap-4"><span className="text-neutral-400">Labor</span><span className="font-semibold text-white">{fmt(laborTotal)}</span></div>
-                              <div className="mt-1 flex justify-between gap-4"><span className="text-neutral-400">Parts</span><span className="font-semibold text-white">{fmt(partsTotal)}</span></div>
-                              <div className={`mt-2 flex justify-between gap-4 border-t ${divider} pt-2`}><span className="text-neutral-300">Total</span><span className="font-bold" style={{ color: COPPER }}>{fmt(total)}</span></div>
+                            <div className="min-w-[180px] rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-3 text-sm">
+                              <div className="flex justify-between gap-4"><span className="text-[color:var(--theme-text-secondary)]">Labor</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{fmt(laborTotal)}</span></div>
+                              <div className="mt-1 flex justify-between gap-4"><span className="text-[color:var(--theme-text-secondary)]">Parts</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{fmt(partsTotal)}</span></div>
+                              <div className={`mt-2 flex justify-between gap-4 border-t ${divider} pt-2`}><span className="text-[color:var(--theme-text-secondary)]">Total</span><span className="font-bold" style={{ color: COPPER }}>{fmt(total)}</span></div>
                             </div>
                           </div>
 
-                          <div className="mt-3 grid gap-2 text-xs text-neutral-400 sm:grid-cols-2 lg:grid-cols-4">
-                            <div>Stage: <span className="text-neutral-200">{statusLabel(line.stage)}</span></div>
-                            <div>Status: <span className="text-neutral-200">{statusLabel(line.status)}</span></div>
-                            <div>Labor hours: <span className="text-neutral-200">{laborHours}</span></div>
-                            <div>Labor rate: <span className="text-neutral-200">{fmt(lineLaborRate)}/hr</span></div>
+                          <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)] sm:grid-cols-2 lg:grid-cols-4">
+                            <div>Stage: <span className="text-[color:var(--theme-text-primary)]">{statusLabel(line.stage)}</span></div>
+                            <div>Status: <span className="text-[color:var(--theme-text-primary)]">{statusLabel(line.status)}</span></div>
+                            <div>Labor hours: <span className="text-[color:var(--theme-text-primary)]">{laborHours}</span></div>
+                            <div>Labor rate: <span className="text-[color:var(--theme-text-primary)]">{fmt(lineLaborRate)}/hr</span></div>
                           </div>
 
-                          <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-xs text-neutral-300">
+                          <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="font-semibold uppercase tracking-[0.16em] text-neutral-400">Required parts</div>
+                              <div className="font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Required parts</div>
                               {partsSummary ? (
-                                <div className="text-neutral-400">
-                                  Sync: <span className="text-neutral-200">{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {fmt(partsSummary.partsTotal)}</span>
+                                <div className="text-[color:var(--theme-text-secondary)]">
+                                  Sync: <span className="text-[color:var(--theme-text-primary)]">{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {fmt(partsSummary.partsTotal)}</span>
                                 </div>
                               ) : null}
                             </div>
@@ -881,22 +881,22 @@ export default function QuoteReviewView(props: {
                                   const request = part.requestId ? (requestsByQuoteLine[line.id] ?? []).find((candidate) => candidate.id === part.requestId) ?? null : null;
                                   const selected = selectedPartLabel(part);
                                   return (
-                                    <div key={`${part.source}:${part.requestItemId ?? part.requestId ?? part.description}`} className="rounded-lg border border-[color:var(--desktop-border)] bg-black/20 p-2">
+                                    <div key={`${part.source}:${part.requestItemId ?? part.requestId ?? part.description}`} className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-2">
                                       {selected ? (
                                         <>
-                                          <div className="text-neutral-200">Requested: <span className="font-semibold text-white">{part.description} × {part.quantity}</span></div>
-                                          <div className="mt-1 text-neutral-300">Selected: <span className="text-white">{selected}</span></div>
+                                          <div className="text-[color:var(--theme-text-primary)]">Requested: <span className="font-semibold text-[color:var(--theme-text-primary)]">{part.description} × {part.quantity}</span></div>
+                                          <div className="mt-1 text-[color:var(--theme-text-secondary)]">Selected: <span className="text-[color:var(--theme-text-primary)]">{selected}</span></div>
                                         </>
                                       ) : (
-                                        <div className="font-semibold text-white">{part.description} × {part.quantity}</div>
+                                        <div className="font-semibold text-[color:var(--theme-text-primary)]">{part.description} × {part.quantity}</div>
                                       )}
-                                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-neutral-400">
-                                        {part.requestedPartNumber ? <span>Requested part #: <span className="text-neutral-200">{part.requestedPartNumber}</span></span> : null}
-                                        {part.manufacturer ? <span>Manufacturer: <span className="text-neutral-200">{part.manufacturer}</span></span> : null}
-                                        {part.supplier ?? part.vendor ? <span>Supplier: <span className="text-neutral-200">{part.supplier ?? part.vendor}</span></span> : null}
+                                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[color:var(--theme-text-secondary)]">
+                                        {part.requestedPartNumber ? <span>Requested part #: <span className="text-[color:var(--theme-text-primary)]">{part.requestedPartNumber}</span></span> : null}
+                                        {part.manufacturer ? <span>Manufacturer: <span className="text-[color:var(--theme-text-primary)]">{part.manufacturer}</span></span> : null}
+                                        {part.supplier ?? part.vendor ? <span>Supplier: <span className="text-[color:var(--theme-text-primary)]">{part.supplier ?? part.vendor}</span></span> : null}
                                         <span>{partPricingLabel(part)}</span>
-                                        {part.lineTotal != null ? <span>Line: <span className="text-neutral-200">{fmt(part.lineTotal)}</span></span> : null}
-                                        {part.status ? <span>Status: <span className="text-neutral-200">{statusLabel(part.status)}</span></span> : null}
+                                        {part.lineTotal != null ? <span>Line: <span className="text-[color:var(--theme-text-primary)]">{fmt(part.lineTotal)}</span></span> : null}
+                                        {part.status ? <span>Status: <span className="text-[color:var(--theme-text-primary)]">{statusLabel(part.status)}</span></span> : null}
                                       </div>
                                       {request ? (
                                         <a href={`/parts/requests/${request.id}`} className="mt-2 inline-flex rounded-lg border border-sky-300/35 bg-sky-400/10 px-2.5 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-400/15">
@@ -908,16 +908,16 @@ export default function QuoteReviewView(props: {
                                 })}
                               </div>
                             ) : (
-                              <div className="mt-2 rounded-lg border border-[color:var(--desktop-border)] bg-black/20 p-2 text-neutral-400">
-                                <div>Parts: <span className="text-neutral-200">None</span></div>
-                                <div>Parts Request: <span className="text-neutral-200">Not required</span></div>
+                              <div className="mt-2 rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-2 text-[color:var(--theme-text-secondary)]">
+                                <div>Parts: <span className="text-[color:var(--theme-text-primary)]">None</span></div>
+                                <div>Parts Request: <span className="text-[color:var(--theme-text-primary)]">Not required</span></div>
                               </div>
                             )}
                           </div>
 
                           {sources.length > 0 ? (
-                            <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-black/20 p-3 text-xs text-neutral-400">
-                              Source inspection metadata: <span className="text-neutral-200">{sources.join(" • ")}</span>
+                            <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
+                              Source inspection metadata: <span className="text-[color:var(--theme-text-primary)]">{sources.join(" • ")}</span>
                             </div>
                           ) : null}
 
@@ -932,10 +932,10 @@ export default function QuoteReviewView(props: {
                           ) : null}
 
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" onClick={() => setOpenDetails((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-neutral-200">
+                            <button type="button" onClick={() => setOpenDetails((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
                               {openDetails[line.id] ? "Hide editor" : "Edit quote line"}
                             </button>
-                            <button type="button" onClick={() => markRecommendedReady(line)} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-neutral-200">
+                            <button type="button" onClick={() => markRecommendedReady(line)} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
                               Recompute ready state
                             </button>
                             {!line.sent_to_customer_at && canSendLine(line) ? <span className="rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">Will send</span> : null}
@@ -945,7 +945,7 @@ export default function QuoteReviewView(props: {
                               </button>
                             ) : null}
                             {safeTrim(line.status).toLowerCase() !== "deferred" ? (
-                              <button type="button" onClick={() => void updateQuoteLineState(line, "deferred", line.stage)} className="rounded-xl border border-neutral-500/45 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-200">
+                              <button type="button" onClick={() => void updateQuoteLineState(line, "deferred", line.stage)} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
                                 Defer
                               </button>
                             ) : null}
@@ -954,39 +954,39 @@ export default function QuoteReviewView(props: {
                           {openDetails[line.id] ? (
                             <div className="desktop-panel-soft mt-3 p-4">
                               <div className={embedded ? "grid gap-3" : "grid gap-3 md:grid-cols-2"}>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Title / description
                                   <input value={line.description ?? ""} onChange={(e) => patchQuoteLine(line.id, { description: e.target.value })} className={inputCls} />
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Complaint
                                   <input value={line.ai_complaint ?? ""} onChange={(e) => patchQuoteLine(line.id, { ai_complaint: e.target.value })} className={inputCls} />
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Technician notes
                                   <input value={techNotes} onChange={(e) => patchQuoteLineMetadata(line, { technician_notes: e.target.value })} className={inputCls} />
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Advisor notes
                                   <input value={line.notes ?? ""} onChange={(e) => patchQuoteLine(line.id, { notes: e.target.value })} className={inputCls} />
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Labor hours
                                   <input inputMode="decimal" value={String(laborHours)} onChange={(e) => patchQuoteLine(line.id, { labor_hours: asNumber(e.target.value) ?? 0, est_labor_hours: asNumber(e.target.value) ?? 0 })} className={inputCls} />
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Labor rate
                                   <input inputMode="decimal" value={String(lineLaborRate)} onChange={(e) => patchQuoteLine(line.id, { _laborRateDraft: asNumber(e.target.value) ?? 0 })} className={inputCls} />
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Labor amount
                                   <input inputMode="decimal" value={String(laborTotal)} onChange={(e) => patchQuoteLine(line.id, { labor_total: asNumber(e.target.value) ?? 0 })} className={inputCls} />
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Parts quoted amount
                                   <input inputMode="decimal" value={String(partsTotal)} onChange={(e) => patchQuoteLine(line.id, { parts_total: asNumber(e.target.value) ?? 0 })} className={inputCls} />
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Status
                                   <select value={line.status ?? ""} onChange={(e) => patchQuoteLine(line.id, { status: e.target.value })} className={inputCls}>
                                     <option value="pending_parts">pending parts</option>
@@ -998,7 +998,7 @@ export default function QuoteReviewView(props: {
                                     <option value="converted">converted</option>
                                   </select>
                                 </label>
-                                <label className="text-xs text-neutral-400">
+                                <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Stage
                                   <select value={line.stage ?? ""} onChange={(e) => patchQuoteLine(line.id, { stage: e.target.value })} className={inputCls}>
                                     <option value="advisor_pending">advisor pending</option>
@@ -1019,14 +1019,14 @@ export default function QuoteReviewView(props: {
 
             {workLines.length > 0 ? (
               <div className={`${card} mt-4`}>
-                <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>
+                <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>
                   Active approved / punchable work
                 </div>
                 <div className="divide-y divide-[color:var(--desktop-border)]">
                   {workLines.map((line) => (
                     <div key={line.id} className={`${padX} py-3 text-sm`}>
-                      <div className="font-semibold text-white">{safeTrim(line.description) || `Line ${line.line_no ?? ""}`}</div>
-                      <div className="mt-1 text-xs text-neutral-400">Status: {statusLabel(line.status)} • Approval: {statusLabel(line.approval_state)} • Punchable: {line.punchable ? "yes" : "no"}</div>
+                      <div className="font-semibold text-[color:var(--theme-text-primary)]">{safeTrim(line.description) || `Line ${line.line_no ?? ""}`}</div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Status: {statusLabel(line.status)} • Approval: {statusLabel(line.approval_state)} • Punchable: {line.punchable ? "yes" : "no"}</div>
                     </div>
                   ))}
                 </div>
@@ -1036,22 +1036,22 @@ export default function QuoteReviewView(props: {
 
           <div className={embedded ? "" : "space-y-4"}>
             <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>Quote readiness</div>
-              <div className={`${padX} py-4 text-sm text-neutral-400`}>
-                <div className="flex items-center justify-between"><span>Ready to send</span><span className="font-semibold text-white">{quoteTotals.sendable}</span></div>
-                <div className="mt-2 flex items-center justify-between"><span>Pending parts</span><span className="font-semibold text-white">{quoteTotals.pendingParts}</span></div>
-                <div className="mt-2 flex items-center justify-between"><span>Sent</span><span className="font-semibold text-white">{quoteTotals.sent}</span></div>
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span>Labor</span><span className="font-medium text-white">{fmt(quoteTotals.labor)}</span></div>
-                <div className="mt-2 flex items-center justify-between"><span>Parts</span><span className="font-medium text-white">{fmt(quoteTotals.parts)}</span></div>
-                <div className="mt-2 flex items-center justify-between"><span>Shop supplies</span><span className="font-medium text-white">{fmt(quoteTotals.shopSupplies.amount)}</span></div>
-                <div className="mt-1 text-xs text-neutral-500">{shopSuppliesSummaryText(quoteTotals.shopSupplies)}</div>
-                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span className="font-semibold text-white">Grand total</span><span className="text-lg font-bold" style={{ color: COPPER }}>{fmt(quoteTotals.total)}</span></div>
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>Quote readiness</div>
+              <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
+                <div className="flex items-center justify-between"><span>Ready to send</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{quoteTotals.sendable}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>Pending parts</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{quoteTotals.pendingParts}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>Sent</span><span className="font-semibold text-[color:var(--theme-text-primary)]">{quoteTotals.sent}</span></div>
+                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span>Labor</span><span className="font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.labor)}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>Parts</span><span className="font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.parts)}</span></div>
+                <div className="mt-2 flex items-center justify-between"><span>Shop supplies</span><span className="font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.shopSupplies.amount)}</span></div>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{shopSuppliesSummaryText(quoteTotals.shopSupplies)}</div>
+                <div className={`mt-3 flex items-center justify-between border-t ${divider} pt-3`}><span className="font-semibold text-[color:var(--theme-text-primary)]">Grand total</span><span className="text-lg font-bold" style={{ color: COPPER }}>{fmt(quoteTotals.total)}</span></div>
                 <div className={`mt-4 border-t ${divider} pt-3`}>
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">Shop supplies override</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Shop supplies override</div>
                   <select
                     value={suppliesEnabledDraft == null ? "default" : suppliesEnabledDraft ? "on" : "off"}
                     onChange={(e) => setSuppliesEnabledDraft(e.target.value === "default" ? null : e.target.value === "on")}
-                    className="mt-2 w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none"
+                    className="mt-2 w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
                   >
                     <option value="default">Use shop default</option>
                     <option value="on">Include shop supplies</option>
@@ -1061,13 +1061,13 @@ export default function QuoteReviewView(props: {
                     value={suppliesAmountDraft}
                     onChange={(e) => setSuppliesAmountDraft(e.target.value)}
                     placeholder="Optional fixed override amount"
-                    className="mt-2 w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500"
+                    className="mt-2 w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)]"
                   />
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => void saveSuppliesOverride()} disabled={savingSuppliesOverride} className="desktop-btn-secondary rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-60">
                       {savingSuppliesOverride ? "Saving…" : "Save override"}
                     </button>
-                    <button type="button" onClick={resetSuppliesOverride} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-200 hover:bg-white/10">Reset draft</button>
+                    <button type="button" onClick={resetSuppliesOverride} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">Reset draft</button>
                   </div>
                 </div>
                 <button onClick={() => void saveAllDirty()} disabled={saving} className="desktop-btn-primary mt-4 w-full rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60">
@@ -1077,8 +1077,8 @@ export default function QuoteReviewView(props: {
             </div>
 
             <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>Send to customer</div>
-              <div className={`${padX} py-4 text-sm text-neutral-400`}>
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>Send to customer</div>
+              <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
                 Sends only canonical work_order_quote_lines that are ready to send. Pending parts, declined, deferred, approved, and converted lines are not sent.
                 {quoteTotals.sendable === 0 ? (
                   <div className="mt-3 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-amber-100">No ready canonical quote lines are available to send.</div>
@@ -1088,24 +1088,24 @@ export default function QuoteReviewView(props: {
                     <div className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-100">Blocked</div>
                     <div className="mt-1 text-sm font-semibold text-sky-100">{sendBlocker ?? "Customer email required to send quote"}</div>
                     <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                      <input type="email" value={pendingCustomerEmail} onChange={(e) => setPendingCustomerEmail(e.target.value)} placeholder="customer@email.com" className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500 focus:border-sky-300/70" />
+                      <input type="email" value={pendingCustomerEmail} onChange={(e) => setPendingCustomerEmail(e.target.value)} placeholder="customer@email.com" className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-300/70" />
                       <button type="button" onClick={() => void saveCustomerEmailInline()} disabled={savingCustomerEmail} className="rounded-lg border border-amber-300/45 bg-amber-400/15 px-3 py-2 text-sm font-semibold text-sky-100 hover:bg-amber-400/20 disabled:opacity-60">
                         {savingCustomerEmail ? "Saving…" : "Save email"}
                       </button>
                     </div>
                   </div>
                 ) : null}
-                <button onClick={() => void sendQuoteToCustomer()} disabled={sending || savingCustomerEmail || quoteTotals.sendable === 0} className="desktop-btn-secondary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                <button onClick={() => void sendQuoteToCustomer()} disabled={sending || savingCustomerEmail || quoteTotals.sendable === 0} className="desktop-btn-secondary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-60">
                   {sending ? "Sending…" : "Send ready quote lines"}
                 </button>
-                <div className="mt-3 text-xs text-neutral-500">Portal link will be: <span className="text-neutral-300">/portal/quotes/{woId}</span></div>
-                <div className="mt-2 text-xs text-neutral-500">Phase 5C still needs customer portal rendering, approval, and materialization of approved quote lines into punchable work_order_lines.</div>
+                <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">Portal link will be: <span className="text-[color:var(--theme-text-secondary)]">/portal/quotes/{woId}</span></div>
+                <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Phase 5C still needs customer portal rendering, approval, and materialization of approved quote lines into punchable work_order_lines.</div>
               </div>
             </div>
 
             <div className={card}>
-              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-neutral-200`}>Quick add job</div>
-              <div className={`${padX} py-4 text-sm text-neutral-400`}>
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>Quick add job</div>
+              <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
                 Add active work only when intentionally needed. Inspection recommendations should stay in canonical quote lines until customer approval/materialization.
                 <button type="button" onClick={openAddJobWithPrefill} className="desktop-btn-primary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold">+ Add job line</button>
               </div>
@@ -1113,7 +1113,7 @@ export default function QuoteReviewView(props: {
           </div>
         </div>
 
-        {!embedded && <div className="mt-6 text-xs text-neutral-500">Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}</div>}
+        {!embedded && <div className="mt-6 text-xs text-[color:var(--theme-text-muted)]">Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}</div>}
 
         <AddJobModal
           isOpen={addJobOpen}

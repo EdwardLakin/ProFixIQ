@@ -43,16 +43,16 @@ export function PartsRequestWorkbenchHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
-        <div className="text-xs text-neutral-400">Parts Requests › {requestLabel}</div>
+        <div className="text-xs text-[color:var(--theme-text-secondary)]">Parts Requests › {requestLabel}</div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-white">Parts Request {requestLabel}</h1>
+          <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">Parts Request {requestLabel}</h1>
           {status ? (
             <span className="rounded-full border border-sky-400/35 bg-sky-950/25 px-3 py-1 text-xs font-medium text-sky-100">
               {status}
             </span>
           ) : null}
         </div>
-        <div className="mt-2 flex flex-wrap gap-2 text-sm text-neutral-400">
+        <div className="mt-2 flex flex-wrap gap-2 text-sm text-[color:var(--theme-text-secondary)]">
           {meta.map((item) => (
             <span key={String(item)}>{item}</span>
           ))}
@@ -63,14 +63,14 @@ export function PartsRequestWorkbenchHeader({
         {workOrderId ? (
           <Link
             href={`/work-orders/${workOrderId}`}
-            className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-neutral-100 hover:bg-white/5"
+            className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
           >
             View Work Order
           </Link>
         ) : null}
 
         <select
-          className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white"
+          className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
           value={defaultSupplierId ?? ""}
           onChange={(event) => onDefaultSupplierChange?.(event.target.value)}
           title="Default supplier"
@@ -94,7 +94,7 @@ export function PartsRequestWorkbenchHeader({
             type="button"
             onClick={onCommitPackage}
             disabled={commitPackageDisabled}
-            className="rounded-lg border border-emerald-500/40 bg-emerald-600/85 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg border border-emerald-500/40 bg-emerald-600/85 px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Save Parts Package to Work Order
           </button>
@@ -103,7 +103,7 @@ export function PartsRequestWorkbenchHeader({
         <button
           type="button"
           onClick={onCreatePo}
-          className="rounded-lg border border-orange-500/40 bg-orange-600/85 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-500"
+          className="rounded-lg border border-orange-500/40 bg-orange-600/85 px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-orange-500"
         >
           Create PO
         </button>

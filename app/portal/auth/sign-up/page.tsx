@@ -14,11 +14,11 @@ function LoadingCard({ label }: { label: string }) {
         <div
           className="
                 inline-flex items-center gap-1 rounded-full border
-                border-[color:var(--metal-border-soft,#1f2937)]
-                bg-black/70
+                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+                bg-[color:var(--theme-surface-overlay)]
                 px-3 py-1 text-[11px]
                 uppercase tracking-[0.22em]
-                text-neutral-300
+                text-[color:var(--theme-text-secondary)]
               "
           style={{ color: COPPER }}
         >
@@ -26,16 +26,16 @@ function LoadingCard({ label }: { label: string }) {
         </div>
 
         <div
-          className="mt-2 text-2xl sm:text-3xl font-semibold text-white"
+          className="mt-2 text-2xl sm:text-3xl font-semibold text-[color:var(--theme-text-primary)]"
           style={{ fontFamily: "var(--font-blackops), system-ui" }}
         >
           Sign up
         </div>
 
-        <div className="text-xs text-neutral-400">{label}</div>
+        <div className="text-xs text-[color:var(--theme-text-secondary)]">{label}</div>
       </div>
 
-      <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full border border-white/10 bg-white/5">
+      <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]">
         <div
           className="h-full w-1/2 animate-pulse rounded-full"
           style={{ backgroundColor: COPPER }}

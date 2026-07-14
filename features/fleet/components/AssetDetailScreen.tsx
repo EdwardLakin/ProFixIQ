@@ -184,25 +184,25 @@ export default function AssetDetailScreen({
           {uiContext.capabilities.canCreateFleetWorkOrders && (
             <Link
               href={`/work-orders/create?unitId=${encodeURIComponent(unitId)}`}
-              className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
+              className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
             >
               Create work order
             </Link>
           )}
           <Link
             href={`${routePrefix}/board`}
-            className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold text-neutral-200 hover:bg-neutral-900/50"
+            className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
           >
             Send to dispatch
           </Link>
         </>
       )}
     >
-      <div className="mt-4 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-[11px] text-neutral-300">
-        <div className="font-semibold text-neutral-100">
+      <div className="mt-4 rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+        <div className="font-semibold text-[color:var(--theme-text-primary)]">
           Fleet note (internal)
         </div>
-        <p className="mt-1 text-neutral-400">
+        <p className="mt-1 text-[color:var(--theme-text-secondary)]">
           Numbers above aggregate this unit&apos;s linked work orders and fleet
           service requests for quick decision-making.
         </p>

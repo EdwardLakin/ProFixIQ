@@ -15,7 +15,7 @@ function labelForRisk(risk: WorkOrderRecommendationIndicator["highestRiskTier"])
 
 function SignalChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-medium text-neutral-200">
+    <span className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[10px] font-medium text-[color:var(--theme-text-primary)]">
       {label}
     </span>
   );
@@ -33,14 +33,14 @@ export default function WorkOrderAiIndicatorBadge({
   const allAcknowledged = indicator.totalActive > 0 && indicator.acknowledgedCount === indicator.totalActive;
 
   return (
-    <div className={cn("mt-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2", className)}>
-      <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-neutral-400">
-        <span className="text-neutral-300">AI signals</span>
-        <span className="rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-neutral-100">
+    <div className={cn("mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2", className)}>
+      <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
+        <span className="text-[color:var(--theme-text-secondary)]">AI signals</span>
+        <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
           {indicator.totalActive} active
         </span>
-        <span className="text-neutral-500">Priority: {labelForPriority(indicator.highestPriority)}</span>
-        <span className="text-neutral-500">Risk: {labelForRisk(indicator.highestRiskTier)}</span>
+        <span className="text-[color:var(--theme-text-muted)]">Priority: {labelForPriority(indicator.highestPriority)}</span>
+        <span className="text-[color:var(--theme-text-muted)]">Risk: {labelForRisk(indicator.highestRiskTier)}</span>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">

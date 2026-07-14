@@ -67,17 +67,17 @@ export default function SuggestedActionsPanel({
   const hasHiddenItems = collapsible && items.length > visibleItems.length;
 
   const sectionStyle = {
-    borderColor: "var(--theme-card-border,#334155)",
-    background: "var(--theme-card-bg,#111827)",
+    borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+    background: "var(--theme-card-bg,var(--theme-surface-page))",
     borderRadius: "var(--theme-radius-xl,1rem)",
     boxShadow: compact
-      ? "var(--theme-shadow-soft,0_14px_30px_rgba(0,0,0,0.35))"
-      : "var(--theme-shadow-medium,0_18px_45px_rgba(0,0,0,0.45))",
+      ? "var(--theme-shadow-soft,0_14px_30px_var(--theme-surface-inset))"
+      : "var(--theme-shadow-medium,0_18px_45px_var(--theme-surface-inset))",
   } as const;
 
   const itemStyle = {
-    borderColor: "var(--theme-card-border,#334155)",
-    background: "var(--theme-surface-2,#0B1220)",
+    borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+    background: "var(--theme-surface-2,var(--theme-surface-page))",
     borderRadius: "var(--theme-radius-xl,1rem)",
   } as const;
 
@@ -91,7 +91,7 @@ export default function SuggestedActionsPanel({
           {!embedded ? (
             <div
               className="text-[11px] font-semibold uppercase tracking-[0.18em]"
-              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
             >
               {title}
             </div>
@@ -100,7 +100,7 @@ export default function SuggestedActionsPanel({
           {!hideDescription && !embedded && (
             <div
               className={compact ? "mt-0.5 text-xs" : "mt-1 text-sm"}
-              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
             >
               {description}
             </div>
@@ -114,9 +114,9 @@ export default function SuggestedActionsPanel({
               onClick={() => setExpanded((v) => !v)}
               className="rounded-full border px-3 py-1 text-[11px] hover:brightness-110"
               style={{
-                borderColor: "var(--theme-card-border,#334155)",
-                background: "var(--theme-surface-2,#0B1220)",
-                color: "var(--theme-text-primary,#FFFFFF)",
+                borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+                background: "var(--theme-surface-2,var(--theme-surface-page))",
+                color: "var(--theme-text-primary,var(--theme-text-inverse))",
               }}
             >
               {expanded ? "Show less" : `Show all (${items.length})`}
@@ -128,9 +128,9 @@ export default function SuggestedActionsPanel({
             onClick={() => void reload()}
             className="rounded-full border px-3 py-1 text-[11px] hover:brightness-110"
             style={{
-              borderColor: "var(--theme-card-border,#334155)",
-              background: "var(--theme-surface-2,#0B1220)",
-              color: "var(--theme-text-primary,#FFFFFF)",
+              borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+              background: "var(--theme-surface-2,var(--theme-surface-page))",
+              color: "var(--theme-text-primary,var(--theme-text-inverse))",
             }}
           >
             Refresh
@@ -141,7 +141,7 @@ export default function SuggestedActionsPanel({
       {loading ? (
         <div
           className={compact ? "mt-3 text-xs" : "mt-4 text-sm"}
-          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+          style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
         >
           Loading suggestions…
         </div>
@@ -152,7 +152,7 @@ export default function SuggestedActionsPanel({
       ) : !data || items.length === 0 ? (
         <div
           className={compact ? "mt-3 text-xs" : "mt-4 text-sm"}
-          style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+          style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
         >
           No suggested actions right now.
         </div>
@@ -169,7 +169,7 @@ export default function SuggestedActionsPanel({
                   <div className="flex flex-wrap items-center gap-2">
                     <div
                       className="text-sm font-semibold"
-                      style={{ color: "var(--theme-text-primary,#FFFFFF)" }}
+                      style={{ color: "var(--theme-text-primary,var(--theme-text-inverse))" }}
                     >
                       {item.title}
                     </div>
@@ -183,7 +183,7 @@ export default function SuggestedActionsPanel({
 
                   <div
                     className={compact ? "mt-1 line-clamp-1 text-xs" : "mt-1 text-xs"}
-                    style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+                    style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
                   >
                     {item.description}
                   </div>
@@ -195,9 +195,9 @@ export default function SuggestedActionsPanel({
                   href={item.href}
                   className={compact ? "rounded-full border px-2.5 py-1 text-[11px]" : "rounded-full border px-3 py-1 text-xs"}
                   style={{
-                    borderColor: "var(--theme-card-border,#334155)",
-                    background: "var(--theme-surface-2,#0B1220)",
-                    color: "var(--theme-text-primary,#FFFFFF)",
+                    borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+                    background: "var(--theme-surface-2,var(--theme-surface-page))",
+                    color: "var(--theme-text-primary,var(--theme-text-inverse))",
                   }}
                 >
                   Open
@@ -223,7 +223,7 @@ export default function SuggestedActionsPanel({
           {hasHiddenItems ? (
             <div
               className="pt-1 text-xs"
-              style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+              style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
             >
               Showing top {visibleItems.length} of {items.length}.
             </div>

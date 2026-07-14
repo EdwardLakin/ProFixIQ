@@ -38,13 +38,13 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
 
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-slate-600/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.16),rgba(15,23,42,0.98))] hover:border-slate-300/70",
+    "border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] hover:border-[color:var(--theme-border-soft)]",
   in_progress:
-    "border-[color:var(--accent-copper-soft,#fdba74)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.28),rgba(15,23,42,0.98))] hover:border-[color:var(--accent-copper-soft,#fdba74)]/90",
+    "border-[color:var(--accent-copper-soft,#fdba74)] bg-[var(--theme-gradient-panel)] hover:border-[color:var(--accent-copper-soft,#fdba74)]/90",
   on_hold:
-    "border-amber-400/80 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.24),rgba(15,23,42,0.97))] hover:border-amber-300/80",
+    "border-amber-400/80 bg-[var(--theme-gradient-panel)] hover:border-amber-300/80",
   completed:
-    "border-emerald-500/60 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.20),rgba(15,23,42,0.98))] hover:border-emerald-400/70",
+    "border-emerald-500/60 bg-[var(--theme-gradient-panel)] hover:border-emerald-400/70",
 };
 
 const PRIORITY_RANK: Record<JobPriority, number> = {
@@ -367,8 +367,8 @@ export default function MobileTechQueuePage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-black text-white">
-        <div className="mx-auto max-w-5xl px-4 py-8 text-sm text-neutral-300">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
+        <div className="mx-auto max-w-5xl px-4 py-8 text-sm text-[color:var(--theme-text-secondary)]">
           Loading assigned jobs…
         </div>
       </main>
@@ -377,7 +377,7 @@ export default function MobileTechQueuePage() {
 
   if (err) {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto max-w-5xl px-4 py-8 text-sm text-red-200">
           {err}
         </div>
@@ -386,7 +386,7 @@ export default function MobileTechQueuePage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
         {(syncSummary.queued > 0 || syncSummary.syncing > 0 || syncSummary.failed > 0 || syncSummary.conflicted > 0) && (
           <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">
@@ -394,15 +394,15 @@ export default function MobileTechQueuePage() {
           </div>
         )}
         {/* HERO (match MobileTechHome vibe) */}
-        <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+        <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[var(--theme-shadow-medium)]">
           <div className="space-y-1">
-            <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+            <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
               ProFixIQ • Tech
             </div>
             <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-[var(--accent-copper)]">
               My jobs
             </h1>
-            <p className="text-[0.75rem] text-neutral-300">
+            <p className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">
               Tap a line to open the work order in tech mode.
             </p>
           </div>
@@ -431,13 +431,13 @@ export default function MobileTechQueuePage() {
                   STATUS_STYLES[s],
                   isActive
                     ? "ring-2 ring-[color:var(--accent-copper-soft,#fdba74)]/80 shadow-[0_0_28px_rgba(249,115,22,0.45)]"
-                    : "shadow-[0_16px_32px_rgba(0,0,0,0.65)]",
+                    : "shadow-[var(--theme-shadow-medium)]",
                 ].join(" ")}
               >
-                <div className="text-[0.6rem] uppercase tracking-[0.16em] text-neutral-300">
+                <div className="text-[0.6rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                   {STATUS_LABELS[s]}
                 </div>
-                <div className="mt-1 text-lg font-semibold text-white">
+                <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
                   {counts[s]}
                 </div>
                 {isActive ? (
@@ -491,7 +491,7 @@ export default function MobileTechQueuePage() {
                   router.push(href);
                 }}
                 className={[
-                  "metal-card w-full rounded-2xl border px-3 py-3 text-left shadow-[0_18px_40px_rgba(0,0,0,0.75)] active:scale-[0.99]",
+                  "metal-card w-full rounded-2xl border px-3 py-3 text-left shadow-[var(--theme-shadow-medium)] active:scale-[0.99]",
                   bucket === "in_progress"
                     ? "border-[var(--accent-copper-soft)]/80"
                     : bucket === "on_hold"
@@ -503,20 +503,20 @@ export default function MobileTechQueuePage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+                    <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                       {woLabel}
                       {lineNumber ? (
-                        <span className="ml-2 text-neutral-500">
+                        <span className="ml-2 text-[color:var(--theme-text-muted)]">
                           • Line #{lineNumber}
                         </span>
                       ) : null}
                     </div>
 
-                    <div className="mt-1 truncate text-[0.95rem] font-semibold text-white">
+                    <div className="mt-1 truncate text-[0.95rem] font-semibold text-[color:var(--theme-text-primary)]">
                       {jobLabel}
                     </div>
 
-                    <div className="mt-1 truncate text-[0.75rem] text-neutral-400">
+                    <div className="mt-1 truncate text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                       {vehicleLabel ? vehicleLabel : "—"}
                     </div>
 
@@ -525,10 +525,10 @@ export default function MobileTechQueuePage() {
                     </div>
 
                     <div className="mt-2 flex flex-wrap gap-1">
-                      <span className="rounded-full border border-white/15 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-neutral-300">
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                         Priority: {PRIORITY_LABELS[priority]}
                       </span>
-                      <span className="rounded-full border border-white/15 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-neutral-300">
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                         Approval: {approvalState}
                       </span>
                       {isAwaitingApproval && (
@@ -553,7 +553,7 @@ export default function MobileTechQueuePage() {
           })}
 
           {filteredLines.length === 0 && (
-            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-4 text-sm text-neutral-400">
+            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
               No jobs in this bucket.
             </div>
           )}
@@ -575,16 +575,16 @@ function MiniStat({
   return (
     <div
       className={[
-        "metal-card rounded-2xl border px-3 py-3 text-center shadow-[0_16px_32px_rgba(0,0,0,0.65)]",
+        "metal-card rounded-2xl border px-3 py-3 text-center shadow-[var(--theme-shadow-medium)]",
         accent
-          ? "border border-[var(--accent-copper-soft)]/75 shadow-[0_16px_32px_rgba(0,0,0,0.65),0_0_20px_rgba(212,118,49,0.45)]"
+          ? "border border-[var(--accent-copper-soft)]/75 shadow-[var(--theme-shadow-medium)]"
           : "border border-[var(--metal-border-soft)]",
       ].join(" ")}
     >
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
-      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
+      <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
     </div>
   );
 }

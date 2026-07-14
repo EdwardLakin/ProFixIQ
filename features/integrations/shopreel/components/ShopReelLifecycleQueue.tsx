@@ -68,9 +68,9 @@ export default function ShopReelLifecycleQueue({ opportunities, drafts }: Props)
 
   return (
     <section className="grid gap-4 xl:grid-cols-2">
-      <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
         <h2 className="text-lg font-semibold">Opportunity queue</h2>
-        <p className="mt-1 text-sm text-white/60">Canonical lifecycle queue for source-derived opportunities.</p>
+        <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">Canonical lifecycle queue for source-derived opportunities.</p>
 
         <div className="mt-4 space-y-3">
           {opportunities.length ? (
@@ -78,17 +78,17 @@ export default function ShopReelLifecycleQueue({ opportunities, drafts }: Props)
               const linkedDraft = draftByOpportunity.get(opportunity.id) ?? null;
 
               return (
-                <div key={opportunity.id} className="rounded-lg border border-white/10 p-3">
+                <div key={opportunity.id} className="rounded-lg border border-[color:var(--theme-border-soft)] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-white">{opportunity.title}</div>
-                      <div className="mt-1 text-xs text-white/60">{opportunity.eventType} · status {opportunity.status}</div>
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{opportunity.title}</div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{opportunity.eventType} · status {opportunity.status}</div>
                     </div>
-                    <div className="text-xs text-white/50">{formatDate(opportunity.sourceOccurredAt)}</div>
+                    <div className="text-xs text-[color:var(--theme-text-muted)]">{formatDate(opportunity.sourceOccurredAt)}</div>
                   </div>
 
-                  {opportunity.angle ? <div className="mt-2 text-sm text-white/70">Angle: {opportunity.angle}</div> : null}
-                  {opportunity.summary ? <div className="mt-1 text-xs text-white/60">{opportunity.summary}</div> : null}
+                  {opportunity.angle ? <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Angle: {opportunity.angle}</div> : null}
+                  {opportunity.summary ? <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{opportunity.summary}</div> : null}
 
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <button
@@ -120,21 +120,21 @@ export default function ShopReelLifecycleQueue({ opportunities, drafts }: Props)
               );
             })
           ) : (
-            <div className="rounded-md border border-white/10 p-3 text-sm text-white/60">No lifecycle opportunities yet.</div>
+            <div className="rounded-md border border-[color:var(--theme-border-soft)] p-3 text-sm text-[color:var(--theme-text-muted)]">No lifecycle opportunities yet.</div>
           )}
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
         <h2 className="text-lg font-semibold">Draft review</h2>
-        <p className="mt-1 text-sm text-white/60">Minimal build entity tied to accepted/generated opportunities.</p>
+        <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">Minimal build entity tied to accepted/generated opportunities.</p>
 
         <div className="mt-4 space-y-3">
           {drafts.length ? (
             drafts.map((draft) => (
               <form
                 key={draft.id}
-                className="space-y-2 rounded-lg border border-white/10 p-3"
+                className="space-y-2 rounded-lg border border-[color:var(--theme-border-soft)] p-3"
                 onSubmit={(event) => {
                   event.preventDefault();
                   const formData = new FormData(event.currentTarget);
@@ -146,7 +146,7 @@ export default function ShopReelLifecycleQueue({ opportunities, drafts }: Props)
                   });
                 }}
               >
-                <div className="flex items-center justify-between gap-3 text-xs text-white/60">
+                <div className="flex items-center justify-between gap-3 text-xs text-[color:var(--theme-text-muted)]">
                   <span>Status: {draft.status}</span>
                   <span>Updated: {formatDate(draft.updatedAt)}</span>
                 </div>
@@ -154,26 +154,26 @@ export default function ShopReelLifecycleQueue({ opportunities, drafts }: Props)
                 <input
                   name="title"
                   defaultValue={draft.title}
-                  className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-sm text-white"
+                  className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)]"
                   placeholder="Draft title"
                 />
                 <input
                   name="angle"
                   defaultValue={draft.angle ?? ""}
-                  className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-sm text-white"
+                  className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)]"
                   placeholder="Angle"
                 />
                 <textarea
                   name="script"
                   rows={3}
                   defaultValue={draft.script ?? ""}
-                  className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-sm text-white"
+                  className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)]"
                   placeholder="Script"
                 />
                 <select
                   name="status"
                   defaultValue={draft.status}
-                  className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-sm text-white"
+                  className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)]"
                 >
                   <option value="draft">draft</option>
                   <option value="in_review">in_review</option>
@@ -182,14 +182,14 @@ export default function ShopReelLifecycleQueue({ opportunities, drafts }: Props)
                 <button
                   type="submit"
                   disabled={busyId === draft.id}
-                  className="rounded-md border border-white/20 px-3 py-1 text-xs text-white hover:bg-white/10 disabled:opacity-60"
+                  className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
                 >
                   Save draft
                 </button>
               </form>
             ))
           ) : (
-            <div className="rounded-md border border-white/10 p-3 text-sm text-white/60">No drafts created yet.</div>
+            <div className="rounded-md border border-[color:var(--theme-border-soft)] p-3 text-sm text-[color:var(--theme-text-muted)]">No drafts created yet.</div>
           )}
         </div>
       </div>

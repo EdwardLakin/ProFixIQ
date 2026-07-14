@@ -9,15 +9,15 @@ interface QuickJumpMenuProps {
 
 const QuickJumpMenu: React.FC<QuickJumpMenuProps> = ({ session, onJump }) => {
   return (
-    <div className="flex flex-wrap gap-2 p-4 justify-center bg-gray-800 rounded-lg">
+    <div className="flex flex-wrap gap-2 p-4 justify-center bg-[color:var(--theme-surface-panel-strong)] rounded-lg">
       {session.sections.map((section, sectionIndex) => (
         <div key={sectionIndex} className="text-sm">
-          <div className="font-bold text-white mb-1">{section.title}</div>
+          <div className="font-bold text-[color:var(--theme-text-primary)] mb-1">{section.title}</div>
           <div className="flex flex-wrap gap-1">
             {section.items.map((item, itemIndex) => (
               <button
                 key={itemIndex}
-                className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-orange-600"
+                className="bg-[color:var(--theme-surface-hover)] text-[color:var(--theme-text-primary)] px-2 py-1 rounded hover:bg-orange-600"
                 onClick={() => onJump(sectionIndex, itemIndex)}
               >
                 {item.item}

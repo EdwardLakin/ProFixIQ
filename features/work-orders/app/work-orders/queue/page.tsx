@@ -320,22 +320,22 @@ export default function QueuePage() {
 
         {/* Header row / top summary */}
         <div className={ui.toolbarRow}>
-          <div className="desktop-panel-soft px-3 py-2 text-xs text-neutral-300">
-            <div className="text-[10px] uppercase tracking-wide text-neutral-500">
+          <div className="desktop-panel-soft px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
+            <div className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
               Active work orders (last 30 days)
             </div>
-            <div className="mt-1 text-lg font-semibold text-white">
+            <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
               {workOrders.length}
             </div>
           </div>
 
-          <div className="desktop-panel-soft flex items-center gap-3 px-3 py-2 text-xs text-neutral-300">
+          <div className="desktop-panel-soft flex items-center gap-3 px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
             <label className="inline-flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={showMineOnly}
                 onChange={(e) => setShowMineOnly(e.target.checked)}
-                className="h-4 w-4 rounded border-[color:var(--desktop-border)] bg-black/60 text-[var(--brand-primary,#C97A3D)]"
+                className="h-4 w-4 rounded border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-overlay)] text-[var(--brand-primary,#C97A3D)]"
               />
               <span>
                 Show only jobs assigned to{" "}
@@ -364,38 +364,38 @@ export default function QueuePage() {
 
         {/* Optional debug block */}
         {showDebug && (
-          <div className="desktop-panel-soft px-4 py-3 text-xs text-neutral-300">
+          <div className="desktop-panel-soft px-4 py-3 text-xs text-[color:var(--theme-text-secondary)]">
             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-orange-400">
               Debug
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="space-y-1">
                 <div>
-                  <span className="text-neutral-500">User:</span>{" "}
-                  <span className="font-mono text-neutral-200">
+                  <span className="text-[color:var(--theme-text-muted)]">User:</span>{" "}
+                  <span className="font-mono text-[color:var(--theme-text-primary)]">
                     {userId ?? "—"}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500">Role:</span>{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">Role:</span>{" "}
                   {role ?? "—"}
                 </div>
                 <div>
-                  <span className="text-neutral-500">Shop:</span>{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">Shop:</span>{" "}
                   {shopId ?? "—"}
                 </div>
               </div>
               <div className="space-y-1">
                 <div>
-                  <span className="text-neutral-500">Visible WOs:</span>{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">Visible WOs:</span>{" "}
                   {workOrders.length}
                 </div>
                 <div>
-                  <span className="text-neutral-500">Active filter:</span>{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">Active filter:</span>{" "}
                   {activeFilter ? STATUS_LABELS[activeFilter] : "All"}
                 </div>
                 <div>
-                  <span className="text-neutral-500">Mine only:</span>{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">Mine only:</span>{" "}
                   {showMineOnly ? "Yes" : "No"}
                 </div>
               </div>
@@ -412,10 +412,10 @@ export default function QueuePage() {
                 key={s}
                 type="button"
                 onClick={() => setActiveFilter(isActive ? null : s)}
-                className={`px-3 py-3 text-left text-sm text-neutral-100 transition ${STATUS_STYLES[s]}`}
+                className={`px-3 py-3 text-left text-sm text-[color:var(--theme-text-primary)] transition ${STATUS_STYLES[s]}`}
                 data-active={isActive ? "true" : "false"}
               >
-                <div className="text-[10px] uppercase tracking-wide text-neutral-400">
+                <div className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                   {STATUS_LABELS[s]}
                 </div>
                 <div className="mt-1 text-2xl font-semibold">
@@ -456,22 +456,22 @@ export default function QueuePage() {
               <Link
                 key={wo.id}
                 href={`/work-orders/${slug}?mode=tech`}
-                className="desktop-item-card block px-3 py-3 text-sm text-neutral-100 transition hover:border-[color:var(--brand-accent,#E39A6E)]"
+                className="desktop-item-card block px-3 py-3 text-sm text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--brand-accent,#E39A6E)]"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate font-medium text-white">
+                    <div className="truncate font-medium text-[color:var(--theme-text-primary)]">
                       {wo.custom_id ? wo.custom_id : `#${wo.id.slice(0, 8)}`}
                     </div>
                     {wo.custom_id && (
-                      <div className="text-[10px] text-neutral-500">
+                      <div className="text-[10px] text-[color:var(--theme-text-muted)]">
                         #{wo.id.slice(0, 8)}
                       </div>
                     )}
-                    <div className="mt-1 text-[11px] text-neutral-400">
+                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                       Created: {createdLabel}
                     </div>
-                    <div className="mt-1 text-[11px] text-neutral-400">
+                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                       {bucketCounts.awaiting} awaiting ·{" "}
                       {bucketCounts.in_progress} in progress ·{" "}
                       {bucketCounts.on_hold} on hold ·{" "}
@@ -481,7 +481,7 @@ export default function QueuePage() {
                   </div>
 
                   <div className="flex flex-col items-end gap-2">
-                    <span className={`${ui.pill} !normal-case !tracking-[0.08em] px-2.5 py-1 text-[11px] text-neutral-300`}>
+                    <span className={`${ui.pill} !normal-case !tracking-[0.08em] px-2.5 py-1 text-[11px] text-[color:var(--theme-text-secondary)]`}>
                       {status.replace("_", " ")}
                     </span>
 
@@ -504,10 +504,10 @@ export default function QueuePage() {
         </div>
 
         {/* Tiny footer hint */}
-        <div className="pt-2 text-[11px] text-neutral-500">
+        <div className="pt-2 text-[11px] text-[color:var(--theme-text-muted)]">
           Manage customer & vehicle details, inspections, labor, and parts from
           the individual work order page. This view is focused on{" "}
-          <span className="font-medium text-neutral-300">
+          <span className="font-medium text-[color:var(--theme-text-secondary)]">
             technician job flow
           </span>
           , not the shop appointments calendar.

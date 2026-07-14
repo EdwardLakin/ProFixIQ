@@ -110,17 +110,17 @@ export default function AdminAuditClient() {
           description="Move from suspicious events into the right operational surface without losing context."
         />
         <div className="grid gap-3 p-4 md:grid-cols-3">
-          <Link href="/dashboard/admin/people" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
-            <p className="text-sm font-medium text-white">Identity follow-up</p>
-            <p className="mt-1 text-xs text-neutral-400">Use People when actions involve person identity, workforce status, or credential readiness.</p>
+          <Link href="/dashboard/admin/people" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70">
+            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Identity follow-up</p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use People when actions involve person identity, workforce status, or credential readiness.</p>
           </Link>
-          <Link href="/dashboard/admin/shops" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
-            <p className="text-sm font-medium text-white">Tenant follow-up</p>
-            <p className="mt-1 text-xs text-neutral-400">Use Shops when actions indicate shop ownership or profile risk.</p>
+          <Link href="/dashboard/admin/shops" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70">
+            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Tenant follow-up</p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use Shops when actions indicate shop ownership or profile risk.</p>
           </Link>
-          <Link href="/dashboard/admin/payroll-time" className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70">
-            <p className="text-sm font-medium text-white">Payroll follow-up</p>
-            <p className="mt-1 text-xs text-neutral-400">Use Payroll Time when edits affect employee time review or approvals.</p>
+          <Link href="/dashboard/admin/payroll-time" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70">
+            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Payroll follow-up</p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use Payroll Time when edits affect employee time review or approvals.</p>
           </Link>
         </div>
       </AdminPanel>
@@ -133,7 +133,7 @@ export default function AdminAuditClient() {
         <AdminToolbar>
           <AdminField label="Action contains" className="flex-1">
             <input
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-400/70"
               placeholder="e.g. user.update, shop.delete"
               value={actionFilter}
               onChange={(event) => setActionFilter(event.target.value)}
@@ -141,7 +141,7 @@ export default function AdminAuditClient() {
           </AdminField>
           <AdminField label="Actor ID contains" className="flex-1">
             <input
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-400/70"
               placeholder="Filter by actor id"
               value={actorFilter}
               onChange={(event) => setActorFilter(event.target.value)}
@@ -149,7 +149,7 @@ export default function AdminAuditClient() {
           </AdminField>
           <AdminField label="Severity" className="w-full md:w-44">
             <select
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-orange-400/70"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-orange-400/70"
               value={severityFilter}
               onChange={(event) => setSeverityFilter(event.target.value as "all" | "high" | "normal")}
             >
@@ -176,7 +176,7 @@ export default function AdminAuditClient() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Time</th>
                   <th className="px-4 py-2.5 text-left">Action</th>
@@ -185,17 +185,17 @@ export default function AdminAuditClient() {
                   <th className="px-4 py-2.5 text-left">Context</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                 {filteredRows.map((r) => {
                   const severity = classifySeverity(r.action);
                   const metadataPreview = stringifyMetadata(r.metadata);
 
                   return (
-                    <tr key={r.id} className="text-neutral-200">
-                      <td className="whitespace-nowrap px-4 py-2.5 text-neutral-300">
+                    <tr key={r.id} className="text-[color:var(--theme-text-primary)]">
+                      <td className="whitespace-nowrap px-4 py-2.5 text-[color:var(--theme-text-secondary)]">
                         {r.created_at ? new Date(r.created_at).toLocaleString() : "—"}
                       </td>
-                      <td className="px-4 py-2.5 font-medium text-neutral-100">
+                      <td className="px-4 py-2.5 font-medium text-[color:var(--theme-text-primary)]">
                         <div className="flex items-center gap-2">
                           <span>{r.action ?? "—"}</span>
                           <AdminBadge>{severity}</AdminBadge>
@@ -203,7 +203,7 @@ export default function AdminAuditClient() {
                       </td>
                       <td className="px-4 py-2.5">{r.actor_id ?? "—"}</td>
                       <td className="px-4 py-2.5">{r.target ?? "—"}</td>
-                      <td className="max-w-sm px-4 py-2.5 text-xs text-neutral-400">
+                      <td className="max-w-sm px-4 py-2.5 text-xs text-[color:var(--theme-text-secondary)]">
                         {metadataPreview ? metadataPreview.slice(0, 140) : "No metadata"}
                       </td>
                     </tr>

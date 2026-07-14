@@ -56,11 +56,11 @@ export default function TechnicianPerformanceWidget({
         compact
       >
         {loading ? (
-          <div className="text-sm text-neutral-300">Loading technician performance…</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading technician performance…</div>
         ) : error ? (
           <div className="text-sm text-[color:var(--brand-accent)]">{error}</div>
         ) : !topTech ? (
-          <div className="text-sm text-neutral-400">No technician performance data found for today.</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">No technician performance data found for today.</div>
         ) : (
           <div className="space-y-2.5">
             <div className="grid grid-cols-3 gap-2">
@@ -68,8 +68,8 @@ export default function TechnicianPerformanceWidget({
               <Metric label="Avg duration" value={durationLabel(avgDurationAcrossTeam)} tone="accent" />
               <Metric label="Paired jobs" value={String(pairedJobsTotal)} tone="secondary" />
             </div>
-            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-neutral-200">
-              Top performer: <span className="font-semibold text-white">{topTech.name}</span> ·{" "}
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm text-[color:var(--theme-text-primary)]">
+              Top performer: <span className="font-semibold text-[color:var(--theme-text-primary)]">{topTech.name}</span> ·{" "}
               {topTech.completedJobsToday} jobs · {topTech.utilizationPct}% active
             </div>
           </div>
@@ -86,13 +86,13 @@ export default function TechnicianPerformanceWidget({
       compact
     >
       {loading ? (
-        <div className="text-sm text-neutral-300">Loading technician performance…</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading technician performance…</div>
       ) : error ? (
         <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-400">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]">
           No technician performance data found for today.
         </div>
       ) : (
@@ -109,15 +109,15 @@ export default function TechnicianPerformanceWidget({
 
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {rows.slice(0, 5).map((row) => (
-              <div key={row.techId} className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+              <div key={row.techId} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white">{row.name}</div>
-                    <div className="mt-1 text-xs text-neutral-400">
+                    <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{row.name}</div>
+                    <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                       {row.completedJobsToday} completed · Avg {durationLabel(row.avgJobDurationSeconds)}
                     </div>
                     {row.expectedActualSummary.pairedJobs > 0 ? (
-                      <div className="mt-1 text-xs text-neutral-400">
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                         Expected {durationLabel(row.expectedActualSummary.expectedSecondsTotal)} · Active{" "}
                         {durationLabel(row.expectedActualSummary.actualActiveSecondsTotal)} (
                         {signedDurationLabel(row.expectedActualSummary.varianceSecondsTotal)})
@@ -131,12 +131,12 @@ export default function TechnicianPerformanceWidget({
                 </div>
                 {row.expectedActualSummary.efficiencySignalDefensible &&
                 row.expectedActualSummary.efficiencySignalPct !== null ? (
-                  <div className="mt-2 text-[11px] text-neutral-300">
+                  <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                     Efficiency signal: {row.expectedActualSummary.efficiencySignalPct.toFixed(1)}% based
                     on {row.expectedActualSummary.pairedJobs} paired jobs.
                   </div>
                 ) : row.expectedActualSummary.pairedJobs > 0 ? (
-                  <div className="mt-2 text-[11px] text-neutral-500">
+                  <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
                     Efficiency signal withheld until expected-vs-active coverage is stronger.
                   </div>
                 ) : null}
@@ -144,7 +144,7 @@ export default function TechnicianPerformanceWidget({
             ))}
           </div>
           {defensibleRows.length === 0 ? (
-            <div className="text-[11px] text-neutral-500">
+            <div className="text-[11px] text-[color:var(--theme-text-muted)]">
               Expected-vs-actual efficiency is only shown when enough paired completed jobs are available.
             </div>
           ) : null}
@@ -171,8 +171,8 @@ function Metric({
         : "text-[color:var(--brand-primary)]";
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">{label}</div>
       <div className={["mt-1 text-lg font-semibold", toneClass].join(" ")}>{value}</div>
     </div>
   );

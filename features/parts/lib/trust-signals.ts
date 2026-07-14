@@ -82,5 +82,5 @@ export function trustLevelLabel(level: PartTrustLevel): string {
 export function trustReasonTone(level: PartTrustLevel): string {
   if (level === "low") return "text-rose-200";
   if (level === "review") return "text-sky-200";
-  return "text-neutral-300";
+  return "text-[color:var(--theme-text-secondary)]";
 }

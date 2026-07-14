@@ -77,29 +77,29 @@ export default function ComebackRiskWidget({
 
   const tone =
     parsed.risk === null
-      ? "border-white/10 bg-white/5 text-neutral-300"
+      ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]"
       : parsed.risk <= 20
         ? "border-[color:color-mix(in_srgb,var(--brand-primary)_50%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary)_14%,transparent)] text-[color:var(--brand-primary)]"
         : parsed.risk <= 45
           ? "border-[color:color-mix(in_srgb,var(--brand-accent)_48%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_15%,transparent)] text-[color:var(--brand-accent)]"
-          : "border-[color:color-mix(in_srgb,var(--brand-secondary)_68%,white_18%)] bg-[color:color-mix(in_srgb,var(--brand-secondary)_76%,black)] text-[color:var(--theme-text-secondary)]";
+          : "border-[color:color-mix(in_srgb,var(--brand-secondary)_68%,var(--theme-text-inverse)_18%)] bg-[color:color-mix(in_srgb,var(--brand-secondary)_76%,_var(--theme-surface-page))] text-[color:var(--theme-text-secondary)]";
 
   const content = (
     <>
       {loading ? (
-        <div className="text-sm text-neutral-300">Loading comeback risk…</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading comeback risk…</div>
       ) : error ? (
         <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : (
         <div className="flex h-full min-h-0 flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                 Snapshot risk
               </div>
-              <div className="mt-1 text-lg font-semibold text-white">
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
                 {parsed.risk == null ? "—" : `${Math.round(parsed.risk)}/100`}
               </div>
             </div>
@@ -116,7 +116,7 @@ export default function ComebackRiskWidget({
           </div>
 
           {compact ? null : (
-            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-300">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]">
               {parsed.summary
                 ? parsed.summary.slice(0, 180) + (parsed.summary.length > 180 ? "…" : "")
                 : "Run or refresh Shop Health to get a current quality and comeback-risk snapshot."}
@@ -124,7 +124,7 @@ export default function ComebackRiskWidget({
           )}
           <Link
             href="/dashboard/owner/reports?tab=health"
-            className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
           >
             Open full view →
           </Link>
@@ -143,7 +143,7 @@ export default function ComebackRiskWidget({
       rightSlot={
         <Link
           href="/dashboard/owner/reports?tab=health"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
         >
           Open health →
         </Link>

@@ -397,8 +397,8 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                       Dispatch review
                     </span>
                   ) : null}
-                  <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{item.priority}</span>
-                  <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{severityLabel}</span>
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{item.priority}</span>
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{severityLabel}</span>
                   {item.status === "acknowledged" ? (
                     <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[rgba(184,115,51,0.95)]">acknowledged</span>
                   ) : null}
@@ -427,11 +427,11 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                       {previewBusy ? "Generating preview…" : "Preview action"}
                     </button>
                   ) : (
-                    <span className="rounded-md border border-white/10 px-2 py-1 text-[10px] text-muted-foreground">Preview unavailable for critical-risk recommendation</span>
+                    <span className="rounded-md border border-[color:var(--theme-border-soft)] px-2 py-1 text-[10px] text-muted-foreground">Preview unavailable for critical-risk recommendation</span>
                   )}
                   <button
                     type="button"
-                    className="rounded-md border border-white/20 px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-white/10 disabled:opacity-50"
+                    className="rounded-md border border-[color:var(--theme-border-soft)] px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-50"
                     disabled={isRowBusy || item.status === "acknowledged"}
                     onClick={() => void onLifecycleAction(item.id, "acknowledge")}
                   >
@@ -439,7 +439,7 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                   </button>
                   <button
                     type="button"
-                    className="rounded-md border border-white/20 px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-white/10 disabled:opacity-50"
+                    className="rounded-md border border-[color:var(--theme-border-soft)] px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-50"
                     disabled={isRowBusy}
                     onClick={() => void onLifecycleAction(item.id, "dismiss")}
                   >
@@ -447,7 +447,7 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                   </button>
                   <button
                     type="button"
-                    className="rounded-md border border-white/20 px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-white/10 disabled:opacity-50"
+                    className="rounded-md border border-[color:var(--theme-border-soft)] px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-50"
                     disabled={isRowBusy}
                     onClick={() => void onLifecycleAction(item.id, "resolve")}
                   >
@@ -456,7 +456,7 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                 </div>
 
                 {preview ? (
-                  <div className="mt-2 rounded-md border border-white/10 bg-white/[0.02] p-2 text-[10px] text-muted-foreground">
+                  <div className="mt-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-2 text-[10px] text-muted-foreground">
                     <div className="text-[11px] font-medium text-foreground">{preview.title}</div>
                     <p className="mt-1">{preview.description ?? "Preview generated for operational review."}</p>
                     <p className="mt-1">Action type: {preview.actionType}</p>
@@ -480,7 +480,7 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
                               owner PIN required
                             </span>
                           ) : null}
-                          <span className="rounded-full border border-white/20 px-2 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
+                          <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
                             execution blocked
                           </span>
                         </>
@@ -532,10 +532,10 @@ export default function WorkOrderAiOperationalRecommendations({ workOrderId }: {
         {advisorDraftLoading ? <p className="mt-2 text-[10px] text-muted-foreground">Loading advisor draft…</p> : null}
 
         {advisorDraft ? (
-          <div className="mt-2 rounded-md border border-white/10 bg-white/[0.02] p-2 text-[10px] text-muted-foreground">
+          <div className="mt-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-2 text-[10px] text-muted-foreground">
             <div className="flex flex-wrap items-center gap-1">
               <span className="rounded-full border border-[rgba(184,115,51,0.5)] px-2 py-0.5 uppercase tracking-wide text-[9px] text-[rgba(184,115,51,0.95)]">internal-only</span>
-              <span className="rounded-full border border-white/20 px-2 py-0.5 uppercase tracking-wide text-[9px] text-muted-foreground">advisory-only</span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 uppercase tracking-wide text-[9px] text-muted-foreground">advisory-only</span>
             </div>
             <p className="mt-1 text-[11px] font-medium text-foreground">{advisorDraft.title}</p>
             <p className="mt-1">Confidence: {advisorDraft.confidence.toFixed(2)} • Missing data: {advisorDraft.missingData.length}</p>

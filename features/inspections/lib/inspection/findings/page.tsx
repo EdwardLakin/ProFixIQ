@@ -975,7 +975,7 @@ export default function InspectionFindingsPage(): JSX.Element {
         title="Inspection findings"
         description="Review findings before submission."
       >
-        <div className={cn(PANEL_VARIANTS.secondary, "p-4 text-sm text-neutral-300")}>
+        <div className={cn(PANEL_VARIANTS.secondary, "p-4 text-sm text-[color:var(--theme-text-secondary)]")}>
           Loading findings…
         </div>
       </PageShell>
@@ -990,7 +990,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       <div className="mx-auto max-w-5xl space-y-4">
         <DecisionEventFeed events={decisionEvents} compact maxVisible={5} />
         {findings.length === 0 ? (
-          <div className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-neutral-300")}>
+          <div className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-[color:var(--theme-text-secondary)]")}>
             No failed or recommended findings to review.
           </div>
         ) : (
@@ -1018,10 +1018,10 @@ export default function InspectionFindingsPage(): JSX.Element {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                       Decision unit • {row.sectionTitle}
                     </div>
-                    <div className="text-lg font-semibold text-neutral-100">
+                    <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
                       {itemLabel}
                     </div>
                   </div>
@@ -1035,15 +1035,15 @@ export default function InspectionFindingsPage(): JSX.Element {
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                   <div className={cn(PANEL_VARIANTS.secondary, "space-y-3 p-3")}>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                       Evidence
                     </div>
                     <label className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                         Technician notes
                       </div>
                       <textarea
-                        className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
+                        className="min-h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
                         value={String(row.item.notes ?? "")}
                         onChange={(e) =>
                           updateFinding(row.sectionIndex, row.itemIndex, {
@@ -1053,8 +1053,8 @@ export default function InspectionFindingsPage(): JSX.Element {
                       />
                     </label>
                     <div>
-                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
-                        <span className="rounded-full border border-white/10 px-3 py-1">
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
+                        <span className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1">
                           Visual proof: {photos.length} photo{photos.length === 1 ? "" : "s"}
                         </span>
 
@@ -1074,7 +1074,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
                         <button
                           type="button"
-                          className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5 disabled:opacity-60"
+                          className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
                           onClick={() => fileInputRefs.current[key]?.click()}
                           disabled={isUploading}
                         >
@@ -1088,7 +1088,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                           ))}
                         </div>
                       ) : (
-                        <div className="rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-xs text-neutral-500">
+                        <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-muted)]">
                           Add at least one photo for stronger customer approval confidence.
                         </div>
                       )}
@@ -1096,17 +1096,17 @@ export default function InspectionFindingsPage(): JSX.Element {
                   </div>
 
                   <div className={cn(PANEL_VARIANTS.passive, "space-y-3 p-3")}>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                       Recommendation
                     </div>
                     <label className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                         Labor hours
                       </div>
                       <input
                         type="text"
                         inputMode="decimal"
-                        className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
+                        className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
                         value={laborHoursText}
                         onChange={(e) => {
                           const raw = e.target.value;
@@ -1150,11 +1150,11 @@ export default function InspectionFindingsPage(): JSX.Element {
                     </label>
 
                     <label className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                         Parts and quantities
                       </div>
                       <textarea
-                        className="min-h-[110px] w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none"
+                        className="min-h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
                         value={partsText}
                         onChange={(e) => {
                           updateUiDraft(row.sectionIndex, row.itemIndex, {
@@ -1171,7 +1171,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
                   <button
                     type="button"
                     className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200 hover:bg-emerald-500/20"
@@ -1182,7 +1182,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
                   <button
                     type="button"
-                    className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5"
+                    className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)]"
                     onClick={() =>
                       updateFinding(row.sectionIndex, row.itemIndex, {
                         photoRequested: true,
@@ -1194,7 +1194,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
                   <button
                     type="button"
-                    className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5"
+                    className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)]"
                     onClick={() =>
                       updateFinding(row.sectionIndex, row.itemIndex, {
                         photoReviewed: true,
@@ -1204,7 +1204,7 @@ export default function InspectionFindingsPage(): JSX.Element {
                     Mark photo reviewed
                   </button>
                 </div>
-                <div className="mt-2 text-[11px] text-neutral-500">
+                <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
                   Action needed: mark reviewed so this recommendation can move to quote review.
                 </div>
               </div>
@@ -1213,16 +1213,16 @@ export default function InspectionFindingsPage(): JSX.Element {
         )}
 
         <div className={cn(PANEL_VARIANTS.secondary, "flex flex-wrap items-center justify-between gap-3 p-4")}>
-          <div className="text-sm text-neutral-300">
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">
             Reviewed findings:{" "}
-            <span className="font-semibold text-white">
+            <span className="font-semibold text-[color:var(--theme-text-primary)]">
               {
                 findings.filter((row) => row.item.findingReviewed === true)
                   .length
               }
             </span>
             {" / "}
-            <span className="font-semibold text-white">{findings.length}</span>
+            <span className="font-semibold text-[color:var(--theme-text-primary)]">{findings.length}</span>
           </div>
 
           <div className="flex gap-2">

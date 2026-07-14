@@ -158,7 +158,7 @@ export default function ShiftTracker({
   );
 
   const btnBase =
-    "rounded border px-4 py-2 text-white transition-colors bg-transparent hover:bg-white/5 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed";
+    "rounded border px-4 py-2 text-[color:var(--theme-text-primary)] transition-colors bg-transparent hover:bg-[color:var(--theme-surface-subtle)] focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed";
   const btnOutline = useMemo(
     () => ({
       yellow: `${btnBase} border-yellow-500`,

@@ -59,7 +59,7 @@ export default function FleetServiceRequestsPage({
   }, [statusFilter]);
 
   return (
-    <main className="min-h-[calc(100vh-3rem)] px-4 py-6 text-white">
+    <main className="min-h-[calc(100vh-3rem)] px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto w-full max-w-5xl">
         <h1
           className="mb-2 text-3xl text-sky-300"
@@ -67,7 +67,7 @@ export default function FleetServiceRequestsPage({
         >
           Fleet Service Requests
         </h1>
-        <p className="mb-4 text-xs text-neutral-500">
+        <p className="mb-4 text-xs text-[color:var(--theme-text-muted)]">
           Actor surface: {uiContext.actorLabel}
         </p>
 
@@ -78,8 +78,8 @@ export default function FleetServiceRequestsPage({
               onClick={() => setStatusFilter(st)}
               className={`rounded-lg px-3 py-1 text-sm transition ${
                 statusFilter === st
-                  ? "bg-sky-300 text-black"
-                  : "border border-white/10 bg-black/40 text-neutral-300 hover:bg-neutral-900"
+                  ? "bg-sky-300 text-[color:var(--theme-text-on-accent)]"
+                  : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]"
               }`}
             >
               {st === "all" ? "All" : st[0].toUpperCase() + st.slice(1)}
@@ -90,11 +90,11 @@ export default function FleetServiceRequestsPage({
         {error && <p className="text-sm text-red-400">Error: {error}</p>}
 
         {loading && (
-          <p className="text-sm text-neutral-400">Loading requests…</p>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading requests…</p>
         )}
 
         {!loading && requests.length === 0 && (
-          <p className="mt-4 text-sm text-neutral-400">
+          <p className="mt-4 text-sm text-[color:var(--theme-text-secondary)]">
             No service requests {statusFilter !== "all" ? `(${statusFilter})` : ""}.
           </p>
         )}
@@ -103,16 +103,16 @@ export default function FleetServiceRequestsPage({
           {requests.map((req) => (
             <div
               key={req.id}
-              className="rounded-xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl"
+              className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl"
             >
               <div className="flex justify-between gap-3">
                 <div>
-                  <p className="font-medium text-white">{req.title}</p>
-                  <p className="mt-1 text-xs text-neutral-400">
+                  <p className="font-medium text-[color:var(--theme-text-primary)]">{req.title}</p>
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                     {req.severity.toUpperCase()} •{" "}
                     {new Date(req.created_at).toLocaleString()}
                   </p>
-                  <p className="mt-2 text-sm text-neutral-300">
+                  <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                     {req.summary}
                   </p>
                 </div>

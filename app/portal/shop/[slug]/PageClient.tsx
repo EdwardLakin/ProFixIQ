@@ -73,13 +73,13 @@ export default function ShopSharePage({ slug, shopId: shopIdProp }: Props) {
   const qrSrc = `/api/portal/qr/${encodeURIComponent(slug)}`;
 
   const Card =
-    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
+    "rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card sm:p-6";
 
   return (
     <div className="mx-auto max-w-3xl space-y-8 py-6">
       <header className="space-y-2">
         <div
-          className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400"
+          className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]"
         >
           <SignalDot />
           Shop tools
@@ -92,7 +92,7 @@ export default function ShopSharePage({ slug, shopId: shopIdProp }: Props) {
           Share your booking link
         </h1>
 
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-[color:var(--theme-text-secondary)]">
           Copy your booking link, download a QR code, and manage reviews for this shop.
         </p>
       </header>
@@ -106,13 +106,13 @@ export default function ShopSharePage({ slug, shopId: shopIdProp }: Props) {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <SignalDot />
-            <h2 className="text-lg font-semibold text-neutral-50">
+            <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
               Customer reviews
             </h2>
           </div>
 
           {loadingShopId && (
-            <span className="text-xs text-neutral-500">Loading shop…</span>
+            <span className="text-xs text-[color:var(--theme-text-muted)]">Loading shop…</span>
           )}
         </div>
 

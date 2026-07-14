@@ -31,33 +31,33 @@ export function MobileCustomerVehicleForm({
   const woLabel = wo?.custom_id ?? (wo ? wo.id.slice(0, 8) : null);
 
   const inputBase =
-    "w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white " +
-    "placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] " +
+    "w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] " +
+    "placeholder:text-[color:var(--theme-text-secondary)] focus:border-[var(--accent-copper-light)] " +
     "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]";
 
   const inputTight =
-    "w-full rounded-md border border-white/15 bg-black/40 px-2 py-2 text-sm text-white " +
-    "placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] " +
+    "w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2 text-sm text-[color:var(--theme-text-primary)] " +
+    "placeholder:text-[color:var(--theme-text-secondary)] focus:border-[var(--accent-copper-light)] " +
     "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]";
 
   const labelClass =
-    "text-[11px] uppercase tracking-[0.16em] text-neutral-400";
+    "text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]";
 
   return (
-    <div className="glass-card rounded-2xl border border-white/12 bg-black/40 p-4 space-y-6 shadow-card">
+    <div className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 space-y-6 shadow-card">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-100">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             Customer &amp; Vehicle
           </h2>
-          <p className="text-[11px] text-neutral-400">
+          <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
             Full customer and unit details for this work order.
           </p>
         </div>
 
         {woLabel && (
-          <span className="rounded-full border border-white/10 bg-black/40 px-2 py-1 font-mono text-[10px] text-neutral-300">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 font-mono text-[10px] text-[color:var(--theme-text-secondary)]">
             WO&nbsp;{woLabel}
           </span>
         )}

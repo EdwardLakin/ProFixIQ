@@ -46,20 +46,20 @@ export default function ModalShell({
       className="fixed inset-0 z-[500] flex items-center justify-center px-3 py-6 sm:px-4"
     >
       <div
-        className="fixed inset-0 bg-black/82 backdrop-blur-md"
+        className="fixed inset-0 bg-[color:var(--theme-surface-inset)] backdrop-blur-md"
         aria-hidden="true"
       />
 
       <div className={`relative z-[510] w-full ${width}`}>
-        <Dialog.Panel className="relative w-full overflow-hidden rounded-[26px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),rgba(10,10,10,0.97)_38%,rgba(5,5,5,0.99)_100%)] text-neutral-100 shadow-[0_28px_90px_rgba(0,0,0,0.96)]">
+        <Dialog.Panel className="relative w-full overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
           <div className="absolute inset-x-0 top-0 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
           <div className="pointer-events-none absolute inset-x-10 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.14),transparent_72%)]" />
 
-          <div className="relative flex items-center justify-between border-b border-white/10 bg-black/28 px-4 py-3 sm:px-5">
+          <div className="relative flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 sm:px-5">
             <div className="min-w-0">
               {title ? (
                 <Dialog.Title
-                  className="truncate text-[0.8rem] tracking-[0.22em] text-neutral-100"
+                  className="truncate text-[0.8rem] tracking-[0.22em] text-[color:var(--theme-text-primary)]"
                   style={{
                     fontFamily: "var(--font-blackops), system-ui, sans-serif",
                   }}
@@ -74,7 +74,7 @@ export default function ModalShell({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/45 text-[0.78rem] text-neutral-200 transition hover:border-[var(--accent-copper-soft)] hover:bg-white/5 hover:text-white active:scale-95"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[0.78rem] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)] active:scale-95"
               aria-label="Close"
               title="Close"
             >
@@ -91,8 +91,8 @@ export default function ModalShell({
           </div>
 
           {!hideFooter && (onSubmit || footerLeft) ? (
-            <div className="relative flex items-center justify-between gap-3 border-t border-white/10 bg-black/30 px-4 py-3 sm:px-5">
-              <div className="flex items-center gap-2 text-[0.72rem] text-neutral-400">
+            <div className="relative flex items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 sm:px-5">
+              <div className="flex items-center gap-2 text-[0.72rem] text-[color:var(--theme-text-secondary)]">
                 {footerLeft}
               </div>
 

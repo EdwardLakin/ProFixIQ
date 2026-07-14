@@ -36,9 +36,9 @@ function toneClasses(tone: "high" | "balanced" | "low"): { pill: string; bar: st
 
   return {
     pill:
-      "border-white/15 bg-white/5 text-[color:var(--theme-text-secondary)]",
+      "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]",
     bar: "bg-[color:var(--theme-text-secondary)]",
-    rail: "bg-white/10",
+    rail: "bg-[color:var(--theme-surface-subtle)]",
   };
 }
 
@@ -74,13 +74,13 @@ export default function TechLoadWidget({
   const content = (
     <>
       {loading ? (
-        <div className="text-sm text-neutral-300">Loading technician load…</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading technician load…</div>
       ) : error ? (
         <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-400">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]">
           No technician load data found for today.
         </div>
       ) : (
@@ -91,24 +91,24 @@ export default function TechLoadWidget({
             <Metric label="High utilization (85%+)" value={String(overloaded)} tone="secondary" />
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-[color:color-mix(in_srgb,black_72%,transparent)] px-4 py-4">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:color-mix(in_srgb,_var(--theme-surface-page)_72%,transparent)] px-4 py-4">
             <div className="flex items-end justify-between gap-3">
               <div>
-                <div className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">Team utilization</div>
-                <div className="mt-1 text-xs font-medium text-neutral-300">Active line punches vs total shift time</div>
+                <div className="text-[10px] uppercase tracking-[0.15em] text-[color:var(--theme-text-muted)]">Team utilization</div>
+                <div className="mt-1 text-xs font-medium text-[color:var(--theme-text-secondary)]">Active line punches vs total shift time</div>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-semibold leading-none text-white">{summary.pct}%</div>
-                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-neutral-500">{timezone}</div>
+                <div className="text-3xl font-semibold leading-none text-[color:var(--theme-text-primary)]">{summary.pct}%</div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">{timezone}</div>
               </div>
             </div>
-            <div className="mt-4 h-4 overflow-hidden rounded-full border border-white/10 bg-black/45 p-[2px]">
+            <div className="mt-4 h-4 overflow-hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-[2px]">
               <div
                 className="h-full rounded-full bg-[color:var(--brand-primary)] shadow-[0_0_20px_color-mix(in_srgb,var(--brand-primary)_35%,transparent)] transition-all"
                 style={{ width: summary.railWidth }}
               />
             </div>
-            <div className="mt-3 grid grid-cols-3 text-[10px] text-neutral-500">
+            <div className="mt-3 grid grid-cols-3 text-[10px] text-[color:var(--theme-text-muted)]">
               <span>0%</span>
               <span className="text-center">Target 55–85%</span>
               <span className="text-right">100%</span>
@@ -121,15 +121,15 @@ export default function TechLoadWidget({
               const colors = toneClasses(tone);
 
               return (
-                <div key={row.techId} className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                <div key={row.techId} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[10px] font-semibold text-neutral-300">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
                         {index + 1}
                       </div>
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-white">{row.name}</div>
-                        <div className="mt-1 text-xs text-neutral-400">
+                        <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{row.name}</div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                           {row.currentActiveJobs} active job{row.currentActiveJobs === 1 ? "" : "s"} ·
                           {" "}
                           Active {toHoursLabel(row.activeSecondsToday)}
@@ -140,7 +140,7 @@ export default function TechLoadWidget({
                       <div className={cn("inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold", colors.pill)}>
                         {row.utilizationPct}%
                       </div>
-                      <div className="mt-1 text-[10px] text-neutral-500">
+                      <div className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
                         Active {toHoursLabel(row.activeSecondsToday)} · Idle {toHoursLabel(row.idleBreakdown.availableIdleSeconds)}
                       </div>
                     </div>
@@ -192,8 +192,8 @@ function Metric({
         : "text-[color:var(--brand-primary)]";
 
   return (
-    <div className="flex min-h-[74px] flex-col justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
+    <div className="flex min-h-[74px] flex-col justify-between rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">{label}</div>
       <div className={["mt-1 text-xl font-semibold leading-tight", toneClass].join(" ")}>{value}</div>
     </div>
   );

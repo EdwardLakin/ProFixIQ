@@ -22,7 +22,7 @@ export default function FleetTabs() {
 
         const base =
           "rounded-full border px-3 py-1.5 transition-colors " +
-          "border-[color:var(--metal-border-soft)] bg-black/40 text-neutral-300 hover:bg-neutral-900/60";
+          "border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]";
 
         const active =
           "border-[color:var(--accent-copper)] bg-[color:var(--accent-copper)]/15 " +

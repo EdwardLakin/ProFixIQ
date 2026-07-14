@@ -70,9 +70,9 @@ export default function InspectionSummaryPage() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl mb-6 font-bold">Inspection Summary</h1>
 
-        <div className="bg-white shadow-md rounded p-4 space-y-4">
+        <div className="bg-[color:var(--theme-surface-panel-strong)] shadow-md rounded p-4 space-y-4">
           {summary.split("\n").map((line, index) => (
-            <div key={index} className="text-gray-700">
+            <div key={index} className="text-[color:var(--theme-text-muted)]">
               {line.trim().startsWith("•") ? (
                 <p className="pl-4">🔹 {line.trim().substring(1).trim()}</p>
               ) : (
@@ -83,7 +83,7 @@ export default function InspectionSummaryPage() {
         </div>
 
         <button
-          className="mt-8 bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+          className="mt-8 bg-blue-600 text-[color:var(--theme-text-primary)] py-2 px-4 rounded hover:bg-blue-700"
           onClick={handleSubmit}
           disabled={loading}
         >

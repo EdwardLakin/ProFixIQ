@@ -299,10 +299,10 @@ export default function ChatWindow({
   }, [messages, userId]);
 
   return (
-    <div className="flex h-full flex-col rounded border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] text-neutral-50">
+    <div className="flex h-full flex-col rounded border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] text-[color:var(--theme-text-primary)]">
       {/* header */}
       <div className="border-b border-[var(--metal-border-soft)] px-4 py-3 flex items-center justify-between">
-        <div className="text-sm font-medium text-neutral-100">{title}</div>
+        <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{title}</div>
         {error ? (
           <div className="text-[10px] text-red-200/80">{error}</div>
         ) : null}
@@ -311,11 +311,11 @@ export default function ChatWindow({
       {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
-          <div className="text-center text-neutral-400 text-sm py-6">
+          <div className="text-center text-[color:var(--theme-text-secondary)] text-sm py-6">
             Loading messages…
           </div>
         ) : grouped.length === 0 ? (
-          <div className="text-center text-neutral-500 text-sm py-6">
+          <div className="text-center text-[color:var(--theme-text-muted)] text-sm py-6">
             No messages yet. Say hi 👋
           </div>
         ) : (
@@ -323,7 +323,7 @@ export default function ChatWindow({
             if (item.type === "day") {
               return (
                 <div key={`day-${idx}`} className="flex justify-center">
-                  <span className="rounded-full bg-black/40 px-3 py-1 text-[11px] text-neutral-400">
+                  <span className="rounded-full bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                     {item.label}
                   </span>
                 </div>
@@ -346,7 +346,7 @@ export default function ChatWindow({
                 }`}
               >
                 {!isMine && showAvatar ? (
-                  <div className="mt-6 h-7 w-7 rounded-full bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-100/80">
+                  <div className="mt-6 h-7 w-7 rounded-full bg-[color:var(--theme-surface-panel-strong)] flex items-center justify-center text-[10px] text-[color:var(--theme-text-secondary)]">
                     U
                   </div>
                 ) : (
@@ -364,8 +364,8 @@ export default function ChatWindow({
                       "px-3 py-2 text-sm",
                       "whitespace-pre-wrap break-words",
                       isMine
-                        ? "bg-[var(--accent-copper-soft)] text-black"
-                        : "bg-black/50 text-neutral-100",
+                        ? "bg-[var(--accent-copper-soft)] text-[color:var(--theme-text-on-accent)]"
+                        : "bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]",
                     ].join(" ")}
                   >
                     <p>{msg.content}</p>
@@ -373,7 +373,7 @@ export default function ChatWindow({
                       <p
                         className={[
                           "mt-1 text-[10px]",
-                          isMine ? "text-black/60" : "text-neutral-400",
+                          isMine ? "text-[color:var(--theme-text-on-accent)]" : "text-[color:var(--theme-text-secondary)]",
                         ].join(" ")}
                       >
                         {time}
@@ -385,7 +385,7 @@ export default function ChatWindow({
                     <button
                       type="button"
                       onClick={() => void deleteMessage(msg.id)}
-                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-black/70 text-[10px] text-white/70 hover:bg-red-500 hover:text-white"
+                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-[color:var(--theme-surface-overlay)] text-[10px] text-[color:var(--theme-text-secondary)] hover:bg-red-500 hover:text-[color:var(--theme-text-primary)]"
                       aria-label="Delete message"
                     >
                       ×
@@ -401,7 +401,7 @@ export default function ChatWindow({
       </div>
 
       {/* composer */}
-      <div className="border-t border-[var(--metal-border-soft)] bg-black/40 p-3 flex gap-2 items-end">
+      <div className="border-t border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 flex gap-2 items-end">
         <textarea
           ref={inputRef}
           value={newMessage}
@@ -409,12 +409,12 @@ export default function ChatWindow({
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-          className="flex-1 resize-none rounded bg-black/70 border border-[var(--metal-border-soft)] px-3 py-2 text-sm text-neutral-50 placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)] focus:outline-none"
+          className="flex-1 resize-none rounded bg-[color:var(--theme-surface-overlay)] border border-[var(--metal-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:outline-none"
         />
         <button
           onClick={() => void sendMessage()}
           disabled={sending || !newMessage.trim()}
-          className="rounded-full border border-[var(--accent-copper-soft)] bg-black/70 px-4 py-2 text-sm font-semibold text-[var(--accent-copper-soft)] shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:bg-black/90 disabled:opacity-50"
+          className="rounded-full border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-sm font-semibold text-[var(--accent-copper-soft)] shadow-[var(--theme-shadow-medium)] hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
         </button>

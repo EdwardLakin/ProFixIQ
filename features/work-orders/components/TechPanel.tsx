@@ -33,25 +33,25 @@ export default function TechPanel({
     : "—";
 
   return (
-    <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+    <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
       <div className="mb-2 font-semibold text-orange-400">Tech Panel</div>
-      <p className="text-sm text-neutral-300">
+      <p className="text-sm text-[color:var(--theme-text-secondary)]">
         Work on{" "}
         <strong>{workOrder.custom_id || workOrder.id.slice(0, 8)}</strong>.{" "}
         Vehicle: {vehicleText} · Customer: {customerText}.
       </p>
-      <p className="mt-2 text-sm text-neutral-400">Jobs: {lines.length}</p>
+      <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Jobs: {lines.length}</p>
 
       <div className="mt-3">
         <button
           onClick={() => window.location.reload()}
-          className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
+          className="rounded border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-sm hover:border-orange-500"
         >
           Refresh
         </button>
       </div>
 
-      <div className="mt-4 text-xs text-neutral-500">
+      <div className="mt-4 text-xs text-[color:var(--theme-text-muted)]">
         Placeholder: wire your existing tech UI (punch, cause/correction, add
         job/quote, AI suggestions, photos) here.
       </div>

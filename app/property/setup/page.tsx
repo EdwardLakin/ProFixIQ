@@ -176,81 +176,81 @@ export default async function PropertySetupPage({
   ];
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(193,122,74,0.18),transparent_34%),#020617] px-4 py-6 text-white md:px-8">
+    <main className="min-h-screen bg-[var(--theme-gradient-panel)] px-4 py-6 text-[color:var(--theme-text-primary)] md:px-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-6">
         <Link
           href="/property"
-          className="w-fit rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-200 transition hover:border-[color:var(--accent-copper)]/70 hover:text-white"
+          className="w-fit rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--accent-copper)]/70 hover:text-[color:var(--theme-text-primary)]"
         >
           ← Back to property dashboard
         </Link>
 
-        <section className="rounded-xl border border-[color:var(--metal-border-soft)]/55 bg-black/15 p-4 md:p-5">
-          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-neutral-500">
+        <section className="rounded-xl border border-[color:var(--metal-border-soft)]/55 bg-[color:var(--theme-surface-inset)] p-4 md:p-5">
+          <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[color:var(--theme-text-muted)]">
             Admin records workspace
           </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-100 md:text-4xl">
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[color:var(--theme-text-primary)] md:text-4xl">
             Property Setup
           </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-300">
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
             Configure the records that power requests, inspections, members, invites, and vendor workflows.
           </p>
           <p className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
             Admin records only. Member access is managed through Members and Invites.
           </p>
-          <p className="mt-3 text-sm text-neutral-400">
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
             Member access is managed through Members and Invites.
           </p>
-          <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
-            <Link href="/property" className="hover:text-white">Property Dashboard</Link>
-            <Link href="/property/members" className="hover:text-white">Members</Link>
-            <Link href="/property/invites" className="hover:text-white">Invites</Link>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+            <Link href="/property" className="hover:text-[color:var(--theme-text-primary)]">Property Dashboard</Link>
+            <Link href="/property/members" className="hover:text-[color:var(--theme-text-primary)]">Members</Link>
+            <Link href="/property/invites" className="hover:text-[color:var(--theme-text-primary)]">Invites</Link>
           </div>
 
-          <div className="mt-5 grid gap-3 text-xs text-neutral-400 sm:grid-cols-3">
-            <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3">
+          <div className="mt-5 grid gap-3 text-xs text-[color:var(--theme-text-secondary)] sm:grid-cols-3">
+            <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               Uses current shop profile
             </div>
-            <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3">
+            <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               RLS scoped
             </div>
-            <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3">
+            <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               Admin records only
             </div>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-[color:var(--metal-border-soft)]/70 bg-black/20 p-5 md:p-6">
+        <section className="rounded-2xl border border-[color:var(--metal-border-soft)]/70 bg-[color:var(--theme-surface-inset)] p-5 md:p-6">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-neutral-100">
+            <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
               Setup overview
             </h2>
-            <span className="text-xs uppercase tracking-[0.16em] text-neutral-400">
+            <span className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Read-only
             </span>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {overviewItems.map((section) => (
-              <article key={section.title} className="rounded-lg border border-[color:var(--metal-border-soft)]/40 bg-black/20 p-3">
+              <article key={section.title} className="rounded-lg border border-[color:var(--metal-border-soft)]/40 bg-[color:var(--theme-surface-inset)] p-3">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-neutral-100">
+                  <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     {section.title}
                   </h3>
-                  <span className="text-xs text-neutral-400">
+                  <span className="text-xs text-[color:var(--theme-text-secondary)]">
                     {section.count} shown
                   </span>
                 </div>
                 {section.rows.length === 0 ? (
-                  <p className="mt-3 text-sm text-neutral-500">
+                  <p className="mt-3 text-sm text-[color:var(--theme-text-muted)]">
                     {section.emptyLabel}
                   </p>
                 ) : (
                   <ul className="mt-3 space-y-1.5">
                     {section.rows.map((row) => (
-                      <li key={row.id} className="text-sm text-neutral-300">
+                      <li key={row.id} className="text-sm text-[color:var(--theme-text-secondary)]">
                         <div>{row.primary}</div>
                         {row.secondary ? (
-                          <div className="text-xs text-neutral-500">
+                          <div className="text-xs text-[color:var(--theme-text-muted)]">
                             {row.secondary}
                           </div>
                         ) : null}
@@ -261,7 +261,7 @@ export default async function PropertySetupPage({
               </article>
             ))}
           </div>
-          <p className="mt-4 text-xs text-neutral-500">
+          <p className="mt-4 text-xs text-[color:var(--theme-text-muted)]">
             Each list shows up to 5 RLS-visible records for your current shop.
           </p>
         </section>
@@ -270,29 +270,29 @@ export default async function PropertySetupPage({
           <>
             <section className="grid gap-4 md:grid-cols-2">
             <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
-              <h2 className="text-base font-semibold text-neutral-100">
+              <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
                 Create portfolio
               </h2>
               <form action={createPropertyPortfolio} className="mt-3 space-y-2.5">
-                <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
+                <label className="block text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                   Name
                   <input
                     name="name"
                     required
-                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
+                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
                   />
                 </label>
-                <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
+                <label className="block text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                   Description (optional)
                   <textarea
                     name="description"
                     rows={3}
-                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
+                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
                   />
                 </label>
                 <button
                   type="submit"
-                  className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110"
+                  className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-on-accent)] transition hover:brightness-110"
                 >
                   Create portfolio
                 </button>
@@ -300,16 +300,16 @@ export default async function PropertySetupPage({
             </article>
 
             <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
-              <h2 className="text-base font-semibold text-neutral-100">
+              <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
                 Create property
               </h2>
               <form action={createPropertyProperty} className="mt-3 space-y-2.5">
-                <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
+                <label className="block text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                   Portfolio (optional)
                   <select
                     name="portfolio_id"
                     defaultValue=""
-                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
+                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
                   >
                     <option value="">No portfolio</option>
                     {(portfoliosResult?.data ?? []).map((portfolio) => (
@@ -319,25 +319,25 @@ export default async function PropertySetupPage({
                     ))}
                   </select>
                 </label>
-                <label className="block text-xs uppercase tracking-[0.14em] text-neutral-400">
+                <label className="block text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                   Name
                   <input
                     name="name"
                     required
-                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
+                    className="mt-2 w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2"
                   />
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="property_type" placeholder="Property type" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="address_line1" placeholder="Address line 1" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="address_line2" placeholder="Address line 2" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="city" placeholder="City" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="region" placeholder="Region / province" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="postal_code" placeholder="Postal code" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="property_type" placeholder="Property type" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="address_line1" placeholder="Address line 1" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="address_line2" placeholder="Address line 2" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="city" placeholder="City" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="region" placeholder="Region / province" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="postal_code" placeholder="Postal code" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="country" defaultValue="CA" placeholder="Country" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <select name="status" defaultValue="active" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                  <input name="country" defaultValue="CA" placeholder="Country" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <select name="status" defaultValue="active" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                     <option value="active">active</option>
                     <option value="limited">limited</option>
                     <option value="inactive">inactive</option>
@@ -345,7 +345,7 @@ export default async function PropertySetupPage({
                 </div>
                 <button
                   type="submit"
-                  className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110"
+                  className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-on-accent)] transition hover:brightness-110"
                 >
                   Create property
                 </button>
@@ -355,47 +355,47 @@ export default async function PropertySetupPage({
 
             <section className="grid gap-4 md:grid-cols-2">
             <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
-              <h2 className="text-base font-semibold text-neutral-100">
+              <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
                 Create unit
               </h2>
               {propertiesResult?.data?.length ? (
                 <form action={createPropertyUnit} className="mt-3 space-y-2.5">
-                  <select name="property_id" required className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                  <select name="property_id" required className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                     {(propertiesResult?.data ?? []).map((property) => (
                       <option key={property.id} value={property.id}>
                         {property.name}
                       </option>
                     ))}
                   </select>
-                  <input name="unit_label" required placeholder="Unit label" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="unit_type" placeholder="Unit type (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="occupancy_status" placeholder="Occupancy status (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <textarea name="access_notes" rows={2} placeholder="Access notes (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <select name="status" defaultValue="active" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                  <input name="unit_label" required placeholder="Unit label" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="unit_type" placeholder="Unit type (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="occupancy_status" placeholder="Occupancy status (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <textarea name="access_notes" rows={2} placeholder="Access notes (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <select name="status" defaultValue="active" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                     <option value="active">active</option>
                     <option value="limited">limited</option>
                     <option value="inactive">inactive</option>
                   </select>
-                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110">Create unit</button>
+                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-on-accent)] transition hover:brightness-110">Create unit</button>
                 </form>
               ) : (
-                <p className="mt-3 text-sm text-neutral-400">Create a property first.</p>
+                <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">Create a property first.</p>
               )}
             </article>
             <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
-              <h2 className="text-base font-semibold text-neutral-100">
+              <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
                 Create asset
               </h2>
               {propertiesResult?.data?.length ? (
                 <form action={createPropertyAsset} className="mt-3 space-y-2.5">
-                  <select name="property_id" required className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                  <select name="property_id" required className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                     {(propertiesResult?.data ?? []).map((property) => (
                       <option key={property.id} value={property.id}>
                         {property.name}
                       </option>
                     ))}
                   </select>
-                  <select name="unit_id" defaultValue="" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                  <select name="unit_id" defaultValue="" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                     <option value="">No unit / property-level asset</option>
                     {(unitsResult?.data ?? []).map((unit) => (
                       <option key={unit.id} value={unit.id}>
@@ -403,52 +403,52 @@ export default async function PropertySetupPage({
                       </option>
                     ))}
                   </select>
-                  <input name="name" required placeholder="Asset name" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="name" required placeholder="Asset name" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <input name="asset_type" placeholder="Asset type" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                    <input name="manufacturer" placeholder="Manufacturer" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                    <input name="model" placeholder="Model" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                    <input name="serial_number" placeholder="Serial number" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                    <input name="install_date" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                    <input name="warranty_expires_on" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                    <input name="next_service_date" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                    <select name="status" defaultValue="active" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                    <input name="asset_type" placeholder="Asset type" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="manufacturer" placeholder="Manufacturer" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="model" placeholder="Model" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="serial_number" placeholder="Serial number" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="install_date" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="warranty_expires_on" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="next_service_date" type="date" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <select name="status" defaultValue="active" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                       <option value="active">active</option>
                       <option value="limited">limited</option>
                       <option value="offline">offline</option>
                       <option value="retired">retired</option>
                     </select>
                   </div>
-                  <textarea name="location_note" rows={2} placeholder="Location note (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110">Create asset</button>
+                  <textarea name="location_note" rows={2} placeholder="Location note (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-on-accent)] transition hover:brightness-110">Create asset</button>
                 </form>
               ) : (
-                <p className="mt-3 text-sm text-neutral-400">Create a property first.</p>
+                <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">Create a property first.</p>
               )}
             </article>
             </section>
 
             <section className="grid gap-4 md:grid-cols-2">
               <article className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
-                <h2 className="text-base font-semibold text-neutral-100">
+                <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
                   Create vendor
                 </h2>
-                <p className="mt-2 text-xs text-neutral-400">
+                <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                   Member access is managed through Members and Invites.
                 </p>
                 <form action={createPropertyVendor} className="mt-3 space-y-2.5">
-                  <input name="name" required placeholder="Vendor name" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="trade" placeholder="Trade (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                  <input name="contact_name" placeholder="Contact name (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="name" required placeholder="Vendor name" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="trade" placeholder="Trade (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                  <input name="contact_name" placeholder="Contact name (optional)" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <input name="email" type="email" placeholder="Email (optional)" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
-                    <input name="phone" placeholder="Phone (optional)" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="email" type="email" placeholder="Email (optional)" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
+                    <input name="phone" placeholder="Phone (optional)" className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2" />
                   </div>
-                  <select name="status" defaultValue="active" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-sm text-neutral-100 outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
+                  <select name="status" defaultValue="active" className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-[color:var(--accent-copper)]/50 transition focus:ring-2">
                     <option value="active">active</option>
                     <option value="inactive">inactive</option>
                   </select>
-                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-black transition hover:brightness-110">Create vendor</button>
+                  <button type="submit" className="rounded-full bg-[color:var(--accent-copper)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-on-accent)] transition hover:brightness-110">Create vendor</button>
                 </form>
               </article>
             </section>
@@ -470,16 +470,16 @@ export default async function PropertySetupPage({
           </section>
         ) : (
           <section className="rounded-xl border-t border-[color:var(--metal-border-soft)]/70 pt-4">
-            <h2 className="text-lg font-semibold text-neutral-100">
+            <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
               Demo tools
             </h2>
-            <p className="mt-2 text-sm text-neutral-300">
+            <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
               Seed baseline records for local validation.
             </p>
-            <h3 className="mt-4 text-base font-semibold text-neutral-100">
+            <h3 className="mt-4 text-base font-semibold text-[color:var(--theme-text-primary)]">
               Dataset to create
             </h3>
-            <ul className="mt-4 space-y-2 text-sm text-neutral-300">
+            <ul className="mt-4 space-y-2 text-sm text-[color:var(--theme-text-secondary)]">
               <li>• Portfolio: Property Maintenance Demo Portfolio</li>
               <li>• Property: Riverbend Duplex in Calgary, AB</li>
               <li>• Unit: Unit A, occupied residential unit</li>
@@ -491,7 +491,7 @@ export default async function PropertySetupPage({
             <form action={createPropertyDemoDataset} className="mt-6">
               <button
                 type="submit"
-                className="rounded-full bg-[color:var(--accent-copper)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-black transition hover:brightness-110"
+                className="rounded-full bg-[color:var(--accent-copper)] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] transition hover:brightness-110"
               >
                 Create demo property data
               </button>

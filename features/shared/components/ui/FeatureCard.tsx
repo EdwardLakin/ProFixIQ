@@ -74,7 +74,7 @@ export default function FeatureCard(props: FeatureCardProps) {
         }
       : {
           borderColor: "rgba(255,255,255,0.10)",
-          backgroundColor: "rgba(0,0,0,0.25)",
+          backgroundColor: "var(--theme-surface-panel)",
           color: "rgba(226,232,240,0.75)",
         };
 
@@ -83,9 +83,9 @@ export default function FeatureCard(props: FeatureCardProps) {
       aria-label={title}
       className={cn(
         "group relative overflow-hidden rounded-3xl border p-5",
-        "bg-black/30 backdrop-blur-2xl",
+        "bg-[color:var(--theme-surface-inset)] backdrop-blur-2xl",
         "transition duration-200 hover:-translate-y-[2px]",
-        "shadow-[0_22px_60px_rgba(0,0,0,0.85)]",
+        "shadow-[var(--theme-shadow-medium)]",
         className,
       )}
       style={{
@@ -97,14 +97,14 @@ export default function FeatureCard(props: FeatureCardProps) {
           className="absolute inset-0 opacity-[0.10]"
           style={{
             backgroundImage:
-              "linear-gradient(145deg, rgba(255,255,255,0.10), rgba(0,0,0,0.55))",
+              "var(--theme-gradient-panel)",
           }}
         />
         <div
           className="absolute inset-0 opacity-[0.08]"
           style={{
             backgroundImage:
-              "repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.0) 1px, rgba(0,0,0,0.20) 2px)",
+              "var(--theme-gradient-panel)",
           }}
         />
         <div
@@ -135,7 +135,7 @@ export default function FeatureCard(props: FeatureCardProps) {
                     ? "text-emerald-300"
                     : status === "locked"
                     ? "text-red-300"
-                    : "text-neutral-300",
+                    : "text-[color:var(--theme-text-secondary)]",
                 )}
                 aria-hidden
               />
@@ -148,7 +148,7 @@ export default function FeatureCard(props: FeatureCardProps) {
             )}
 
             <h3
-              className="truncate text-lg text-white"
+              className="truncate text-lg text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
               {title}
@@ -173,7 +173,7 @@ export default function FeatureCard(props: FeatureCardProps) {
         </span>
       </div>
 
-      <p className="relative mt-3 text-sm leading-relaxed text-neutral-300">
+      <p className="relative mt-3 text-sm leading-relaxed text-[color:var(--theme-text-secondary)]">
         {bodyText}
       </p>
 
@@ -182,7 +182,7 @@ export default function FeatureCard(props: FeatureCardProps) {
           className="h-[2px] w-10 rounded-full"
           style={{ backgroundColor: COPPER }}
         />
-        <div className="h-px flex-1 bg-white/5" />
+        <div className="h-px flex-1 bg-[color:var(--theme-surface-subtle)]" />
       </div>
     </article>
   );

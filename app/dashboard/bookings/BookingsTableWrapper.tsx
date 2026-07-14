@@ -11,7 +11,7 @@ export default async function BookingsTableWrapper() {
 
   if (!user) {
     return (
-      <div className="rounded-xl border border-border bg-card p-4 text-sm text-neutral-400">
+      <div className="rounded-xl border border-border bg-card p-4 text-sm text-[color:var(--theme-text-secondary)]">
         Sign in required.
       </div>
     );
@@ -29,7 +29,7 @@ export default async function BookingsTableWrapper() {
 
   if (!shopId) {
     return (
-      <div className="rounded-xl border border-border bg-card p-4 text-sm text-neutral-400">
+      <div className="rounded-xl border border-border bg-card p-4 text-sm text-[color:var(--theme-text-secondary)]">
         No shop linked to this profile.
       </div>
     );

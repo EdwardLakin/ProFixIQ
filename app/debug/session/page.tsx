@@ -53,7 +53,7 @@ export default async function SessionDebug() {
   return (
     <div className="p-6 space-y-4 text-sm">
       <h1 className="text-xl font-semibold">Server Session / RLS Debug</h1>
-      <pre className="rounded bg-neutral-900 p-3 overflow-auto">
+      <pre className="rounded bg-[color:var(--theme-surface-panel)] p-3 overflow-auto">
         {JSON.stringify(dump, null, 2)}
       </pre>
     </div>

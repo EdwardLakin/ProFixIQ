@@ -16,7 +16,7 @@ export default function DashboardTabs() {
   );
 
   return (
-    <div className="w-full border-b border-neutral-800 bg-neutral-900">
+    <div className="w-full border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]">
       <div className="flex items-center gap-2 p-2">
         {/* Scrollable tab row */}
         <div className="flex min-w-0 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden">
@@ -28,8 +28,8 @@ export default function DashboardTabs() {
                   className={[
                     "flex items-center gap-2 rounded px-3 py-1 whitespace-nowrap",
                     t.href === activeHref
-                      ? "bg-orange-700 text-white border border-orange-400"
-                      : "bg-neutral-800 text-neutral-200 border border-white/10 hover:border-orange-400/60",
+                      ? "bg-orange-700 text-[color:var(--theme-text-primary)] border border-orange-400"
+                      : "bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] hover:border-orange-400/60",
                   ].join(" ")}
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}

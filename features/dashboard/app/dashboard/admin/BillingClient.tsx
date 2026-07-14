@@ -169,8 +169,8 @@ const MOCK: BillingSnapshot = {
 
 const COPPER = "#C57A4A";
 const card =
-  "rounded-2xl border border-white/10 bg-black/40 shadow-[0_24px_70px_rgba(0,0,0,0.65)]";
-const divider = "border-white/10";
+  "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)]";
+const divider = "border-[color:var(--theme-border-soft)]";
 
 /* -------------------------------------------------------------------------- */
 /* Small UI helpers                                                           */
@@ -190,7 +190,7 @@ function Badge({
   const styles: Record<typeof tone, React.CSSProperties> = {
     neutral: {
       borderColor: "rgba(255,255,255,0.12)",
-      backgroundColor: "rgba(0,0,0,0.35)",
+      backgroundColor: "var(--theme-surface-panel)",
       color: "rgba(255,255,255,0.82)",
     },
     success: {
@@ -243,9 +243,9 @@ function GlassCard({
       {(title || right) && (
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="flex items-center gap-2">
-            {icon ? <div className="text-neutral-300">{icon}</div> : null}
+            {icon ? <div className="text-[color:var(--theme-text-secondary)]">{icon}</div> : null}
             {title ? (
-              <h2 className="text-sm font-semibold text-neutral-200">{title}</h2>
+              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</h2>
             ) : null}
           </div>
           {right ? <div>{right}</div> : null}
@@ -321,12 +321,12 @@ function GhostButton({
       disabled={disabled}
       onClick={onClick}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-black/50 px-4 py-2 text-sm font-semibold text-neutral-200",
-        "transition hover:bg-black/65 disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex items-center justify-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)]",
+        "transition hover:bg-[color:var(--theme-surface-overlay)] disabled:cursor-not-allowed disabled:opacity-60",
         className,
       )}
     >
-      {icon ? <span className="text-neutral-300">{icon}</span> : null}
+      {icon ? <span className="text-[color:var(--theme-text-secondary)]">{icon}</span> : null}
       {children}
     </button>
   );
@@ -435,23 +435,23 @@ export default function BillingClient() {
     <div
       className="
         min-h-screen px-4 py-6 text-foreground
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+        bg-[var(--theme-gradient-panel)]
       "
       style={{ ["--copper" as never]: COPPER }}
     >
       <div className="mx-auto max-w-6xl">
         {/* Header */}
         <div className={cx(card, "px-5 py-4")}>
-          <div className="text-xs uppercase tracking-[0.25em] text-neutral-400">
+          <div className="text-xs uppercase tracking-[0.25em] text-[color:var(--theme-text-secondary)]">
             Account
           </div>
           <h1
-            className="mt-1 text-2xl font-semibold text-white"
+            className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
             Billing
           </h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             Subscription, invoices, payment method, and tax settings.
           </p>
 
@@ -485,16 +485,16 @@ export default function BillingClient() {
           >
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs uppercase tracking-wide text-neutral-400">
+                <p className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                   Current plan
                 </p>
                 <p className="mt-1 text-xl font-semibold" style={{ color: COPPER }}>
                   {data.plan.name}
                 </p>
-                <p className="mt-1 text-sm text-neutral-300">
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                   {data.plan.priceLabel} • {data.plan.interval}
                 </p>
-                <p className="mt-1 text-xs text-neutral-500">{data.plan.renewalLabel}</p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{data.plan.renewalLabel}</p>
 
                 <div className="mt-3">
                   <Badge tone="neutral">
@@ -517,14 +517,14 @@ export default function BillingClient() {
 
             {/* Usage */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-wide text-neutral-400">Seats</p>
-                  <Users size={16} className="text-neutral-400" />
+                  <p className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Seats</p>
+                  <Users size={16} className="text-[color:var(--theme-text-secondary)]" />
                 </div>
-                <p className="mt-2 text-sm font-semibold text-neutral-200">{seatsLabel}</p>
+                <p className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">{seatsLabel}</p>
 
-                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
                   <div
                     className="h-full rounded-full"
                     style={{
@@ -535,33 +535,33 @@ export default function BillingClient() {
                   />
                 </div>
 
-                <p className="mt-2 text-xs text-neutral-500">
+                <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
                   Track active users across your shop.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-wide text-neutral-400">Locations</p>
-                  <MapPin size={16} className="text-neutral-400" />
+                  <p className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Locations</p>
+                  <MapPin size={16} className="text-[color:var(--theme-text-secondary)]" />
                 </div>
-                <p className="mt-2 text-sm font-semibold text-neutral-200">
+                <p className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {data.usage.activeLocations}
                 </p>
-                <p className="mt-2 text-xs text-neutral-500">
+                <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
                   Multi-location support is included.
                 </p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-wide text-neutral-400">Billing status</p>
-                  <ShieldCheck size={16} className="text-neutral-400" />
+                  <p className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Billing status</p>
+                  <ShieldCheck size={16} className="text-[color:var(--theme-text-secondary)]" />
                 </div>
-                <p className="mt-2 text-sm font-semibold text-neutral-200 capitalize">
+                <p className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)] capitalize">
                   {data.status.replace("_", " ")}
                 </p>
-                <p className="mt-2 text-xs text-neutral-500">
+                <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
                   Issues show here (failed payment, past due, etc).
                 </p>
               </div>
@@ -570,18 +570,18 @@ export default function BillingClient() {
 
           {/* Payment Method */}
           <GlassCard title="Payment method" icon={<CreditCard size={16} />}>
-            <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-neutral-200">
+                  <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     {data.paymentMethod.brand} •••• {data.paymentMethod.last4}
                   </p>
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                     Expires {data.paymentMethod.expMonth}/{data.paymentMethod.expYear}
                   </p>
-                  <p className="mt-2 text-xs text-neutral-400">
+                  <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                     Billing name:{" "}
-                    <span className="text-neutral-200">{data.paymentMethod.billingName}</span>
+                    <span className="text-[color:var(--theme-text-primary)]">{data.paymentMethod.billingName}</span>
                   </p>
                 </div>
 
@@ -599,7 +599,7 @@ export default function BillingClient() {
               </div>
             </div>
 
-            <p className="mt-4 text-xs text-neutral-500">
+            <p className="mt-4 text-xs text-[color:var(--theme-text-muted)]">
               Tip: Use Stripe Customer Portal for payment updates to keep PCI handling off your app.
             </p>
           </GlassCard>
@@ -615,21 +615,21 @@ export default function BillingClient() {
             right={<Badge tone="neutral">Stored</Badge>}
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
-                <p className="text-xs uppercase tracking-wide text-neutral-400">Company</p>
-                <p className="mt-2 text-sm font-semibold text-neutral-200">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <p className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Company</p>
+                <p className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {data.billingProfile.companyName}
                 </p>
-                <p className="mt-1 text-xs text-neutral-500">{data.billingProfile.contactEmail}</p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{data.billingProfile.contactEmail}</p>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
-                <p className="text-xs uppercase tracking-wide text-neutral-400">Address</p>
-                <p className="mt-2 text-sm text-neutral-200">{data.billingProfile.addressLine1}</p>
-                <p className="mt-1 text-xs text-neutral-500">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <p className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Address</p>
+                <p className="mt-2 text-sm text-[color:var(--theme-text-primary)]">{data.billingProfile.addressLine1}</p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   {data.billingProfile.city}, {data.billingProfile.region} {data.billingProfile.postal}
                 </p>
-                <p className="mt-1 text-xs text-neutral-500">{data.billingProfile.country}</p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{data.billingProfile.country}</p>
               </div>
             </div>
 
@@ -648,16 +648,16 @@ export default function BillingClient() {
 
           {/* Tax */}
           <GlassCard title="Taxes" icon={<ShieldCheck size={16} />}>
-            <div className="rounded-xl border border-white/10 bg-black/50 p-4">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-neutral-200">
+                  <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     {data.taxes.autoTaxEnabled ? "Automatic tax" : "Manual tax"}
                   </p>
-                  <p className="mt-1 text-xs text-neutral-500">Region: {data.taxes.region}</p>
-                  <p className="mt-2 text-xs text-neutral-400">
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Region: {data.taxes.region}</p>
+                  <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                     Behavior:{" "}
-                    <span className="text-neutral-200">
+                    <span className="text-[color:var(--theme-text-primary)]">
                       {data.taxes.taxBehavior === "exclusive"
                         ? "Tax added at checkout"
                         : "Tax included in price"}
@@ -670,14 +670,14 @@ export default function BillingClient() {
               </div>
 
               {data.billingProfile.taxIdLabel && data.billingProfile.taxIdValue ? (
-                <div className="mt-4 rounded-xl border border-white/10 bg-black/35 p-3">
-                  <p className="text-xs text-neutral-400">{data.billingProfile.taxIdLabel}</p>
-                  <p className="mt-1 text-sm font-mono text-neutral-200">{data.billingProfile.taxIdValue}</p>
+                <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                  <p className="text-xs text-[color:var(--theme-text-secondary)]">{data.billingProfile.taxIdLabel}</p>
+                  <p className="mt-1 text-sm font-mono text-[color:var(--theme-text-primary)]">{data.billingProfile.taxIdValue}</p>
                 </div>
               ) : null}
             </div>
 
-            <p className="mt-4 text-xs text-neutral-500">
+            <p className="mt-4 text-xs text-[color:var(--theme-text-muted)]">
               Configure taxes in Stripe to keep billing consistent across regions.
             </p>
           </GlassCard>
@@ -694,8 +694,8 @@ export default function BillingClient() {
                   value={invoiceFilter}
                   onChange={(e) => setInvoiceFilter(e.target.value as typeof invoiceFilter)}
                   className="
-                    rounded-full border border-white/10 bg-black/50 px-3 py-2
-                    text-xs text-neutral-200 outline-none
+                    rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2
+                    text-xs text-[color:var(--theme-text-primary)] outline-none
                     focus:ring-2 focus:ring-[color:var(--copper)]/35
                   "
                   style={{ ["--copper" as never]: COPPER }}
@@ -717,8 +717,8 @@ export default function BillingClient() {
               </div>
             }
           >
-            <div className="overflow-hidden rounded-2xl border border-white/10">
-              <div className="grid grid-cols-12 bg-black/45 px-4 py-3 text-xs font-semibold text-neutral-300">
+            <div className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)]">
+              <div className="grid grid-cols-12 bg-[color:var(--theme-surface-inset)] px-4 py-3 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
                 <div className="col-span-4 sm:col-span-3">Invoice</div>
                 <div className="col-span-4 sm:col-span-3">Date</div>
                 <div className="col-span-4 sm:col-span-2 text-right">Amount</div>
@@ -726,22 +726,22 @@ export default function BillingClient() {
                 <div className="col-span-4 sm:col-span-2 text-right">Actions</div>
               </div>
 
-              <div className="divide-y divide-white/10 bg-black/30">
+              <div className="divide-y divide-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
                 {filteredInvoices.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-neutral-400">
+                  <div className="px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]">
                     No invoices match this filter.
                   </div>
                 ) : (
                   filteredInvoices.map((inv) => (
                     <div key={inv.id} className="grid grid-cols-12 items-center px-4 py-3 text-sm">
                       <div className="col-span-4 sm:col-span-3">
-                        <div className="font-semibold text-neutral-200">{inv.number}</div>
-                        <div className="text-xs text-neutral-500">{inv.id}</div>
+                        <div className="font-semibold text-[color:var(--theme-text-primary)]">{inv.number}</div>
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">{inv.id}</div>
                       </div>
 
-                      <div className="col-span-4 sm:col-span-3 text-neutral-300">{inv.date}</div>
+                      <div className="col-span-4 sm:col-span-3 text-[color:var(--theme-text-secondary)]">{inv.date}</div>
 
-                      <div className="col-span-4 sm:col-span-2 text-right font-semibold text-neutral-200">
+                      <div className="col-span-4 sm:col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
                         {inv.amount}
                       </div>
 
@@ -774,7 +774,7 @@ export default function BillingClient() {
               </div>
             </div>
 
-            <p className="mt-4 text-xs text-neutral-500">
+            <p className="mt-4 text-xs text-[color:var(--theme-text-muted)]">
               You can also show invoices from your own{" "}
               <span className="font-mono">subscriptions</span> /{" "}
               <span className="font-mono">invoices</span> tables once you persist them.
@@ -787,13 +787,13 @@ export default function BillingClient() {
           <GlassCard title="Billing activity" icon={<Receipt size={16} />} className="lg:col-span-2">
             <div className="space-y-3">
               {data.history.map((h) => (
-                <div key={h.id} className="rounded-xl border border-white/10 bg-black/50 p-4">
+                <div key={h.id} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-neutral-200">{h.label}</p>
-                      {h.meta ? <p className="mt-1 text-xs text-neutral-500">{h.meta}</p> : null}
+                      <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{h.label}</p>
+                      {h.meta ? <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{h.meta}</p> : null}
                     </div>
-                    <p className="text-xs text-neutral-500">{h.at}</p>
+                    <p className="text-xs text-[color:var(--theme-text-muted)]">{h.at}</p>
                   </div>
                 </div>
               ))}
@@ -802,28 +802,28 @@ export default function BillingClient() {
 
           {/* Developer / Wiring notes */}
           <GlassCard title="Wiring checklist" icon={<ShieldCheck size={16} />}>
-            <div className="space-y-3 text-sm text-neutral-300">
-              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
-                <p className="text-xs uppercase tracking-wide text-neutral-400">
+            <div className="space-y-3 text-sm text-[color:var(--theme-text-secondary)]">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <p className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                   Recommended endpoints
                 </p>
-                <ul className="mt-2 space-y-2 text-xs text-neutral-400">
+                <ul className="mt-2 space-y-2 text-xs text-[color:var(--theme-text-secondary)]">
                   <li>
-                    <span className="font-mono text-neutral-200">POST /api/stripe/portal</span>{" "}
+                    <span className="font-mono text-[color:var(--theme-text-primary)]">POST /api/stripe/portal</span>{" "}
                     → returns {`{ url }`}
                   </li>
                   <li>
-                    <span className="font-mono text-neutral-200">GET /api/billing/snapshot</span>{" "}
+                    <span className="font-mono text-[color:var(--theme-text-primary)]">GET /api/billing/snapshot</span>{" "}
                     → plan/status/payment/invoices
                   </li>
                 </ul>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/50 p-4">
-                <p className="text-xs uppercase tracking-wide text-neutral-400">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <p className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                   Keep secrets server-only
                 </p>
-                <p className="mt-2 text-xs text-neutral-500">
+                <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
                   Use Stripe secret key only inside route handlers / server actions.
                   Client should only receive portal URLs + safe invoice links.
                 </p>
@@ -841,7 +841,7 @@ export default function BillingClient() {
         </div>
 
         {/* Footer note */}
-        <div className="mt-6 text-xs text-neutral-500">
+        <div className="mt-6 text-xs text-[color:var(--theme-text-muted)]">
           Taxes and invoices reflect your Stripe configuration. Cancel anytime from the billing portal.
         </div>
       </div>

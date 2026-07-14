@@ -137,14 +137,14 @@ export default function PretripForm({ unitId, driverHint }: Props) {
     const value = defects[key];
 
     const base =
-      "inline-flex items-center justify-between gap-2 rounded-2xl px-3 py-2 text-xs font-medium border transition shadow-[0_10px_24px_rgba(0,0,0,0.85)]";
+      "inline-flex items-center justify-between gap-2 rounded-2xl px-3 py-2 text-xs font-medium border transition shadow-[var(--theme-shadow-medium)]";
 
     const className =
       value === "defect"
-        ? `${base} border-[color:var(--accent-copper)]/70 bg-black/70 text-[color:var(--accent-copper-light)]`
+        ? `${base} border-[color:var(--accent-copper)]/70 bg-[color:var(--theme-surface-overlay)] text-[color:var(--accent-copper-light)]`
         : value === "na"
-          ? `${base} border-neutral-700 bg-black/30 text-neutral-400`
-          : `${base} border-[color:var(--metal-border-soft)] bg-black/40 text-neutral-300`;
+          ? `${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]`
+          : `${base} border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]`;
 
     return (
       <button
@@ -159,7 +159,7 @@ export default function PretripForm({ unitId, driverHint }: Props) {
         }}
       >
         <span>{label}</span>
-        <span className="rounded-full border border-white/10 bg-black/40 px-2 py-[1px] text-[10px] uppercase tracking-[0.16em]">
+        <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-[1px] text-[10px] uppercase tracking-[0.16em]">
           {value === "defect"
             ? "DEFECT"
             : value === "na"
@@ -173,17 +173,17 @@ export default function PretripForm({ unitId, driverHint }: Props) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-5 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/70 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl"
+      className="space-y-5 rounded-3xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
     >
       {/* Header */}
-      <header className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+      <header className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] pb-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
             Daily Pre-trip
           </p>
-          <p className="mt-1 text-sm text-neutral-200">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
             Unit{" "}
-            <span className="font-mono text-xs text-neutral-100">
+            <span className="font-mono text-xs text-[color:var(--theme-text-primary)]">
               {unitId}
             </span>
           </p>
@@ -203,40 +203,40 @@ export default function PretripForm({ unitId, driverHint }: Props) {
       {/* Driver + basics */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Driver
           </label>
           <input
             type="text"
             value={driverName}
             onChange={(e) => setDriverName(e.target.value)}
-            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
             placeholder="Driver name"
           />
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Odometer
           </label>
           <input
             type="number"
             value={odometer}
             onChange={(e) => setOdometer(e.target.value)}
-            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
             placeholder="km"
           />
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
-          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <label className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Location / Route
           </label>
           <input
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+            className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
             placeholder="e.g. Calgary Yard A – AM linehaul"
           />
         </div>
@@ -245,10 +245,10 @@ export default function PretripForm({ unitId, driverHint }: Props) {
       {/* Quick defect toggles */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Walk-around checklist
           </p>
-          <p className="text-[11px] text-neutral-500">
+          <p className="text-[11px] text-[color:var(--theme-text-muted)]">
             Tap items to mark{" "}
             <span className="text-[color:var(--accent-copper-light)]">
               DEFECT
@@ -266,24 +266,24 @@ export default function PretripForm({ unitId, driverHint }: Props) {
 
       {/* Notes */}
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <label className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Notes
         </label>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={4}
-          className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-black/80 px-3 py-2 text-sm text-white placeholder:text-neutral-500"
+          className="w-full rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
           placeholder="Anything the shop should know before this unit goes out..."
         />
       </div>
 
       {/* Actions */}
-      <div className="flex flex-col gap-3 border-t border-white/10 pt-4">
+      <div className="flex flex-col gap-3 border-t border-[color:var(--theme-border-soft)] pt-4">
         <button
           type="submit"
           disabled={!canSubmit}
-          className="inline-flex items-center justify-center rounded-xl bg-[color:var(--accent-copper)] px-4 py-2.5 text-sm font-semibold text-black shadow-[0_0_20px_rgba(193,102,59,0.4)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center justify-center rounded-xl bg-[color:var(--accent-copper)] px-4 py-2.5 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_20px_rgba(193,102,59,0.4)] transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting ? "Saving pre-trip…" : "Submit pre-trip"}
         </button>
@@ -294,7 +294,7 @@ export default function PretripForm({ unitId, driverHint }: Props) {
             type="button"
             onClick={handleConvert}
             disabled={convertBusy}
-            className="inline-flex items-center justify-center rounded-xl border border-[color:var(--accent-copper-light)] bg-black/70 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper-light)] shadow-[0_0_18px_rgba(193,102,59,0.35)] transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-xl border border-[color:var(--accent-copper-light)] bg-[color:var(--theme-surface-overlay)] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper-light)] shadow-[0_0_18px_rgba(193,102,59,0.35)] transition hover:bg-[color:var(--theme-surface-overlay)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {convertBusy
               ? "Converting defects…"
@@ -303,7 +303,7 @@ export default function PretripForm({ unitId, driverHint }: Props) {
         )}
 
         {statusMessage && (
-          <p className="text-xs text-neutral-400">{statusMessage}</p>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">{statusMessage}</p>
         )}
       </div>
     </form>

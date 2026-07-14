@@ -67,13 +67,13 @@ export default function ApprovalRiskWidget({
   const content = (
     <>
       {loading ? (
-        <div className="text-sm text-neutral-300">Loading approval risk…</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading approval risk…</div>
       ) : error ? (
         <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
           {error}
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-400">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]">
           No work orders are currently waiting on approval.
         </div>
       ) : (
@@ -92,14 +92,14 @@ export default function ApprovalRiskWidget({
               <Link
                 key={row.work_order_id}
                 href={`/work-orders/${row.work_order_id}`}
-                className="block rounded-xl border border-white/10 bg-black/25 px-3 py-2.5 transition hover:bg-black/35"
+                className="block rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 transition hover:bg-[color:var(--theme-surface-inset)]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white">
+                    <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {row.custom_id ?? "Work order"}
                     </div>
-                    <div className="mt-1 truncate text-xs text-neutral-300">
+                    <div className="mt-1 truncate text-xs text-[color:var(--theme-text-secondary)]">
                       {row.display_name ?? "Customer"}
                       {row.unit_label ? ` • Unit ${row.unit_label}` : ""}
                     </div>
@@ -127,7 +127,7 @@ export default function ApprovalRiskWidget({
       rightSlot={
         <Link
           href="/work-orders/view"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
         >
           Open queue →
         </Link>
@@ -149,8 +149,8 @@ function MetricChip({
   tone?: "default" | "accent";
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">{label}</div>
       <div
         className={[
           "mt-1 text-lg font-semibold",

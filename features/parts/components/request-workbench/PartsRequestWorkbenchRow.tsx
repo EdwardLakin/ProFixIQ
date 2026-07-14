@@ -42,9 +42,9 @@ export function PartsRequestWorkbenchRow({
   onOpenInsight?: (insight: SmartInsight) => void;
 }): JSX.Element {
   const input =
-    "w-full rounded-lg border border-[color:var(--desktop-border)] bg-neutral-950/25 px-2 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/25";
+    "w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-page)] px-2 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-500/25";
   const action =
-    "rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2.5 py-2 text-xs text-neutral-100 hover:bg-white/5";
+    "rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2.5 py-2 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
 
   const hasPossibleMismatch = item.insights?.some((insight) => insight.kind === "possible_mismatch") ?? false;
   const hasSelectedPart = !!item.partId && !!selectedPart;
@@ -64,10 +64,10 @@ export function PartsRequestWorkbenchRow({
       </td>
       <td className="p-2">
         {hasSelectedPart ? (
-          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-emerald-950/10 px-2 py-2 text-sm text-white">
+          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-emerald-950/10 px-2 py-2 text-sm text-[color:var(--theme-text-primary)]">
             <div>{displayedPartNumber || "—"}</div>
             {item.requestedPartNumber && item.requestedPartNumber !== displayedPartNumber ? (
-              <div className="mt-1 text-[11px] text-neutral-400">Requested: {item.requestedPartNumber}</div>
+              <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">Requested: {item.requestedPartNumber}</div>
             ) : null}
           </div>
         ) : (
@@ -81,10 +81,10 @@ export function PartsRequestWorkbenchRow({
       </td>
       <td className="p-2">
         {hasSelectedPart ? (
-          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-emerald-950/10 px-2 py-2 text-sm text-white">
+          <div className="rounded-lg border border-[color:var(--desktop-border)] bg-emerald-950/10 px-2 py-2 text-sm text-[color:var(--theme-text-primary)]">
             <div>{displayedManufacturer || "—"}</div>
             {item.requestedManufacturer && item.requestedManufacturer !== displayedManufacturer ? (
-              <div className="mt-1 text-[11px] text-neutral-400">Requested: {item.requestedManufacturer}</div>
+              <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">Requested: {item.requestedManufacturer}</div>
             ) : null}
           </div>
         ) : (
@@ -130,7 +130,7 @@ export function PartsRequestWorkbenchRow({
           </button>
         ) : null}
       </td>
-      <td className="p-2 text-sm font-medium text-white">{money(item.qty * Math.max(0, item.sellPrice ?? 0))}</td>
+      <td className="p-2 text-sm font-medium text-[color:var(--theme-text-primary)]">{money(item.qty * Math.max(0, item.sellPrice ?? 0))}</td>
       <td className="p-2">
         <span className="rounded-full border border-sky-400/30 bg-sky-950/20 px-2 py-1 text-xs text-sky-100">
           {item.status ?? "requested"}

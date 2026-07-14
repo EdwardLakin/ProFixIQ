@@ -114,7 +114,7 @@ export default function RoleHubTiles({
         const tiles = grouped[s]!;
         const isOpen = !!open[s];
         return (
-          <section key={s} className="rounded-lg border border-white/5 bg-background/40">
+          <section key={s} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-background/40">
             <button
               type="button"
               onClick={() => setOpen((prev) => ({ ...prev, [s]: !prev[s] }))}
@@ -130,7 +130,7 @@ export default function RoleHubTiles({
                   <Link
                     key={t.href}
                     href={t.href}
-                    className="rounded-md border border-white/5 bg-background/40 p-4 hover:border-white/15 transition"
+                    className="rounded-md border border-[color:var(--theme-border-soft)] bg-background/40 p-4 hover:border-[color:var(--theme-border-soft)] transition"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-sm font-medium text-foreground">{t.title}</div>

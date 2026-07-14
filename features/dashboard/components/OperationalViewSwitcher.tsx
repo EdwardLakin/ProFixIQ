@@ -60,7 +60,7 @@ export function OperationalViewSwitcher({
     <nav
       aria-label="Operational views"
       className={cn(
-        "flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-black/25 p-1 text-sm",
+        "flex gap-2 overflow-x-auto rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-1 text-sm",
         className,
       )}
     >
@@ -76,7 +76,7 @@ export function OperationalViewSwitcher({
             href={href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "whitespace-nowrap rounded-xl px-3 py-2 font-medium text-neutral-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70",
+              "whitespace-nowrap rounded-xl px-3 py-2 font-medium text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70",
               active && "bg-orange-500/20 text-orange-100 shadow-[inset_0_0_0_1px_rgba(251,146,60,0.35)]",
             )}
           >

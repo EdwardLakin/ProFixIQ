@@ -142,16 +142,16 @@ export default function PortalConfirmPage() {
       className="
         min-h-screen px-4 text-foreground
         bg-background
-        bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+        bg-[var(--theme-gradient-panel)]
       "
     >
       <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
         <div
           className="
             w-full rounded-3xl border
-            border-[color:var(--metal-border-soft,#1f2937)]
-            bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
-            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
+            border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+            bg-[var(--theme-gradient-panel)]
+            shadow-[var(--theme-shadow-medium)]
             px-6 py-7 sm:px-8 sm:py-9
           "
         >
@@ -159,11 +159,11 @@ export default function PortalConfirmPage() {
             <div
               className="
                 inline-flex items-center gap-1 rounded-full border
-                border-[color:var(--metal-border-soft,#1f2937)]
-                bg-black/70
+                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+                bg-[color:var(--theme-surface-overlay)]
                 px-3 py-1 text-[11px]
                 uppercase tracking-[0.22em]
-                text-neutral-300
+                text-[color:var(--theme-text-secondary)]
               "
               style={{ color: COPPER }}
             >
@@ -172,13 +172,13 @@ export default function PortalConfirmPage() {
           </div>
 
           <h1
-            className="text-center text-2xl sm:text-3xl font-semibold text-white"
+            className="text-center text-2xl sm:text-3xl font-semibold text-[color:var(--theme-text-primary)]"
             style={{ fontFamily: "var(--font-blackops), system-ui" }}
           >
             Completing sign-in
           </h1>
 
-          <p className="mt-2 text-center text-xs text-neutral-400 sm:text-sm">
+          <p className="mt-2 text-center text-xs text-[color:var(--theme-text-secondary)] sm:text-sm">
             {error
               ? "Sign-in failed — redirecting…"
               : "One moment… we’re completing your sign-in."}
@@ -190,7 +190,7 @@ export default function PortalConfirmPage() {
             </div>
           ) : null}
 
-          <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full border border-white/10 bg-white/5">
+          <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]">
             <div
               className="h-full w-1/2 animate-pulse rounded-full"
               style={{ backgroundColor: COPPER }}

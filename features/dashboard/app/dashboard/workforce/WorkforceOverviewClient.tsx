@@ -209,13 +209,13 @@ export default function WorkforceOverviewClient() {
   if (loading) {
     return (
       <div className="space-y-4" aria-busy="true" aria-live="polite">
-        <div className="h-28 animate-pulse rounded-2xl border border-white/10 bg-black/25" />
+        <div className="h-28 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="h-24 animate-pulse rounded-xl border border-white/10 bg-black/25" />
+            <div key={index} className="h-24 animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
           ))}
         </div>
-        <div className="h-64 animate-pulse rounded-2xl border border-white/10 bg-black/25" />
+        <div className="h-64 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
       </div>
     );
   }
@@ -279,12 +279,12 @@ export default function WorkforceOverviewClient() {
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#171515] via-[#131418] to-[#191412] p-5 shadow-[0_8px_24px_rgba(0,0,0,0.25)] md:p-6">
+      <header className="var(--theme-gradient-panel)">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-orange-300/90">Workforce</p>
-            <h1 className="mt-2 text-2xl font-semibold text-white md:text-3xl">Workforce Command</h1>
-            <p className="mt-2 max-w-2xl text-sm text-neutral-300">
+            <h1 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)] md:text-3xl">Workforce Command</h1>
+            <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
               Coverage, exceptions, and people signals for today’s shop flow.
             </p>
           </div>
@@ -303,13 +303,13 @@ export default function WorkforceOverviewClient() {
       <section className="overflow-x-auto pb-1" aria-label="Workforce key metrics">
         <div className="grid min-w-[680px] gap-3 md:grid-cols-2 lg:min-w-0 lg:grid-cols-3">
           {kpiGroups.map((group) => (
-            <article key={group.title} className="rounded-2xl border border-white/10 bg-black/30 p-4">
+            <article key={group.title} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
               <h2 className={`text-sm font-semibold ${group.accent}`}>{group.title}</h2>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 {group.items.map((item) => (
-                  <div key={item.label} className={`rounded-lg border bg-black/25 p-3 ${item.tone}`}>
-                    <p className="text-xs text-neutral-400">{item.label}</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">{metricDisplay(item.value)}</p>
+                  <div key={item.label} className={`rounded-lg border bg-[color:var(--theme-surface-inset)] p-3 ${item.tone}`}>
+                    <p className="text-xs text-[color:var(--theme-text-secondary)]">{item.label}</p>
+                    <p className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{metricDisplay(item.value)}</p>
                   </div>
                 ))}
               </div>
@@ -318,14 +318,14 @@ export default function WorkforceOverviewClient() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-black/25 p-5 md:p-6">
-        <h2 className="text-lg font-semibold text-white">Workforce Inbox</h2>
+      <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 md:p-6">
+        <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Workforce Inbox</h2>
         {data.inbox.length === 0 ? (
           <div className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
             <p className="font-medium">Workforce is clear right now.</p>
             <p className="mt-1 text-emerald-100/90">No immediate staffing or compliance issues are waiting in queue.</p>
             <p className="mt-2 text-emerald-100/90">
-              Stay ahead from <Link href="/dashboard/workforce/scheduling" className="underline hover:text-white">Scheduling</Link> and <Link href="/dashboard/workforce/time-off" className="underline hover:text-white">Time Off</Link>.
+              Stay ahead from <Link href="/dashboard/workforce/scheduling" className="underline hover:text-[color:var(--theme-text-primary)]">Scheduling</Link> and <Link href="/dashboard/workforce/time-off" className="underline hover:text-[color:var(--theme-text-primary)]">Time Off</Link>.
             </p>
           </div>
         ) : (
@@ -339,7 +339,7 @@ export default function WorkforceOverviewClient() {
               if (list.length === 0) return null;
               return (
                 <div key={label as string}>
-                  <h3 className="text-sm font-medium text-neutral-200">{label as string}</h3>
+                  <h3 className="text-sm font-medium text-[color:var(--theme-text-primary)]">{label as string}</h3>
                   <div className="mt-2 space-y-2">
                     {list.map((item) => {
                       const styles = severityStyles[item.severity];
@@ -347,18 +347,18 @@ export default function WorkforceOverviewClient() {
                         <Link
                           href={roleSafeHref(safeHref(item.href), data.permissions.canAccessPeople)}
                           key={item.id}
-                          className={`block rounded-xl border bg-black/30 p-3 transition ${styles.border} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70`}
+                          className={`block rounded-xl border bg-[color:var(--theme-surface-inset)] p-3 transition ${styles.border} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70`}
                         >
                           <div className="flex flex-wrap items-center gap-2">
                             <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${styles.chip}`}>
                               <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} aria-hidden />
                               {styles.label}
                             </span>
-                            {item.count !== undefined ? <span className="text-xs text-neutral-300">Count: {item.count}</span> : null}
-                            {item.personName ? <span className="text-xs text-neutral-300">Person: {item.personName}</span> : null}
+                            {item.count !== undefined ? <span className="text-xs text-[color:var(--theme-text-secondary)]">Count: {item.count}</span> : null}
+                            {item.personName ? <span className="text-xs text-[color:var(--theme-text-secondary)]">Person: {item.personName}</span> : null}
                           </div>
-                          <p className="mt-2 text-sm font-semibold text-white">{item.title}</p>
-                          <p className="mt-1 text-sm text-neutral-300">{item.description}</p>
+                          <p className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">{item.title}</p>
+                          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{item.description}</p>
                           <p className="mt-2 text-xs text-orange-200">Open action →</p>
                         </Link>
                       );
@@ -373,20 +373,20 @@ export default function WorkforceOverviewClient() {
 
       <section className="grid gap-3 md:grid-cols-2" aria-label="Operational risk panels">
         {panelEntries.map(([key, items]) => (
-          <article key={key} className="rounded-2xl border border-white/10 bg-gradient-to-br from-black/40 to-black/20 p-5">
+          <article key={key} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-br from-[color:var(--theme-surface-page)] to-[color:var(--theme-surface-page)] p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-copper-200">{formatSectionLabel(key)}</h3>
             {items.length === 0 ? (
-              <p className="mt-3 text-sm text-neutral-400">No active items.</p>
+              <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No active items.</p>
             ) : (
               <ul className="mt-3 space-y-2">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <Link href={roleSafeHref(safeHref(item.href), data.permissions.canAccessPeople)} className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-200 hover:border-orange-400/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
+                    <Link href={roleSafeHref(safeHref(item.href), data.permissions.canAccessPeople)} className="flex items-start justify-between gap-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-orange-400/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
                       <span>
-                        <span className="font-medium text-white">{item.title}</span>
-                        <span className="mt-0.5 block text-xs text-neutral-400">{item.description}</span>
+                        <span className="font-medium text-[color:var(--theme-text-primary)]">{item.title}</span>
+                        <span className="mt-0.5 block text-xs text-[color:var(--theme-text-secondary)]">{item.description}</span>
                       </span>
-                      {item.count !== undefined ? <span className="shrink-0 text-xs text-neutral-300">{item.count}</span> : null}
+                      {item.count !== undefined ? <span className="shrink-0 text-xs text-[color:var(--theme-text-secondary)]">{item.count}</span> : null}
                     </Link>
                   </li>
                 ))}

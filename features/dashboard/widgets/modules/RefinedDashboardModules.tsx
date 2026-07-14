@@ -22,7 +22,7 @@ import { getShopStats } from "@/features/shared/lib/stats/getShopStats";
 import { useEffect, useState } from "react";
 
 function actionBtn() {
-  return "rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:border-[color:var(--brand-accent)]";
+  return "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--brand-accent)]";
 }
 
 export function DailySummaryModule({ mode }: { mode: DashboardModuleMode }) {
@@ -35,7 +35,7 @@ export function DailySummaryModule({ mode }: { mode: DashboardModuleMode }) {
         title="Daily Summary"
         action={<button type="button" onClick={() => void reload()} className={actionBtn()}>Refresh</button>}
       />
-      {loading ? <div className="text-sm text-neutral-300">Loading summary…</div> : error || !data ? <div className="text-sm text-[color:var(--brand-accent)]">{error ?? "No summary available."}</div> : (
+      {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading summary…</div> : error || !data ? <div className="text-sm text-[color:var(--brand-accent)]">{error ?? "No summary available."}</div> : (
         <>
           <DashboardMetricRow>
             <DashboardMetric label="Actions" value={String(data.actionItems.length)} />
@@ -49,7 +49,7 @@ export function DailySummaryModule({ mode }: { mode: DashboardModuleMode }) {
             ]}
           />
           <DashboardActionBar>
-            <span className="text-[11px] text-neutral-500">Role-aware signal</span>
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">Role-aware signal</span>
             <Link href={data.links[0]?.href ?? "/dashboard"} className={actionBtn()}>Open</Link>
           </DashboardActionBar>
         </>
@@ -68,11 +68,11 @@ export function SuggestedActionsModule({ mode, maxItems = 4 }: { mode: Dashboard
   return (
     <DashboardModuleShell mode={mode}>
       <DashboardModuleHeader eyebrow="AI Planner" title="Suggested Actions" action={<button type="button" onClick={() => void reload()} className={actionBtn()}>Refresh</button>} />
-      {loading ? <div className="text-sm text-neutral-300">Loading actions…</div> : !data || ("error" in data) ? <div className="text-sm text-[color:var(--brand-accent)]">{data && "error" in data ? data.error : "No actions available."}</div> : (
+      {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading actions…</div> : !data || ("error" in data) ? <div className="text-sm text-[color:var(--brand-accent)]">{data && "error" in data ? data.error : "No actions available."}</div> : (
         <>
           <DashboardSignalList items={items.map((item) => ({ label: item.title, value: item.level, tone: item.level === "critical" ? "accent" : "default" }))} />
           <DashboardActionBar>
-            <span className="text-[11px] text-neutral-500">Top {items.length} actions</span>
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">Top {items.length} actions</span>
             <Link href={items[0]?.href ?? "/assistant"} className={actionBtn()}>Open</Link>
           </DashboardActionBar>
         </>
@@ -88,7 +88,7 @@ export function LiveShopLoadModule({ shopId, mode }: { shopId: string | null; mo
   return (
     <DashboardModuleShell mode={mode}>
       <DashboardModuleHeader eyebrow="Live Ops" title="Live Shop Load" />
-      {loading ? <div className="text-sm text-neutral-300">Loading load…</div> : error || !summary ? <div className="text-sm text-[color:var(--brand-accent)]">{error ?? "No load data."}</div> : (
+      {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading load…</div> : error || !summary ? <div className="text-sm text-[color:var(--brand-accent)]">{error ?? "No load data."}</div> : (
         <>
           <DashboardMetric label="Utilization" value={`${summary.shopUtilizationPct}%`} tone="primary" />
           <DashboardMetricRow columns={2}>
@@ -96,7 +96,7 @@ export function LiveShopLoadModule({ shopId, mode }: { shopId: string | null; mo
             <DashboardMetric label="Active techs" value={`${summary.activeTechnicians}/${summary.totalTechnicians}`} tone="accent" />
           </DashboardMetricRow>
           <DashboardActionBar>
-            <span className="text-[11px] text-neutral-500">{metrics?.timezone ?? "UTC"}</span>
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">{metrics?.timezone ?? "UTC"}</span>
             <Link href="/dashboard/operations" className={actionBtn()}>View</Link>
           </DashboardActionBar>
         </>
@@ -113,7 +113,7 @@ export function TechLoadModule({ shopId, mode }: { shopId: string | null; mode: 
   return (
     <DashboardModuleShell mode={mode}>
       <DashboardModuleHeader eyebrow="Team" title="Technician Load" />
-      {loading ? <div className="text-sm text-neutral-300">Loading tech load…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
+      {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading tech load…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
         <>
           <DashboardMetricRow>
             <DashboardMetric label="Tracked" value={String(rows.length)} />
@@ -167,7 +167,7 @@ export function ShopPulseModule({ shopId, mode }: { shopId: string | null; mode:
   return (
     <DashboardModuleShell mode={mode}>
       <DashboardModuleHeader eyebrow="Operations" title="Shop Pulse" action={<Link href="/work-orders/board" className={actionBtn()}>Board</Link>} />
-      {loading ? <div className="text-sm text-neutral-300">Loading pulse…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : <DashboardSignalList items={messages} />}
+      {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading pulse…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : <DashboardSignalList items={messages} />}
     </DashboardModuleShell>
   );
 }
@@ -199,7 +199,7 @@ export function RevenueWatchModule({ shopId, mode }: { shopId: string | null; mo
   return (
     <DashboardModuleShell mode={mode}>
       <DashboardModuleHeader eyebrow="Finance" title="Revenue Watch" action={<Link href="/dashboard/owner/reports" className={actionBtn()}>Reports</Link>} />
-      {loading ? <div className="text-sm text-neutral-300">Loading revenue…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
+      {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading revenue…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
         <DashboardMetricRow>
           <DashboardMetric label="Revenue" value={money(totals.revenue)} tone="primary" />
           <DashboardMetric label="Profit" value={money(totals.profit)} tone="accent" />
@@ -219,7 +219,7 @@ export function PerformanceModule({ shopId, mode }: { shopId: string | null; mod
   return (
     <DashboardModuleShell mode={mode}>
       <DashboardModuleHeader eyebrow="Performance" title="Technician Performance" />
-      {loading ? <div className="text-sm text-neutral-300">Loading performance…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
+      {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading performance…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
         <>
           <DashboardMetricRow columns={2}>
             <DashboardMetric label="Completed" value={String(completed)} tone="primary" />
@@ -239,7 +239,7 @@ export function WorkOrderBoardModule({ mode }: { mode: DashboardModuleMode }) {
   return (
     <DashboardModuleShell mode={mode}>
       <DashboardModuleHeader eyebrow="Board" title="Work Order Board" action={<button type="button" onClick={() => void refetch()} className={actionBtn()}>Refresh</button>} />
-      {loading ? <div className="text-sm text-neutral-300">Loading board…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
+      {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading board…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
         <>
           <DashboardMetricRow columns={2}>
             <DashboardMetric label="Active" value={String(active)} tone="primary" />
@@ -247,7 +247,7 @@ export function WorkOrderBoardModule({ mode }: { mode: DashboardModuleMode }) {
           </DashboardMetricRow>
           <DashboardSignalList items={rows.slice(0, 5).map((row) => ({ label: row.custom_id ?? row.display_name ?? row.work_order_id.slice(0, 8), value: row.overall_stage?.replaceAll("_", " ") ?? "active" }))} />
           <DashboardActionBar>
-            <span className="text-[11px] text-neutral-500">Live queue snapshot</span>
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">Live queue snapshot</span>
             <Link href="/work-orders/board" className={actionBtn()}>Open board</Link>
           </DashboardActionBar>
         </>

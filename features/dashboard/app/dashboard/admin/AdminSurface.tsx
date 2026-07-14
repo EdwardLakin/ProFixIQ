@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 
 const shellFrame =
-  "mx-auto w-full max-w-7xl space-y-5 px-4 pb-8 pt-6 text-neutral-100 sm:px-6 lg:px-8";
+  "mx-auto w-full max-w-7xl space-y-5 px-4 pb-8 pt-6 text-[color:var(--theme-text-primary)] sm:px-6 lg:px-8";
 
 const panelFrame =
-  "rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015))] shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-md";
+  "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015))] shadow-[var(--theme-shadow-medium)] backdrop-blur-md";
 
 export function AdminPageShell({ children }: { children: ReactNode }) {
   return <div className={shellFrame}>{children}</div>;
@@ -22,13 +22,13 @@ export function AdminPageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <header className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-end sm:justify-between">
+    <header className="flex flex-col gap-4 border-b border-[color:var(--theme-border-soft)] pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-1.5">
         {eyebrow ? (
-          <p className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">{eyebrow}</p>
+          <p className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">{eyebrow}</p>
         ) : null}
-        <h1 className="text-2xl font-semibold text-white sm:text-3xl">{title}</h1>
-        <p className="max-w-3xl text-sm text-neutral-300">{subtitle}</p>
+        <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)] sm:text-3xl">{title}</h1>
+        <p className="max-w-3xl text-sm text-[color:var(--theme-text-secondary)]">{subtitle}</p>
       </div>
       {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
     </header>
@@ -55,10 +55,10 @@ export function AdminPanelTitle({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 border-b border-[color:var(--theme-border-soft)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-neutral-200">{title}</h2>
-        {description ? <p className="mt-1 text-xs text-neutral-400">{description}</p> : null}
+        <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)]">{title}</h2>
+        {description ? <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{description}</p> : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -68,8 +68,8 @@ export function AdminPanelTitle({
 export function AdminEmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="px-4 py-10 text-center">
-      <p className="text-sm font-medium text-neutral-200">{title}</p>
-      <p className="mt-1 text-sm text-neutral-400">{body}</p>
+      <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">{title}</p>
+      <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{body}</p>
     </div>
   );
 }
@@ -88,10 +88,10 @@ export function AdminStatCard({
   hint?: string;
 }) {
   return (
-    <article className="rounded-xl border border-white/10 bg-black/25 p-3">
-      <p className="text-[0.68rem] uppercase tracking-[0.12em] text-neutral-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-neutral-400">{hint}</p> : null}
+    <article className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+      <p className="text-[0.68rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{hint}</p> : null}
     </article>
   );
 }
@@ -110,7 +110,7 @@ export function AdminField({
   className?: string;
 }) {
   return (
-    <label className={`block text-xs uppercase tracking-[0.12em] text-neutral-400 ${className}`.trim()}>
+    <label className={`block text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)] ${className}`.trim()}>
       {label}
       <div className="mt-1">{children}</div>
     </label>
@@ -118,5 +118,5 @@ export function AdminField({
 }
 
 export function AdminBadge({ children }: { children: ReactNode }) {
-  return <span className="rounded-full border border-white/15 bg-black/30 px-2 py-0.5 text-xs">{children}</span>;
+  return <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-xs">{children}</span>;
 }

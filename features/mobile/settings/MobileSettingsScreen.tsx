@@ -232,14 +232,14 @@ export default function MobileTechSettingsPage(): JSX.Element {
           <div className="text-sm font-blackops text-[var(--accent-copper-light)]">
             Tech Settings
           </div>
-          <div className="text-[0.75rem] text-neutral-400">Loading…</div>
+          <div className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">Loading…</div>
         </header>
         <main className="mobile-body-gradient flex-1 px-4 py-4">
           <div className="space-y-3">
-            <div className="h-5 w-32 animate-pulse rounded bg-white/5" />
-            <div className="h-28 rounded-2xl bg-white/5" />
-            <div className="h-28 rounded-2xl bg-white/5" />
-            <div className="h-24 rounded-2xl bg-white/5" />
+            <div className="h-5 w-32 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
+            <div className="h-28 rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
+            <div className="h-28 rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
+            <div className="h-24 rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
           </div>
         </main>
       </div>
@@ -266,14 +266,14 @@ export default function MobileTechSettingsPage(): JSX.Element {
             <h1 className="text-lg font-blackops text-[var(--accent-copper-light)]">
               Tech Settings
             </h1>
-            <p className="text-[0.75rem] text-neutral-400">
+            <p className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">
               Personal info and queue preferences for your bench.
             </p>
           </div>
 
           {shopId && (
-            <div className="mt-0.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[0.7rem] text-neutral-200">
-              <span className="text-neutral-500">Shop</span>
+            <div className="mt-0.5 inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)]">
+              <span className="text-[color:var(--theme-text-muted)]">Shop</span>
               <span className="font-mono text-[var(--accent-copper-soft)]">
                 {shopId}
               </span>
@@ -285,18 +285,18 @@ export default function MobileTechSettingsPage(): JSX.Element {
       <main className="mobile-body-gradient flex-1 px-4 py-4">
         <div className="mx-auto max-w-xl space-y-5">
           {/* profile card */}
-          <section className="glass-card rounded-2xl border border-white/10 px-4 py-4 space-y-4">
+          <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-neutral-100">
+                <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   Your profile
                 </h2>
-                <p className="text-[0.7rem] text-neutral-400">
+                <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                   Shown on work orders and job cards.
                 </p>
               </div>
               {username && (
-                <span className="rounded-full border border-white/10 bg-black/40 px-2 py-1 text-[0.65rem] text-neutral-300">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[0.65rem] text-[color:var(--theme-text-secondary)]">
                   @{username}
                 </span>
               )}
@@ -349,7 +349,7 @@ export default function MobileTechSettingsPage(): JSX.Element {
               <button
                 onClick={handleSaveProfile}
                 disabled={saving}
-                className="rounded-full bg-[var(--accent-copper-soft)] px-4 py-2 text-xs font-semibold text-black hover:bg-[var(--accent-copper)] disabled:opacity-60"
+                className="rounded-full bg-[var(--accent-copper-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-on-accent)] hover:bg-[var(--accent-copper)] disabled:opacity-60"
               >
                 {saving ? "Saving…" : "Save profile"}
               </button>
@@ -359,13 +359,13 @@ export default function MobileTechSettingsPage(): JSX.Element {
           </section>
 
           {/* ✅ Saved Signature (mobile) */}
-          <section className="glass-card rounded-2xl border border-white/10 px-4 py-4 space-y-3">
+          <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-neutral-100">
+                <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   Saved signature
                 </h2>
-                <p className="text-[0.7rem] text-neutral-400">
+                <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                   Used automatically when you sign inspections.
                 </p>
               </div>
@@ -373,12 +373,12 @@ export default function MobileTechSettingsPage(): JSX.Element {
             </div>
 
             {sigPath ? (
-              <div className="rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-[11px] text-neutral-300">
-                <div className="text-neutral-500">Path</div>
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+                <div className="text-[color:var(--theme-text-muted)]">Path</div>
                 <div className="font-mono">{sigPath}</div>
               </div>
             ) : (
-              <div className="text-[11px] text-neutral-400">
+              <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                 No signature on file yet.
               </div>
             )}
@@ -388,35 +388,35 @@ export default function MobileTechSettingsPage(): JSX.Element {
                 type="button"
                 onClick={captureAndSaveSignature}
                 disabled={sigBusy || !profileId}
-                className="rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)] px-4 py-2 text-xs font-semibold text-black shadow-[0_0_12px_rgba(248,113,22,0.25)] hover:bg-[var(--accent-copper-light)] disabled:opacity-60"
+                className="rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_12px_rgba(248,113,22,0.25)] hover:bg-[var(--accent-copper-light)] disabled:opacity-60"
               >
                 {sigBusy ? "Opening…" : sigPath ? "Update signature" : "Capture signature"}
               </button>
 
-              <span className="text-[11px] text-neutral-500">
-                Stored in <span className="font-mono text-neutral-300">signatures</span> bucket
+              <span className="text-[11px] text-[color:var(--theme-text-muted)]">
+                Stored in <span className="font-mono text-[color:var(--theme-text-secondary)]">signatures</span> bucket
               </span>
             </div>
 
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-[11px] text-[color:var(--theme-text-muted)]">
               Tech signing will pull this automatically so you don’t have to re-sign every
               inspection.
             </p>
           </section>
 
           {/* queue + layout prefs */}
-          <section className="glass-card rounded-2xl border border-white/10 px-4 py-4 space-y-4">
+          <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-neutral-100">
+              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Work preferences
               </h2>
-              <span className="text-[0.65rem] text-neutral-500">
+              <span className="text-[0.65rem] text-[color:var(--theme-text-muted)]">
                 Used on tech queue
               </span>
             </div>
 
             <div className="space-y-2">
-              <label className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+              <label className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Default queue status
               </label>
               <select
@@ -427,20 +427,20 @@ export default function MobileTechSettingsPage(): JSX.Element {
                     defaultBucket: e.target.value as TechPrefs["defaultBucket"],
                   })
                 }
-                className="w-full rounded-lg border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-[var(--accent-copper)] focus:outline-none"
+                className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:border-[var(--accent-copper)] focus:outline-none"
               >
                 <option value="awaiting">Awaiting</option>
                 <option value="in_progress">In progress</option>
                 <option value="on_hold">On hold</option>
                 <option value="completed">Completed</option>
               </select>
-              <p className="text-[0.65rem] text-neutral-500">
+              <p className="text-[0.65rem] text-[color:var(--theme-text-muted)]">
                 We’ll use this as your default tab when you open the queue.
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+              <label className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Card layout
               </label>
               <div className="flex gap-2">
@@ -455,7 +455,7 @@ export default function MobileTechSettingsPage(): JSX.Element {
                   onClick={() => savePrefs({ ...prefs, compactCards: true })}
                 />
               </div>
-              <p className="text-[0.65rem] text-neutral-500">
+              <p className="text-[0.65rem] text-[color:var(--theme-text-muted)]">
                 Compact mode fits more jobs on small screens.
               </p>
             </div>
@@ -479,22 +479,22 @@ export default function MobileTechSettingsPage(): JSX.Element {
           </section>
 
           {/* account summary */}
-          <section className="glass-card rounded-2xl border border-white/10 px-4 py-4 space-y-3">
-            <h2 className="text-sm font-semibold text-neutral-100">Account info</h2>
-            <p className="text-[0.7rem] text-neutral-400">
+          <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-3">
+            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Account info</h2>
+            <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
               Username and shop are managed by your owner or manager.
             </p>
-            <dl className="space-y-1 text-[0.75rem] text-neutral-200">
+            <dl className="space-y-1 text-[0.75rem] text-[color:var(--theme-text-primary)]">
               <div className="flex justify-between gap-3">
-                <dt className="text-neutral-500">Username</dt>
+                <dt className="text-[color:var(--theme-text-muted)]">Username</dt>
                 <dd>{username || "—"}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-neutral-500">Shop</dt>
+                <dt className="text-[color:var(--theme-text-muted)]">Shop</dt>
                 <dd>{shopId || "—"}</dd>
               </div>
             </dl>
-            <p className="text-[0.65rem] text-neutral-500">
+            <p className="text-[0.65rem] text-[color:var(--theme-text-muted)]">
               Need a password reset? Ask your manager or owner to issue a new
               temporary password from the admin screen.
             </p>
@@ -533,7 +533,7 @@ function Field({
 }: FieldProps) {
   return (
     <div className="space-y-1">
-      <label className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+      <label className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
         {label}
       </label>
       <input
@@ -541,11 +541,11 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         type={type}
-        className={`w-full rounded-lg border border-white/12 bg-black/40 px-3 ${
+        className={`w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 ${
           compact ? "py-1.5 text-xs" : "py-2 text-sm"
-        } text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper)] focus:outline-none`}
+        } text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:outline-none`}
       />
-      {helper && <p className="text-[0.65rem] text-neutral-500">{helper}</p>}
+      {helper && <p className="text-[0.65rem] text-[color:var(--theme-text-muted)]">{helper}</p>}
     </div>
   );
 }
@@ -566,7 +566,7 @@ function TogglePill({
       className={`flex-1 rounded-full px-3 py-1.5 text-[0.75rem] ${
         active
           ? "border border-[var(--accent-copper)] bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)]"
-          : "border border-white/10 bg-black/40 text-neutral-200"
+          : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
       }`}
     >
       {label}
@@ -591,11 +591,11 @@ function CheckboxRow({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="mt-[2px] h-4 w-4 rounded border-white/30 bg-black/40"
+        className="mt-[2px] h-4 w-4 rounded border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
       />
       <div className="space-y-0.5">
-        <div className="text-[0.8rem] text-neutral-100">{label}</div>
-        {helper && <div className="text-[0.65rem] text-neutral-500">{helper}</div>}
+        <div className="text-[0.8rem] text-[color:var(--theme-text-primary)]">{label}</div>
+        {helper && <div className="text-[0.65rem] text-[color:var(--theme-text-muted)]">{helper}</div>}
       </div>
     </label>
   );

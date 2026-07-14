@@ -106,11 +106,11 @@ export function NewWorkOrderLineForm(props: {
   const canSave = (lineType === "info" ? infoTitle.length > 0 : complaint.trim().length > 0) && !!workOrderId;
   const topRepairDefault = isTopRepairDefault(smartMatch);
   const formShellClass =
-    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 text-sm text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5";
+    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 text-sm text-[color:var(--theme-text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5";
   const controlClass =
-    "w-full rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-sky-400/70 focus:outline-none";
+    "w-full rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-400/70 focus:outline-none";
   const mutedPillClass =
-    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[10px] text-neutral-300";
+    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[10px] text-[color:var(--theme-text-secondary)]";
 
   function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
     const allowed: WOJobType[] = [
@@ -268,7 +268,7 @@ export function NewWorkOrderLineForm(props: {
       return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
     }
     if (status === "stale") {
-      return "border-slate-500/40 bg-slate-500/10 text-slate-200";
+      return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
     }
     return "border-red-500/40 bg-red-500/10 text-red-200";
   }
@@ -414,13 +414,13 @@ export function NewWorkOrderLineForm(props: {
     <div className={`${formShellClass} space-y-4`}>
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-neutral-100">Add work order line</h3>
-          <p className="text-[11px] text-neutral-400">
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Add work order line</h3>
+          <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
             {lineType === "info"
               ? "Add a concise info title and optional note."
               : "Complaint is required. Cause / correction can be filled in later."}
           </p>
-          <p className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
             {lineType === "info"
               ? "Info lines are context-only and use a dedicated insert path."
               : "Direct custom line entry with optional smart repair suggestions from complaint + history matching"}
@@ -434,7 +434,7 @@ export function NewWorkOrderLineForm(props: {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">Line type</label>
+          <label className="mb-0.5 block text-xs text-[color:var(--theme-text-secondary)]">Line type</label>
           <select
             value={lineType}
             onChange={(e) => setLineType(e.target.value as WOLineType)}
@@ -443,7 +443,7 @@ export function NewWorkOrderLineForm(props: {
             <option value="job">Job line (technician action)</option>
             <option value="info">Info line (context only)</option>
           </select>
-          <p className="text-[10px] text-neutral-500">
+          <p className="text-[10px] text-[color:var(--theme-text-muted)]">
             Info lines are non-actionable and excluded from technician punch queues.
           </p>
         </div>
@@ -451,7 +451,7 @@ export function NewWorkOrderLineForm(props: {
         <div className="space-y-1" />
 
         <div className="sm:col-span-2 space-y-1">
-          <label className="mb-0.5 block text-xs text-neutral-300">
+          <label className="mb-0.5 block text-xs text-[color:var(--theme-text-secondary)]">
             {lineType === "info" ? "Info title" : "Complaint"}{" "}
             <span className="text-red-400">*</span>
           </label>
@@ -468,7 +468,7 @@ export function NewWorkOrderLineForm(props: {
         </div>
 
         {lineType === "job" && smartMatchLoading ? (
-          <div className="sm:col-span-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-300">
+          <div className="sm:col-span-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
             Looking for a matching quoted repair…
           </div>
         ) : lineType === "job" && smartMatch ? (
@@ -565,7 +565,7 @@ export function NewWorkOrderLineForm(props: {
                 <button
                   type="button"
                   onClick={() => setSmartMatch(null)}
-                  className="rounded-md border border-neutral-600 bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-neutral-800"
+                  className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
                 >
                   Dismiss
                 </button>
@@ -576,7 +576,7 @@ export function NewWorkOrderLineForm(props: {
 
         {lineType === "info" ? (
           <div className="space-y-1 sm:col-span-2">
-            <label className="mb-0.5 block text-xs text-neutral-300">Note/body</label>
+            <label className="mb-0.5 block text-xs text-[color:var(--theme-text-secondary)]">Note/body</label>
             <textarea
               value={infoNote}
               onChange={(e) => setInfoNote(e.target.value)}
@@ -587,7 +587,7 @@ export function NewWorkOrderLineForm(props: {
         ) : (
           <>
             <div className="space-y-1">
-              <label className="mb-0.5 block text-xs text-neutral-300">Cause</label>
+              <label className="mb-0.5 block text-xs text-[color:var(--theme-text-secondary)]">Cause</label>
               <textarea
                 value={cause}
                 onChange={(e) => setCause(e.target.value)}
@@ -597,7 +597,7 @@ export function NewWorkOrderLineForm(props: {
             </div>
 
             <div className="space-y-1">
-              <label className="mb-0.5 block text-xs text-neutral-300">Correction</label>
+              <label className="mb-0.5 block text-xs text-[color:var(--theme-text-secondary)]">Correction</label>
               <textarea
                 value={correction}
                 onChange={(e) => setCorrection(e.target.value)}
@@ -607,7 +607,7 @@ export function NewWorkOrderLineForm(props: {
             </div>
 
             <div className="space-y-1">
-              <label className="mb-0.5 block text-xs text-neutral-300">Labor (hrs)</label>
+              <label className="mb-0.5 block text-xs text-[color:var(--theme-text-secondary)]">Labor (hrs)</label>
               <input
                 inputMode="decimal"
                 value={labor}
@@ -615,13 +615,13 @@ export function NewWorkOrderLineForm(props: {
                 className={controlClass}
                 placeholder="0.0"
               />
-              <p className="text-[10px] text-neutral-500">
+              <p className="text-[10px] text-[color:var(--theme-text-muted)]">
                 Flat-rate or estimated hours. Leave blank if unknown.
               </p>
             </div>
 
             <div className="space-y-1">
-              <label className="mb-0.5 block text-xs text-neutral-300">Status</label>
+              <label className="mb-0.5 block text-xs text-[color:var(--theme-text-secondary)]">Status</label>
               <select
                 value={normalizeStatus(status)}
                 onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
@@ -636,7 +636,7 @@ export function NewWorkOrderLineForm(props: {
             </div>
 
             <div className="space-y-1">
-              <label className="mb-0.5 block text-xs text-neutral-300">Job type</label>
+              <label className="mb-0.5 block text-xs text-[color:var(--theme-text-secondary)]">Job type</label>
               <select
                 value={jobType ?? ""}
                 onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
@@ -654,9 +654,9 @@ export function NewWorkOrderLineForm(props: {
       </div>
 
       {lineType === "job" && smartMatch && (
-        <div className="rounded-md border border-white/10 bg-neutral-900/60 px-3 py-3 text-xs text-neutral-200">
+        <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-3 text-xs text-[color:var(--theme-text-primary)]">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-neutral-100">
+            <span className="font-semibold text-[color:var(--theme-text-primary)]">
               Smart repair match:
             </span>
             <span>{smartMatch.label}</span>
@@ -669,7 +669,7 @@ export function NewWorkOrderLineForm(props: {
             </span>
           </div>
 
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-neutral-400">
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[color:var(--theme-text-secondary)]">
             <span>
               Confidence:{" "}
               {typeof smartMatch.confidence === "number"
@@ -687,11 +687,11 @@ export function NewWorkOrderLineForm(props: {
             </span>
           </div>
 
-          <div className="mt-2 text-[11px] text-neutral-400">
+          <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
             Pricing valid until: {smartMatch.pricingValidUntil ?? "No active pricing snapshot"}
           </div>
 
-          <div className="mt-1 text-[11px] text-neutral-400">
+          <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
             {pricingMessage(smartMatch.pricingStatus)}
           </div>
 
@@ -717,7 +717,7 @@ export function NewWorkOrderLineForm(props: {
         <button
           disabled={!canSave || busy}
           onClick={addLine}
-          className="rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.28),rgba(197,122,74,0.14))] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary,#E2E8F0)] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65 hover:bg-[linear-gradient(135deg,rgba(197,122,74,0.36),rgba(197,122,74,0.2))] disabled:opacity-60"
+          className="rounded-full border border-[color:var(--accent-copper,#C57A4A)]/45 bg-[linear-gradient(135deg,rgba(197,122,74,0.28),rgba(197,122,74,0.14))] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary,var(--theme-text-primary))] transition hover:border-[color:var(--accent-copper,#C57A4A)]/65 hover:bg-[linear-gradient(135deg,rgba(197,122,74,0.36),rgba(197,122,74,0.2))] disabled:opacity-60"
         >
           {busy
             ? "Adding…"

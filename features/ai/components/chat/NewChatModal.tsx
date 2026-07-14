@@ -614,7 +614,7 @@ export default function NewChatModal({
     >
       {/* helper row */}
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="text-xs text-neutral-400">
+        <div className="text-xs text-[color:var(--theme-text-secondary)]">
           Pick recipients → type → send. Conversation is created automatically.
         </div>
         <a
@@ -628,7 +628,7 @@ export default function NewChatModal({
       {/* Controls row: Recipients + Roles (equal size) */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {/* Recipients */}
-        <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+        <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
           {apiError ? (
             <div className="mb-2 rounded border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-100">
               {apiError}
@@ -642,26 +642,26 @@ export default function NewChatModal({
                 setPickerOpen((o) => !o);
                 setRoleOpen(false);
               }}
-              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:bg-neutral-800"
+              className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
             >
               {pickerOpen ? "Close recipients" : "Select recipients"}
             </button>
 
             {selectedUsers.length === 0 ? (
-              <span className="text-[11px] text-neutral-500">
+              <span className="text-[11px] text-[color:var(--theme-text-muted)]">
                 No recipients selected
               </span>
             ) : (
               selectedUsers.map((u) => (
                 <span
                   key={u.id}
-                  className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-100"
+                  className="inline-flex items-center gap-1 rounded bg-[color:var(--theme-surface-panel-strong)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)]"
                 >
                   {u.full_name ?? "(no name)"}
                   <button
                     type="button"
                     onClick={() => removeSelected(u.id)}
-                    className="ml-1 rounded px-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
+                    className="ml-1 rounded px-1 text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-hover)] hover:text-[color:var(--theme-text-primary)]"
                     aria-label="Remove"
                     title="Remove"
                   >
@@ -674,32 +674,32 @@ export default function NewChatModal({
 
           {pickerOpen && (
             <div ref={pickerRef} className="relative mt-2">
-              <div className="absolute z-[520] w-full rounded border border-neutral-700 bg-neutral-900 p-2 shadow-xl">
+              <div className="absolute z-[520] w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2 shadow-xl">
                 <div className="flex gap-2">
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search name, role, or email…"
-                    className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-amber-400 focus:outline-none"
+                    className="flex-1 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-amber-400 focus:outline-none"
                   />
                 </div>
 
-                <div className="mt-2 max-h-56 overflow-y-auto rounded border border-neutral-800 bg-neutral-950/60">
+                <div className="mt-2 max-h-56 overflow-y-auto rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
                   {loadingUsers ? (
-                    <div className="p-3 text-xs text-neutral-400">
+                    <div className="p-3 text-xs text-[color:var(--theme-text-secondary)]">
                       Loading…
                     </div>
                   ) : filtered.length === 0 ? (
-                    <div className="p-3 text-xs text-neutral-400">
+                    <div className="p-3 text-xs text-[color:var(--theme-text-secondary)]">
                       No users match this filter.
                     </div>
                   ) : (
-                    <ul className="divide-y divide-neutral-800 text-sm">
+                    <ul className="divide-y divide-[color:var(--theme-border-soft)] text-sm">
                       {filtered.map((u) => {
                         const checked = selectedIds.includes(u.id);
                         return (
                           <li key={u.id}>
-                            <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
+                            <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]">
                               <input
                                 type="checkbox"
                                 className="h-4 w-4 accent-amber-500"
@@ -710,7 +710,7 @@ export default function NewChatModal({
                                 <div className="truncate">
                                   {u.full_name ?? "(no name)"}
                                 </div>
-                                <div className="truncate text-[10px] text-neutral-400">
+                                <div className="truncate text-[10px] text-[color:var(--theme-text-secondary)]">
                                   {u.role ?? "—"}
                                   {u.email ? ` • ${u.email}` : ""}
                                 </div>
@@ -727,7 +727,7 @@ export default function NewChatModal({
                   <button
                     type="button"
                     onClick={() => setPickerOpen(false)}
-                    className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-[11px] text-neutral-100 hover:bg-neutral-700"
+                    className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
                   >
                     Done
                   </button>
@@ -738,7 +738,7 @@ export default function NewChatModal({
         </div>
 
         {/* Roles (separate dropdown, equal size) */}
-        <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+        <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -746,11 +746,11 @@ export default function NewChatModal({
                 setRoleOpen((o) => !o);
                 setPickerOpen(false);
               }}
-              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:bg-neutral-800"
+              className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
             >
               {roleOpen ? "Close role filter" : "Filter roles"}
             </button>
-            <div className="text-[11px] text-neutral-500">
+            <div className="text-[11px] text-[color:var(--theme-text-muted)]">
               Current:{" "}
               {ROLE_OPTIONS.find((r) => r.value === role)?.label ??
                 "All roles"}
@@ -759,11 +759,11 @@ export default function NewChatModal({
 
           {roleOpen && (
             <div ref={roleRef} className="relative mt-2">
-              <div className="absolute z-[520] w-full rounded border border-neutral-700 bg-neutral-900 p-2 shadow-xl">
-                <ul className="max-h-56 overflow-auto divide-y divide-neutral-800">
+              <div className="absolute z-[520] w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2 shadow-xl">
+                <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
                   {ROLE_OPTIONS.map((r) => (
                     <li key={r.value}>
-                      <label className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
+                      <label className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]">
                         <span>{r.label}</span>
                         <input
                           type="radio"
@@ -787,10 +787,10 @@ export default function NewChatModal({
 
       {/* Recents */}
       <div className="mt-3 flex items-center gap-2">
-        <div className="text-[11px] text-neutral-500">Recent:</div>
+        <div className="text-[11px] text-[color:var(--theme-text-muted)]">Recent:</div>
         <div className="flex flex-wrap gap-2">
           {recentConversationIds.length === 0 ? (
-            <div className="text-[11px] text-neutral-500">
+            <div className="text-[11px] text-[color:var(--theme-text-muted)]">
               No recent threads.
             </div>
           ) : (
@@ -807,8 +807,8 @@ export default function NewChatModal({
                   }}
                   className={`rounded px-2 py-1 text-[11px] ${
                     active
-                      ? "bg-amber-500 text-black"
-                      : "border border-neutral-700 bg-neutral-900 text-neutral-200 hover:bg-neutral-800"
+                      ? "bg-amber-500 text-[color:var(--theme-text-on-accent)]"
+                      : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
                   }`}
                   title={id}
                 >
@@ -821,17 +821,17 @@ export default function NewChatModal({
       </div>
 
       {/* CHAT — full width */}
-      <div className="mt-3 flex min-h-[360px] flex-col rounded border border-neutral-800 bg-neutral-950">
-        <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-2">
+      <div className="mt-3 flex min-h-[360px] flex-col rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
+        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-4 py-2">
           <div className="flex items-center gap-2">
-            <div className="text-sm font-medium text-neutral-100">
+            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
               {activeConvoId
                 ? "Conversation"
                 : "New conversation (not saved until you send)"}
             </div>
           </div>
           {activeConvoId ? (
-            <div className="text-[10px] text-neutral-500">
+            <div className="text-[10px] text-[color:var(--theme-text-muted)]">
               ID: {activeConvoId.slice(0, 8)}
             </div>
           ) : null}
@@ -840,11 +840,11 @@ export default function NewChatModal({
         {/* messages */}
         <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
           {messagesLoading ? (
-            <div className="py-6 text-center text-xs text-neutral-500">
+            <div className="py-6 text-center text-xs text-[color:var(--theme-text-muted)]">
               Loading messages…
             </div>
           ) : messages.length === 0 ? (
-            <div className="py-6 text-center text-xs text-neutral-500">
+            <div className="py-6 text-center text-xs text-[color:var(--theme-text-muted)]">
               {activeConvoId
                 ? "No messages yet."
                 : "Pick recipients and send a message to start."}
@@ -868,15 +868,15 @@ export default function NewChatModal({
                   <div
                     className={`max-w-[70%] break-words rounded-md px-3 py-2 text-xs ${
                       isMine
-                        ? "bg-amber-500 text-black"
-                        : "bg-neutral-900 text-neutral-100"
+                        ? "bg-amber-500 text-[color:var(--theme-text-on-accent)]"
+                        : "bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]"
                     }`}
                   >
                     <p>{m.content}</p>
                     {time ? (
                       <p
                         className={`mt-1 text-[9px] ${
-                          isMine ? "text-black/60" : "text-neutral-400"
+                          isMine ? "text-[color:var(--theme-text-on-accent)]" : "text-[color:var(--theme-text-secondary)]"
                         }`}
                       >
                         {time}
@@ -891,7 +891,7 @@ export default function NewChatModal({
         </div>
 
         {/* composer */}
-        <div className="flex items-end gap-2 border-t border-neutral-800 p-3">
+        <div className="flex items-end gap-2 border-t border-[color:var(--theme-border-soft)] p-3">
           <textarea
             value={sendText}
             onChange={(e) => setSendText(e.target.value)}
@@ -903,7 +903,7 @@ export default function NewChatModal({
             }}
             rows={1}
             placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-            className="flex-1 resize-none rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-amber-400 focus:outline-none"
+            className="flex-1 resize-none rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-amber-400 focus:outline-none"
           />
           <button
             onClick={() => void handleSend()}

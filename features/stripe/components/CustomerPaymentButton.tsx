@@ -46,13 +46,13 @@ export default function CustomerPaymentButton(props: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/35 p-3 backdrop-blur">
+    <div className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-200">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)]">
             Take payment
           </div>
-          <div className="mt-1 text-[11px] text-neutral-400">
+          <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
             The server charges the current outstanding finalized invoice balance.
           </div>
         </div>

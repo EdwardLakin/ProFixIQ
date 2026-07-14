@@ -150,41 +150,41 @@ type FilterKey = (typeof FILTERS)[number];
 
 const DEFAULT_THEME = {
   primaryColor: "#C97A3D",
-  secondaryColor: "#0F172A",
+  secondaryColor: "var(--theme-surface-page)",
   accentColor: "#E2A164",
   stylePreset: "industrial-dark" as StylePreset,
 
-  appBackground: "#050910",
-  appBackgroundSecondary: "#020617",
-  sidebarBackground: "#020617",
-  sidebarText: "#D4D4D8",
+  appBackground: "var(--theme-surface-page)",
+  appBackgroundSecondary: "var(--theme-surface-page)",
+  sidebarBackground: "var(--theme-surface-page)",
+  sidebarText: "var(--theme-text-primary)",
   sidebarActiveBackground: "#C97A3D",
-  sidebarActiveText: "#000000",
-  headerBackground: "#020617",
-  headerText: "#FFFFFF",
-  cardBackground: "#111827",
-  cardBorder: "#334155",
-  surface2Background: "#0B1220",
-  textPrimary: "#FFFFFF",
-  textSecondary: "#94A3B8",
-  textMuted: "#64748B",
+  sidebarActiveText: "var(--theme-text-on-accent)",
+  headerBackground: "var(--theme-surface-page)",
+  headerText: "var(--theme-text-inverse)",
+  cardBackground: "var(--theme-surface-page)",
+  cardBorder: "var(--theme-border-soft)",
+  surface2Background: "var(--theme-surface-page)",
+  textPrimary: "var(--theme-text-inverse)",
+  textSecondary: "var(--theme-text-muted)",
+  textMuted: "var(--theme-text-muted)",
   buttonPrimaryBg: "#C97A3D",
-  buttonPrimaryText: "#000000",
-  buttonSecondaryBg: "#1E293B",
-  buttonSecondaryText: "#FFFFFF",
-  inputBackground: "#0B1220",
-  inputBorder: "#334155",
-  inputText: "#FFFFFF",
+  buttonPrimaryText: "var(--theme-text-on-accent)",
+  buttonSecondaryBg: "var(--theme-surface-page)",
+  buttonSecondaryText: "var(--theme-text-inverse)",
+  inputBackground: "var(--theme-surface-page)",
+  inputBorder: "var(--theme-border-soft)",
+  inputText: "var(--theme-text-inverse)",
 
   themeMode: "dark" as ThemeMode,
   radiusScale: "md" as RadiusScale,
   shadowStyle: "medium" as ShadowStyle,
 
   dashboardBackgroundMode: "solid" as "solid" | "gradient",
-  dashboardBackgroundBase: "#020617",
+  dashboardBackgroundBase: "var(--theme-surface-page)",
   dashboardAmbientTint: "#F97316",
   dashboardGradientStart: "#C56A2F",
-  dashboardGradientEnd: "#020617",
+  dashboardGradientEnd: "var(--theme-surface-page)",
   dashboardGradientAccent: "#7F1D1D",
 };
 
@@ -255,7 +255,7 @@ function ColorField({
 }) {
   return (
     <div>
-      <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+      <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </label>
       <div className="flex items-center gap-3">
@@ -263,7 +263,7 @@ function ColorField({
           type="color"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="h-11 w-16 rounded border border-white/10 bg-transparent"
+          className="h-11 w-16 rounded border border-[color:var(--theme-border-soft)] bg-transparent"
         />
         <Input value={value} onChange={(e) => onChange(e.target.value)} />
       </div>
@@ -882,33 +882,33 @@ export default function BrandStudioCard() {
   }
 
   return (
-    <section className="mb-8 rounded-3xl border border-white/10 bg-black/35 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+    <section className="mb-8 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--accent-copper-light)]">
             Brand Studio
           </div>
-          <h2 className="mt-1 text-2xl font-semibold text-white">
+          <h2 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
             Customize your shop identity
           </h2>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             Full shop-level visual control plus per-user theme preferences.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-neutral-300">
-          Active style: <span className="font-medium text-white">{stylePreset}</span>
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
+          Active style: <span className="font-medium text-[color:var(--theme-text-primary)]">{stylePreset}</span>
         </div>
       </div>
 
       <div className="mb-5 grid gap-4 lg:grid-cols-3">
         <div
-          className="rounded-2xl border border-white/10 p-4"
+          className="rounded-2xl border border-[color:var(--theme-border-soft)] p-4"
           style={{
             background: `linear-gradient(135deg, ${appBackground}, ${appBackgroundSecondary})`,
           }}
         >
-          <div className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+          <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">
             Preview surface
           </div>
           <div
@@ -921,7 +921,7 @@ export default function BrandStudioCard() {
           >
             <div className="flex items-center gap-3">
               <div
-                className="h-10 w-10 rounded-xl border border-white/10"
+                className="h-10 w-10 rounded-xl border border-[color:var(--theme-border-soft)]"
                 style={{ backgroundColor: primaryColor }}
               />
               <div>
@@ -951,13 +951,13 @@ export default function BrandStudioCard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 lg:col-span-2">
-          <div className="mb-3 text-sm font-medium text-white">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4 lg:col-span-2">
+          <div className="mb-3 text-sm font-medium text-[color:var(--theme-text-primary)]">
             Active logo preview
           </div>
 
           <div
-            className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-white/10 p-6"
+            className="flex min-h-[180px] items-center justify-center rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] p-6"
             style={{
               backgroundImage: `linear-gradient(135deg, ${secondaryColor} 0%, ${appBackgroundSecondary} 100%)`,
             }}
@@ -973,8 +973,8 @@ export default function BrandStudioCard() {
               />
             ) : (
               <div className="text-center">
-                <div className="text-xl font-semibold text-white">ProFixIQ</div>
-                <div className="mt-2 text-sm text-neutral-400">
+                <div className="text-xl font-semibold text-[color:var(--theme-text-primary)]">ProFixIQ</div>
+                <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                   Upload or generate a logo to brand the app
                 </div>
               </div>
@@ -983,14 +983,14 @@ export default function BrandStudioCard() {
 
           <div className="mt-4 grid gap-3">
             <label className="block">
-              <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+              <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Upload logo
               </span>
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/svg+xml"
                 disabled={uploading}
-                className="block w-full text-sm text-neutral-300 file:mr-4 file:rounded-full file:border-0 file:bg-[var(--accent-copper)] file:px-4 file:py-2 file:font-semibold file:text-black hover:file:brightness-110"
+                className="block w-full text-sm text-[color:var(--theme-text-secondary)] file:mr-4 file:rounded-full file:border-0 file:bg-[var(--accent-copper)] file:px-4 file:py-2 file:font-semibold file:text-[color:var(--theme-text-on-accent)] hover:file:brightness-110"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   if (file) void uploadLogo(file);
@@ -1002,9 +1002,9 @@ export default function BrandStudioCard() {
         </div>
       </div>
 
-      <div className="mb-5 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <div className="mb-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm font-medium text-white">
+          <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
             Generate logo concepts
           </div>
           <Button
@@ -1035,19 +1035,19 @@ export default function BrandStudioCard() {
                   key={preset.label}
                   type="button"
                   onClick={() => setLogoPrompt(preset.prompt)}
-                  className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-neutral-300 transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+                  className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs text-[color:var(--theme-text-secondary)] transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
                 >
                   {preset.label}
                 </button>
               ))}
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-neutral-300">
+            <label className="flex items-center gap-2 text-sm text-[color:var(--theme-text-secondary)]">
               <input
                 type="checkbox"
                 checked={transparentBackground}
                 onChange={(e) => setTransparentBackground(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-neutral-950"
+                className="h-4 w-4 rounded border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]"
               />
               Transparent background
             </label>
@@ -1066,9 +1066,9 @@ export default function BrandStudioCard() {
       </div>
 
       <div className="grid gap-5">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-medium text-white">
+            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
               User theme preferences
             </div>
             <Button
@@ -1083,13 +1083,13 @@ export default function BrandStudioCard() {
 
           <div className="grid gap-4 md:grid-cols-3">
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Theme mode
               </label>
               <select
                 value={themeMode}
                 onChange={(e) => setThemeMode(e.target.value as ThemeMode)}
-                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+                className="h-11 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
               >
                 {THEME_MODES.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -1100,13 +1100,13 @@ export default function BrandStudioCard() {
             </div>
 
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Radius scale
               </label>
               <select
                 value={radiusScale}
                 onChange={(e) => setRadiusScale(e.target.value as RadiusScale)}
-                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+                className="h-11 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
               >
                 {RADIUS_SCALES.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -1117,13 +1117,13 @@ export default function BrandStudioCard() {
             </div>
 
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Shadow style
               </label>
               <select
                 value={shadowStyle}
                 onChange={(e) => setShadowStyle(e.target.value as ShadowStyle)}
-                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+                className="h-11 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
               >
                 {SHADOW_STYLES.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -1145,9 +1145,9 @@ export default function BrandStudioCard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-medium text-white">Brand colors</div>
+            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">Brand colors</div>
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="outline" onClick={randomizeTheme}>
                 Randomize theme
@@ -1181,13 +1181,13 @@ export default function BrandStudioCard() {
           </div>
 
           <div className="mt-4">
-            <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+            <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Style preset
             </label>
             <select
               value={stylePreset}
               onChange={(e) => setStylePreset(e.target.value as StylePreset)}
-              className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+              className="h-11 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
             >
               {STYLE_PRESETS.map((preset) => (
                 <option key={preset.value} value={preset.value}>
@@ -1198,8 +1198,8 @@ export default function BrandStudioCard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-4 text-sm font-medium text-white">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
+          <div className="mb-4 text-sm font-medium text-[color:var(--theme-text-primary)]">
             Surface colors
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1245,13 +1245,13 @@ export default function BrandStudioCard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-4 text-sm font-medium text-white">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
+          <div className="mb-4 text-sm font-medium text-[color:var(--theme-text-primary)]">
             Dashboard ambient background
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div>
-              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-2 block text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Dashboard background mode
               </label>
               <select
@@ -1259,7 +1259,7 @@ export default function BrandStudioCard() {
                 onChange={(e) =>
                   setDashboardBackgroundMode(e.target.value === "gradient" ? "gradient" : "solid")
                 }
-                className="h-11 w-full rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-white outline-none"
+                className="h-11 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
               >
                 <option value="solid">Solid ambient</option>
                 <option value="gradient">Gradient ambient</option>
@@ -1295,13 +1295,13 @@ export default function BrandStudioCard() {
               </>
             ) : null}
           </div>
-          <p className="mt-3 text-xs text-neutral-400">
+          <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
             Controls the ambient background layer used on the main dashboard page.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <div className="mb-4 text-sm font-medium text-white">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
+          <div className="mb-4 text-sm font-medium text-[color:var(--theme-text-primary)]">
             Text, buttons, and inputs
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1352,9 +1352,9 @@ export default function BrandStudioCard() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-medium text-white">Saved logos</div>
+            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">Saved logos</div>
             <div className="flex flex-wrap gap-2">
               {FILTERS.map((key) => (
                 <button
@@ -1363,8 +1363,8 @@ export default function BrandStudioCard() {
                   onClick={() => setFilter(key)}
                   className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.14em] ${
                     filter === key
-                      ? "border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)]/10 text-white"
-                      : "border-white/10 bg-white/[0.04] text-neutral-400"
+                      ? "border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)]/10 text-[color:var(--theme-text-primary)]"
+                      : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]"
                   }`}
                 >
                   {key}
@@ -1374,9 +1374,9 @@ export default function BrandStudioCard() {
           </div>
 
           {loading ? (
-            <div className="text-sm text-neutral-400">Loading brand assets…</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading brand assets…</div>
           ) : filteredAssets.length === 0 ? (
-            <div className="text-sm text-neutral-400">No logos in this view.</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">No logos in this view.</div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {filteredAssets.map((asset) => {
@@ -1391,7 +1391,7 @@ export default function BrandStudioCard() {
                     className={`rounded-2xl border p-3 ${
                       asset.is_active
                         ? "border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)]/10"
-                        : "border-white/10 bg-white/[0.03]"
+                        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
                     }`}
                   >
                     <div className="mb-2 flex flex-wrap gap-2">
@@ -1406,7 +1406,7 @@ export default function BrandStudioCard() {
                       )}
 
                       {transparent ? (
-                        <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-300">
+                        <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                           Transparent
                         </span>
                       ) : null}
@@ -1418,13 +1418,13 @@ export default function BrandStudioCard() {
                       ) : null}
 
                       {archived ? (
-                        <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-neutral-300">
+                        <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                           Archived
                         </span>
                       ) : null}
                     </div>
 
-                    <div className="flex h-28 items-center justify-center rounded-xl bg-black/30 p-3">
+                    <div className="flex h-28 items-center justify-center rounded-xl bg-[color:var(--theme-surface-inset)] p-3">
                       {asset.file_url ? (
                         <Image
                           src={asset.file_url}
@@ -1435,15 +1435,15 @@ export default function BrandStudioCard() {
                           unoptimized
                         />
                       ) : (
-                        <div className="text-xs text-neutral-500">No preview</div>
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">No preview</div>
                       )}
                     </div>
 
                     <div className="mt-3">
-                      <div className="truncate text-sm font-medium text-white">
+                      <div className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
                         {asset.file_name || "Logo"}
                       </div>
-                      <div className="text-xs text-neutral-500">
+                      <div className="text-xs text-[color:var(--theme-text-muted)]">
                         {asset.is_active ? "Active" : archived ? "Archived" : "Saved"}
                       </div>
                     </div>

@@ -198,8 +198,8 @@ export default function SignUpClient() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-black px-4 text-white">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/30 p-6 shadow-card backdrop-blur-xl">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
+      <div className="w-full max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 shadow-card backdrop-blur-xl">
         <h1 className="mb-6 text-3xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
           Create Account
         </h1>
@@ -236,7 +236,7 @@ export default function SignUpClient() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
+            className="w-full rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110"
           >
             {loading ? "Creating Account..." : "Sign Up"}
           </button>
@@ -253,7 +253,7 @@ export default function SignUpClient() {
             >
               {resendLoading ? "Resending..." : "Resend verification"}
             </button>
-            <a href="/sign-in" className="text-neutral-300 underline underline-offset-2">
+            <a href="/sign-in" className="text-[color:var(--theme-text-secondary)] underline underline-offset-2">
               Already confirmed? Continue to sign in
             </a>
           </div>

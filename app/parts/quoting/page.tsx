@@ -70,21 +70,21 @@ const COPPER_TEXT = "text-[#c88a4d]";
 const COPPER_HOVER_BG = "hover:bg-[#8b5a2b]/10";
 const COPPER_FOCUS_RING = "focus:ring-2 focus:ring-[#8b5a2b]/35";
 
-const PAGE = "p-4 sm:p-6 text-white space-y-4";
+const PAGE = "p-4 sm:p-6 text-[color:var(--theme-text-primary)] space-y-4";
 const CARD =
-  "rounded-xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+  "rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
 const CARD_PAD = `${CARD} p-4`;
 const HEADER_BAR = "flex flex-col gap-3 md:flex-row md:items-center md:justify-between";
 
 const BTN_BASE =
   "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
-const BTN_GHOST = `${BTN_BASE} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-const BTN_COPPER = `${BTN_BASE} ${COPPER_BORDER} ${COPPER_TEXT} bg-neutral-950/20 ${COPPER_HOVER_BG}`;
+const BTN_GHOST = `${BTN_BASE} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] hover:bg-[color:var(--theme-surface-subtle)]`;
+const BTN_COPPER = `${BTN_BASE} ${COPPER_BORDER} ${COPPER_TEXT} bg-[color:var(--theme-surface-page)] ${COPPER_HOVER_BG}`;
 const BTN_GO = `${BTN_BASE} border-emerald-500/30 bg-emerald-950/25 text-emerald-200 hover:bg-emerald-900/25`;
 const BTN_AI = `${BTN_BASE} border-sky-500/30 bg-sky-950/25 text-sky-200 hover:bg-sky-900/25`;
 
-const SMALL = "text-xs text-neutral-400";
-const INPUT = `w-full rounded-lg border border-white/10 bg-neutral-950/40 px-4 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none ${COPPER_FOCUS_RING}`;
+const SMALL = "text-xs text-[color:var(--theme-text-secondary)]";
+const INPUT = `w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none ${COPPER_FOCUS_RING}`;
 
 async function safeText(res: Response): Promise<string> {
   return res.text().catch(() => "");
@@ -451,11 +451,11 @@ export default function QuotingQueuePage(): JSX.Element {
 
       <div className={HEADER_BAR}>
         <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Parts</div>
-          <h1 className="text-2xl font-semibold text-white" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">Parts</div>
+          <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
             Quoting Queue
           </h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             Pending approval lines that need quoting. Use AI Apply or open the Parts Drawer.
           </p>
         </div>
@@ -497,7 +497,7 @@ export default function QuotingQueuePage(): JSX.Element {
           </div>
           <div className="md:col-span-4">
             <div className={SMALL}>Bulk mode</div>
-            <div className="rounded-lg border border-white/10 bg-neutral-950/20 px-3 py-2 text-sm text-neutral-200">
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">
               {bulkActive ? (
                 <>
                   Active · Remaining <span className={COPPER_TEXT}>{bulkQueue.length}</span>
@@ -513,14 +513,14 @@ export default function QuotingQueuePage(): JSX.Element {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[460px_1fr]">
         {/* LEFT: queue */}
         <div className={CARD}>
-          <div className="border-b border-white/10 px-4 py-3 text-sm text-neutral-300">Pending approval lines</div>
+          <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">Pending approval lines</div>
 
           {loading ? (
-            <div className="p-4 text-neutral-400">Loading…</div>
+            <div className="p-4 text-[color:var(--theme-text-secondary)]">Loading…</div>
           ) : filteredRows.length === 0 ? (
-            <div className="p-4 text-neutral-400">Nothing awaiting quoting.</div>
+            <div className="p-4 text-[color:var(--theme-text-secondary)]">Nothing awaiting quoting.</div>
           ) : (
-            <ul className="divide-y divide-white/10">
+            <ul className="divide-y divide-[color:var(--theme-border-soft)]">
               {filteredRows.map((r) => {
                 const active = selectedId === r.id;
                 const woLabel = r.work_order?.custom_id || r.work_order?.id?.slice(0, 8) || "—";
@@ -531,17 +531,17 @@ export default function QuotingQueuePage(): JSX.Element {
                 const when = r.created_at ? format(new Date(r.created_at), "PPp") : "—";
 
                 return (
-                  <li key={r.id} className={["px-4 py-3", active ? "bg-white/5" : ""].join(" ")}>
+                  <li key={r.id} className={["px-4 py-3", active ? "bg-[color:var(--theme-surface-subtle)]" : ""].join(" ")}>
                     <div className="flex items-start justify-between gap-3">
                       <button type="button" className="min-w-0 text-left" onClick={() => setSelectedId(r.id)}>
-                        <div className="truncate font-semibold text-white">{title}</div>
-                        <div className="mt-1 text-xs text-neutral-400">
-                          WO: {woLabel} <span className="mx-2 text-neutral-600">·</span>
-                          {veh} <span className="mx-2 text-neutral-600">·</span>
+                        <div className="truncate font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                          WO: {woLabel} <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
+                          {veh} <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
                           {when}
                         </div>
                         {r.notes ? (
-                          <div className="mt-1 truncate text-xs text-neutral-400">Notes: {r.notes}</div>
+                          <div className="mt-1 truncate text-xs text-[color:var(--theme-text-secondary)]">Notes: {r.notes}</div>
                         ) : null}
                       </button>
 
@@ -573,7 +573,7 @@ export default function QuotingQueuePage(): JSX.Element {
         {/* RIGHT: details */}
         <div className={CARD_PAD}>
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">Details</h2>
+            <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Details</h2>
             {selected?.work_order?.id ? (
               <Link href={`/work-orders/${selected.work_order.id}`} className={BTN_COPPER}>
                 Open Work Order →
@@ -585,14 +585,14 @@ export default function QuotingQueuePage(): JSX.Element {
             <div className="mt-3 space-y-3 text-sm">
               <div>
                 <div className={SMALL}>Work Order</div>
-                <div className="font-semibold text-white">
+                <div className="font-semibold text-[color:var(--theme-text-primary)]">
                   {selected.work_order?.custom_id || selected.work_order?.id?.slice(0, 8) || "—"}
                 </div>
               </div>
 
               <div>
                 <div className={SMALL}>Vehicle</div>
-                <div className="font-semibold text-white">
+                <div className="font-semibold text-[color:var(--theme-text-primary)]">
                   {selected.vehicle
                     ? (`${selected.vehicle.year ?? ""} ${selected.vehicle.make ?? ""} ${selected.vehicle.model ?? ""}`.trim() || "—")
                     : "—"}
@@ -601,7 +601,7 @@ export default function QuotingQueuePage(): JSX.Element {
 
               <div>
                 <div className={SMALL}>Customer</div>
-                <div className="font-semibold text-white">
+                <div className="font-semibold text-[color:var(--theme-text-primary)]">
                   {selected.customer
                     ? ([selected.customer.first_name ?? "", selected.customer.last_name ?? ""].filter(Boolean).join(" ") || "—")
                     : "—"}
@@ -610,7 +610,7 @@ export default function QuotingQueuePage(): JSX.Element {
 
               <div>
                 <div className={SMALL}>Description</div>
-                <div className="font-semibold text-white">{selected.description ?? "—"}</div>
+                <div className="font-semibold text-[color:var(--theme-text-primary)]">{selected.description ?? "—"}</div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span
@@ -622,7 +622,7 @@ export default function QuotingQueuePage(): JSX.Element {
                   </span>
 
                   {selected.pricing_valid_until ? (
-                    <span className="text-[10px] text-neutral-500">
+                    <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                       Valid until {format(new Date(selected.pricing_valid_until), "MMM d, yyyy")}
                     </span>
                   ) : null}
@@ -631,11 +631,11 @@ export default function QuotingQueuePage(): JSX.Element {
 
               <div>
                 <div className={SMALL}>Notes</div>
-                <div className="whitespace-pre-wrap font-semibold text-white">{selected.notes ?? "—"}</div>
+                <div className="whitespace-pre-wrap font-semibold text-[color:var(--theme-text-primary)]">{selected.notes ?? "—"}</div>
               </div>
             </div>
           ) : (
-            <div className="mt-3 text-neutral-400">Select a line on the left to see details.</div>
+            <div className="mt-3 text-[color:var(--theme-text-secondary)]">Select a line on the left to see details.</div>
           )}
         </div>
       </div>
@@ -661,7 +661,7 @@ export default function QuotingQueuePage(): JSX.Element {
         />
       )}
 
-      
+
     </div>
   );
 }

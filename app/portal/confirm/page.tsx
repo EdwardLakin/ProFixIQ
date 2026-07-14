@@ -29,7 +29,7 @@ export default function PortalConfirmPage() {
   }, [router, supabase]);
 
   return (
-    <div className="mx-auto flex max-w-md items-center justify-center rounded-2xl border border-white/10 bg-black/30 p-6 text-sm text-neutral-200 backdrop-blur-md shadow-card">
+    <div className="mx-auto flex max-w-md items-center justify-center rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-sm text-[color:var(--theme-text-primary)] backdrop-blur-md shadow-card">
       Completing sign-in…
     </div>
   );

@@ -96,7 +96,7 @@ export const QuickCheckGas = memo(function QuickCheckGas(props: {
             className="rounded border border-zinc-800 bg-zinc-900 p-3"
           >
             <div className="mb-2 flex items-start justify-between gap-3">
-              <h3 className="min-w-0 truncate text-sm font-medium text-white">
+              <h3 className="min-w-0 truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
                 {it.item}
               </h3>
               <div className="flex shrink-0 flex-wrap gap-1">
@@ -108,12 +108,12 @@ export const QuickCheckGas = memo(function QuickCheckGas(props: {
                       "rounded px-2 py-1 text-xs " +
                       ((it.status ?? "") === b
                         ? b === "ok"
-                          ? "bg-green-600 text-white"
+                          ? "bg-green-600 text-[color:var(--theme-text-primary)]"
                           : b === "fail"
-                          ? "bg-red-600 text-white"
+                          ? "bg-red-600 text-[color:var(--theme-text-primary)]"
                           : b === "na"
-                          ? "bg-yellow-500 text-white"
-                          : "bg-blue-500 text-white"
+                          ? "bg-yellow-500 text-[color:var(--theme-text-primary)]"
+                          : "bg-blue-500 text-[color:var(--theme-text-primary)]"
                         : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
                     }
                   >
@@ -125,7 +125,7 @@ export const QuickCheckGas = memo(function QuickCheckGas(props: {
 
             <div className="grid grid-cols-[1fr_84px] gap-2">
               <input
-                className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+                className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-[color:var(--theme-text-primary)]"
                 value={String((it.value ?? "") as string)}
                 onChange={(e) =>
                   updateItem(sectionIndex, idx, { value: e.target.value })
@@ -133,7 +133,7 @@ export const QuickCheckGas = memo(function QuickCheckGas(props: {
                 placeholder="value (e.g., filled, 32)"
               />
               <input
-                className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+                className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-[color:var(--theme-text-primary)]"
                 value={String((it.unit ?? "") as string)}
                 onChange={(e) =>
                   updateItem(sectionIndex, idx, { unit: e.target.value })
@@ -151,7 +151,7 @@ export const QuickCheckGas = memo(function QuickCheckGas(props: {
             Section Notes
           </div>
           <textarea
-            className="h-24 w-full resize-y rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+            className="h-24 w-full resize-y rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-[color:var(--theme-text-primary)]"
             value={String((items[notesIdx].notes ?? "") as string)}
             onChange={(e) =>
               updateItem(sectionIndex, notesIdx, { notes: e.target.value })

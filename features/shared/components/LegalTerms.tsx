@@ -19,18 +19,18 @@ export default function LegalTerms(rawProps: any) {
   const [agreed, setAgreed] = useState<boolean>(false);
 
   return (
-    <div className="mt-6 rounded border border-neutral-800 bg-neutral-900">
+    <div className="mt-6 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between border-b border-neutral-800 px-3 py-2 text-left"
+        className="flex w-full items-center justify-between border-b border-[color:var(--theme-border-soft)] px-3 py-2 text-left"
       >
         <span className="font-semibold">Terms & Conditions</span>
-        <span className="text-xs text-neutral-400">{open ? "Hide" : "Show"}</span>
+        <span className="text-xs text-[color:var(--theme-text-secondary)]">{open ? "Hide" : "Show"}</span>
       </button>
 
       {open && (
-        <div className="space-y-3 p-3 text-sm leading-6 text-neutral-200">
+        <div className="space-y-3 p-3 text-sm leading-6 text-[color:var(--theme-text-primary)]">
           <p>
             I authorize {shopName} (the “Shop”) to perform the listed inspections, diagnostics, and
             repairs (“Work”) on my vehicle. I agree the Shop may operate and test-drive the vehicle
@@ -65,7 +65,7 @@ export default function LegalTerms(rawProps: any) {
         </div>
       )}
 
-      <div className="flex items-start gap-2 border-t border-neutral-800 p-3">
+      <div className="flex items-start gap-2 border-t border-[color:var(--theme-border-soft)] p-3">
         <input
           id="agree"
           type="checkbox"
@@ -77,7 +77,7 @@ export default function LegalTerms(rawProps: any) {
             onAgreeChange?.(val);
           }}
         />
-        <label htmlFor="agree" className="text-sm text-neutral-200">
+        <label htmlFor="agree" className="text-sm text-[color:var(--theme-text-primary)]">
           I have read and agree to the Terms &amp; Conditions.
         </label>
       </div>

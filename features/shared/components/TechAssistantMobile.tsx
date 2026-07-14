@@ -33,8 +33,8 @@ export default function TechAssistantMobile({
     [vehicle],
   );
   const inputBase =
-    "w-full rounded bg-neutral-900 border border-neutral-700 text-white " +
-    "placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orange-500";
+    "w-full rounded bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] " +
+    "placeholder:text-[color:var(--theme-text-secondary)] focus:outline-none focus:ring-2 focus:ring-orange-500";
 
   // composer submit
   const onChatSubmit = (e: FormEvent) => {
@@ -51,7 +51,7 @@ export default function TechAssistantMobile({
   }, []);
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] flex-col text-white md:hidden">
+    <div className="flex h-[calc(100vh-5rem)] flex-col text-[color:var(--theme-text-primary)] md:hidden">
       {/* Header / vehicle fields */}
       <div className="space-y-2 p-3 pb-0">
         <div className="text-base font-header text-orange-500">Tech Assistant</div>
@@ -99,12 +99,12 @@ export default function TechAssistantMobile({
             if (mine) {
               return (
                 <div key={i} className="flex justify-end">
-                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm bg-orange-600 text-black font-header">
+                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm bg-orange-600 text-[color:var(--theme-text-on-accent)] font-header">
                     {m.content}
                     {m.attachments?.length ? (
-                      <div className="mt-2 space-y-1 text-[11px] text-black/80">
+                      <div className="mt-2 space-y-1 text-[11px] text-[color:var(--theme-text-on-accent)]">
                         {m.attachments.map((attachment) => (
-                          <div key={attachment.id} className="flex items-center gap-2 rounded bg-black/10 p-1">
+                          <div key={attachment.id} className="flex items-center gap-2 rounded bg-[color:var(--theme-surface-inset)] p-1">
                             {attachment.url ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={attachment.url} alt={attachment.fileName ?? "Attached diagnostic photo"} className="h-10 w-10 rounded object-cover" />
@@ -121,7 +121,7 @@ export default function TechAssistantMobile({
             // Assistant → Markdown with black bubble & softer white text
             return (
               <div key={i} className="flex justify-start">
-                <div className="max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm bg-black text-neutral-200">
+                <div className="max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
                   <div className="prose prose-invert prose-sm">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
@@ -152,7 +152,7 @@ export default function TechAssistantMobile({
           })}
           {!!partial && (
             <div className="flex justify-start">
-              <div className="max-w-[85%] rounded bg-black px-3 py-2 text-sm text-neutral-300 opacity-90">
+              <div className="max-w-[85%] rounded bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)] opacity-90">
                 <div className="prose prose-invert prose-sm">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {partial}
@@ -162,7 +162,7 @@ export default function TechAssistantMobile({
             </div>
           )}
           {messages.length === 0 && !partial && (
-            <div className="text-xs text-neutral-400 font-header">
+            <div className="text-xs text-[color:var(--theme-text-secondary)] font-header">
               Enter year, make, model, add context, then ask a question or attach a photo.
             </div>
           )}
@@ -172,10 +172,10 @@ export default function TechAssistantMobile({
       </div>
 
       {/* Sticky composer */}
-      <div className="sticky bottom-0 z-10 border-t border-neutral-800 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+      <div className="sticky bottom-0 z-10 border-t border-[color:var(--theme-border-soft)] bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         {/* Attach / Reset row */}
         <div className="flex items-center gap-2 px-3 pt-2">
-          <label className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 cursor-pointer font-header">
+          <label className="rounded bg-[color:var(--theme-surface-panel-strong)] px-3 py-2 text-sm hover:bg-[color:var(--theme-surface-hover)] cursor-pointer font-header">
             <input
               ref={photoRef}
               type="file"
@@ -196,7 +196,7 @@ export default function TechAssistantMobile({
 
           <button
             type="button"
-            className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60 font-header"
+            className="rounded bg-[color:var(--theme-surface-panel-strong)] px-3 py-2 text-sm hover:bg-[color:var(--theme-surface-hover)] disabled:opacity-60 font-header"
             onClick={resetConversation}
             disabled={sending || uploading}
           >
@@ -217,7 +217,7 @@ export default function TechAssistantMobile({
           />
           <button
             type="submit"
-            className="rounded bg-orange-600 px-4 py-3 text-sm font-header text-black hover:bg-orange-700 disabled:opacity-60"
+            className="rounded bg-orange-600 px-4 py-3 text-sm font-header text-[color:var(--theme-text-on-accent)] hover:bg-orange-700 disabled:opacity-60"
             disabled={sending || uploading || !canSend}
           >
             {sending ? "…" : "Send"}

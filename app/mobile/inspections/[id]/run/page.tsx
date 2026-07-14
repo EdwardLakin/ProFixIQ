@@ -36,20 +36,20 @@ function MobileInspectionRunnerFrame({
   }, [lineId, templateId, workOrderId]);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/40 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-md">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+    <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-md">
+      <div className="flex items-center justify-between gap-2 border-b border-[color:var(--theme-border-soft)] pb-2">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Inspection runner
           </p>
-          <p className="mt-0.5 text-[11px] text-neutral-400">
+          <p className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
             Line{" "}
-            <span className="font-mono text-[10px] text-neutral-200">{lineId}</span>
+            <span className="font-mono text-[10px] text-[color:var(--theme-text-primary)]">{lineId}</span>
             {workOrderId ? (
               <>
                 {" "}
                 • WO{" "}
-                <span className="font-mono text-[10px] text-neutral-200">
+                <span className="font-mono text-[10px] text-[color:var(--theme-text-primary)]">
                   {workOrderId}
                 </span>
               </>
@@ -62,7 +62,7 @@ function MobileInspectionRunnerFrame({
         </span>
       </div>
 
-      <div className="mt-2 overflow-hidden rounded-xl border border-white/8 bg-black/90">
+      <div className="mt-2 overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)]">
         <div className="h-[calc(100dvh-10.5rem)] min-h-[540px] w-full pb-[env(safe-area-inset-bottom)]">
           <iframe src={src} title="Mobile inspection runner" className="h-full w-full border-0" />
         </div>
@@ -89,7 +89,7 @@ export default function MobileInspectionRunnerRunPage(): JSX.Element {
 
   if (!templateId) {
     return (
-      <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col px-3 py-6 text-white">
+      <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col px-3 py-6 text-[color:var(--theme-text-primary)]">
         <div className="rounded-xl border border-yellow-700 bg-yellow-900/20 p-4 text-sm text-yellow-200">
           <div className="font-semibold">Missing templateId</div>
           <div className="mt-1 text-xs text-yellow-100/90">
@@ -101,7 +101,7 @@ export default function MobileInspectionRunnerRunPage(): JSX.Element {
   }
 
   return (
-    <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
+    <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-[color:var(--theme-text-primary)]">
       <div className="space-y-4">
         <MobileInspectionRunnerFrame
           lineId={lineId}

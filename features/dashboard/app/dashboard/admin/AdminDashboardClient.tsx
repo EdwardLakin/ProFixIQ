@@ -15,7 +15,7 @@ export default function AdminDashboardClient() {
   ];
 
   return (
-    <div className="min-h-screen p-6 text-white">
+    <div className="min-h-screen p-6 text-[color:var(--theme-text-primary)]">
       <header className="mb-6 flex items-end justify-between">
         <div>
           <h1 className="text-3xl font-bold text-orange-400">Admin Dashboard</h1>

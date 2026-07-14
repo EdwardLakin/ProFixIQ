@@ -198,7 +198,7 @@ export default function OwnerSettingsBusinessSection({
             width={128}
             height={80}
             unoptimized
-            className="mt-2 h-20 w-32 rounded bg-white p-1 object-contain"
+            className="mt-2 h-20 w-32 rounded bg-[color:var(--theme-surface-panel-strong)] p-1 object-contain"
           />
         ) : null}
       </div>

@@ -84,10 +84,10 @@ export default function ReviewForm({ shopId, onCreated }: Props) {
 
   return (
     <div
-      className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/20 p-5 backdrop-blur-xl"
+      className="relative overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-xl"
       style={{
         boxShadow:
-          "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+          "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px var(--theme-surface-inset)",
       }}
     >
       <div
@@ -98,17 +98,17 @@ export default function ReviewForm({ shopId, onCreated }: Props) {
         className="pointer-events-none absolute inset-0 opacity-[0.10]"
         style={{
           backgroundImage:
-            "repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 9px)",
+            "var(--theme-gradient-panel)",
         }}
       />
 
       <div className="relative space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
               Reviews
             </div>
-            <h3 className="mt-1 text-lg font-extrabold text-white">Leave a review</h3>
+            <h3 className="mt-1 text-lg font-extrabold text-[color:var(--theme-text-primary)]">Leave a review</h3>
           </div>
 
           <span
@@ -124,29 +124,29 @@ export default function ReviewForm({ shopId, onCreated }: Props) {
         </div>
 
         <div>
-          <div className="text-sm font-semibold text-neutral-200">Rating</div>
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Rating</div>
           <div className="mt-2 flex items-center gap-1">
             {stars.map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => setRating(s)}
-                className="rounded-md p-1 hover:bg-white/5"
+                className="rounded-md p-1 hover:bg-[color:var(--theme-surface-subtle)]"
                 aria-label={`Rate ${s} star${s === 1 ? "" : "s"}`}
               >
                 <Star filled={s <= rating} />
               </button>
             ))}
-            <div className="ml-2 text-xs text-neutral-400">{rating} / 5</div>
+            <div className="ml-2 text-xs text-[color:var(--theme-text-secondary)]">{rating} / 5</div>
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-neutral-200">
-            Comment <span className="text-neutral-500">(optional)</span>
+          <label className="block text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            Comment <span className="text-[color:var(--theme-text-muted)]">(optional)</span>
           </label>
           <textarea
-            className="mt-2 w-full rounded-2xl border border-white/10 bg-black/30 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:ring-2"
+            className="mt-2 w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2"
             style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.03) inset" }}
             rows={3}
             value={comment}
@@ -165,7 +165,7 @@ export default function ReviewForm({ shopId, onCreated }: Props) {
           <button
             onClick={submit}
             disabled={submitting}
-            className="inline-flex items-center justify-center rounded-full px-5 py-2 text-sm font-extrabold text-black disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-full px-5 py-2 text-sm font-extrabold text-[color:var(--theme-text-on-accent)] disabled:opacity-60"
             style={{
               backgroundColor: "rgba(197,122,74,0.95)",
               boxShadow: "0 0 30px rgba(197,122,74,0.25)",
@@ -182,7 +182,7 @@ export default function ReviewForm({ shopId, onCreated }: Props) {
               setError(null);
             }}
             disabled={submitting}
-            className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/25 px-5 py-2 text-sm font-semibold text-neutral-200 hover:border-white/20 hover:bg-black/35 disabled:opacity-60"
+            className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-5 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)] disabled:opacity-60"
           >
             Reset
           </button>

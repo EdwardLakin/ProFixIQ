@@ -152,7 +152,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
       <div className={["grid gap-2", rowGlow].join(" ")}>
         <div className="grid items-start gap-2 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-3">
           <div className="min-w-0">
-            <div className="text-[15px] font-semibold text-white">
+            <div className="text-[15px] font-semibold text-[color:var(--theme-text-primary)]">
               <span
                 ref={labelRef}
                 className={[
@@ -183,7 +183,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                     onUpdateValue?.(sectionIndex, itemIndex, e.target.value)
                   }
                   placeholder="Value"
-                  className="h-9 w-24 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+                  className="h-9 w-24 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
                 />
                 <input
                   type="text"
@@ -192,7 +192,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                     onUpdateUnit?.(sectionIndex, itemIndex, e.target.value)
                   }
                   placeholder="Unit"
-                  className="h-9 w-20 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+                  className="h-9 w-20 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
                 />
               </div>
             ) : (
@@ -221,7 +221,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
           <div className="min-w-0">
             <textarea
               rows={1}
-              className="h-9 w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2 text-[12px] text-white outline-none placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/60"
+              className="h-9 w-full resize-y rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-[12px] text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:ring-2 focus:ring-accent/60"
               placeholder="Notes…"
               value={getNotesValue(item)}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -233,9 +233,9 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
 
         {showPhotos && (item.status === "fail" || item.status === "recommend") && (
           <div className="mt-1">
-            <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                   Photos
                 </div>
 
@@ -269,7 +269,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
-        <h3 className="truncate text-[15px] font-semibold text-white" title={label}>
+        <h3 className="truncate text-[15px] font-semibold text-[color:var(--theme-text-primary)]" title={label}>
           {label || "—"}
         </h3>
 
@@ -283,7 +283,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 onUpdateValue?.(sectionIndex, itemIndex, e.target.value)
               }
               placeholder="Value"
-              className="w-24 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+              className="w-24 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
             />
             <input
               type="text"
@@ -292,7 +292,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 onUpdateUnit?.(sectionIndex, itemIndex, e.target.value)
               }
               placeholder="Unit"
-              className="w-20 rounded-md border border-white/10 bg-black/50 px-2 py-1 text-[12px] text-white placeholder:text-neutral-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+              className="w-20 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
             />
           </div>
         ) : (
@@ -319,7 +319,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
       {showNotes && (
         <div className="mt-2">
           <textarea
-            className="h-[44px] w-full resize-y rounded-lg border border-white/10 bg-black/45 px-2.5 py-2 text-[12px] text-white outline-none placeholder:text-neutral-500 focus:border-accent focus:ring-2 focus:ring-accent/60"
+            className="h-[44px] w-full resize-y rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-[12px] text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:ring-2 focus:ring-accent/60"
             placeholder="Enter notes..."
             value={getNotesValue(item)}
             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -331,9 +331,9 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
 
       {showPhotos && (item.status === "fail" || item.status === "recommend") && (
         <div className="mt-2">
-          <div className="rounded-lg border border-white/10 bg-black/25 p-2.5">
+          <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+              <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Photos
               </div>
               <PhotoUploadButton

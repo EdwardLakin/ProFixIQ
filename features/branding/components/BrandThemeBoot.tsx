@@ -2,6 +2,12 @@
 
 import { useEffect } from "react";
 import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
+import {
+  applyThemePreference,
+  isThemePreference,
+  THEME_CHANGE_EVENT,
+  type ThemePreference,
+} from "@/features/shared/lib/theme";
 
 type ThemeProfile = {
   primary_color?: string | null;
@@ -40,16 +46,6 @@ type UserThemePreferences = {
   radius_scale?: string | null;
   shadow_style?: string | null;
 };
-
-function resolveThemeMode(mode: string): "light" | "dark" {
-  if (mode === "light") return "light";
-  if (mode === "system") {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  }
-  return "dark";
-}
 
 function setVar(
   root: HTMLElement,
@@ -113,44 +109,44 @@ function setShadowVars(root: HTMLElement, style: string | null | undefined) {
     case "soft":
       root.style.setProperty(
         "--theme-shadow-soft",
-        "0 8px 20px rgba(0,0,0,0.20)",
+        "0 8px 20px var(--theme-surface-inset)",
       );
       root.style.setProperty(
         "--theme-shadow-medium",
-        "0 12px 28px rgba(0,0,0,0.24)",
+        "0 12px 28px var(--theme-surface-inset)",
       );
       root.style.setProperty(
         "--theme-shadow-strong",
-        "0 18px 40px rgba(0,0,0,0.28)",
+        "0 18px 40px var(--theme-surface-inset)",
       );
       break;
     case "strong":
       root.style.setProperty(
         "--theme-shadow-soft",
-        "0 14px 30px rgba(0,0,0,0.35)",
+        "0 14px 30px var(--theme-surface-inset)",
       );
       root.style.setProperty(
         "--theme-shadow-medium",
-        "0 22px 50px rgba(0,0,0,0.42)",
+        "0 22px 50px var(--theme-surface-inset)",
       );
       root.style.setProperty(
         "--theme-shadow-strong",
-        "0 30px 80px rgba(0,0,0,0.52)",
+        "0 30px 80px var(--theme-surface-inset)",
       );
       break;
     case "medium":
     default:
       root.style.setProperty(
         "--theme-shadow-soft",
-        "0 14px 30px rgba(0,0,0,0.35)",
+        "0 14px 30px var(--theme-surface-inset)",
       );
       root.style.setProperty(
         "--theme-shadow-medium",
-        "0 18px 45px rgba(0,0,0,0.45)",
+        "0 18px 45px var(--theme-surface-inset)",
       );
       root.style.setProperty(
         "--theme-shadow-strong",
-        "0 24px 70px rgba(0,0,0,0.50)",
+        "0 24px 70px var(--theme-surface-inset)",
       );
       break;
   }
@@ -159,12 +155,12 @@ function setShadowVars(root: HTMLElement, style: string | null | undefined) {
 function setPresetVars(root: HTMLElement, preset: string | null | undefined) {
   const value = String(preset ?? "").trim().toLowerCase();
 
-  let glassBg = "rgba(0, 0, 0, 0.30)";
-  let glassBgSoft = "rgba(0, 0, 0, 0.22)";
+  let glassBg = "var(--theme-surface-inset)";
+  let glassBgSoft = "var(--theme-surface-inset)";
   let metalBorderSoft = "rgba(148, 163, 184, 0.30)";
   let metalBorderStrong = "rgba(148, 163, 184, 0.60)";
   let appGlow =
-    "radial-gradient(circle at top, rgba(249,115,22,0.18), transparent 55%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%)";
+    "var(--theme-gradient-panel)";
 
   switch (value) {
     case "clean-oem":
@@ -174,7 +170,7 @@ function setPresetVars(root: HTMLElement, preset: string | null | undefined) {
       metalBorderSoft = "rgba(203, 213, 225, 0.20)";
       metalBorderStrong = "rgba(203, 213, 225, 0.38)";
       appGlow =
-        "radial-gradient(circle at top, rgba(255,255,255,0.06), transparent 45%), radial-gradient(circle at bottom, rgba(15,23,42,0.92), #020617 72%)";
+        "var(--theme-gradient-panel)";
       break;
     case "performance":
       glassBg = "rgba(20, 6, 6, 0.34)";
@@ -182,23 +178,23 @@ function setPresetVars(root: HTMLElement, preset: string | null | undefined) {
       metalBorderSoft = "rgba(251, 146, 60, 0.28)";
       metalBorderStrong = "rgba(251, 146, 60, 0.52)";
       appGlow =
-        "radial-gradient(circle at top, rgba(239,68,68,0.16), transparent 45%), radial-gradient(circle at top right, rgba(249,115,22,0.16), transparent 40%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%)";
+        "var(--theme-gradient-panel)";
       break;
     case "fleet-utility":
-      glassBg = "rgba(5, 10, 18, 0.34)";
-      glassBgSoft = "rgba(5, 10, 18, 0.24)";
+      glassBg = "var(--theme-surface-inset)";
+      glassBgSoft = "var(--theme-surface-inset)";
       metalBorderSoft = "rgba(125, 211, 252, 0.20)";
       metalBorderStrong = "rgba(125, 211, 252, 0.38)";
       appGlow =
-        "radial-gradient(circle at top, rgba(56,189,248,0.12), transparent 48%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 72%)";
+        "var(--theme-gradient-panel)";
       break;
     case "modern-tech":
-      glassBg = "rgba(8, 12, 20, 0.30)";
-      glassBgSoft = "rgba(8, 12, 20, 0.22)";
+      glassBg = "var(--theme-surface-inset)";
+      glassBgSoft = "var(--theme-surface-inset)";
       metalBorderSoft = "rgba(167, 139, 250, 0.22)";
       metalBorderStrong = "rgba(167, 139, 250, 0.42)";
       appGlow =
-        "radial-gradient(circle at top, rgba(167,139,250,0.14), transparent 48%), radial-gradient(circle at top right, rgba(56,189,248,0.10), transparent 42%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%)";
+        "var(--theme-gradient-panel)";
       break;
     case "industrial-dark":
     default:
@@ -224,11 +220,11 @@ type DashboardBackgroundSettings = {
 
 const DEFAULT_DASHBOARD_BACKGROUND: DashboardBackgroundSettings = {
   mode: "solid",
-  base: "#050910",
+  base: "var(--theme-surface-page)",
   ambientTint: "#C97A3D",
-  gradientStart: "#334155",
-  gradientEnd: "#020617",
-  gradientAccent: "#1E293B",
+  gradientStart: "var(--theme-border-soft)",
+  gradientEnd: "var(--theme-surface-page)",
+  gradientAccent: "var(--theme-surface-page)",
 };
 
 function readDashboardBackgroundSettings(
@@ -275,12 +271,12 @@ function setDashboardBackgroundVars(
   const backgroundValue =
     settings.mode === "gradient"
       ? `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.gradientStart} 12%, transparent), transparent 60%), radial-gradient(980px 540px at 86% 16%, color-mix(in srgb, ${settings.gradientAccent} 10%, transparent), transparent 58%), linear-gradient(180deg, ${settings.gradientEnd} 0%, ${settings.base} 100%)`
-      : `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.ambientTint} 9%, transparent), transparent 62%), radial-gradient(1100px 700px at 100% 100%, color-mix(in srgb, ${settings.base} 72%, black), transparent 64%), linear-gradient(180deg, ${settings.base} 0%, ${settings.base} 100%)`;
+      : `radial-gradient(1200px 640px at 14% -8%, color-mix(in srgb, ${settings.ambientTint} 9%, transparent), transparent 62%), radial-gradient(1100px 700px at 100% 100%, color-mix(in srgb, ${settings.base} 72%, var(--theme-surface-page)), transparent 64%), linear-gradient(180deg, ${settings.base} 0%, ${settings.base} 100%)`;
 
   const heroBackgroundValue =
     settings.mode === "gradient"
-      ? `radial-gradient(900px 500px at 12% -14%, color-mix(in srgb, ${settings.gradientStart} 16%, transparent), transparent 62%), linear-gradient(180deg, color-mix(in srgb, ${settings.base} 86%, black), color-mix(in srgb, ${settings.gradientEnd} 76%, black))`
-      : `radial-gradient(900px 500px at 12% -14%, color-mix(in srgb, ${settings.ambientTint} 11%, transparent), transparent 64%), linear-gradient(180deg, color-mix(in srgb, ${settings.base} 90%, black), color-mix(in srgb, ${settings.base} 78%, black))`;
+      ? `radial-gradient(900px 500px at 12% -14%, color-mix(in srgb, ${settings.gradientStart} 16%, transparent), transparent 62%), linear-gradient(180deg, color-mix(in srgb, ${settings.base} 86%, var(--theme-surface-page)), color-mix(in srgb, ${settings.gradientEnd} 76%, var(--theme-surface-page)))`
+      : `radial-gradient(900px 500px at 12% -14%, color-mix(in srgb, ${settings.ambientTint} 11%, transparent), transparent 64%), linear-gradient(180deg, color-mix(in srgb, ${settings.base} 90%, var(--theme-surface-page)), color-mix(in srgb, ${settings.base} 78%, var(--theme-surface-page)))`;
 
   root.style.setProperty("--dashboard-shell-bg", backgroundValue);
   root.style.setProperty("--dashboard-hero-bg", heroBackgroundValue);
@@ -295,7 +291,7 @@ export default function BrandThemeBoot() {
     const userPrefs: UserThemePreferences = data?.userPreferences ?? {};
 
     const primary = profile.primary_color || "#C1663B";
-    const secondary = profile.secondary_color || "#050910";
+    const secondary = profile.secondary_color || "var(--theme-surface-page)";
     const accent = profile.accent_color || "#E39A6E";
     const preset = profile.style_preset || "industrial-dark";
 
@@ -314,10 +310,10 @@ export default function BrandThemeBoot() {
       root,
       "--theme-app-bg-secondary",
       profile.app_background_secondary,
-      "#020617",
+      "var(--theme-surface-page)",
     );
-    setVar(root, "--theme-sidebar-bg", profile.sidebar_background, "#020617");
-    setVar(root, "--theme-sidebar-text", profile.sidebar_text, "#D4D4D8");
+    setVar(root, "--theme-sidebar-bg", profile.sidebar_background, "var(--theme-surface-page)");
+    setVar(root, "--theme-sidebar-text", profile.sidebar_text, "var(--theme-text-primary)");
     setVar(
       root,
       "--theme-sidebar-active-bg",
@@ -328,13 +324,13 @@ export default function BrandThemeBoot() {
       root,
       "--theme-sidebar-active-text",
       profile.sidebar_active_text,
-      "#000000",
+      "var(--theme-text-on-accent)",
     );
 
-    setVar(root, "--theme-header-bg", profile.header_background, "#020617");
-    setVar(root, "--theme-header-text", profile.header_text, "#FFFFFF");
+    setVar(root, "--theme-header-bg", profile.header_background, "var(--theme-surface-page)");
+    setVar(root, "--theme-header-text", profile.header_text, "var(--theme-text-inverse)");
 
-    setVar(root, "--theme-card-bg", profile.card_background, "#111827");
+    setVar(root, "--theme-card-bg", profile.card_background, "var(--theme-surface-page)");
     setVar(
       root,
       "--theme-card-border",
@@ -346,12 +342,12 @@ export default function BrandThemeBoot() {
       root,
       "--theme-surface-2",
       profile.surface_2_background,
-      "#0B1220",
+      "var(--theme-surface-page)",
     );
 
-    setVar(root, "--theme-text-primary", profile.text_primary, "#FFFFFF");
-    setVar(root, "--theme-text-secondary", profile.text_secondary, "#94A3B8");
-    setVar(root, "--theme-text-muted", profile.text_muted, "#64748B");
+    setVar(root, "--theme-text-primary", profile.text_primary, "var(--theme-text-inverse)");
+    setVar(root, "--theme-text-secondary", profile.text_secondary, "var(--theme-text-muted)");
+    setVar(root, "--theme-text-muted", profile.text_muted, "var(--theme-text-muted)");
 
     setVar(
       root,
@@ -363,29 +359,29 @@ export default function BrandThemeBoot() {
       root,
       "--theme-button-primary-text",
       profile.button_primary_text,
-      "#000000",
+      "var(--theme-text-on-accent)",
     );
     setVar(
       root,
       "--theme-button-secondary-bg",
       profile.button_secondary_bg,
-      "#1E293B",
+      "var(--theme-surface-page)",
     );
     setVar(
       root,
       "--theme-button-secondary-text",
       profile.button_secondary_text,
-      "#FFFFFF",
+      "var(--theme-text-inverse)",
     );
 
-    setVar(root, "--theme-input-bg", profile.input_background, "#0B1220");
+    setVar(root, "--theme-input-bg", profile.input_background, "var(--theme-surface-page)");
     setVar(
       root,
       "--theme-input-border",
       profile.input_border,
       "rgba(148,163,184,0.30)",
     );
-    setVar(root, "--theme-input-text", profile.input_text, "#FFFFFF");
+    setVar(root, "--theme-input-text", profile.input_text, "var(--theme-text-inverse)");
 
     setPresetVars(root, preset);
     setDashboardBackgroundVars(
@@ -408,22 +404,36 @@ export default function BrandThemeBoot() {
       userPrefs.shadow_style || profile.shadow_style || "medium",
     );
 
-    const themePreference = String(
+    const rawThemePreference = String(
       userPrefs.theme_mode || profile.theme_mode || "dark",
     ).toLowerCase();
-    const resolvedTheme = resolveThemeMode(themePreference);
-    root.setAttribute("data-theme-preference", themePreference);
-    root.setAttribute("data-theme-mode", resolvedTheme);
-    window.localStorage.setItem("pfq-theme-mode", themePreference);
+    const themePreference: ThemePreference = isThemePreference(rawThemePreference)
+      ? rawThemePreference
+      : "dark";
+    applyThemePreference(themePreference, { notify: false });
+
+    const onThemeChange = (event: Event) => {
+      const preference = (event as CustomEvent<{ preference?: unknown }>).detail
+        ?.preference;
+      if (isThemePreference(preference)) {
+        applyThemePreference(preference, { notify: false });
+      }
+    };
+    window.addEventListener(THEME_CHANGE_EVENT, onThemeChange);
 
     if (themePreference === "system") {
       const media = window.matchMedia("(prefers-color-scheme: dark)");
       const onMediaChange = () => {
-        root.setAttribute("data-theme-mode", resolveThemeMode("system"));
+        applyThemePreference("system", { notify: false });
       };
       media.addEventListener("change", onMediaChange);
-      return () => media.removeEventListener("change", onMediaChange);
+      return () => {
+        media.removeEventListener("change", onMediaChange);
+        window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange);
+      };
     }
+
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange);
   }, [data]);
 
   return null;

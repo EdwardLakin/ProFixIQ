@@ -96,32 +96,32 @@ export default function TechJobScreen() {
   const onHoldJobs = jobs.filter((j) => j.status === "on_hold");
 
   return (
-    <div className="space-y-6 p-4 text-white">
+    <div className="space-y-6 p-4 text-[color:var(--theme-text-primary)]">
       <h1 className="text-xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
         Technician Job Queue
       </h1>
 
-      {loading && <p className="text-sm text-neutral-500">Loading jobs…</p>}
+      {loading && <p className="text-sm text-[color:var(--theme-text-muted)]">Loading jobs…</p>}
 
       {activeJob ? (
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold text-neutral-100">Current Job</h2>
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Current Job</h2>
           {renderJobCard(activeJob)}
         </section>
       ) : (
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold text-neutral-100">Available Jobs</h2>
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Available Jobs</h2>
           {readyJobs.length > 0 ? (
             readyJobs.map(renderJobCard)
           ) : (
-            <p className="text-neutral-400">No jobs available.</p>
+            <p className="text-[color:var(--theme-text-secondary)]">No jobs available.</p>
           )}
         </section>
       )}
 
       {onHoldJobs.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-lg font-semibold text-neutral-100">On Hold</h2>
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">On Hold</h2>
           {onHoldJobs.map(renderJobCard)}
         </section>
       )}

@@ -134,21 +134,21 @@ export default function CreateFlowMaintenanceSelector({
   if (!enabled) return null;
 
   const softButtonClass =
-    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)] disabled:opacity-50";
+    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))] disabled:opacity-50";
   const itemPanelClass =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3";
 
   return (
-    <section className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] sm:p-5">
-      <div className="mb-3 flex items-start justify-between gap-3 border-b border-white/10 pb-3">
+    <section className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-medium)] sm:p-5">
+      <div className="mb-3 flex items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] pb-3">
         <div>
-          <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-300">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
             Scheduled maintenance suggestions
           </h2>
-          <p className="mt-1 text-[11px] text-neutral-500">
+          <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
             History-aware scheduled maintenance due for this vehicle. Selected items will be added after submit as pending approval items.
           </p>
-          <p className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
             Separate lane from menu-items catalog and inspection-template quick add
           </p>
         </div>
@@ -182,7 +182,7 @@ export default function CreateFlowMaintenanceSelector({
       </div>
 
       {!canLoad ? (
-        <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-neutral-400">
+        <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
           Save customer and vehicle first to load maintenance suggestions.
         </div>
       ) : error ? (
@@ -190,9 +190,9 @@ export default function CreateFlowMaintenanceSelector({
           {error}
         </div>
       ) : loading ? (
-        <div className="text-sm text-neutral-400">Loading suggestions...</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading suggestions...</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-neutral-400">
+        <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
           No active maintenance suggestions for this vehicle.
         </div>
       ) : (
@@ -214,20 +214,20 @@ export default function CreateFlowMaintenanceSelector({
                     />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-sm font-semibold text-white">{item.label}</div>
-                        <span className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-300">
+                        <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{item.label}</div>
+                        <span className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                           {item.serviceCode}
                         </span>
                       </div>
 
-                      <div className="mt-1 text-xs text-neutral-400">
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                         maintenance
                         {typeof item.laborHours === "number" ? ` • ${item.laborHours.toFixed(1)}h` : ""}
                         {item.priority ? ` • ${item.priority}` : ""}
                       </div>
 
                       {item.description ? (
-                        <div className="mt-2 text-sm text-neutral-300">{item.description}</div>
+                        <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">{item.description}</div>
                       ) : null}
                     </div>
                   </label>

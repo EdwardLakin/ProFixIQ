@@ -142,7 +142,7 @@ export default function OwnerPaymentsPage() {
   if (loading) {
     return (
       <div className="p-6">
-        <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/40 px-4 py-3 text-sm text-neutral-300">
+        <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
           Loading payments…
         </div>
       </div>
@@ -152,7 +152,7 @@ export default function OwnerPaymentsPage() {
   if (forbidden) {
     return (
       <div className="p-6">
-        <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/40 px-4 py-3 text-sm text-neutral-300">
+        <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
           {forbidden}
         </div>
       </div>
@@ -162,17 +162,17 @@ export default function OwnerPaymentsPage() {
   return (
     <div className="p-6 space-y-4">
       {/* Header */}
-      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_60%,_#000)] px-4 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.75)]">
+      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[var(--theme-gradient-panel)] px-4 py-4 shadow-[var(--theme-shadow-medium)]">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="font-blackops text-[0.75rem] tracking-[0.22em] text-neutral-200">
+            <div className="font-blackops text-[0.75rem] tracking-[0.22em] text-[color:var(--theme-text-primary)]">
               PAYMENTS
             </div>
-            <div className="mt-1 text-sm text-neutral-400">
+            <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
               Customer payments collected through Stripe Connect • Platform fee applied automatically (3%).
             </div>
             {shopId ? (
-              <div className="mt-1 text-[0.7rem] text-neutral-500">Shop: {shopId}</div>
+              <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">Shop: {shopId}</div>
             ) : null}
           </div>
 
@@ -181,7 +181,7 @@ export default function OwnerPaymentsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search WO / payment_intent / session…"
-              className="h-9 w-full sm:w-72 rounded-xl border border-[var(--metal-border-soft)] bg-black/40 px-3 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none:border-[var(--accent-copper-soft)]"
+              className="h-9 w-full sm:w-72 rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none:border-[var(--accent-copper-soft)]"
             />
 
             <select
@@ -191,7 +191,7 @@ export default function OwnerPaymentsPage() {
                   (String(e.target.value) as typeof status) ?? "all",
                 )
               }
-              className="h-9 rounded-xl border border-[var(--metal-border-soft)] bg-black/40 px-3 text-sm text-neutral-100 outline-none focus:border-[var(--accent-copper-soft)]"
+              className="h-9 rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-[var(--accent-copper-soft)]"
             >
               <option value="all">All statuses</option>
               <option value="succeeded">Succeeded</option>
@@ -204,14 +204,14 @@ export default function OwnerPaymentsPage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-black/35">
-        <div className="border-b border-[var(--metal-border-soft)] bg-black/40 px-4 py-2 text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+      <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)]">
+        <div className="border-b border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Recent payments
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-black/30 text-[0.7rem] uppercase tracking-[0.14em] text-neutral-400">
+            <thead className="bg-[color:var(--theme-surface-inset)] text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
               <tr>
                 <th className="px-4 py-3 text-left">Date</th>
                 <th className="px-4 py-3 text-left">Work Order</th>
@@ -225,7 +225,7 @@ export default function OwnerPaymentsPage() {
             <tbody className="divide-y divide-[var(--metal-border-soft)]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-neutral-400">
+                  <td colSpan={7} className="px-4 py-6 text-[color:var(--theme-text-secondary)]">
                     No payments found.
                   </td>
                 </tr>
@@ -241,8 +241,8 @@ export default function OwnerPaymentsPage() {
                   const woId = p.work_order_id ? String(p.work_order_id) : "";
 
                   return (
-                    <tr key={String(p.id)} className="hover:bg-white/5">
-                      <td className="px-4 py-3 text-neutral-200">
+                    <tr key={String(p.id)} className="hover:bg-[color:var(--theme-surface-subtle)]">
+                      <td className="px-4 py-3 text-[color:var(--theme-text-primary)]">
                         {fmtDate(p.created_at)}
                       </td>
 
@@ -255,28 +255,28 @@ export default function OwnerPaymentsPage() {
                             {woId.slice(0, 8)}…
                           </Link>
                         ) : (
-                          <span className="text-neutral-500">—</span>
+                          <span className="text-[color:var(--theme-text-muted)]">—</span>
                         )}
                       </td>
 
-                      <td className="px-4 py-3 text-neutral-200">{amt}</td>
-                      <td className="px-4 py-3 text-neutral-200">{fee}</td>
-                      <td className="px-4 py-3 text-neutral-200">{net}</td>
+                      <td className="px-4 py-3 text-[color:var(--theme-text-primary)]">{amt}</td>
+                      <td className="px-4 py-3 text-[color:var(--theme-text-primary)]">{fee}</td>
+                      <td className="px-4 py-3 text-[color:var(--theme-text-primary)]">{net}</td>
 
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full border border-[var(--metal-border-soft)] bg-black/40 px-2 py-1 text-[0.7rem] tracking-[0.12em] text-neutral-200">
+                        <span className="inline-flex items-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[0.7rem] tracking-[0.12em] text-[color:var(--theme-text-primary)]">
                           {String(p.status ?? "unknown").toUpperCase()}
                         </span>
                       </td>
 
-                      <td className="px-4 py-3 text-[0.75rem] text-neutral-300">
+                      <td className="px-4 py-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                         <div className="space-y-1">
                           <div>
-                            <span className="text-neutral-500">pi:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">pi:</span>{" "}
                             <span className="font-mono">{String(p.stripe_payment_intent_id ?? "—")}</span>
                           </div>
                           <div>
-                            <span className="text-neutral-500">cs:</span>{" "}
+                            <span className="text-[color:var(--theme-text-muted)]">cs:</span>{" "}
                             <span className="font-mono">{String(p.stripe_checkout_session_id ?? "—")}</span>
                           </div>
                         </div>
@@ -289,7 +289,7 @@ export default function OwnerPaymentsPage() {
           </table>
         </div>
 
-        <div className="border-t border-[var(--metal-border-soft)] bg-black/40 px-4 py-2 text-[0.7rem] text-neutral-500">
+        <div className="border-t border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-[0.7rem] text-[color:var(--theme-text-muted)]">
           Showing {filtered.length} of {rows.length} (latest 200)
         </div>
       </div>

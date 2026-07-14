@@ -40,14 +40,14 @@ function priorityClass(priority: RecommendationItem["priority"]): string {
   if (priority === "urgent") return "border-red-400/40 bg-red-500/20 text-red-100";
   if (priority === "high") return "border-orange-400/40 bg-orange-500/20 text-orange-100";
   if (priority === "normal") return "border-yellow-400/35 bg-yellow-500/15 text-yellow-100";
-  return "border-white/15 bg-black/35 text-neutral-300";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]";
 }
 
 function riskClass(riskTier: RecommendationItem["riskTier"]): string {
   if (riskTier === "critical") return "border-red-400/45 text-red-200";
   if (riskTier === "high") return "border-orange-400/45 text-orange-200";
   if (riskTier === "medium") return "border-yellow-400/40 text-yellow-200";
-  return "border-white/20 text-neutral-300";
+  return "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)]";
 }
 
 function statusLabel(status: RecommendationItem["status"]): string {
@@ -106,7 +106,7 @@ export default function AiMissionControlWidget() {
           <button
             type="button"
             onClick={() => void load()}
-            className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200 transition hover:bg-black/40"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
           >
             Refresh
           </button>
@@ -115,9 +115,9 @@ export default function AiMissionControlWidget() {
     >
       {loading ? (
         <div className="space-y-2">
-          <div className="h-10 animate-pulse rounded-xl border border-white/10 bg-black/25" />
-          <div className="h-10 animate-pulse rounded-xl border border-white/10 bg-black/25" />
-          <div className="h-10 animate-pulse rounded-xl border border-white/10 bg-black/25" />
+          <div className="h-10 animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
+          <div className="h-10 animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
+          <div className="h-10 animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
         </div>
       ) : error ? (
         <div className="space-y-2 rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">
@@ -125,13 +125,13 @@ export default function AiMissionControlWidget() {
           <button
             type="button"
             onClick={() => void load()}
-            className="rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-xs text-neutral-100"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-xs text-[color:var(--theme-text-primary)]"
           >
             Retry
           </button>
         </div>
       ) : !summary || topRecommendations.length === 0 ? (
-        <p className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-300">
+        <p className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]">
           No active operational recommendations yet. Generate recommendations from a work order to populate this view.
         </p>
       ) : (
@@ -148,7 +148,7 @@ export default function AiMissionControlWidget() {
 
           <div className="space-y-2">
             {topRecommendations.map((item) => (
-              <div key={item.id} className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
+              <div key={item.id} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${priorityClass(item.priority)}`}>
                     {item.priority}
@@ -159,13 +159,13 @@ export default function AiMissionControlWidget() {
                   <span className="rounded-full border border-cyan-400/30 px-2 py-0.5 text-[10px] uppercase text-cyan-100">
                     {item.domainLabel}
                   </span>
-                  <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] uppercase text-neutral-300">
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[10px] uppercase text-[color:var(--theme-text-secondary)]">
                     {statusLabel(item.status)}
                   </span>
                 </div>
-                <p className="mt-1.5 text-sm font-semibold text-neutral-100">{item.title}</p>
-                <p className="mt-1 text-[11px] text-neutral-400">{item.recommendedActionLabel ?? "Review recommendation details"}</p>
-                <div className="mt-1.5 flex items-center justify-between text-[11px] text-neutral-400">
+                <p className="mt-1.5 text-sm font-semibold text-[color:var(--theme-text-primary)]">{item.title}</p>
+                <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">{item.recommendedActionLabel ?? "Review recommendation details"}</p>
+                <div className="mt-1.5 flex items-center justify-between text-[11px] text-[color:var(--theme-text-secondary)]">
                   <span>{confidenceLabel(item.confidence)}</span>
                   {item.href ? (
                     <Link href={item.href} className="text-[var(--brand-primary)] transition hover:opacity-80">
@@ -184,9 +184,9 @@ export default function AiMissionControlWidget() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/30 px-2.5 py-2">
-      <p className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">{label}</p>
-      <p className="mt-1 text-base font-semibold text-neutral-100">{value}</p>
+    <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">{label}</p>
+      <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{value}</p>
     </div>
   );
 }

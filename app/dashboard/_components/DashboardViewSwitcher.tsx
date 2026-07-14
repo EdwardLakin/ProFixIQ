@@ -19,7 +19,7 @@ const DASHBOARD_VIEW_ROUTE: Record<DashboardView, string> = {
 
 export default function DashboardViewSwitcher({ currentView }: Props) {
   return (
-    <nav className="inline-flex items-center gap-1.5 rounded-lg border border-white/5 bg-black/15 px-1.5 py-1" aria-label="Dashboard view">
+    <nav className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-1.5 py-1" aria-label="Dashboard view">
       {(Object.keys(DASHBOARD_VIEW_LABEL) as DashboardView[]).map((view) => {
         const active = view === currentView;
 
@@ -34,10 +34,10 @@ export default function DashboardViewSwitcher({ currentView }: Props) {
             className="rounded-md px-3 py-1.5 text-xs font-semibold transition"
             style={{
               color: active
-                ? "var(--theme-text-primary,#F8FAFC)"
-                : "var(--theme-text-secondary,#94A3B8)",
+                ? "var(--theme-text-primary,var(--theme-text-primary))"
+                : "var(--theme-text-secondary,var(--theme-text-muted))",
               background: active
-                ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 16%, rgba(2,6,23,0.35))"
+                ? "color-mix(in srgb, var(--brand-accent,#E39A6E) 16%, var(--theme-surface-inset))"
                 : "transparent",
               boxShadow: active ? "inset 0 -1px 0 color-mix(in srgb, var(--brand-accent,#E39A6E) 70%, transparent)" : "none",
             }}

@@ -31,15 +31,15 @@ const emptyForm: CustomerForm = {
 };
 
 function cardClass() {
-  return "rounded-3xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl";
+  return "rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl";
 }
 
 function inputClass() {
-  return "w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500";
+  return "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)]";
 }
 
 function readOnlyClass() {
-  return "w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-300 outline-none placeholder:text-neutral-600";
+  return "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)] outline-none placeholder:text-[color:var(--theme-text-muted)]";
 }
 
 function subtleButtonClass() {
@@ -192,7 +192,7 @@ export default function PortalProfilePage() {
   if (loading) {
     return (
       <div className="mx-auto max-w-xl">
-        <div className={cardClass() + " text-sm text-neutral-200"}>
+        <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
           Loading your profile…
         </div>
       </div>
@@ -200,16 +200,16 @@ export default function PortalProfilePage() {
   }
 
   if (inviteRequired) {
-    return <div className="mx-auto max-w-xl"><div className={cardClass() + " text-sm text-neutral-200"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
+    return <div className="mx-auto max-w-xl"><div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}><div className="font-semibold">Portal invite required</div><div className="mt-1">Open the invite link sent by the shop, or ask the shop to resend your portal invite.</div></div></div>;
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-5 text-white">
+    <div className="mx-auto max-w-xl space-y-5 text-[color:var(--theme-text-primary)]">
       <header className="space-y-1">
         <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
           My profile
         </h1>
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-[color:var(--theme-text-secondary)]">
           Keep your contact details up to date so your shop can reach you easily.
         </p>
 
@@ -260,7 +260,7 @@ export default function PortalProfilePage() {
 
           <div className="space-y-1">
             <input readOnly className={readOnlyClass()} placeholder="Email" value={form.email} />
-            <p className="text-[11px] text-neutral-500">Email is tied to your sign-in.</p>
+            <p className="text-[11px] text-[color:var(--theme-text-muted)]">Email is tied to your sign-in.</p>
           </div>
         </div>
 
@@ -295,7 +295,7 @@ export default function PortalProfilePage() {
         </div>
 
         <button
-          className={subtleButtonClass() + " mt-1 border-[rgba(197,122,74,0.45)] bg-[rgba(197,122,74,0.10)] text-neutral-100 hover:bg-[rgba(197,122,74,0.16)]"}
+          className={subtleButtonClass() + " mt-1 border-[rgba(197,122,74,0.45)] bg-[rgba(197,122,74,0.10)] text-[color:var(--theme-text-primary)] hover:bg-[rgba(197,122,74,0.16)]"}
           onClick={onSave}
           disabled={saving}
         >

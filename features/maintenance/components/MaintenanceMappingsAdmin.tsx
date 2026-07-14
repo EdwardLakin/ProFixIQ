@@ -175,30 +175,30 @@ export default function MaintenanceMappingsAdmin() {
   );
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-black/30 p-4 text-white shadow-card backdrop-blur-md">
+    <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-[color:var(--theme-text-primary)] shadow-card backdrop-blur-md">
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-neutral-200">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
             Maintenance Mappings
           </h2>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Map maintenance service codes to shop menu items.
           </p>
         </div>
 
-        <div className="text-xs text-neutral-400">
+        <div className="text-xs text-[color:var(--theme-text-secondary)]">
           {activeCount} mapped / {rows.length} total
         </div>
       </div>
 
       {message ? (
-        <div className="mb-4 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-300">
+        <div className="mb-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
           {message}
         </div>
       ) : null}
 
       {loading ? (
-        <div className="text-sm text-neutral-400">Loading mappings…</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading mappings…</div>
       ) : (
         <div className="space-y-3">
           {rows.map((row) => {
@@ -208,11 +208,11 @@ export default function MaintenanceMappingsAdmin() {
             return (
               <div
                 key={row.serviceCode}
-                className="rounded-xl border border-white/10 bg-white/5 p-3"
+                className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3"
               >
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-neutral-100">{row.label}</span>
-                  <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
+                  <span className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{row.label}</span>
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                     {row.serviceCode}
                   </span>
                   {row.menuItemId ? (
@@ -227,8 +227,8 @@ export default function MaintenanceMappingsAdmin() {
                 </div>
 
                 {row.menuItemId ? (
-                  <div className="mb-2 text-xs text-neutral-400">
-                    Current menu item: <span className="text-neutral-200">{row.menuItemName ?? row.menuItemId}</span>
+                  <div className="mb-2 text-xs text-[color:var(--theme-text-secondary)]">
+                    Current menu item: <span className="text-[color:var(--theme-text-primary)]">{row.menuItemName ?? row.menuItemId}</span>
                   </div>
                 ) : null}
 
@@ -244,7 +244,7 @@ export default function MaintenanceMappingsAdmin() {
                       void searchMenuItems(row.serviceCode, value);
                     }}
                     placeholder="Search menu items by name"
-                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                    className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
                   />
 
                   <select
@@ -255,7 +255,7 @@ export default function MaintenanceMappingsAdmin() {
                         [row.serviceCode]: e.target.value,
                       }))
                     }
-                    className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none"
+                    className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
                   >
                     <option value="">Select a menu item</option>
                     {(menuOptions[row.serviceCode] ?? []).map((item) => (
@@ -272,7 +272,7 @@ export default function MaintenanceMappingsAdmin() {
                       size="sm"
                       onClick={() => void suggest(row.serviceCode, row.label)}
                       disabled={isSuggesting}
-                      className="border-white/15 bg-white/5 text-xs text-neutral-200 hover:bg-white/10"
+                      className="border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
                     >
                       {isSuggesting ? "Suggesting…" : "Auto-suggest"}
                     </Button>
@@ -282,7 +282,7 @@ export default function MaintenanceMappingsAdmin() {
                       size="sm"
                       onClick={() => void save(row.serviceCode)}
                       disabled={isSaving}
-                      className="bg-orange-500 text-black hover:bg-orange-400"
+                      className="bg-orange-500 text-[color:var(--theme-text-on-accent)] hover:bg-orange-400"
                     >
                       {isSaving ? "Saving…" : "Save"}
                     </Button>

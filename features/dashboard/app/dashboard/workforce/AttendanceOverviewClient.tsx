@@ -224,10 +224,10 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
   return (
     <div className="space-y-5">
       <OperationalViewSwitcher role={role} />
-      <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
-        <h1 className="text-2xl font-semibold text-white">Attendance & Activity</h1>
-        <p className="mt-1 text-sm text-neutral-300">Live shop-floor command board for shift posture, active jobs, unassigned time, and operational exceptions.</p>
-        <p className="mt-2 inline-flex rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-neutral-300">
+      <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+        <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">Attendance & Activity</h1>
+        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Live shop-floor command board for shift posture, active jobs, unassigned time, and operational exceptions.</p>
+        <p className="mt-2 inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-xs text-[color:var(--theme-text-secondary)]">
           {timezone ? `Today based on shop timezone: ${timezone}` : "Today based on shop day window (UTC fallback)"}
         </p>
         <WorkforceQuickLinks roleScope="manager" className="mt-4 flex flex-wrap gap-2" />
@@ -236,7 +236,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
       {loading && (
         <section className="grid gap-3 md:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl border border-white/10 bg-white/5" />
+            <div key={i} className="h-24 animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]" />
           ))}
         </section>
       )}
@@ -250,9 +250,9 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
       )}
 
       {!loading && !error && shifts.length === 0 && punches.length === 0 && (
-        <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
-          <h2 className="text-lg font-semibold text-white">No attendance activity today</h2>
-          <p className="mt-1 text-sm text-neutral-300">No shifts or punches were found in today&apos;s range.</p>
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">No attendance activity today</h2>
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">No shifts or punches were found in today&apos;s range.</p>
         </section>
       )}
 
@@ -269,36 +269,36 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
               ["Job time today", `${data?.activitySummary?.jobMinutesToday ?? 0} min`],
               ["Utilization %", `${data?.activitySummary?.utilizationPct ?? 0}%`],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-xl border border-white/10 bg-black/25 p-4">
-                <div className="text-xs uppercase tracking-wide text-neutral-400">{label}</div>
-                <div className="mt-2 text-xl font-semibold text-white">{value}</div>
+              <div key={label} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <div className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">{label}</div>
+                <div className="mt-2 text-xl font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
               </div>
             ))}
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-white">Live technician operations</h2>
-                <p className="mt-1 text-sm text-neutral-300">Current job state is resolved from canonical labor segments, not line punch timestamps.</p>
+                <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Live technician operations</h2>
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Current job state is resolved from canonical labor segments, not line punch timestamps.</p>
               </div>
               {(data?.activitySummary?.activeExceptionCount ?? 0) > 0 ? <span className="rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-sm text-red-100">{data?.activitySummary?.activeExceptionCount} active exception(s)</span> : null}
             </div>
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
-              {(data?.activities ?? []).length === 0 ? <p className="text-sm text-neutral-400">No employees or active labor segments found for today.</p> : (data?.activities ?? []).map((activity) => <TechnicianActivityCard key={activity.userId} activity={activity} timezone={timezone} />)}
+              {(data?.activities ?? []).length === 0 ? <p className="text-sm text-[color:var(--theme-text-secondary)]">No employees or active labor segments found for today.</p> : (data?.activities ?? []).map((activity) => <TechnicianActivityCard key={activity.userId} activity={activity} timezone={timezone} />)}
             </div>
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <h2 className="text-lg font-semibold text-white">Operational activity feed</h2>
-            <p className="mt-1 text-xs text-neutral-400">Newest first from shift punches and labor segments. No timeline events are fabricated.</p>
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+            <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Operational activity feed</h2>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Newest first from shift punches and labor segments. No timeline events are fabricated.</p>
             <div className="mt-4"><WorkforceActivityFeed items={data?.activityFeed ?? []} timezone={timezone} /></div>
           </section>
 
-          <section className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <h2 className="text-lg font-semibold text-white">Payroll bridge</h2>
-            <p className="mt-1 text-sm text-neutral-300">Attendance posture from shifts and punches feeds payroll review for downstream approvals and handoff. Exception policies are intentionally deferred for a later phase.</p>
-            <Link href="/dashboard/workforce/payroll-review" className="mt-3 inline-flex rounded-lg border border-white/15 bg-black/35 px-3 py-2 text-sm font-medium text-orange-300 hover:text-orange-200">Open Payroll Review</Link>
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+            <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Payroll bridge</h2>
+            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Attendance posture from shifts and punches feeds payroll review for downstream approvals and handoff. Exception policies are intentionally deferred for a later phase.</p>
+            <Link href="/dashboard/workforce/payroll-review" className="mt-3 inline-flex rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-medium text-orange-300 hover:text-orange-200">Open Payroll Review</Link>
           </section>
         </>
       )}

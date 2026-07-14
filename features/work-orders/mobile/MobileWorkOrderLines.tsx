@@ -22,13 +22,13 @@ type Props = {
 const statusTextColor: Record<string, string> = {
   in_progress:
     "text-[var(--accent-copper-light)] border-[var(--accent-copper-soft)] bg-[rgba(212,118,49,0.14)] shadow-[0_0_16px_rgba(212,118,49,0.35)]",
-  awaiting: "text-slate-200 border-slate-300/30 bg-slate-500/10",
+  awaiting: "text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]",
   queued: "text-indigo-200 border-indigo-400/40 bg-indigo-500/10",
   on_hold: "text-amber-200 border-amber-400/50 bg-amber-500/10",
   completed: "text-emerald-200 border-emerald-400/60 bg-emerald-500/10",
   paused: "text-amber-200 border-amber-400/50 bg-amber-500/10",
   assigned: "text-sky-200 border-sky-400/50 bg-sky-500/10",
-  unassigned: "text-neutral-200 border-neutral-400/40 bg-neutral-700/20",
+  unassigned: "text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-hover)]",
   awaiting_approval: "text-blue-200 border-blue-400/50 bg-blue-500/10",
   declined: "text-red-200 border-red-500/60 bg-red-500/10",
 };
@@ -37,7 +37,7 @@ const statusChip = (s: string | null | undefined) => {
   const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
   return (
     statusTextColor[key] ??
-    "text-neutral-200 border-neutral-500/40 bg-neutral-700/20"
+    "text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-hover)]"
   );
 };
 
@@ -58,7 +58,7 @@ export function MobileWorkOrderLines({
 
   if (!lines.length) {
     return (
-      <div className="glass-card rounded-2xl border border-dashed border-white/15 bg-black/30 px-3 py-3 text-[0.75rem] text-neutral-300">
+      <div className="glass-card rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
         No jobs added yet. Use{" "}
         <span className="font-semibold text-[var(--accent-copper-light)]">
           Add job line
@@ -70,12 +70,12 @@ export function MobileWorkOrderLines({
 
   return (
     <>
-      <div className="glass-card rounded-2xl border border-white/12 bg-black/40 px-3 py-3 shadow-card">
+      <div className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-card">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Jobs on this work order
           </h2>
-          <span className="text-[0.65rem] text-neutral-500">
+          <span className="text-[0.65rem] text-[color:var(--theme-text-muted)]">
             {lines.length} line{lines.length === 1 ? "" : "s"}
           </span>
         </div>
@@ -93,16 +93,16 @@ export function MobileWorkOrderLines({
             return (
               <li
                 key={line.id}
-                className="group flex items-stretch justify-between gap-2 rounded-2xl border border-white/12 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.08),rgba(0,0,0,0.65))] px-3 py-2 text-xs shadow-[0_18px_45px_rgba(0,0,0,0.65)]"
+                className="group flex items-stretch justify-between gap-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] px-3 py-2 text-xs shadow-[var(--theme-shadow-medium)]"
               >
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 text-[0.7rem] text-neutral-500">
-                    <span className="font-mono text-[0.65rem] text-neutral-500">
+                  <div className="flex items-center gap-1.5 text-[0.7rem] text-[color:var(--theme-text-muted)]">
+                    <span className="font-mono text-[0.65rem] text-[color:var(--theme-text-muted)]">
                       #{(idx + 1).toString().padStart(2, "0")}
                     </span>
 
                     {line.job_type && (
-                      <span className="rounded-full border border-white/10 bg-black/40 px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-neutral-300">
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                         {String(line.job_type).replaceAll("_", " ")}
                       </span>
                     )}
@@ -110,12 +110,12 @@ export function MobileWorkOrderLines({
                     {isWaiter && <span className={waiterPillClasses}>Waiting</span>}
                   </div>
 
-                  <div className="mt-0.5 truncate text-[0.8rem] font-medium text-neutral-50">
+                  <div className="mt-0.5 truncate text-[0.8rem] font-medium text-[color:var(--theme-text-primary)]">
                     {label}
                   </div>
 
                   {line.complaint && (
-                    <div className="mt-0.5 line-clamp-2 text-[0.7rem] text-neutral-400">
+                    <div className="mt-0.5 line-clamp-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                       {line.complaint}
                     </div>
                   )}
@@ -134,7 +134,7 @@ export function MobileWorkOrderLines({
                         Assigned
                       </span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full border border-neutral-500/30 bg-neutral-700/20 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-neutral-200">
+                      <span className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-hover)] px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
                         Unassigned
                       </span>
                     )}
@@ -143,7 +143,7 @@ export function MobileWorkOrderLines({
 
                 <div className="flex flex-col items-end justify-between gap-1 pl-1">
                   {typeof line.labor_time === "number" && (
-                    <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[0.6rem] text-neutral-200">
+                    <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[0.6rem] text-[color:var(--theme-text-primary)]">
                       {line.labor_time.toFixed(1)}h
                     </span>
                   )}
@@ -156,7 +156,7 @@ export function MobileWorkOrderLines({
                         setAssignLineId(line.id);
                         setAssignOpen(true);
                       }}
-                      className="shrink-0 rounded-full border border-sky-500/70 bg-black/35 px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="shrink-0 rounded-full border border-sky-500/70 bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={!canAssign}
                       title={
                         canAssign ? "Assign technician" : "Open a work order first"
@@ -168,7 +168,7 @@ export function MobileWorkOrderLines({
                     <button
                       type="button"
                       onClick={() => onDelete(line.id)}
-                      className="shrink-0 rounded-full border border-red-500/70 bg-black/35 px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
+                      className="shrink-0 rounded-full border border-red-500/70 bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
                     >
                       Delete
                     </button>

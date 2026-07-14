@@ -47,7 +47,7 @@ const STATUS_BADGE: Record<StatusKey, string> = {
     "bg-[var(--accent-copper)]/15 border-[var(--accent-copper-light)]/70 text-[var(--accent-copper-light)]",
   on_hold: "bg-amber-500/10 border-amber-400/70 text-amber-100",
   planned: "bg-purple-500/10 border-purple-400/70 text-purple-100",
-  new: "bg-neutral-900/80 border-neutral-500/80 text-neutral-100",
+  new: "bg-[color:var(--theme-surface-panel)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)]",
   completed: "bg-green-500/10 border-green-400/70 text-green-100",
   ready_to_invoice:
     "bg-emerald-500/10 border-emerald-400/70 text-emerald-100",
@@ -78,16 +78,16 @@ const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 /* ------------------------------------------------------------------ */
 
 const INPUT_DARK =
-  "w-full rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 " +
-  "shadow-[0_0_18px_rgba(0,0,0,0.8)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
+  "w-full rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] " +
+  "shadow-[var(--theme-shadow-medium)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
 
 const SELECT_DARK =
-  "w-full rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-xs text-neutral-100 " +
-  "shadow-[0_0_18px_rgba(0,0,0,0.8)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
+  "w-full rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] " +
+  "shadow-[var(--theme-shadow-medium)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
 
 const BUTTON_MUTED =
-  "rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-neutral-100 shadow-[0_0_14px_rgba(0,0,0,0.7)] " +
-  "transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15 hover:text-white active:opacity-80";
+  "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] " +
+  "transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15 hover:text-[color:var(--theme-text-primary)] active:opacity-80";
 
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
@@ -283,26 +283,26 @@ export default function MobileWorkOrdersViewPage() {
   };
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
         {/* Header */}
-        <section className="rounded-2xl border border-white/10 bg-gradient-to-br from-black via-neutral-950 to-black px-4 py-4 shadow-card">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-br from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-4 shadow-card">
           <h1 className="font-blackops text-lg uppercase tracking-[0.2em] text-[var(--accent-copper-light)]">
             Work orders
           </h1>
-          <p className="mt-1 text-[0.75rem] text-neutral-300">
+          <p className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
             Advisor view of active jobs and their tech assignments.
           </p>
 
-          <div className="mt-3 flex gap-4 text-[0.7rem] text-neutral-300">
+          <div className="mt-3 flex gap-4 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
             <div>
-              <div className="uppercase tracking-[0.13em] text-neutral-500">
+              <div className="uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
                 Total
               </div>
-              <div className="text-sm font-semibold text-white">{total}</div>
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{total}</div>
             </div>
             <div>
-              <div className="uppercase tracking-[0.13em] text-neutral-500">
+              <div className="uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
                 Active
               </div>
               <div className="text-sm font-semibold text-sky-200">
@@ -310,7 +310,7 @@ export default function MobileWorkOrdersViewPage() {
               </div>
             </div>
             <div>
-              <div className="uppercase tracking-[0.13em] text-neutral-500">
+              <div className="uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
                 Awaiting approval
               </div>
               <div className="text-sm font-semibold text-blue-200">
@@ -321,7 +321,7 @@ export default function MobileWorkOrdersViewPage() {
         </section>
 
         {/* Filters */}
-        <section className="space-y-2 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs shadow-[0_0_40px_rgba(0,0,0,0.8)] backdrop-blur-md">
+        <section className="space-y-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs shadow-[var(--theme-shadow-medium)] backdrop-blur-md">
           <div>
             <input
               value={q}
@@ -363,11 +363,11 @@ export default function MobileWorkOrdersViewPage() {
 
         {/* List */}
         {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-300 shadow-[0_0_40px_rgba(0,0,0,0.7)]">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)] shadow-[var(--theme-shadow-medium)]">
             Loading work orders…
           </div>
         ) : rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/20 bg-black/40 p-6 text-sm text-neutral-400 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
+          <div className="rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-sm text-[color:var(--theme-text-secondary)] shadow-[var(--theme-shadow-medium)]">
             No work orders match your current filters.
           </div>
         ) : (
@@ -392,19 +392,19 @@ export default function MobileWorkOrdersViewPage() {
               return (
                 <article
                   key={r.id}
-                  className="rounded-2xl border border-white/12 bg-gradient-to-br from-neutral-950/95 via-neutral-900/90 to-black/90 px-3 py-3 text-sm shadow-[0_0_0_1px_rgba(15,23,42,0.9)]"
+                  className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-br from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-3 py-3 text-sm shadow-[var(--theme-shadow-medium)]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Link
                           href={href}
-                          className="text-sm font-semibold text-white underline decoration-neutral-600/50 underline-offset-2 hover:decoration-[var(--accent-copper-light)]"
+                          className="text-sm font-semibold text-[color:var(--theme-text-primary)] underline decoration-neutral-600/50 underline-offset-2 hover:decoration-[var(--accent-copper-light)]"
                         >
                           {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                         </Link>
                         {r.custom_id && (
-                          <span className="rounded-full border border-white/15 bg-black/60 px-1.5 py-0.5 text-[0.6rem] font-mono text-neutral-400">
+                          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-1.5 py-0.5 text-[0.6rem] font-mono text-[color:var(--theme-text-secondary)]">
                             #{r.id.slice(0, 6)}
                           </span>
                         )}
@@ -413,18 +413,18 @@ export default function MobileWorkOrdersViewPage() {
                         </span>
                       </div>
 
-                      <div className="mt-1 text-[0.75rem] text-neutral-300">
+                      <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                         {customerName || "No customer"}{" "}
-                        <span className="mx-1 text-neutral-600">•</span>
+                        <span className="mx-1 text-[color:var(--theme-text-muted)]">•</span>
                         {vehicleLabel || "No vehicle"}
                         {plate ? (
-                          <span className="ml-1 text-neutral-400">
+                          <span className="ml-1 text-[color:var(--theme-text-secondary)]">
                             ({plate})
                           </span>
                         ) : null}
                       </div>
 
-                      <div className="mt-1 text-[0.7rem] text-neutral-500">
+                      <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">
                         {r.created_at
                           ? format(new Date(r.created_at), "PP p")
                           : "—"}
@@ -434,7 +434,7 @@ export default function MobileWorkOrdersViewPage() {
                     <div className="flex flex-col items-end gap-1">
                       <Link
                         href={href}
-                        className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[0.7rem] text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/20"
+                        className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/20"
                       >
                         Open
                       </Link>

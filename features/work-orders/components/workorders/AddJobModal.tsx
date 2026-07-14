@@ -339,12 +339,12 @@ export default function AddJobModal(props: Props) {
       <div className="space-y-4">
         {/* Job fields */}
         <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             Job name
           </label>
           <input
             type="text"
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+            className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
             placeholder="e.g. Replace tie rod end RH"
             value={jobName}
             onChange={(e) => setJobName(e.target.value)}
@@ -352,12 +352,12 @@ export default function AddJobModal(props: Props) {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             Notes / correction
           </label>
           <textarea
             rows={3}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+            className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
             placeholder="Optional notes, concerns, or correction details…"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -366,13 +366,13 @@ export default function AddJobModal(props: Props) {
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+            <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Labor hours
             </label>
             <input
               type="number"
               step="0.1"
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+              className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
               placeholder="e.g. 1.5"
               value={labor}
               onChange={(e) => setLabor(e.target.value)}
@@ -380,11 +380,11 @@ export default function AddJobModal(props: Props) {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+            <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Urgency
             </label>
             <select
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+              className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
               value={urgency}
               onChange={(e) => setUrgency(e.target.value as Urgency)}
             >
@@ -397,12 +397,12 @@ export default function AddJobModal(props: Props) {
 
         {/* Note to parts */}
         <div className="space-y-1">
-          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Note to parts (optional)
           </label>
           <textarea
             rows={2}
-            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={headerNotes}
             onChange={(e) => setHeaderNotes(e.target.value)}
             placeholder="Anything they should know before filling this request…"
@@ -410,21 +410,21 @@ export default function AddJobModal(props: Props) {
         </div>
 
         {/* Items grid */}
-        <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-black/60 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
-          <div className="grid grid-cols-12 bg-gradient-to-r from-slate-900/90 via-slate-950 to-black px-3 py-2 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
+        <div className="overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)]">
+          <div className="grid grid-cols-12 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-3 py-2 text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             <div className="col-span-8">Parts description</div>
             <div className="col-span-3 text-right">Qty</div>
             <div className="col-span-1 text-center"> </div>
           </div>
 
-          <div className="max-h-64 overflow-auto bg-black/70">
+          <div className="max-h-64 overflow-auto bg-[color:var(--theme-surface-overlay)]">
             {rows.map((r) => (
               <div
                 key={r.id}
-                className="grid grid-cols-12 gap-2 border-t border-white/5 px-3 py-2"
+                className="grid grid-cols-12 gap-2 border-t border-[color:var(--theme-border-soft)] px-3 py-2"
               >
                 <input
-                  className="col-span-8 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
+                  className="col-span-8 rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.description}
                   onChange={(e) => setCell(r.id, { description: e.target.value })}
                   placeholder="e.g. rear pads, serp belt…"
@@ -433,7 +433,7 @@ export default function AddJobModal(props: Props) {
                 <input
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  className="col-span-3 rounded-md border border-[var(--metal-border-soft)] bg-black/80 px-2 py-1 text-right text-sm text-neutral-100 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
+                  className="col-span-3 rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-right text-sm text-[color:var(--theme-text-primary)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.qty}
                   onChange={(e) => {
                     const next = e.target.value.replace(/[^\d]/g, "");
@@ -449,7 +449,7 @@ export default function AddJobModal(props: Props) {
 
                 <div className="col-span-1 flex items-center justify-center">
                   <button
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/70 text-[0.7rem] text-neutral-300 transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-40 disabled:hover:bg-black/70 disabled:hover:text-neutral-300"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[0.7rem] text-[color:var(--theme-text-secondary)] transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-40 disabled:hover:bg-[color:var(--theme-surface-overlay)] disabled:hover:text-[color:var(--theme-text-secondary)]"
                     onClick={() => removeRow(r.id)}
                     disabled={rows.length <= 1}
                     title={
@@ -464,9 +464,9 @@ export default function AddJobModal(props: Props) {
             ))}
           </div>
 
-          <div className="border-t border-white/5 bg-black/80 px-3 py-2">
+          <div className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2">
             <button
-              className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.16em] text-neutral-100 transition hover:border-[var(--accent-copper-soft)] hover:bg-[var(--accent-copper-faint)] hover:text-[var(--accent-copper-soft)]"
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.7rem] font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[var(--accent-copper-faint)] hover:text-[var(--accent-copper-soft)]"
               onClick={addRow}
               type="button"
             >
@@ -477,13 +477,13 @@ export default function AddJobModal(props: Props) {
         </div>
 
         {/* Quick paste */}
-        <div className="rounded-md border border-white/10 bg-black/30 p-3">
-          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+        <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             Quick paste
           </label>
           <textarea
             rows={2}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+            className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
             placeholder="Paste: 2x tie rod end RH, cotter pin"
             value={partsPaste}
             onChange={(e) => setPartsPaste(e.target.value)}
@@ -499,13 +499,13 @@ export default function AddJobModal(props: Props) {
             <button
               type="button"
               onClick={() => setPartsPaste("")}
-              className="rounded-md border border-white/10 bg-black/40 px-3 py-1.5 text-xs font-semibold text-neutral-200 hover:bg-black/55"
+              className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)]"
             >
               Clear
             </button>
           </div>
 
-          <p className="mt-2 text-[0.7rem] text-neutral-500">
+          <p className="mt-2 text-[0.7rem] text-[color:var(--theme-text-muted)]">
             Only lines with a description and quantity &gt; 0 will be sent.
           </p>
         </div>

@@ -77,7 +77,7 @@ export function WorkOrderInvoiceDownloadButton({
       disabled={!workOrderId || busy}
       className={
         className ??
-        "rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-black hover:brightness-110 disabled:opacity-60"
+        "rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-on-accent)] hover:brightness-110 disabled:opacity-60"
       }
     >
       {busy ? "Opening…" : label}

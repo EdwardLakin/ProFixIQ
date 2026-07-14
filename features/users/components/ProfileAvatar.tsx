@@ -27,14 +27,14 @@ export default function ProfileAvatar({
       <img
         src={avatarUrl}
         alt={`${name ?? "User"} avatar`}
-        className={`${sizeClass[size]} rounded-full border border-white/15 object-cover ${className}`}
+        className={`${sizeClass[size]} rounded-full border border-[color:var(--theme-border-soft)] object-cover ${className}`}
       />
     );
   }
 
   return (
     <div
-      className={`${sizeClass[size]} flex items-center justify-center rounded-full border border-[var(--accent-copper-soft)] bg-black/50 font-semibold text-[var(--accent-copper-light)] ${className}`}
+      className={`${sizeClass[size]} flex items-center justify-center rounded-full border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-inset)] font-semibold text-[var(--accent-copper-light)] ${className}`}
     >
       {profileInitials(name)}
     </div>

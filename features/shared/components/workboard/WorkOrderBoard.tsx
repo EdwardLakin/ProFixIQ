@@ -196,40 +196,40 @@ export default function WorkOrderBoard(props: {
   ].filter((group) => group.count > 0);
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-black/20 p-4 backdrop-blur md:p-5">
+    <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur md:p-5">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
             Board
           </div>
           <h2
-            className="mt-1 text-2xl text-white md:text-3xl"
+            className="mt-1 text-2xl text-[color:var(--theme-text-primary)] md:text-3xl"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
             {props.title}
           </h2>
 
           {props.subtitle ? (
-            <p className="mt-2 text-sm text-neutral-300">{props.subtitle}</p>
+            <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">{props.subtitle}</p>
           ) : null}
 
           {!loading && !error ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                Active: <span className="text-white">{activeCount}</span>
+              <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                Active: <span className="text-[color:var(--theme-text-primary)]">{activeCount}</span>
               </div>
-              <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
+              <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
                 Needs attention:{" "}
-                <span className="text-white">{stalledCount}</span>
+                <span className="text-[color:var(--theme-text-primary)]">{stalledCount}</span>
               </div>
-              <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                Waiters: <span className="text-white">{waiterCount}</span>
+              <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                Waiters: <span className="text-[color:var(--theme-text-primary)]">{waiterCount}</span>
               </div>
-              <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                Urgent: <span className="text-white">{urgentCount}</span>
+              <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                Urgent: <span className="text-[color:var(--theme-text-primary)]">{urgentCount}</span>
               </div>
-              <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                Completed: <span className="text-white">{completedCount}</span>
+              <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                Completed: <span className="text-[color:var(--theme-text-primary)]">{completedCount}</span>
               </div>
             </div>
           ) : null}
@@ -244,10 +244,10 @@ export default function WorkOrderBoard(props: {
               {queueGroups.map((group) => (
                 <div
                   key={group.label}
-                  className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[11px] font-semibold text-neutral-200"
+                  className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]"
                 >
                   {group.label}:{" "}
-                  <span className="text-white">{group.count}</span>
+                  <span className="text-[color:var(--theme-text-primary)]">{group.count}</span>
                 </div>
               ))}
             </div>
@@ -256,7 +256,7 @@ export default function WorkOrderBoard(props: {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search work order, customer, unit, vehicle, advisor, tech"
-            className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500"
+            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)]"
           />
 
           <div className="flex flex-wrap gap-2">
@@ -269,7 +269,7 @@ export default function WorkOrderBoard(props: {
                   "rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition",
                   stageFilter === key
                     ? "border-[color:var(--pfq-copper)] bg-[color:var(--pfq-copper)]/15 text-[color:var(--accent-copper-light)]"
-                    : "border-white/10 bg-black/20 text-neutral-300 hover:bg-black/30",
+                    : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-inset)]",
                 ].join(" ")}
               >
                 {labelForFilter(key)}{" "}
@@ -282,7 +282,7 @@ export default function WorkOrderBoard(props: {
             <button
               type="button"
               onClick={refetch}
-              className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:bg-black/30"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-inset)]"
             >
               Refresh
             </button>
@@ -295,7 +295,7 @@ export default function WorkOrderBoard(props: {
           {Array.from({ length: props.compact ? 5 : 9 }).map((_, i) => (
             <div
               key={i}
-              className="h-40 animate-pulse rounded-2xl border border-white/10 bg-white/5"
+              className="h-40 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
             />
           ))}
         </div>
@@ -304,7 +304,7 @@ export default function WorkOrderBoard(props: {
           {error}
         </div>
       ) : searchedRows.length === 0 ? (
-        <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-6 text-sm text-neutral-300">
+        <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
           No work orders found for this filter.
         </div>
       ) : (
@@ -312,17 +312,17 @@ export default function WorkOrderBoard(props: {
           <div>
             {!props.compact ? (
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                   Active work
                 </div>
-                <div className="text-[11px] text-neutral-500">
+                <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                   {activeRows.length} visible
                 </div>
               </div>
             ) : null}
 
             {activeRows.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-black/25 p-6 text-sm text-neutral-300">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
                 No active work orders found for this filter.
               </div>
             ) : (
@@ -350,16 +350,16 @@ export default function WorkOrderBoard(props: {
           {showCompletedSection ? (
             <div>
               <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                   Completed / history
                 </div>
-                <div className="text-[11px] text-neutral-500">
+                <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                   {completedRows.length} visible
                 </div>
               </div>
 
               {completedRows.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-neutral-400">
+                <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-sm text-[color:var(--theme-text-secondary)]">
                   No completed work orders found for this filter.
                 </div>
               ) : (

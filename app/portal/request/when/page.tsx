@@ -22,17 +22,17 @@ type VisitType = "waiter" | "drop_off";
 const COPPER = "#C57A4A";
 
 function cardClass() {
-  return "rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card";
+  return "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card";
 }
 
 function inputClass() {
-  return "w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-white/20";
+  return "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none focus:border-[color:var(--theme-border-soft)]";
 }
 
 function pillClass(active: boolean) {
   return active
-    ? "border-white/15 bg-white/10 text-neutral-50"
-    : "border-white/10 bg-black/30 text-neutral-200 hover:bg-black/45";
+    ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+    : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)]";
 }
 
 function toIsoDate(d: Date) {
@@ -417,16 +417,16 @@ export default function PortalRequestWhenPage() {
   }
 
   if (loading) {
-    return <div className={cardClass() + " mx-auto max-w-xl text-sm text-neutral-200"}>Loading…</div>;
+    return <div className={cardClass() + " mx-auto max-w-xl text-sm text-[color:var(--theme-text-primary)]"}>Loading…</div>;
   }
 
   if (!customer) {
     return (
-      <div className="mx-auto max-w-xl space-y-3 text-white">
+      <div className="mx-auto max-w-xl space-y-3 text-[color:var(--theme-text-primary)]">
         <Toaster position="top-center" />
         <div className={cardClass()}>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">Request service</h1>
-          <p className="mt-2 text-sm text-neutral-400">We couldn’t find your customer profile yet.</p>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Request service</h1>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">We couldn’t find your customer profile yet.</p>
           <div className="mt-4 flex gap-2">
             <LinkButton href="/portal/profile" variant="outline" size="sm">
               Go to profile
@@ -442,11 +442,11 @@ export default function PortalRequestWhenPage() {
 
   if (!shop?.id) {
     return (
-      <div className="mx-auto max-w-xl space-y-3 text-white">
+      <div className="mx-auto max-w-xl space-y-3 text-[color:var(--theme-text-primary)]">
         <Toaster position="top-center" />
         <div className={cardClass()}>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">Request service</h1>
-          <p className="mt-2 text-sm text-neutral-400">Your portal account isn’t linked to a shop yet.</p>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Request service</h1>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Your portal account isn’t linked to a shop yet.</p>
           <div className="mt-4 flex gap-2">
             <LinkButton href="/portal/profile" variant="outline" size="sm">
               Go to profile
@@ -464,28 +464,28 @@ export default function PortalRequestWhenPage() {
     [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() || "Customer";
 
   return (
-    <div className="mx-auto w-full max-w-xl space-y-5 text-white">
+    <div className="mx-auto w-full max-w-xl space-y-5 text-[color:var(--theme-text-primary)]">
       <Toaster position="top-center" />
 
       <header className="space-y-1">
         <div
-          className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
+          className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
           style={{ color: COPPER }}
         >
           Request
         </div>
-        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">Pick a time</h1>
-        <p className="text-xs text-neutral-400">
-          {customerName} • Shop: <span className="text-neutral-300">{shop.slug}</span>
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Pick a time</h1>
+        <p className="text-xs text-[color:var(--theme-text-secondary)]">
+          {customerName} • Shop: <span className="text-[color:var(--theme-text-secondary)]">{shop.slug}</span>
         </p>
       </header>
 
       <section className={cardClass() + " space-y-4"}>
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">Vehicle</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Vehicle</div>
 
           {vehicles.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-sm text-neutral-300">
+            <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
               No vehicles found. Add one first.
               <div className="mt-3">
                 <LinkButton href="/portal/vehicles" size="sm">
@@ -511,7 +511,7 @@ export default function PortalRequestWhenPage() {
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">Date</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Date</div>
           <select className={inputClass()} value={date} onChange={(e) => setDate(e.target.value)}>
             {dateOptions.map((d) => (
               <option key={d.iso} value={d.iso}>
@@ -523,12 +523,12 @@ export default function PortalRequestWhenPage() {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">Time</div>
-            <div className="text-[0.75rem] text-neutral-500">1-hour slots</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Time</div>
+            <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">1-hour slots</div>
           </div>
 
           {slots.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-sm text-neutral-300">
+            <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
               No hours available for this day.
             </div>
           ) : (
@@ -551,7 +551,7 @@ export default function PortalRequestWhenPage() {
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">Visit type</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Visit type</div>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -559,7 +559,7 @@ export default function PortalRequestWhenPage() {
               onClick={() => setVisitType("waiter")}
             >
               Waiter
-              <div className="mt-1 text-[0.75rem] text-neutral-400">You plan to wait at the shop.</div>
+              <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">You plan to wait at the shop.</div>
             </button>
             <button
               type="button"
@@ -567,7 +567,7 @@ export default function PortalRequestWhenPage() {
               onClick={() => setVisitType("drop_off")}
             >
               Drop off
-              <div className="mt-1 text-[0.75rem] text-neutral-400">Leave the vehicle for service.</div>
+              <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">Leave the vehicle for service.</div>
             </button>
           </div>
         </div>
@@ -587,7 +587,7 @@ export default function PortalRequestWhenPage() {
           </LinkButton>
         </div>
 
-        <p className="text-[0.75rem] text-neutral-500">
+        <p className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
           Next you’ll complete an intake form, then build your request (menu items, custom lines, and quote-only requests).
         </p>
       </section>

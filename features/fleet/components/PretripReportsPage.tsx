@@ -122,11 +122,11 @@ export default function PretripReportsPage({
               <p className={ui.note}>Actor surface: {uiContext.actorLabel}</p>
             </div>
 
-            <div className="flex flex-wrap gap-2 text-[11px] text-neutral-400">
-              <span className="rounded-full border border-neutral-700 bg-black/50 px-3 py-1 uppercase tracking-[0.16em]">
+            <div className="flex flex-wrap gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 uppercase tracking-[0.16em]">
                 Fleet
               </span>
-              <span className="rounded-full border border-neutral-700 bg-black/50 px-3 py-1 uppercase tracking-[0.16em]">
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 uppercase tracking-[0.16em]">
                 Inspections
               </span>
             </div>
@@ -142,7 +142,7 @@ export default function PretripReportsPage({
               />
             </div>
 
-            <div className="text-[11px] text-neutral-500 md:pl-3">
+            <div className="text-[11px] text-[color:var(--theme-text-muted)] md:pl-3">
               Drivers submit pre-trips from the{" "}
               <Link
                 href="/mobile/fleet/pretrip"
@@ -165,8 +165,8 @@ export default function PretripReportsPage({
                   onClick={() => setStatusFilter(st)}
                   className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
                     statusFilter === st
-                      ? "bg-[color:var(--accent-copper)] text-black shadow-[0_0_16px_rgba(193,102,59,0.7)]"
-                      : "border border-neutral-700 bg-black/60 text-neutral-300 hover:bg-neutral-900"
+                      ? "bg-[color:var(--accent-copper)] text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)]"
+                      : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]"
                   }`}
                 >
                   {st === "all"
@@ -186,8 +186,8 @@ export default function PretripReportsPage({
                 onClick={() => setDefectFilter("all")}
                 className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
                   defectFilter === "all"
-                    ? "bg-neutral-800 text-neutral-100"
-                    : "border border-neutral-700 bg-black/60 text-neutral-300 hover:bg-neutral-900"
+                    ? "bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)]"
+                    : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]"
                 }`}
               >
                 All
@@ -197,7 +197,7 @@ export default function PretripReportsPage({
                 onClick={() => setDefectFilter("defects")}
                 className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
                   defectFilter === "defects"
-                    ? "bg-red-600/80 text-white"
+                    ? "bg-red-600/80 text-[color:var(--theme-text-primary)]"
                     : "border border-red-700/60 bg-red-900/20 text-red-200 hover:bg-red-900/40"
                 }`}
               >
@@ -208,7 +208,7 @@ export default function PretripReportsPage({
                 onClick={() => setDefectFilter("clear")}
                 className={`rounded-full px-3 py-1.5 font-semibold uppercase tracking-[0.16em] transition ${
                   defectFilter === "clear"
-                    ? "bg-emerald-600/80 text-white"
+                    ? "bg-emerald-600/80 text-[color:var(--theme-text-primary)]"
                     : "border border-emerald-700/60 bg-emerald-900/20 text-emerald-200 hover:bg-emerald-900/40"
                 }`}
               >
@@ -224,17 +224,17 @@ export default function PretripReportsPage({
           )}
 
           {loading && !error && (
-            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-4 text-sm text-neutral-300">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
               Loading pre-trip reports…
             </div>
           )}
 
           {!loading && !error && filteredReports.length === 0 && (
-            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-6 text-center text-sm text-neutral-300">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-6 text-center text-sm text-[color:var(--theme-text-secondary)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                 No pre-trip reports
               </div>
-              <p className="mt-2 text-xs text-neutral-400">
+              <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                 Once drivers start submitting pre-trips from mobile, they will show up here for review.
               </p>
             </div>
@@ -243,7 +243,7 @@ export default function PretripReportsPage({
           {!loading && !error && filteredReports.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full border-separate border-spacing-y-1 text-xs">
-                <thead className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                <thead className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   <tr>
                     <th className="px-3 py-1 text-left">Date</th>
                     <th className="px-3 py-1 text-left">Unit</th>
@@ -257,18 +257,18 @@ export default function PretripReportsPage({
                 <tbody>
                   {filteredReports.map((r) => (
                     <tr key={r.id} className="align-middle">
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {r.inspection_date
                           ? new Date(r.inspection_date).toLocaleDateString()
                           : new Date(r.created_at).toLocaleDateString()}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-100">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
                         {r.unit_label ?? "—"}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {r.plate ?? "—"}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {r.driver_name ?? "—"}
                       </td>
                       <td className="px-3 py-1.5">
@@ -282,7 +282,7 @@ export default function PretripReportsPage({
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {(r.status ?? "open")
                           .replace(/_/g, " ")
                           .replace(/\b\w/g, (c) => c.toUpperCase())}
@@ -300,7 +300,7 @@ export default function PretripReportsPage({
                         {uiContext.capabilities.canConvertRequests && (
                           <Link
                             href={`${routePrefix}/service-requests?pretripId=${encodeURIComponent(r.id)}`}
-                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
                           >
                             New request
                           </Link>

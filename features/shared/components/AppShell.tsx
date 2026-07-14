@@ -50,7 +50,7 @@ const ActionButton = ({
     style={{
       borderColor: "rgba(148,163,184,0.22)",
       background:
-        "linear-gradient(145deg, rgba(2,6,23,0.82), color-mix(in srgb, var(--brand-secondary, #0F172A) 58%, rgba(0,0,0,0.92)))",
+        "var(--theme-gradient-panel)",
       color: "rgb(226,232,240)",
     }}
   >
@@ -246,8 +246,8 @@ export default function AppShell({
         className={cn(
           "flex-1 py-2 text-center text-xs font-medium transition-colors",
           active
-            ? "font-semibold text-white"
-            : "text-neutral-500 hover:text-neutral-100",
+            ? "font-semibold text-[color:var(--theme-text-primary)]"
+            : "text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]",
         )}
         style={active ? { color: "var(--brand-accent, #E39A6E)" } : undefined}
       >
@@ -258,7 +258,7 @@ export default function AppShell({
 
   if (!isAppRoute) {
     return (
-      <div className="min-h-screen text-[var(--theme-text-primary,#E2E8F0)]">
+      <div className="min-h-screen text-[var(--theme-text-primary,var(--theme-text-primary))]">
         {children}
       </div>
     );
@@ -291,12 +291,12 @@ export default function AppShell({
             style={{
               borderColor: "rgba(255,255,255,0.10)",
               background:
-                "linear-gradient(135deg, rgba(0,0,0,0.55), color-mix(in srgb, var(--brand-secondary, #0F172A) 48%, black))",
-              color: "#e5e7eb",
+                "var(--theme-gradient-panel)",
+              color: "var(--theme-text-primary)",
             }}
           >
             <span style={{ color: "var(--brand-accent, #E39A6E)" }}>Trial</span>
-            <span className="ml-2 text-neutral-300">{label}</span>
+            <span className="ml-2 text-[color:var(--theme-text-secondary)]">{label}</span>
           </div>
         </button>
       );
@@ -349,7 +349,7 @@ export default function AppShell({
           style={{
             borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
             background:
-              "linear-gradient(180deg, rgba(0,0,0,0.96), color-mix(in srgb, var(--brand-secondary, #0F172A) 82%, black), rgba(0,0,0,0.96))",
+              "var(--theme-gradient-panel)",
           }}
         >
           <div
@@ -358,7 +358,7 @@ export default function AppShell({
               sidebarOpen ? "opacity-100" : "opacity-0",
             )}
           >
-            <div className="flex h-12 items-center justify-between border-b border-white/10 px-3 xl:px-4">
+            <div className="flex h-12 items-center justify-between border-b border-[color:var(--theme-border-soft)] px-3 xl:px-4">
               <Link
                 href="/dashboard"
                 className="flex min-w-0 items-center gap-3 transition-colors hover:opacity-95"
@@ -394,7 +394,7 @@ export default function AppShell({
               initialEmail={initialIdentity?.email ?? null}
             />
 
-            <div className="mt-auto h-12 border-t border-white/10" />
+            <div className="mt-auto h-12 border-t border-[color:var(--theme-border-soft)]" />
           </div>
         </aside>
 
@@ -405,16 +405,16 @@ export default function AppShell({
               borderColor:
                 "color-mix(in srgb, var(--brand-primary, #C1663B) 30%, var(--metal-border-soft, rgba(148,163,184,0.3)))",
               background:
-                "linear-gradient(to right, rgba(0,0,0,0.95), color-mix(in srgb, var(--brand-secondary, #0F172A) 82%, black), rgba(0,0,0,0.95))",
+                "var(--theme-gradient-panel)",
               boxShadow:
-                "0 18px 40px rgba(0,0,0,0.95), 0 0 26px color-mix(in srgb, var(--brand-primary, #C1663B) 18%, transparent)",
+                "0 18px 40px var(--theme-surface-inset), 0 0 26px color-mix(in srgb, var(--brand-primary, #C1663B) 18%, transparent)",
             }}
           >
             <div className="flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => setSidebarOpen((v) => !v)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-black/60 text-neutral-300 shadow-sm transition hover:text-white"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-secondary)] shadow-sm transition hover:text-[color:var(--theme-text-primary)]"
               >
                 <span className="sr-only">Toggle navigation</span>
                 <div className="space-y-0.5">
@@ -424,8 +424,8 @@ export default function AppShell({
                 </div>
               </button>
 
-              <nav className="flex gap-3 text-sm text-neutral-400">
-                <Link href="/dashboard" className="hover:text-neutral-100">
+              <nav className="flex gap-3 text-sm text-[color:var(--theme-text-secondary)]">
+                <Link href="/dashboard" className="hover:text-[color:var(--theme-text-primary)]">
                   Dashboard
                 </Link>
               </nav>
@@ -487,11 +487,11 @@ export default function AppShell({
               style={{
                 borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
                 background:
-                  "linear-gradient(135deg, rgba(0,0,0,0.92), color-mix(in srgb, var(--brand-secondary, #0F172A) 74%, black))",
-                boxShadow: "0 18px 40px rgba(0,0,0,0.95)",
+                  "var(--theme-gradient-panel)",
+                boxShadow: "var(--theme-shadow-medium)",
               }}
             >
-              <h2 className="mb-2 text-sm font-medium text-neutral-100">
+              <h2 className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">
                 Shift Tracker
               </h2>
               <ShiftTracker userId={userId} />
@@ -509,7 +509,7 @@ export default function AppShell({
             style={{
               borderColor: "var(--metal-border-soft, rgba(148,163,184,0.3))",
               background:
-                "linear-gradient(180deg, rgba(0,0,0,0.95), color-mix(in srgb, var(--brand-secondary, #0F172A) 78%, black))",
+                "var(--theme-gradient-panel)",
             }}
           >
             <div className="flex px-1">
@@ -525,7 +525,7 @@ export default function AppShell({
                   await supabase.auth.signOut();
                   router.replace("/sign-in");
                 }}
-                className="flex-1 py-2 text-center text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-100"
+                className="flex-1 py-2 text-center text-xs font-medium text-[color:var(--theme-text-muted)] transition-colors hover:text-[color:var(--theme-text-primary)]"
               >
                 Sign Out
               </button>

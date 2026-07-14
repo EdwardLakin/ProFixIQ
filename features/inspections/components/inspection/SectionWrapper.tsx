@@ -15,7 +15,7 @@ const SectionWrapper: React.FC<SectionWrapperProps> = ({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div className="mb-4 rounded-lg bg-black/40 p-4 shadow-md">
+    <div className="mb-4 rounded-lg bg-[color:var(--theme-surface-inset)] p-4 shadow-md">
       <button
         className="w-full text-left font-black text-lg text-orange-400 mb-2 flex justify-between items-center"
         onClick={() => setIsOpen(!isOpen)}

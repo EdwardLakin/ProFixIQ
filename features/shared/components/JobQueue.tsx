@@ -55,13 +55,13 @@ export default function JobQueue({
     techOptions.find((t) => t.id === filterTechId)?.full_name;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-white shadow-card backdrop-blur-xl">
+    <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-[color:var(--theme-text-primary)] shadow-card backdrop-blur-xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold tracking-wide text-[var(--accent-copper-light)]">
           {title}
         </h2>
-        <div className="flex items-center gap-3 text-xs text-neutral-400">
-          <span className="rounded-full border border-white/10 px-2 py-0.5">
+        <div className="flex items-center gap-3 text-xs text-[color:var(--theme-text-secondary)]">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5">
             {filteredJobs.length} job{filteredJobs.length === 1 ? "" : "s"}
           </span>
           {filterTechId && (
@@ -73,7 +73,7 @@ export default function JobQueue({
       </div>
 
       {filteredJobs.length === 0 ? (
-        <p className="text-sm italic text-neutral-500">
+        <p className="text-sm italic text-[color:var(--theme-text-muted)]">
           No jobs in this queue.
         </p>
       ) : (

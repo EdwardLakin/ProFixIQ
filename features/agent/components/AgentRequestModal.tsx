@@ -190,12 +190,12 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-black/80 border border-white/10 text-white backdrop-blur-xl">
+      <DialogContent className="bg-[color:var(--theme-surface-overlay)] border border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] backdrop-blur-xl">
         <DialogHeader>
-          <DialogTitle className="font-blackops tracking-[0.15em] text-neutral-200 uppercase">
+          <DialogTitle className="font-blackops tracking-[0.15em] text-[color:var(--theme-text-primary)] uppercase">
             Submit a Request
           </DialogTitle>
-          <p className="mt-1 text-xs text-neutral-500">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
             Use this for QA or feature ideas. Be specific so the agent and
             developers know exactly where to look.
           </p>
@@ -204,13 +204,13 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         <div className="flex flex-col gap-4">
           {/* INTENT SELECTOR */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+            <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
               Type
             </label>
             <select
               value={intent}
               onChange={(e) => setIntent(e.target.value as AgentIntentUi)}
-              className="rounded-md bg-neutral-900 text-neutral-200 border border-white/10 px-2 py-1 text-sm"
+              className="rounded-md bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm"
             >
               <option value="feature_request">Feature Request</option>
               <option value="bug_report">Bug Report</option>
@@ -223,16 +223,16 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
 
           {/* DESCRIPTION */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+            <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
               Description
             </label>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Example: In inspections > work order #24, the corner grid tabbing jumps out of the grid and moves focus to the footer."
-              className="bg-neutral-900 text-neutral-200 border-white/10 h-32"
+              className="bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] h-32"
             />
-            <p className="text-[0.7rem] text-neutral-500">
+            <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
               Include which screen, what you were doing, and what went wrong.
               Mention specific grids, buttons, or rows when possible.
             </p>
@@ -241,71 +241,71 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
           {/* CONTEXT: LOCATION + DEVICE */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
                 Where in the app?
               </label>
               <input
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="Ex: Inspections → Corner grid step, top-right card"
-                className="rounded-md bg-neutral-900 text-neutral-200 border border-white/10 px-2 py-1 text-sm"
+                className="rounded-md bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm"
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
                 Device / Browser
               </label>
               <input
                 value={device}
                 onChange={(e) => setDevice(e.target.value)}
                 placeholder="Ex: iPad 11” (Safari), MacBook (Chrome)"
-                className="rounded-md bg-neutral-900 text-neutral-200 border border-white/10 px-2 py-1 text-sm"
+                className="rounded-md bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm"
               />
             </div>
           </div>
 
           {/* STEPS */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+            <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
               Steps to Reproduce
             </label>
             <Textarea
               value={steps}
               onChange={(e) => setSteps(e.target.value)}
               placeholder={`1. Open work order #...\n2. Go to Inspections tab\n3. Click into corner grids section\n4. Press Tab key from first field...`}
-              className="bg-neutral-900 text-neutral-200 border-white/10 h-28"
+              className="bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] h-28"
             />
           </div>
 
           {/* EXPECTED vs ACTUAL */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
                 Expected
               </label>
               <Textarea
                 value={expected}
                 onChange={(e) => setExpected(e.target.value)}
                 placeholder="What you expected to happen."
-                className="bg-neutral-900 text-neutral-200 border-white/10 h-20"
+                className="bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] h-20"
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
                 Actual
               </label>
               <Textarea
                 value={actual}
                 onChange={(e) => setActual(e.target.value)}
                 placeholder="What actually happened, including any errors."
-                className="bg-neutral-900 text-neutral-200 border-white/10 h-20"
+                className="bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] h-20"
               />
             </div>
           </div>
 
           {/* Screenshots */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+            <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
               Screenshots
             </label>
             <input
@@ -313,14 +313,14 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
               accept="image/*"
               multiple
               onChange={handleFileChange}
-              className="text-xs text-neutral-300"
+              className="text-xs text-[color:var(--theme-text-secondary)]"
             />
             {files.length > 0 && (
-              <p className="text-[0.7rem] text-neutral-500">
+              <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                 {files.length} file{files.length > 1 ? "s" : ""} selected
               </p>
             )}
-            <p className="text-[0.7rem] text-neutral-500">
+            <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
               Attach clear screenshots of the issue. These will be stored in the
               secure <code>agent_uploads</code> bucket and linked to this request.
             </p>
@@ -332,7 +332,7 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
             variant="outline"
             type="button"
             onClick={() => onOpenChange(false)}
-            className="border-white/20 text-neutral-300"
+            className="border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)]"
           >
             Cancel
           </Button>
@@ -341,7 +341,7 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
             type="button"
             onClick={submit}
             disabled={!canSubmit}
-            className="bg-orange-600 hover:bg-orange-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-orange-600 hover:bg-orange-500 text-[color:var(--theme-text-on-accent)] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Submitting…" : "Submit"}
           </Button>

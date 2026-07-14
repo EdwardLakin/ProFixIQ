@@ -13,10 +13,10 @@ export function Badge({
     <span
       className={cn(
         "inline-flex items-center rounded-full border px-2.5 py-1",
-        "border-[color:var(--desktop-border,var(--theme-card-border,#334155))]",
-        "bg-[color:rgba(5,10,20,0.84)]",
+        "border-[color:var(--desktop-border,var(--theme-card-border,var(--theme-border-soft)))]",
+        "bg-[color:var(--theme-surface-inset)]",
         "text-[10px] font-semibold uppercase tracking-[0.16em]",
-        "text-[var(--theme-text-secondary,#E5E7EB)]",
+        "text-[var(--theme-text-secondary,var(--theme-text-primary))]",
         className,
       )}
     >

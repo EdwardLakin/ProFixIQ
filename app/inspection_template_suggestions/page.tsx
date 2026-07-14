@@ -43,21 +43,21 @@ export default function InspectionTemplateSuggestionsPage() {
   }, [supabase]);
 
   return (
-    <div className="min-h-screen bg-black p-6 text-white">
+    <div className="min-h-screen bg-[color:var(--theme-surface-page)] p-6 text-[color:var(--theme-text-primary)]">
       <h1 className="text-xl font-semibold text-[color:var(--accent-copper-light,#fdba74)]">Review inspections</h1>
-      <p className="mt-1 text-xs text-neutral-400">inspection_template_suggestions</p>
+      <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">inspection_template_suggestions</p>
       {error ? <p className="mt-4 text-sm text-red-400">{error}</p> : null}
       <div className="mt-4 space-y-2">
         {rows.map((row) => (
-          <div key={row.id} className="rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm">
-            <p className="font-medium text-neutral-100">{row.name ?? "Untitled suggestion"}</p>
-            <p className="mt-1 text-xs text-neutral-400">
+          <div key={row.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3 text-sm">
+            <p className="font-medium text-[color:var(--theme-text-primary)]">{row.name ?? "Untitled suggestion"}</p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Confidence: {typeof row.confidence === "number" ? row.confidence.toFixed(2) : "n/a"}
             </p>
           </div>
         ))}
         {rows.length === 0 && !error ? (
-          <p className="text-sm text-neutral-400">No inspection suggestions.</p>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">No inspection suggestions.</p>
         ) : null}
       </div>
     </div>

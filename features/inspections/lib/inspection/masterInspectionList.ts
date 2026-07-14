@@ -1705,7 +1705,7 @@ export const masterInspectionList: InspectionCategory[] = [
         priority: 70,
         cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
-      
+
     ],
   },
 
@@ -1756,7 +1756,7 @@ export const masterInspectionList: InspectionCategory[] = [
         dutyClasses: ["heavy"],
         priority: 55,
         cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
-        
+
       },
       {
         item: "Cab & passenger-vehicle body",
@@ -2179,7 +2179,7 @@ export const masterInspectionList: InspectionCategory[] = [
         item: "Fuses/fuse block",
         priority: 60,
         dutyClasses: ["light", "medium", "heavy"],
-        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ], 
+        cvipGroups: ["cvip_truck_air", "cvip_bus_air", "cvip_truck_hyd", "cvip_bus_hyd" ],
       },
       {
         item: "Wiring harness condition",

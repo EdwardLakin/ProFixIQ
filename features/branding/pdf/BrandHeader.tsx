@@ -15,7 +15,7 @@ export default function BrandHeader({ logoUrl, shopName, colors }: Props) {
       style={{
         width: "100%",
         padding: "16px 20px",
-        background: `linear-gradient(135deg, ${colors.secondary}, #020617)`,
+        background: `linear-gradient(135deg, ${colors.secondary}, var(--theme-surface-page))`,
         color: "white",
         display: "flex",
         alignItems: "center",

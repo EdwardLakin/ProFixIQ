@@ -268,41 +268,41 @@ export default function TechPerformancePage() {
 
   if (pageLoading) {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-6 pb-10 pt-8">
-          <div className="h-7 w-56 animate-pulse rounded bg-white/10" />
-          <div className="h-4 w-80 animate-pulse rounded bg-white/10" />
-          <div className="h-20 animate-pulse rounded-2xl bg-white/5" />
-          <div className="h-56 animate-pulse rounded-2xl bg-white/5" />
+          <div className="h-7 w-56 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
+          <div className="h-4 w-80 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
+          <div className="h-20 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
+          <div className="h-56 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 pb-10 pt-8">
         {/* Header */}
         <header className="space-y-1">
-          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
             ProFixIQ • Tech Suite
           </div>
           <h1 className="font-blackops text-2xl uppercase tracking-[0.18em] text-orange-400">
             My Performance
           </h1>
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             More detail than mobile — use this view when you’re on desktop/tablet.
           </p>
         </header>
 
         {/* Time range */}
-        <section className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 shadow-card">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 shadow-card">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="space-y-0.5">
-              <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+              <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Time range
               </div>
-              <div className="text-sm text-neutral-200">{dateRangeLabel}</div>
+              <div className="text-sm text-[color:var(--theme-text-primary)]">{dateRangeLabel}</div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -317,8 +317,8 @@ export default function TechPerformancePage() {
                       variant={active ? "default" : "outline"}
                       className={
                         active
-                          ? "border-orange-500 bg-orange-500 text-black"
-                          : "border-white/15 bg-transparent"
+                          ? "border-orange-500 bg-orange-500 text-[color:var(--theme-text-on-accent)]"
+                          : "border-[color:var(--theme-border-soft)] bg-transparent"
                       }
                       onClick={() => setRange(r)}
                     >
@@ -329,7 +329,7 @@ export default function TechPerformancePage() {
               )}
             </div>
           </div>
-          <p className="mt-2 text-xs text-neutral-500">
+          <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
             Productivity model: clocked hours come from labor segments (fallback payroll timecards), not attendance shift punches.
           </p>
 
@@ -381,13 +381,13 @@ export default function TechPerformancePage() {
         )}
 
         {loading && (
-          <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-6 text-sm text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]">
             Loading performance…
           </div>
         )}
 
         {!loading && !error && !hasData && (
-          <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-6 text-sm text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]">
             No technician data found for this range.
           </div>
         )}
@@ -438,22 +438,22 @@ export default function TechPerformancePage() {
             </div>
 
             {(showWorkedButNoBilledHint || showBilledButNoClockedHint) && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
                 <div className="text-[0.7rem] uppercase tracking-[0.18em] text-orange-300">
                   Data note
                 </div>
                 {showWorkedButNoBilledHint ? (
                   <p className="mt-1">
-                    You have <span className="text-white">clocked time</span> but{" "}
-                    <span className="text-white">0 billed hours</span> in this range.
+                    You have <span className="text-[color:var(--theme-text-primary)]">clocked time</span> but{" "}
+                    <span className="text-[color:var(--theme-text-primary)]">0 billed hours</span> in this range.
                     That usually means jobs weren’t marked completed or billed labor
                     hasn’t been recorded yet.
                   </p>
                 ) : null}
                 {showBilledButNoClockedHint ? (
                   <p className="mt-1">
-                    You have <span className="text-white">billed hours</span> but{" "}
-                    <span className="text-white">0 clocked hours</span>. Check timecards
+                    You have <span className="text-[color:var(--theme-text-primary)]">billed hours</span> but{" "}
+                    <span className="text-[color:var(--theme-text-primary)]">0 clocked hours</span>. Check timecards
                     for this range (or confirm shift punches are being saved).
                   </p>
                 ) : null}
@@ -464,13 +464,13 @@ export default function TechPerformancePage() {
 
         {/* Leaderboard (top + highlight me) */}
         {!loading && !error && rows.length > 0 && (
-          <section className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 shadow-card">
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 shadow-card">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+                <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Tech leaderboard (this range)
                 </div>
-                <div className="text-sm text-neutral-300">
+                <div className="text-sm text-[color:var(--theme-text-secondary)]">
                   Sorted by revenue — you’re highlighted.
                 </div>
               </div>
@@ -479,7 +479,7 @@ export default function TechPerformancePage() {
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-[840px] w-full border-separate border-spacing-0 text-sm">
                 <thead>
-                  <tr className="text-left text-[0.7rem] uppercase tracking-[0.18em] text-neutral-500">
+                  <tr className="text-left text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                     <th className="pb-2 pr-4">Rank</th>
                     <th className="pb-2 pr-4">Tech</th>
                     <th className="pb-2 pr-4">Jobs</th>
@@ -501,36 +501,36 @@ export default function TechPerformancePage() {
                           mine
                             ? "bg-orange-500/10"
                             : idx % 2 === 0
-                              ? "bg-white/[0.02]"
+                              ? "bg-[color:var(--theme-surface-subtle)]"
                               : "bg-transparent"
                         }
                       >
-                        <td className="py-2 pr-4 text-neutral-300">
+                        <td className="py-2 pr-4 text-[color:var(--theme-text-secondary)]">
                           #{idx + 1}
                         </td>
                         <td className="py-2 pr-4">
-                          <div className="font-medium text-white">{r.name}</div>
-                          <div className="text-xs text-neutral-500">
+                          <div className="font-medium text-[color:var(--theme-text-primary)]">{r.name}</div>
+                          <div className="text-xs text-[color:var(--theme-text-muted)]">
                             {r.role ?? "—"}
                           </div>
                         </td>
-                        <td className="py-2 pr-4 text-neutral-200">{r.jobs}</td>
-                        <td className="py-2 pr-4 text-neutral-200">
+                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">{r.jobs}</td>
+                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
                           {formatCurrency(r.revenue)}
                         </td>
-                        <td className="py-2 pr-4 text-neutral-200">
+                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
                           {formatCurrency(r.profit)}
                         </td>
-                        <td className="py-2 pr-4 text-neutral-200">
+                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
                           {r.clockedHours.toFixed(1)}h
                         </td>
-                        <td className="py-2 pr-4 text-neutral-200">
+                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
                           {r.billedHours.toFixed(1)}h
                         </td>
-                        <td className="py-2 pr-4 text-neutral-200">
+                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
                           {clampEfficiencyLabel(r.efficiencyPct)}
                         </td>
-                        <td className="py-2 text-neutral-200">
+                        <td className="py-2 text-[color:var(--theme-text-primary)]">
                           {formatCurrency(r.revenuePerHour)}
                         </td>
                       </tr>
@@ -540,7 +540,7 @@ export default function TechPerformancePage() {
               </table>
             </div>
 
-            <div className="mt-3 text-xs text-neutral-500">
+            <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
               Tip: if efficiency looks extreme (250%+), double-check billed labor
               entries or duplicated billing in the time range.
             </div>
@@ -549,20 +549,20 @@ export default function TechPerformancePage() {
 
         {/* AI summary */}
         {!loading && !error && (
-          <section className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 text-sm text-neutral-200 shadow-card">
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 text-sm text-[color:var(--theme-text-primary)] shadow-card">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[0.7rem] uppercase tracking-[0.18em] text-orange-300">
                 AI summary
               </div>
               {aiLoading ? (
-                <div className="text-xs text-neutral-400">Analyzing…</div>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Analyzing…</div>
               ) : null}
             </div>
 
             {aiSummary ? (
               <p className="mt-2 whitespace-pre-wrap">{aiSummary}</p>
             ) : !aiLoading ? (
-              <p className="mt-2 text-sm text-neutral-400">
+              <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                 No AI summary yet for this range.
               </p>
             ) : null}
@@ -587,8 +587,8 @@ function SummaryCard({
   accent?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 shadow-card">
-      <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+    <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-4 shadow-card">
+      <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
       <div className={`mt-1 text-2xl font-semibold ${accent ?? ""}`}>
@@ -608,12 +608,12 @@ function InfoPill({
   hint?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-      <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+    <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-3">
+      <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
-      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-neutral-500">{hint}</div> : null}
+      <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
+      {hint ? <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{hint}</div> : null}
     </div>
   );
 }

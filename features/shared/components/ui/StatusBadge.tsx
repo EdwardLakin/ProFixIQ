@@ -22,7 +22,7 @@ type StatusBadgeProps = {
 
 const variantClasses: Record<StatusBadgeVariant, string> = {
   neutral:
-    "border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_84%,transparent)] text-[var(--theme-text-secondary,#94A3B8)]",
+    "border-[var(--theme-card-border,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--theme-surface-2,var(--theme-surface-page))_84%,transparent)] text-[var(--theme-text-secondary,var(--theme-text-muted))]",
   info: "border-sky-500/40 bg-sky-500/10 text-sky-200",
   active:
     "border-sky-400/60 bg-sky-500/10 text-sky-100",

@@ -1,9 +1,9 @@
 import PortalShell from "@/features/portal/components/PortalShell";
 import Link from "next/link";
 
-const muted = "text-neutral-400";
+const muted = "text-[color:var(--theme-text-secondary)]";
 const glass =
-  "rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card";
+  "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card";
 
 export default function PortalPartsPage() {
   return (
@@ -13,7 +13,7 @@ export default function PortalPartsPage() {
     >
       <div className="space-y-4">
         <div>
-          <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">
+          <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
             Parts
           </div>
           <h1 className="font-header text-3xl text-orange-400">Parts & Approvals</h1>
@@ -23,7 +23,7 @@ export default function PortalPartsPage() {
         </div>
 
         <div className={glass}>
-          <div className="text-sm font-semibold text-neutral-100">What you can do here</div>
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">What you can do here</div>
           <ul className={`mt-2 list-disc pl-5 text-sm ${muted} space-y-1`}>
             <li>Review requested parts from the shop</li>
             <li>Approve or decline before ordering</li>
@@ -33,13 +33,13 @@ export default function PortalPartsPage() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Link
               href="/portal/request/when"
-              className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-xs font-semibold text-neutral-100 hover:bg-black/70"
+              className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
             >
               Start a new request
             </Link>
             <Link
               href="/portal/history"
-              className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-xs font-semibold text-neutral-100 hover:bg-black/70"
+              className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
             >
               View history
             </Link>

@@ -77,12 +77,12 @@ export default function DecisionEventFeed({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/10 bg-black/20",
+        "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
         compact ? "p-2.5" : "p-3",
         className,
       )}
     >
-      <div className={cn("text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500", compact ? "mb-1.5" : "mb-2")}>Decision events</div>
+      <div className={cn("text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]", compact ? "mb-1.5" : "mb-2")}>Decision events</div>
       {showFilterControls ? (
         <div className="mb-2 flex flex-wrap gap-1">
           {FILTER_OPTIONS.map((option) => (
@@ -96,8 +96,8 @@ export default function DecisionEventFeed({
               className={cn(
                 "rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] transition",
                 activeFilter === option.value
-                  ? "border-white/20 bg-white/10 text-neutral-200"
-                  : "border-white/10 bg-white/5 text-neutral-500 hover:text-neutral-300",
+                  ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-secondary)]",
               )}
             >
               {option.label}
@@ -110,7 +110,7 @@ export default function DecisionEventFeed({
           <li
             key={event.id}
             className={cn(
-              "rounded-xl border border-white/10 bg-black/25",
+              "rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
               compact ? "px-2.5 py-2" : "px-3 py-2.5",
             )}
           >
@@ -118,9 +118,9 @@ export default function DecisionEventFeed({
               <div className="flex min-w-0 items-center gap-1.5">
                 <span
                   className={cn(
-                    "inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-500/60",
-                    event.confidence === "medium" && "bg-neutral-500/45",
-                    event.confidence === "low" && "bg-neutral-500/30",
+                    "inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--theme-surface-subtle)]",
+                    event.confidence === "medium" && "bg-[color:var(--theme-surface-subtle)]",
+                    event.confidence === "low" && "bg-[color:var(--theme-surface-subtle)]",
                   )}
                   title={
                     event.confidence === "low"
@@ -130,18 +130,18 @@ export default function DecisionEventFeed({
                         : undefined
                   }
                 />
-                <p className={cn("truncate font-medium text-neutral-100", compact ? "text-xs" : "text-sm")}>{event.label}</p>
+                <p className={cn("truncate font-medium text-[color:var(--theme-text-primary)]", compact ? "text-xs" : "text-sm")}>{event.label}</p>
               </div>
-              <time className="shrink-0 text-[10px] text-neutral-500">{formatEventTimestamp(event.timestamp)}</time>
+              <time className="shrink-0 text-[10px] text-[color:var(--theme-text-muted)]">{formatEventTimestamp(event.timestamp)}</time>
             </div>
             {event.actor ? (
-              <p className={cn("mt-1 text-neutral-400", compact ? "text-[11px]" : "text-xs")}>By {event.actor}</p>
+              <p className={cn("mt-1 text-[color:var(--theme-text-secondary)]", compact ? "text-[11px]" : "text-xs")}>By {event.actor}</p>
             ) : null}
             {sourceLabel(event.source) ? (
-              <p className={cn("mt-0.5 text-neutral-500", compact ? "text-[10px]" : "text-[11px]")}>{sourceLabel(event.source)}</p>
+              <p className={cn("mt-0.5 text-[color:var(--theme-text-muted)]", compact ? "text-[10px]" : "text-[11px]")}>{sourceLabel(event.source)}</p>
             ) : null}
             {event.meta ? (
-              <p className={cn("mt-0.5 text-neutral-500", compact ? "text-[10px]" : "text-[11px]")}>{event.meta}</p>
+              <p className={cn("mt-0.5 text-[color:var(--theme-text-muted)]", compact ? "text-[10px]" : "text-[11px]")}>{event.meta}</p>
             ) : null}
           </li>
         ))}
@@ -150,7 +150,7 @@ export default function DecisionEventFeed({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-2 text-[11px] text-neutral-400 transition hover:text-neutral-200"
+          className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)] transition hover:text-[color:var(--theme-text-primary)]"
         >
           Show more history
         </button>

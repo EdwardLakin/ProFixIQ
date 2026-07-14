@@ -46,7 +46,7 @@ function statusPill(status: string | null | undefined): string {
   if (s === "ordered") return "border-indigo-500/40 bg-indigo-500/10 text-indigo-200";
   if (s === "open" || s === "draft") return "border-sky-500/30 bg-sky-950/25 text-sky-200";
   if (s === "cancelled" || s === "canceled") return "border-rose-500/40 bg-rose-500/10 text-rose-200";
-  return "border-white/10 bg-white/5 text-neutral-200";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
 }
 
 type UiLine = POLineRow & {
@@ -415,35 +415,35 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
   }
 
   const panel =
-    "rounded-2xl border border-white/10 bg-neutral-950/35 backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
+    "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const header =
-    "border-b border-white/10 bg-gradient-to-b from-white/5 to-transparent px-5 py-4";
+    "border-b border-[color:var(--theme-border-soft)] bg-gradient-to-b via-[color:var(--theme-surface-subtle)] to-transparent px-5 py-4";
   const input =
-    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/35";
+    "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-500/35";
   const select =
-    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500/35";
+    "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-sky-500/35";
 
   const btnBase =
     "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60";
-  const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-  const btnCopper = `${btnBase} border-sky-500/35 text-sky-200 bg-neutral-950/20 hover:bg-sky-900/20`;
-  const btnDanger = `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
+  const btnGhost = `${btnBase} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] hover:bg-[color:var(--theme-surface-subtle)]`;
+  const btnCopper = `${btnBase} border-sky-500/35 text-sky-200 bg-[color:var(--theme-surface-page)] hover:bg-sky-900/20`;
+  const btnDanger = `${btnBase} border-red-900/60 bg-[color:var(--theme-surface-page)] text-red-200 hover:bg-red-900/20`;
 
   if (loading && !loadedOnce) {
     return (
-      <div className="p-6 text-white">
-        <div className={`${panel} p-4 text-neutral-300`}>Loading…</div>
+      <div className="p-6 text-[color:var(--theme-text-primary)]">
+        <div className={`${panel} p-4 text-[color:var(--theme-text-secondary)]`}>Loading…</div>
       </div>
     );
   }
 
   if (!po) {
     return (
-      <div className="p-6 text-white">
+      <div className="p-6 text-[color:var(--theme-text-primary)]">
         <button className={btnGhost} onClick={() => router.back()} type="button">
           ← Back
         </button>
-        <div className={`${panel} mt-4 p-4 text-neutral-300`}>PO not found / not visible.</div>
+        <div className={`${panel} mt-4 p-4 text-[color:var(--theme-text-secondary)]`}>PO not found / not visible.</div>
       </div>
     );
   }
@@ -453,9 +453,9 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
   const poStatus = (status || (po.status as string | null) || "open").toLowerCase();
 
   return (
-    <div className="space-y-4 p-6 text-white">
+    <div className="space-y-4 p-6 text-[color:var(--theme-text-primary)]">
       {loading ? (
-        <div className={`${panel} p-3 text-xs text-neutral-300`}>Refreshing purchase order…</div>
+        <div className={`${panel} p-3 text-xs text-[color:var(--theme-text-secondary)]`}>Refreshing purchase order…</div>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -477,25 +477,25 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
         <div className={header}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Purchase Order</div>
-              <div className="mt-1 truncate text-2xl font-semibold text-white">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">Purchase Order</div>
+              <div className="mt-1 truncate text-2xl font-semibold text-[color:var(--theme-text-primary)]">
                 PO <span className="text-sky-200">{String(po.id).slice(0, 8)}</span>
               </div>
-              <div className="mt-2 text-sm text-neutral-400">
-                Supplier: <span className="text-neutral-200">{supplierName}</span>
-                <span className="mx-2 text-neutral-600">·</span>
+              <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+                Supplier: <span className="text-[color:var(--theme-text-primary)]">{supplierName}</span>
+                <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
                 Status:{" "}
                 <span className={["inline-flex items-center rounded-full border px-2.5 py-1 text-[12px] font-medium", statusPill(poStatus)].join(" ")}>
                   {poStatus}
                 </span>
-                <span className="mx-2 text-neutral-600">·</span>
-                Created: <span className="text-neutral-200">{fmtDate(po.created_at as string | null)}</span>
+                <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
+                Created: <span className="text-[color:var(--theme-text-primary)]">{fmtDate(po.created_at as string | null)}</span>
               </div>
             </div>
 
             <div className="grid w-full max-w-md gap-2">
               <div>
-                <div className="mb-1 text-xs text-neutral-400">Supplier</div>
+                <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Supplier</div>
                 <select className={select} value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
                   <option value="">— select —</option>
                   {suppliers.map((s) => (
@@ -525,7 +525,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
               <div className="grid gap-2 md:grid-cols-2">
                 <div>
-                  <div className="mb-1 text-xs text-neutral-400">Status</div>
+                  <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Status</div>
                   <select className={select} value={status} onChange={(e) => setStatus(e.target.value)}>
                     <option value="open">open</option>
                     <option value="ordered">ordered</option>
@@ -536,7 +536,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
                 </div>
 
                 <div>
-                  <div className="mb-1 text-xs text-neutral-400">Notes</div>
+                  <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Notes</div>
                   <input className={input} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Vendor instructions / notes…" />
                 </div>
               </div>
@@ -544,31 +544,31 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
           </div>
 
           <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-neutral-950/20 p-4">
-              <div className="text-xs text-neutral-400">Total Ordered</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">Total Ordered</div>
               <div className="mt-1 text-2xl font-semibold">{totals.ordered}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-neutral-950/20 p-4">
-              <div className="text-xs text-neutral-400">Total Received</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">Total Received</div>
               <div className="mt-1 text-2xl font-semibold">{totals.received}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-neutral-950/20 p-4">
-              <div className="text-xs text-neutral-400">Remaining</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">Remaining</div>
               <div className="mt-1 text-2xl font-semibold text-sky-200">{totals.remaining}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-neutral-950/20 p-4">
-              <div className="text-xs text-neutral-400">Est. Cost</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">Est. Cost</div>
               <div className="mt-1 text-2xl font-semibold">{totals.cost.toFixed(2)}</div>
             </div>
           </div>
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-neutral-950/20 p-4">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div className="text-sm font-semibold text-white">Add PO line (stock order)</div>
-                <div className="mt-1 text-xs text-neutral-500">
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Add PO line (stock order)</div>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   Track what the PO is for: part, ordered qty, unit cost. Receiving updates received qty on lines.
                 </div>
               </div>
@@ -580,7 +580,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
             <div className="grid gap-3 md:grid-cols-4">
               <div className="md:col-span-2">
-                <div className="mb-1 text-xs text-neutral-400">Part / description</div>
+                <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Part / description</div>
                 <select
                   className={select}
                   value={linePartId}
@@ -598,14 +598,14 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
                     </option>
                   ))}
                 </select>
-                                <div className="mt-1 text-xs text-neutral-500">
+                                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   Select a stock part or type the part you want to order.
                 </div>
 
               </div>
 
               <div className="md:col-span-2">
-                <div className="mb-1 text-xs text-neutral-400">Part / description</div>
+                <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Part / description</div>
                 <input
                   className={input}
                   value={lineDescription}
@@ -615,7 +615,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
               </div>
 
               <div>
-                <div className="mb-1 text-xs text-neutral-400">Qty ordered</div>
+                <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Qty ordered</div>
                 <input
                   className={input}
                   type="number"
@@ -627,7 +627,7 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
               </div>
 
               <div>
-                <div className="mb-1 text-xs text-neutral-400">Unit cost</div>
+                <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Unit cost</div>
                 <input
                   className={input}
                   type="number"
@@ -639,20 +639,20 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
               </div>
 
               {linePartId ? (
-                <div className="md:col-span-4 text-[11px] text-neutral-500">
+                <div className="md:col-span-4 text-[11px] text-[color:var(--theme-text-muted)]">
                   {(() => {
                     const part = partById.get(linePartId);
-                    if (!part) return <span className="text-neutral-400">Part selected</span>;
+                    if (!part) return <span className="text-[color:var(--theme-text-secondary)]">Part selected</span>;
                     const summary = toPartDisplaySummary(part);
                     return (
                       <>
                         {summary.labeledIdentifiers.length > 0 ? (
                           <>
-                            <span className="text-neutral-300">{partIdentifierLabel(summary)}</span>
-                            <span className="mx-2 text-neutral-600">·</span>
+                            <span className="text-[color:var(--theme-text-secondary)]">{partIdentifierLabel(summary)}</span>
+                            <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
                           </>
                         ) : null}
-                        Name: <span className="text-neutral-200">{summary.name}</span>
+                        Name: <span className="text-[color:var(--theme-text-primary)]">{summary.name}</span>
                       </>
                     );
                   })()}
@@ -661,15 +661,15 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-neutral-950/20">
-            <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-4 py-3">
-              <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">PO Lines</div>
-              <div className="text-[11px] text-neutral-500">{lines.length} lines</div>
+          <div className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
+            <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-3">
+              <div className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">PO Lines</div>
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">{lines.length} lines</div>
             </div>
 
             <div className="overflow-auto">
               <table className="w-full min-w-[980px] text-sm">
-                <thead className="text-left text-neutral-400">
+                <thead className="text-left text-[color:var(--theme-text-secondary)]">
                   <tr>
                     <th className="p-3">Part #</th>
                     <th className="p-3">Part</th>
@@ -684,8 +684,8 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
 
                 <tbody>
                   {lines.length === 0 ? (
-                    <tr className="border-t border-white/10">
-                      <td className="p-4 text-neutral-500" colSpan={8}>
+                    <tr className="border-t border-[color:var(--theme-border-soft)]">
+                      <td className="p-4 text-[color:var(--theme-text-muted)]" colSpan={8}>
                         No PO lines yet. Add a line above.
                       </td>
                     </tr>
@@ -698,14 +698,14 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
                       const lineCost = ordered * unitCost;
 
                       return (
-                        <tr key={String(l.id)} className="border-t border-white/10 hover:bg-white/5">
-                          <td className="p-3 font-mono text-neutral-200">{l.ui_sku || "—"}</td>
-                          <td className="p-3 text-neutral-200">{l.ui_part_name}</td>
-                          <td className="p-3 text-right tabular-nums text-neutral-200">{ordered}</td>
-                          <td className="p-3 text-right tabular-nums text-neutral-200">{received}</td>
+                        <tr key={String(l.id)} className="border-t border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]">
+                          <td className="p-3 font-mono text-[color:var(--theme-text-primary)]">{l.ui_sku || "—"}</td>
+                          <td className="p-3 text-[color:var(--theme-text-primary)]">{l.ui_part_name}</td>
+                          <td className="p-3 text-right tabular-nums text-[color:var(--theme-text-primary)]">{ordered}</td>
+                          <td className="p-3 text-right tabular-nums text-[color:var(--theme-text-primary)]">{received}</td>
                           <td className="p-3 text-right tabular-nums text-sky-200">{remaining}</td>
-                          <td className="p-3 text-right tabular-nums text-neutral-200">{unitCost.toFixed(2)}</td>
-                          <td className="p-3 text-right tabular-nums text-neutral-200">{lineCost.toFixed(2)}</td>
+                          <td className="p-3 text-right tabular-nums text-[color:var(--theme-text-primary)]">{unitCost.toFixed(2)}</td>
+                          <td className="p-3 text-right tabular-nums text-[color:var(--theme-text-primary)]">{lineCost.toFixed(2)}</td>
                           <td className="p-3 text-right">
                             <button className={btnDanger} onClick={() => void deleteLine(String(l.id))} type="button">
                               Delete
@@ -719,8 +719,8 @@ export default function PurchaseOrderDetailPage(): JSX.Element {
               </table>
             </div>
 
-            <div className="border-t border-white/10 px-4 py-3 text-[11px] text-neutral-500">
-              Receiving is done on the <span className="text-neutral-200">Receive PO</span> page and should increment the line’s received qty.
+            <div className="border-t border-[color:var(--theme-border-soft)] px-4 py-3 text-[11px] text-[color:var(--theme-text-muted)]">
+              Receiving is done on the <span className="text-[color:var(--theme-text-primary)]">Receive PO</span> page and should increment the line’s received qty.
               If your line columns are named differently, we’ll rename the insert + UI mapping to match your schema.
             </div>
           </div>

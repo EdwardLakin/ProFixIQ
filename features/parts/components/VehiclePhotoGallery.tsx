@@ -83,18 +83,18 @@ export default function VehiclePhotoGallery({
   return (
     <>
       {/* wrapper card for gallery */}
-      <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-3 shadow-[0_0_40px_rgba(0,0,0,0.85)]">
+      <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-[var(--theme-shadow-medium)]">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-neutral-100">
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             Vehicle photo history
           </h3>
-          <p className="text-[11px] text-neutral-500">
+          <p className="text-[11px] text-[color:var(--theme-text-muted)]">
             Click a photo to view full screen.
           </p>
         </div>
 
         {photos.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/15 bg-black/40 px-4 py-6 text-center text-sm text-neutral-400">
+          <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-6 text-center text-sm text-[color:var(--theme-text-secondary)]">
             No photos for this vehicle yet.
           </div>
         ) : (
@@ -102,14 +102,14 @@ export default function VehiclePhotoGallery({
             {photos.map((photo) => (
               <div
                 key={photo.id}
-                className="group relative overflow-hidden rounded-xl border border-white/12 bg-black/50 shadow-[0_0_22px_rgba(0,0,0,0.9)] transition hover:border-[var(--accent-copper-light)] hover:bg-black/70"
+                className="group relative overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] transition hover:border-[var(--accent-copper-light)] hover:bg-[color:var(--theme-surface-overlay)]"
               >
                 <button
                   type="button"
                   className="block w-full focus:outline-none"
                   onClick={() => setFullscreenPhoto(photo)}
                 >
-                  <div className="relative aspect-video w-full bg-black/40">
+                  <div className="relative aspect-video w-full bg-[color:var(--theme-surface-inset)]">
                     {/* plain <img> instead of next/image */}
                     <img
                       src={photo.url}
@@ -123,14 +123,14 @@ export default function VehiclePhotoGallery({
                 {/* hover controls */}
                 {photo.uploaded_by === currentUserId && (
                   <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end p-2 opacity-0 transition group-hover:pointer-events-auto group-hover:opacity-100">
-                    <div className="flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 shadow-[0_0_14px_rgba(0,0,0,0.9)]">
+                    <div className="flex items-center gap-1 rounded-full bg-[color:var(--theme-surface-overlay)] px-2 py-1 shadow-[var(--theme-shadow-medium)]">
                       <button
                         type="button"
                         onClick={() => {
                           setEditingCaptionId(photo.id);
                           setEditedCaption(photo.caption || "");
                         }}
-                        className="p-0.5 text-[11px] text-[var(--accent-copper-light)] hover:text-white"
+                        className="p-0.5 text-[11px] text-[var(--accent-copper-light)] hover:text-[color:var(--theme-text-primary)]"
                       >
                         <PencilIcon className="h-4 w-4" />
                       </button>
@@ -146,29 +146,29 @@ export default function VehiclePhotoGallery({
                 )}
 
                 {/* caption area */}
-                <div className="border-t border-white/10 bg-black/60 px-2.5 py-2 text-[11px] text-neutral-300">
+                <div className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2.5 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                   {editingCaptionId === photo.id ? (
                     <div className="flex items-center gap-2">
                       <input
                         value={editedCaption}
                         onChange={(e) => setEditedCaption(e.target.value)}
-                        className="h-7 w-full rounded-md border border-white/20 bg-black/60 px-2 text-[11px] text-neutral-100 placeholder:text-neutral-500 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+                        className="h-7 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
                         placeholder="Add a note about this photo…"
                       />
                       <button
                         type="button"
                         onClick={() => handleCaptionSave(photo.id)}
-                        className="rounded-full bg-[var(--accent-copper)] px-2 py-1 text-[10px] font-semibold text-black shadow-[0_0_14px_rgba(248,113,22,0.55)] hover:opacity-90"
+                        className="rounded-full bg-[var(--accent-copper)] px-2 py-1 text-[10px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_14px_rgba(248,113,22,0.55)] hover:opacity-90"
                       >
                         Save
                       </button>
                     </div>
                   ) : photo.caption ? (
-                    <p className="line-clamp-2 text-[11px] text-neutral-200">
+                    <p className="line-clamp-2 text-[11px] text-[color:var(--theme-text-primary)]">
                       {photo.caption}
                     </p>
                   ) : (
-                    <p className="text-[11px] italic text-neutral-500">
+                    <p className="text-[11px] italic text-[color:var(--theme-text-muted)]">
                       No caption
                     </p>
                   )}
@@ -187,16 +187,16 @@ export default function VehiclePhotoGallery({
       >
         {/* backdrop */}
         <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-sm"
+          className="fixed inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
           aria-hidden="true"
         />
 
         <div className="relative z-[130] mx-3 my-6 w-full max-w-5xl">
-          <Dialog.Panel className="relative overflow-hidden rounded-2xl border border-white/15 bg-neutral-950/95 p-3 shadow-[0_0_60px_rgba(0,0,0,1)]">
+          <Dialog.Panel className="relative overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3 shadow-[var(--theme-shadow-medium)]">
             {/* close button */}
             <button
               type="button"
-              className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-black/60 text-neutral-200 shadow-sm transition hover:bg-white/10 hover:text-white"
+              className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-primary)] shadow-sm transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
               onClick={() => setFullscreenPhoto(null)}
             >
               <XMarkIcon className="h-4 w-4" />
@@ -214,12 +214,12 @@ export default function VehiclePhotoGallery({
               </div>
 
               {fullscreenPhoto?.caption && (
-                <p className="mx-auto max-w-3xl px-2 pb-1 text-center text-sm text-neutral-200">
+                <p className="mx-auto max-w-3xl px-2 pb-1 text-center text-sm text-[color:var(--theme-text-primary)]">
                   {fullscreenPhoto.caption}
                 </p>
               )}
 
-              <p className="text-center text-[11px] text-neutral-500">
+              <p className="text-center text-[11px] text-[color:var(--theme-text-muted)]">
                 Click outside or press ESC to close.
               </p>
             </div>

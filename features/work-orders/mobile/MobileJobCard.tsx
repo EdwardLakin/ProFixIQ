@@ -71,17 +71,17 @@ const BADGE: Record<KnownStatus, string> = {
   awaiting_approval:
     "bg-sky-900/30 border-sky-400/60 text-sky-200 shadow-[0_0_18px_rgba(56,189,248,0.35)]",
   awaiting:
-    "bg-slate-900/40 border-slate-400/60 text-slate-200 shadow-[0_0_18px_rgba(148,163,184,0.25)]",
+    "bg-[color:var(--theme-surface-panel)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] shadow-[0_0_18px_rgba(148,163,184,0.25)]",
   queued:
     "bg-indigo-900/30 border-indigo-400/70 text-indigo-200 shadow-[0_0_18px_rgba(129,140,248,0.40)]",
   in_progress:
-    "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.32),rgba(15,23,42,0.9))] border-[color:var(--accent-copper-soft)] text-[color:var(--accent-copper-light)] shadow-[0_0_20px_rgba(248,113,22,0.50)]",
+    "bg-[var(--theme-gradient-panel)] border-[color:var(--accent-copper-soft)] text-[color:var(--accent-copper-light)] shadow-[0_0_20px_rgba(248,113,22,0.50)]",
   on_hold:
     "bg-amber-950/40 border-amber-400/70 text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.35)]",
   planned:
     "bg-purple-950/40 border-purple-400/70 text-purple-200 shadow-[0_0_18px_rgba(147,51,234,0.40)]",
   new:
-    "bg-neutral-900/80 border-neutral-500/70 text-neutral-200 shadow-[0_0_14px_rgba(148,163,184,0.28)]",
+    "bg-[color:var(--theme-surface-panel)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] shadow-[0_0_14px_rgba(148,163,184,0.28)]",
   completed:
     "bg-emerald-950/50 border-emerald-400/70 text-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.55)]",
   ready_to_invoice:
@@ -102,60 +102,60 @@ const CARD_SURFACE: Record<KnownStatus, { border: string; surface: string; ring:
     awaiting_approval: {
       border: "border-sky-400/55",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.10),rgba(6,10,18,0.92))]",
+        "bg-[var(--theme-gradient-panel)]",
       ring: "ring-sky-400/70",
     },
     awaiting: {
       border: "border-[var(--metal-border-soft)]",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(6,10,18,0.92))]",
-      ring: "ring-slate-300/80",
+        "bg-[var(--theme-gradient-panel)]",
+      ring: "ring-[color:var(--theme-border-strong)]",
     },
     queued: {
       border: "border-indigo-400/65",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.12),rgba(6,10,18,0.92))]",
+        "bg-[var(--theme-gradient-panel)]",
       ring: "ring-indigo-400/80",
     },
     in_progress: {
       border: "border-[color:var(--accent-copper-soft)]",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),rgba(6,10,18,0.92))]",
+        "bg-[var(--theme-gradient-panel)]",
       ring: "ring-[color:var(--accent-copper-soft)]/80",
     },
     on_hold: {
       border: "border-amber-400/75",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.16),rgba(6,10,18,0.92))]",
+        "bg-[var(--theme-gradient-panel)]",
       ring: "ring-amber-300/80",
     },
     planned: {
       border: "border-purple-400/75",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(192,132,252,0.14),rgba(6,10,18,0.92))]",
+        "bg-[var(--theme-gradient-panel)]",
       ring: "ring-purple-300/80",
     },
     new: {
       border: "border-[var(--metal-border-soft)]",
-      surface: "bg-black/45",
-      ring: "ring-neutral-400/80",
+      surface: "bg-[color:var(--theme-surface-inset)]",
+      ring: "ring-[color:var(--theme-border-strong)]",
     },
     completed: {
       border: "border-emerald-400/70",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),rgba(6,10,18,0.92))]",
+        "bg-[var(--theme-gradient-panel)]",
       ring: "ring-emerald-300/80",
     },
     ready_to_invoice: {
       border: "border-emerald-400/80",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.16),rgba(6,10,18,0.92))]",
+        "bg-[var(--theme-gradient-panel)]",
       ring: "ring-emerald-300/80",
     },
     invoiced: {
       border: "border-teal-400/80",
       surface:
-        "bg-[radial-gradient(circle_at_top,_rgba(45,212,191,0.16),rgba(6,10,18,0.92))]",
+        "bg-[var(--theme-gradient-panel)]",
       ring: "ring-teal-300/80",
     },
   };
@@ -234,7 +234,7 @@ function ReviewIcon({
       ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-100"
       : tone === "warn"
         ? "border-amber-400/60 bg-amber-500/10 text-amber-100"
-        : "border-[var(--metal-border-soft)] bg-black/45 text-neutral-200";
+        : "border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]";
   return (
     <span className={`${base} ${cls}`} title={title}>
       {label}
@@ -319,8 +319,8 @@ export function JobCard({
   return (
     <div
       className={`group cursor-pointer rounded-2xl border ${surfaceCfg.border} ${surfaceCfg.surface} p-3 transition
-        shadow-[0_18px_45px_rgba(0,0,0,0.85)]
-        hover:shadow-[0_22px_55px_rgba(0,0,0,0.95)]
+        shadow-[var(--theme-shadow-medium)]
+        hover:shadow-[var(--theme-shadow-medium)]
         ${isPunchedIn ? `ring-2 ${surfaceCfg.ring}` : "ring-0"}
       `}
       title="Open focused job"
@@ -330,7 +330,7 @@ export function JobCard({
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <div className="truncate text-sm font-medium text-white">
+              <div className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
                 {index + 1}. {jobLabel}
               </div>
 
@@ -341,7 +341,7 @@ export function JobCard({
                     e.stopPropagation();
                     onAssign?.();
                   }}
-                  className="rounded-xl border border-sky-500/70 bg-black/35 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
+                  className="rounded-xl border border-sky-500/70 bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
                   title="Assign mechanic to this line"
                 >
                   Assign mechanic
@@ -355,7 +355,7 @@ export function JobCard({
                     e.stopPropagation();
                     onOpenInspection?.();
                   }}
-                  className={`rounded-xl border bg-black/35 px-2 py-0.5 text-[11px] font-medium ${
+                  className={`rounded-xl border bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[11px] font-medium ${
                     isCompletedLike()
                       ? "border-teal-400 text-teal-200"
                       : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
@@ -418,7 +418,7 @@ export function JobCard({
             </div>
           )}
 
-          <div className="text-[11px] text-neutral-300">
+          <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
             {jobTypeText} • {laborText} • Status: {statusText}
           </div>
 
@@ -447,7 +447,7 @@ export function JobCard({
               )}
 
               {(line.complaint || line.cause || line.correction) && (
-                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
+                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                   {line.complaint && <span>Cmpl: {line.complaint}</span>}
                   {line.cause && <span>| Cause: {line.cause}</span>}
                   {line.correction && <span>| Corr: {line.correction}</span>}
@@ -455,10 +455,10 @@ export function JobCard({
               )}
 
               {showPricingRow && (
-                <div className="mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] text-neutral-300">
+                <div className="mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] text-[color:var(--theme-text-secondary)]">
                   {pricing?.partsTotal != null && (
                     <span className="flex items-center gap-1">
-                      <span className="text-neutral-400">Parts</span>
+                      <span className="text-[color:var(--theme-text-secondary)]">Parts</span>
                       <span className="font-semibold">
                         {formatMoney(pricing.partsTotal)}
                       </span>
@@ -466,7 +466,7 @@ export function JobCard({
                   )}
                   {pricing?.laborTotal != null && (
                     <span className="flex items-center gap-1">
-                      <span className="text-neutral-400">Labor</span>
+                      <span className="text-[color:var(--theme-text-secondary)]">Labor</span>
                       <span className="font-semibold">
                         {formatMoney(pricing.laborTotal)}
                       </span>
@@ -474,7 +474,7 @@ export function JobCard({
                   )}
                   {pricing?.lineTotal != null && (
                     <span className="flex items-center gap-1">
-                      <span className="text-neutral-400">Line total</span>
+                      <span className="text-[color:var(--theme-text-secondary)]">Line total</span>
                       <span className="font-semibold text-[color:var(--accent-copper-light)]">
                         {formatMoney(pricing.lineTotal)}
                       </span>

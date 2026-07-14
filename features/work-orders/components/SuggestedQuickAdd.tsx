@@ -126,13 +126,13 @@ export default function SuggestedQuickAdd(props: {
   }
 
   return (
-    <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+    <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-orange-400">AI Suggestions</h3>
         <button
           onClick={fetchSuggestions}
           disabled={loading}
-          className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800 disabled:opacity-60"
+          className="text-xs px-2 py-1 rounded border border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-panel-strong)] disabled:opacity-60"
         >
           {loading ? "Thinking…" : "Regenerate"}
         </button>
@@ -146,10 +146,10 @@ export default function SuggestedQuickAdd(props: {
             key={s.name}
             onClick={() => addQuote(s)}
             disabled={adding === s.name}
-            className="text-left border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 rounded p-3 disabled:opacity-60"
+            className="text-left border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] hover:bg-[color:var(--theme-surface-panel-strong)] rounded p-3 disabled:opacity-60"
           >
             <div className="font-medium">{s.name}</div>
-            <div className="text-xs text-neutral-400">
+            <div className="text-xs text-[color:var(--theme-text-secondary)]">
               {s.jobType} •{" "}
               {typeof s.laborHours === "number"
                 ? s.laborHours.toFixed(1)
@@ -157,13 +157,13 @@ export default function SuggestedQuickAdd(props: {
               h
             </div>
             {s.notes && (
-              <div className="text-xs text-neutral-500 mt-1">{s.notes}</div>
+              <div className="text-xs text-[color:var(--theme-text-muted)] mt-1">{s.notes}</div>
             )}
           </button>
         ))}
 
         {!loading && items.length === 0 && (
-          <div className="text-xs text-neutral-400">No suggestions yet.</div>
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">No suggestions yet.</div>
         )}
       </div>
     </div>

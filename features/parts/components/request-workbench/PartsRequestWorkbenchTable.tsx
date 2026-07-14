@@ -48,7 +48,7 @@ export function PartsRequestWorkbenchTable({
   return (
     <div className="overflow-x-auto rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)]">
       <table className="min-w-[1040px] w-full text-left">
-        <thead className="bg-white/[0.03] text-xs text-neutral-400">
+        <thead className="bg-[color:var(--theme-surface-subtle)] text-xs text-[color:var(--theme-text-secondary)]">
           <tr>
             <th className="p-3 font-medium">Description</th>
             <th className="p-3 font-medium">Part #</th>

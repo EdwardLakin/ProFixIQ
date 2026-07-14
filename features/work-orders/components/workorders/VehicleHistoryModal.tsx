@@ -144,19 +144,19 @@ export default function VehicleHistoryModal(props: {
       onClose={onClose}
       className="fixed inset-0 z-[120] flex items-center justify-center"
     >
-      <div className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+      <div className="fixed inset-0 z-[120] bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" aria-hidden="true" />
 
       <div
         className="relative z-[130] mx-4 my-6 w-full max-w-5xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="rounded-2xl border border-white/15 bg-neutral-950/95 p-4 text-white shadow-xl">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 text-[color:var(--theme-text-primary)] shadow-xl">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-200">
+              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
                 Vehicle History
               </div>
-              <div className="mt-1 text-[11px] text-neutral-500">
+              <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                 Showing imported service history records for this vehicle.
               </div>
             </div>
@@ -164,7 +164,7 @@ export default function VehicleHistoryModal(props: {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs text-neutral-200 hover:bg-white/5"
+              className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
               title="Close"
             >
               ✕
@@ -173,7 +173,7 @@ export default function VehicleHistoryModal(props: {
 
           <div className="mb-3 flex flex-wrap items-end gap-2">
             <div className="min-w-[240px] flex-1">
-              <label className="mb-1 block text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
+              <label className="mb-1 block text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Search
               </label>
               <input
@@ -181,14 +181,14 @@ export default function VehicleHistoryModal(props: {
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && load()}
                 placeholder="Invoice, customer, description, notes…"
-                className="w-full rounded-lg border border-white/10 bg-black/60 px-3 py-1.5 text-sm text-neutral-100 outline-none focus:border-sky-400/60 focus:ring-1 focus:ring-sky-400/40"
+                className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-sky-400/60 focus:ring-1 focus:ring-sky-400/40"
               />
             </div>
 
             <button
               type="button"
               onClick={load}
-              className="rounded-full border border-white/10 bg-black/60 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-sky-400/50 hover:bg-black/70"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-sky-400/50 hover:bg-[color:var(--theme-surface-overlay)]"
             >
               Refresh
             </button>
@@ -199,23 +199,23 @@ export default function VehicleHistoryModal(props: {
               {err}
             </div>
           ) : loading ? (
-            <div className="rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-neutral-300">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
               Loading…
             </div>
           ) : rows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/12 bg-black/30 px-4 py-3 text-sm text-neutral-300">
+            <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
               No imported service history found for this vehicle.
             </div>
           ) : (
-            <div className="max-h-[60vh] overflow-auto rounded-xl border border-white/10 bg-black/35">
-              <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+            <div className="max-h-[60vh] overflow-auto rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+              <div className="grid grid-cols-12 bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 <div className="col-span-3">Record</div>
                 <div className="col-span-3">Customer</div>
                 <div className="col-span-4">Details</div>
                 <div className="col-span-2 text-right">Service date</div>
               </div>
 
-              <ul className="divide-y divide-white/5">
+              <ul className="divide-y divide-[color:var(--theme-border-soft)]">
                 {rows.map((r) => {
                   const serviceDate = fmtDateShort(r.service_date ?? r.created_at);
                   const details = (r.description ?? r.notes ?? "—").toString();
@@ -226,27 +226,27 @@ export default function VehicleHistoryModal(props: {
                         <div className="truncate font-mono text-sky-200">
                           {historyLabel(r)}
                         </div>
-                        <div className="mt-0.5 truncate text-[11px] text-neutral-500">
+                        <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-muted)]">
                           {String(r.id).slice(0, 8)}…
                         </div>
                       </div>
 
                       <div className="col-span-3 min-w-0">
-                        <div className="truncate text-neutral-200">
+                        <div className="truncate text-[color:var(--theme-text-primary)]">
                           {fmtCustomerName(r.customers ?? null)}
                         </div>
-                        <div className="mt-0.5 truncate text-[11px] text-neutral-500">
+                        <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-muted)]">
                           {(r.customers?.email ?? "").toString() || "—"}
                         </div>
                       </div>
 
                       <div className="col-span-4 min-w-0">
-                        <div className="truncate text-[12px] text-neutral-200" title={details}>
+                        <div className="truncate text-[12px] text-[color:var(--theme-text-primary)]" title={details}>
                           {details}
                         </div>
                       </div>
 
-                      <div className="col-span-2 text-right text-[11px] text-neutral-400">
+                      <div className="col-span-2 text-right text-[11px] text-[color:var(--theme-text-secondary)]">
                         {serviceDate}
                       </div>
                     </li>

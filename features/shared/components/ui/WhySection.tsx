@@ -33,7 +33,7 @@ const ROWS: Row[] = [
 
 export default function WhySection() {
   return (
-    <div className="mx-auto max-w-6xl text-white">
+    <div className="mx-auto max-w-6xl text-[color:var(--theme-text-primary)]">
       <div className="text-center">
         <div
           className="text-xs font-semibold uppercase tracking-[0.22em]"
@@ -43,19 +43,19 @@ export default function WhySection() {
         </div>
 
         <h2
-          className="mt-2 text-3xl text-neutral-50 md:text-4xl"
+          className="mt-2 text-3xl text-[color:var(--theme-text-primary)] md:text-4xl"
           style={{ fontFamily: "var(--font-blackops)" }}
         >
           Clarity for techs. Control for advisors.
         </h2>
 
-        <p className="mx-auto mt-3 max-w-3xl text-sm text-neutral-300 md:text-base">
+        <p className="mx-auto mt-3 max-w-3xl text-sm text-[color:var(--theme-text-secondary)] md:text-base">
           Built for heavy-duty &amp; fleet life — less screen time on the floor,
           faster decisions for fleets, and a defensible evidence trail from bay to invoice.
         </p>
       </div>
 
-      <div className="relative mt-10 overflow-hidden rounded-3xl border border-white/10 bg-black/20 backdrop-blur-xl">
+      <div className="relative mt-10 overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] backdrop-blur-xl">
         <div className="pointer-events-none absolute inset-0">
           <div
             className="absolute -right-24 -top-24 h-80 w-80 rounded-full blur-3xl"
@@ -63,25 +63,25 @@ export default function WhySection() {
           />
           <div
             className="absolute -left-28 -bottom-28 h-96 w-96 rounded-full blur-3xl"
-            style={{ background: "rgba(15,23,42,0.42)" }}
+            style={{ background: "var(--theme-surface-inset)" }}
           />
           <div
             className="absolute inset-0 opacity-[0.10]"
             style={{
               backgroundImage:
-                "repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 9px)",
+                "var(--theme-gradient-panel)",
             }}
           />
           <div
             className="absolute inset-0"
             style={{
               boxShadow:
-                "0 0 0 1px rgba(255,255,255,0.05) inset, 0 18px 70px rgba(0,0,0,0.45)",
+                "0 0 0 1px rgba(255,255,255,0.05) inset, 0 18px 70px var(--theme-surface-inset)",
             }}
           />
         </div>
 
-        <div className="relative grid grid-cols-12 gap-0 border-b border-white/10 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+        <div className="relative grid grid-cols-12 gap-0 border-b border-[color:var(--theme-border-soft)] px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
           <div className="col-span-12 sm:col-span-3">Area</div>
           <div className="col-span-12 sm:col-span-4">Traditional</div>
           <div className="col-span-12 sm:col-span-5">
@@ -99,20 +99,20 @@ export default function WhySection() {
           </div>
         </div>
 
-        <div className="relative divide-y divide-white/10">
+        <div className="relative divide-y divide-[color:var(--theme-border-soft)]">
           {ROWS.map((r) => (
             <div key={r.label} className="grid grid-cols-12 gap-0 px-5 py-5">
               <div className="col-span-12 sm:col-span-3">
-                <div className="text-sm font-semibold text-neutral-50">{r.label}</div>
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{r.label}</div>
               </div>
 
-              <div className="col-span-12 mt-2 text-sm text-neutral-300 sm:col-span-4 sm:mt-0">
+              <div className="col-span-12 mt-2 text-sm text-[color:var(--theme-text-secondary)] sm:col-span-4 sm:mt-0">
                 {r.oldWay}
               </div>
 
               <div className="col-span-12 mt-2 sm:col-span-5 sm:mt-0">
                 <div
-                  className="relative rounded-2xl border border-white/10 bg-black/15 px-4 py-3"
+                  className="relative rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3"
                   style={{
                     boxShadow:
                       "0 0 0 1px rgba(197,122,74,0.07) inset, 0 0 28px rgba(197,122,74,0.10)",
@@ -135,7 +135,7 @@ export default function WhySection() {
                       }}
                       aria-hidden
                     />
-                    <div className="text-sm text-neutral-200">{r.newWay}</div>
+                    <div className="text-sm text-[color:var(--theme-text-primary)]">{r.newWay}</div>
                   </div>
                 </div>
               </div>
@@ -143,23 +143,23 @@ export default function WhySection() {
           ))}
         </div>
 
-        <div className="relative border-t border-white/10 px-5 py-4">
+        <div className="relative border-t border-[color:var(--theme-border-soft)] px-5 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs text-neutral-400">
+            <div className="text-xs text-[color:var(--theme-text-secondary)]">
               Less retyping. Faster approvals. Evidence that stays attached.
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <a
                 href="#plans"
-                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-semibold text-neutral-200 transition hover:border-white/20 hover:bg-black/35"
+                className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)]"
               >
                 See plans
               </a>
 
               <a
                 href="#"
-                className="inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-extrabold text-black transition hover:brightness-110"
+                className="inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-extrabold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110"
                 style={{
                   backgroundColor: "rgba(197,122,74,0.95)",
                   boxShadow: "0 0 30px rgba(197,122,74,0.25)",
@@ -172,16 +172,16 @@ export default function WhySection() {
         </div>
       </div>
 
-      <div className="relative mt-6 overflow-hidden rounded-3xl border border-white/10 bg-black/15 p-6 backdrop-blur-xl">
+      <div className="relative mt-6 overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 backdrop-blur-xl">
         <div
           className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
           style={{ background: "rgba(197,122,74,0.10)" }}
         />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm font-semibold text-neutral-50">
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             Result: faster repairs, cleaner approvals, fewer missed revenue opportunities.
           </div>
-          <div className="text-xs text-neutral-400">
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">
             Built for fleets • Works for automotive • Scales to multi-location
           </div>
         </div>

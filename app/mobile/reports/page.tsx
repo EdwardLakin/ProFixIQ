@@ -178,17 +178,17 @@ export default function MobileReportsPage() {
 
   if (!hasAccess && role) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-black via-slate-950 to-black text-white">
+      <main className="min-h-screen bg-gradient-to-b from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 pb-8 pt-6">
           <header className="space-y-1">
-            <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+            <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
               ProFixIQ • Mobile
             </div>
             <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-orange-400">
               Reports
             </h1>
           </header>
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             Mobile reports are available for owners, admins, and managers.
           </p>
         </div>
@@ -201,28 +201,28 @@ export default function MobileReportsPage() {
   /* ---------------------------------------------------------------------- */
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-black via-slate-950 to-black text-white">
+    <main className="min-h-screen bg-gradient-to-b from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-6">
         {/* Header */}
         <header className="space-y-1">
-          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
             ProFixIQ • Mobile
           </div>
           <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-orange-400">
             Shop Reports
           </h1>
-          <p className="text-[0.8rem] text-neutral-400">
+          <p className="text-[0.8rem] text-[color:var(--theme-text-secondary)]">
             Quick performance view in your pocket.
           </p>
         </header>
 
         {/* Time range selector */}
-        <section className="space-y-2 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+        <section className="space-y-2 rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[var(--theme-shadow-medium)]">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+            <span className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Time range
             </span>
-            <span className="text-[0.7rem] text-neutral-300">
+            <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
               {dateRangeLabel}
             </span>
           </div>
@@ -238,8 +238,8 @@ export default function MobileReportsPage() {
                     variant={active ? "default" : "outline"}
                     className={
                       active
-                        ? "border-orange-500 bg-orange-500 text-black text-[0.7rem] px-3 py-1"
-                        : "border-white/15 bg-transparent text-[0.7rem] px-3 py-1"
+                        ? "border-orange-500 bg-orange-500 text-[color:var(--theme-text-on-accent)] text-[0.7rem] px-3 py-1"
+                        : "border-[color:var(--theme-border-soft)] bg-transparent text-[0.7rem] px-3 py-1"
                     }
                     onClick={() => setRange(r)}
                   >
@@ -259,7 +259,7 @@ export default function MobileReportsPage() {
         )}
 
         {loading && (
-          <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-4 text-[0.8rem] text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-[0.8rem] text-[color:var(--theme-text-secondary)]">
             Loading stats…
           </div>
         )}
@@ -301,13 +301,13 @@ export default function MobileReportsPage() {
             </section>
 
             {/* AI summary */}
-            <section className="space-y-1 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-3 text-xs text-neutral-200 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
+            <section className="space-y-1 rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[0.65rem] uppercase tracking-[0.18em] text-orange-300">
                   AI summary
                 </span>
                 {aiLoading && (
-                  <span className="text-[0.65rem] text-neutral-400">
+                  <span className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">
                     Analyzing…
                   </span>
                 )}
@@ -315,7 +315,7 @@ export default function MobileReportsPage() {
               {aiSummary ? (
                 <p className="whitespace-pre-wrap">{aiSummary}</p>
               ) : !aiLoading ? (
-                <p className="text-[0.7rem] text-neutral-400">
+                <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                   No AI summary yet for this range.
                 </p>
               ) : null}
@@ -324,7 +324,7 @@ export default function MobileReportsPage() {
         )}
 
         {!loading && !error && !hasData && (
-          <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40 px-3 py-4 text-[0.8rem] text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-[0.8rem] text-[color:var(--theme-text-secondary)]">
             No stats found for this range. Try a different time range.
           </div>
         )}
@@ -347,8 +347,8 @@ function SummaryCard({
   accent?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-white/[0.03] px-3 py-3 shadow-[0_16px_32px_rgba(0,0,0,0.75)]">
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
+    <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-subtle)] px-3 py-3 shadow-[var(--theme-shadow-medium)]">
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
       <div className={`mt-1 text-lg font-semibold ${accent ?? ""}`}>

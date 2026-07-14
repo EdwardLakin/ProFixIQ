@@ -6,7 +6,7 @@ export default async function Page() {
   await requireAdminPageAccess({ allow: ["owner", "admin"] });
 
   return (
-    <Suspense fallback={<div className="p-6 text-white">Loading…</div>}>
+    <Suspense fallback={<div className="p-6 text-[color:var(--theme-text-primary)]">Loading…</div>}>
       <FeaturePage />
     </Suspense>
   );

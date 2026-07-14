@@ -89,20 +89,20 @@ export default function FleetPortalDashboard({
     <section className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
             Fleet Portal
           </p>
           <h1
-            className="mt-1 text-3xl md:text-4xl text-neutral-100"
+            className="mt-1 text-3xl md:text-4xl text-[color:var(--theme-text-primary)]"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
             {name} – Portal Dispatch
           </h1>
-          <p className="mt-2 max-w-xl text-sm text-neutral-400">
+          <p className="mt-2 max-w-xl text-sm text-[color:var(--theme-text-secondary)]">
             See your assigned units, submit pre-trips, and track open service
             requests. What your drivers see, your shop and dispatch can see too.
           </p>
-          <p className="mt-1 text-[11px] text-neutral-500">
+          <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
             {demoUnits.length} active units visible in this portal.
           </p>
         </div>
@@ -118,16 +118,16 @@ export default function FleetPortalDashboard({
         <div className="lg:col-span-2 metal-card rounded-3xl p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-neutral-100">
+              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 My assigned units
               </h2>
-              <p className="mt-1 text-xs text-neutral-400">
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Pick your unit, complete the pre-trip, and send defects back to
                 dispatch.
               </p>
             </div>
 
-            <span className="hidden rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-300 md:inline-flex">
+            <span className="hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)] md:inline-flex">
               Daily pre-trip • Compliance
             </span>
           </div>
@@ -136,7 +136,7 @@ export default function FleetPortalDashboard({
             {demoAssignments.map((assign) => (
               <div
                 key={assign.id}
-                className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs md:flex-row md:items-center md:justify-between"
+                className="flex flex-col gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs md:flex-row md:items-center md:justify-between"
               >
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
@@ -144,18 +144,18 @@ export default function FleetPortalDashboard({
                       {assign.unitLabel}
                     </span>
                     {assign.routeLabel && (
-                      <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+                      <span className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                         {assign.routeLabel}
                       </span>
                     )}
                   </div>
-                  <div className="text-neutral-300">
+                  <div className="text-[color:var(--theme-text-secondary)]">
                     Driver: <span className="font-medium">{assign.driverName}</span>
                   </div>
                   {assign.nextPreTripDue && (
-                    <div className="text-neutral-500">
+                    <div className="text-[color:var(--theme-text-muted)]">
                       Next pre-trip due:{" "}
-                      <span className="text-neutral-300">
+                      <span className="text-[color:var(--theme-text-secondary)]">
                         {fmtDateTime(assign.nextPreTripDue)}
                       </span>
                     </div>
@@ -163,7 +163,7 @@ export default function FleetPortalDashboard({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-neutral-300">
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     {assign.state === "pretrip_due"
                       ? "Pre-trip required"
                       : assign.state === "en_route"
@@ -175,7 +175,7 @@ export default function FleetPortalDashboard({
                     href={`/mobile/fleet/pretrip/${assign.unitId}?driver=${encodeURIComponent(
                       assign.driverName,
                     )}`}
-                    className="rounded-xl px-3 py-1.5 text-xs font-semibold text-black"
+                    className="rounded-xl px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-on-accent)]"
                     style={{ backgroundColor: "var(--accent-copper)" }}
                   >
                     Start pre-trip
@@ -187,10 +187,10 @@ export default function FleetPortalDashboard({
         </div>
 
         <div className="metal-card rounded-3xl p-4 text-xs">
-          <h2 className="text-sm font-semibold text-neutral-100">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             Fleet health snapshot
           </h2>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             A quick view of units with open safety or compliance items from
             inspections and pre-trips.
           </p>
@@ -199,13 +199,13 @@ export default function FleetPortalDashboard({
             {(issues ?? demoIssues).map((issue) => (
               <div
                 key={issue.id}
-                className="rounded-2xl border border-white/10 bg-black/40 p-3"
+                className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="accent-chip px-2 py-0.5 text-[10px]">
                     {issue.unitLabel}
                   </span>
-                  <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     {issue.severity === "safety"
                       ? "Safety"
                       : issue.severity === "compliance"
@@ -213,9 +213,9 @@ export default function FleetPortalDashboard({
                         : "Recommend"}
                   </span>
                 </div>
-                <p className="mt-2 text-neutral-200">{issue.summary}</p>
-                <p className="mt-1 text-[10px] text-neutral-500">Opened {fmtDateTime(issue.createdAt)} • 
-                  Status: <span className="text-neutral-300">{issue.status}</span>
+                <p className="mt-2 text-[color:var(--theme-text-primary)]">{issue.summary}</p>
+                <p className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">Opened {fmtDateTime(issue.createdAt)} •
+                  Status: <span className="text-[color:var(--theme-text-secondary)]">{issue.status}</span>
                 </p>
               </div>
             ))}
@@ -224,11 +224,11 @@ export default function FleetPortalDashboard({
           <div className="mt-4 flex flex-col gap-2">
             <Link
               href="/fleet/service-requests"
-              className="rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-center text-xs font-semibold text-neutral-100 hover:bg-neutral-900/40"
+              className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-center text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
             >
               View service requests in shop
             </Link>
-            <p className="text-[10px] text-neutral-500">
+            <p className="text-[10px] text-[color:var(--theme-text-muted)]">
               Fleet portal shows what’s open; shop view handles scheduling and
               work orders.
             </p>
@@ -239,15 +239,15 @@ export default function FleetPortalDashboard({
       <div className="metal-card mt-4 rounded-3xl p-4 text-xs">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-neutral-100">
+            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
               Pre-trip history
             </h2>
-            <p className="mt-1 text-xs text-neutral-400">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Track past pre-trips, missed days, and defects for audit and
               coaching.
             </p>
           </div>
-          <span className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
             Coming from fleet_pretrip_reports
           </span>
         </div>

@@ -82,11 +82,11 @@ export default async function PortalInvoicePage({
           <div className="flex items-center justify-between gap-3">
             <Link
               href="/portal/invoices"
-              className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs text-neutral-200"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs text-[color:var(--theme-text-primary)]"
             >
               ← Invoices
             </Link>
-            <div className="text-xs uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Version {selectedVersion.version_number}
             </div>
           </div>
@@ -95,39 +95,39 @@ export default async function PortalInvoicePage({
             <PortalPaymentStatus sessionId={query.payment_session} />
           ) : null}
 
-          <section className="rounded-3xl border border-white/10 bg-black/35 p-6 shadow-card">
+          <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 shadow-card">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Invoice</div>
-                <h1 className="mt-1 text-2xl font-semibold text-white">{title}</h1>
-                <div className="mt-1 text-sm text-neutral-400">
+                <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">Invoice</div>
+                <h1 className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{title}</h1>
+                <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                   Issued {dateLabel(selectedVersion.issued_at)}
                 </div>
               </div>
-              <div className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm capitalize text-neutral-200">
+              <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm capitalize text-[color:var(--theme-text-primary)]">
                 {statusLabel(selectedVersion.lifecycle_status)}
               </div>
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Invoice total</div>
-                <div className="mt-1 text-xl font-semibold text-white">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Invoice total</div>
+                <div className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">
                   {money(selectedVersion.total, selectedVersion.currency)}
                 </div>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Paid</div>
-                <div className="mt-1 text-xl font-semibold text-white">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Paid</div>
+                <div className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">
                   {money(
                     Number(selectedVersion.paid_total) - Number(selectedVersion.refunded_total),
                     selectedVersion.currency,
                   )}
                 </div>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Balance</div>
-                <div className="mt-1 text-xl font-semibold text-white">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Balance</div>
+                <div className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">
                   {money(selectedVersion.outstanding_total, selectedVersion.currency)}
                 </div>
               </div>
@@ -143,7 +143,7 @@ export default async function PortalInvoicePage({
                 />
               </div>
             ) : (
-              <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-neutral-300">
+              <div className="mt-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
                 {selectedVersion.lifecycle_status === "paid"
                   ? "Paid in full."
                   : "This invoice is not currently payable."}
@@ -155,49 +155,49 @@ export default async function PortalInvoicePage({
                 href={`/api/invoice-versions/${selectedVersion.id}/pdf?download=1`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex rounded-full border border-white/10 bg-black/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white"
+                className="inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]"
               >
                 View issued PDF
               </a>
             </div>
           </section>
 
-          <section className="rounded-3xl border border-white/10 bg-black/30 p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">Totals</h2>
+          <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Totals</h2>
             <div className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-neutral-400">Labor</span><span>{money(snapshot.laborCost, selectedVersion.currency)}</span></div>
-              <div className="flex justify-between"><span className="text-neutral-400">Parts</span><span>{money(snapshot.partsCost, selectedVersion.currency)}</span></div>
-              <div className="flex justify-between"><span className="text-neutral-400">Shop supplies</span><span>{money(snapshot.shopSuppliesTotal, selectedVersion.currency)}</span></div>
-              <div className="flex justify-between"><span className="text-neutral-400">Discount</span><span>-{money(snapshot.discountTotal, selectedVersion.currency)}</span></div>
-              <div className="flex justify-between"><span className="text-neutral-400">Tax</span><span>{money(snapshot.taxTotal, selectedVersion.currency)}</span></div>
-              <div className="flex justify-between border-t border-white/10 pt-3 text-base font-semibold"><span>Total</span><span>{money(selectedVersion.total, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-[color:var(--theme-text-secondary)]">Labor</span><span>{money(snapshot.laborCost, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-[color:var(--theme-text-secondary)]">Parts</span><span>{money(snapshot.partsCost, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-[color:var(--theme-text-secondary)]">Shop supplies</span><span>{money(snapshot.shopSuppliesTotal, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-[color:var(--theme-text-secondary)]">Discount</span><span>-{money(snapshot.discountTotal, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-[color:var(--theme-text-secondary)]">Tax</span><span>{money(snapshot.taxTotal, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between border-t border-[color:var(--theme-border-soft)] pt-3 text-base font-semibold"><span>Total</span><span>{money(selectedVersion.total, selectedVersion.currency)}</span></div>
             </div>
           </section>
 
-          <section className="rounded-3xl border border-white/10 bg-black/30 p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">Work performed</h2>
+          <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Work performed</h2>
             <div className="mt-4 space-y-3">
               {snapshot.lines.map((line) => (
-                <div key={line.id} className="rounded-2xl border border-white/10 bg-black/30 p-4">
-                  <div className="font-semibold text-white">{line.description || line.complaint || "Service line"}</div>
-                  {line.cause ? <div className="mt-1 text-sm text-neutral-400">Cause: {line.cause}</div> : null}
-                  {line.correction ? <div className="mt-1 text-sm text-neutral-300">Correction: {line.correction}</div> : null}
+                <div key={line.id} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                  <div className="font-semibold text-[color:var(--theme-text-primary)]">{line.description || line.complaint || "Service line"}</div>
+                  {line.cause ? <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Cause: {line.cause}</div> : null}
+                  {line.correction ? <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Correction: {line.correction}</div> : null}
                 </div>
               ))}
-              {snapshot.lines.length === 0 ? <div className="text-sm text-neutral-500">No service lines recorded.</div> : null}
+              {snapshot.lines.length === 0 ? <div className="text-sm text-[color:var(--theme-text-muted)]">No service lines recorded.</div> : null}
             </div>
           </section>
 
-          <section className="rounded-3xl border border-white/10 bg-black/30 p-6">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">Parts</h2>
+          <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Parts</h2>
             <div className="mt-4 space-y-2">
               {snapshot.parts.map((part) => (
-                <div key={part.id} className="flex justify-between gap-4 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm">
-                  <div><div className="font-medium text-white">{part.name}</div><div className="text-neutral-500">Qty {part.qty}</div></div>
-                  <div className="text-right text-neutral-200">{money(part.totalPrice, selectedVersion.currency)}</div>
+                <div key={part.id} className="flex justify-between gap-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm">
+                  <div><div className="font-medium text-[color:var(--theme-text-primary)]">{part.name}</div><div className="text-[color:var(--theme-text-muted)]">Qty {part.qty}</div></div>
+                  <div className="text-right text-[color:var(--theme-text-primary)]">{money(part.totalPrice, selectedVersion.currency)}</div>
                 </div>
               ))}
-              {snapshot.parts.length === 0 ? <div className="text-sm text-neutral-500">No parts recorded.</div> : null}
+              {snapshot.parts.length === 0 ? <div className="text-sm text-[color:var(--theme-text-muted)]">No parts recorded.</div> : null}
             </div>
           </section>
         </main>

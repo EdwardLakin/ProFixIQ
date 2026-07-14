@@ -50,18 +50,18 @@ function normalizeMetricLabel(metric: string): string {
 
 function inputCls() {
   return [
-    "h-[34px] w-full rounded-lg border border-white/10 bg-black/55",
-    "px-3 py-1.5 text-sm text-neutral-100 placeholder:text-neutral-500",
+    "h-[34px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
+    "px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
     "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
   ].join(" ");
 }
 
 function unitCls() {
-  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400";
+  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[color:var(--theme-text-secondary)]";
 }
 
 function cornerShellCls() {
-  return "rounded-2xl border border-white/10 bg-black/35 shadow-[0_18px_45px_rgba(0,0,0,0.75)] backdrop-blur-xl";
+  return "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 }
 
 export default function CornerGrid(props: CornerGridProps) {
@@ -111,9 +111,9 @@ export default function CornerGrid(props: CornerGridProps) {
 
   if (!parsed.hasAny) {
     return (
-      <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-neutral-300">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
         No corner-grid items detected (expected{" "}
-        <code className="text-neutral-100">LF/RF/LR/RR</code> with Pads/Shoes + Rotor/Drum).
+        <code className="text-[color:var(--theme-text-primary)]">LF/RF/LR/RR</code> with Pads/Shoes + Rotor/Drum).
       </div>
     );
   }
@@ -131,7 +131,7 @@ export default function CornerGrid(props: CornerGridProps) {
 
     return (
       <div className="flex flex-col gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
           {corner}
         </div>
 
@@ -171,14 +171,14 @@ export default function CornerGrid(props: CornerGridProps) {
   return (
     <div className="grid w-full gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
-        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
           Corner Grid – Hydraulic Brakes (sketch layout)
         </div>
 
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500/70 hover:bg-black/70"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -203,7 +203,7 @@ export default function CornerGrid(props: CornerGridProps) {
               <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_64px_minmax(170px,1fr)]">
                 {Stack("LF")}
                 <div className="flex h-full items-center justify-center">
-                  <div className="h-[110px] w-full rounded-xl border border-white/10 bg-black/25" />
+                  <div className="h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
                 </div>
                 {Stack("RF")}
               </div>
@@ -222,14 +222,14 @@ export default function CornerGrid(props: CornerGridProps) {
               <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-[minmax(170px,1fr)_64px_minmax(170px,1fr)]">
                 {Stack("LR")}
                 <div className="flex h-full items-center justify-center">
-                  <div className="h-[110px] w-full rounded-xl border border-white/10 bg-black/25" />
+                  <div className="h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
                 </div>
                 {Stack("RR")}
               </div>
             </div>
 
             {/* Labels legend */}
-            <div className="pt-1 text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+            <div className="pt-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
               Pads/Shoes + Rotor/Drum are stacked per corner (matches sketch)
             </div>
           </div>

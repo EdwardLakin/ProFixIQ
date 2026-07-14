@@ -52,8 +52,8 @@ export default async function PropertyMemberPortalPage() {
   if (!(memberships ?? []).length) {
     return (
       <section className="metal-card rounded-3xl p-5">
-        <h1 className="text-2xl text-neutral-100">Property Portal</h1>
-        <p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p>
+        <h1 className="text-2xl text-[color:var(--theme-text-primary)]">Property Portal</h1>
+        <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No property portal access is assigned to this account.</p>
       </section>
     );
   }
@@ -80,9 +80,9 @@ export default async function PropertyMemberPortalPage() {
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Property Access</p>
-      <h1 className="mt-2 text-2xl text-neutral-100">Property Portal</h1>
-      <p className="mt-2 text-sm text-neutral-300">View maintenance requests, inspections, photos, and property updates.</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Property Access</p>
+      <h1 className="mt-2 text-2xl text-[color:var(--theme-text-primary)]">Property Portal</h1>
+      <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">View maintenance requests, inspections, photos, and property updates.</p>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         {portalLinks.map((link) => (
@@ -93,8 +93,8 @@ export default async function PropertyMemberPortalPage() {
         ))}
       </div>
 
-      <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-300">Property Access</h2>
+      <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Property Access</h2>
         <div className="mt-3 space-y-3">
           {(memberships ?? []).map((member) => {
             const property = member.property_id ? propertyById.get(member.property_id) : null;
@@ -102,11 +102,11 @@ export default async function PropertyMemberPortalPage() {
             const portfolio = member.portfolio_id ? portfolioById.get(member.portfolio_id) : null;
 
             return (
-              <article key={member.id} className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-neutral-200">
-                <p className="font-medium text-neutral-100">Assigned role: {member.role}</p>
-                <p className="mt-1 text-neutral-300">Portfolio: {portfolio?.name ?? "All visible portfolios"}</p>
-                <p className="text-neutral-300">Property: {property?.name ?? "All visible properties"}</p>
-                <p className="text-neutral-300">Unit: {unit?.unit_label ?? "All visible units"}</p>
+              <article key={member.id} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)]">
+                <p className="font-medium text-[color:var(--theme-text-primary)]">Assigned role: {member.role}</p>
+                <p className="mt-1 text-[color:var(--theme-text-secondary)]">Portfolio: {portfolio?.name ?? "All visible portfolios"}</p>
+                <p className="text-[color:var(--theme-text-secondary)]">Property: {property?.name ?? "All visible properties"}</p>
+                <p className="text-[color:var(--theme-text-secondary)]">Unit: {unit?.unit_label ?? "All visible units"}</p>
               </article>
             );
           })}

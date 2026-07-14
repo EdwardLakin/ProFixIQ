@@ -23,7 +23,7 @@ type PortalBooking = {
 
 
 function cardClass() {
-  return "rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card";
+  return "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card";
 }
 
 function pillClass(status?: string | null) {
@@ -32,7 +32,7 @@ function pillClass(status?: string | null) {
     return "border-emerald-500/30 bg-emerald-900/15 text-emerald-200";
   if (s === "cancelled")
     return "border-red-500/30 bg-red-900/15 text-red-200";
-  return "border-white/12 bg-white/5 text-neutral-200";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
 }
 
 function fmtRange(startsAtIso: string, endsAtIso: string) {
@@ -179,7 +179,7 @@ export default function PortalCustomerAppointmentsPage() {
   if (loading) {
     return (
       <div className="mx-auto max-w-xl">
-        <div className={cardClass() + " text-sm text-neutral-200"}>
+        <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
           Loading your portal…
         </div>
       </div>
@@ -190,10 +190,10 @@ export default function PortalCustomerAppointmentsPage() {
     return (
       <div className="mx-auto max-w-xl space-y-3">
         <div className={cardClass()}>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
             My appointments
           </h1>
-          <p className="mt-2 text-sm text-neutral-400">
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
             We couldn’t find your customer profile yet.
           </p>
           <div className="mt-4 flex gap-2">
@@ -210,14 +210,14 @@ export default function PortalCustomerAppointmentsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl space-y-5 text-white">
+    <div className="mx-auto w-full max-w-xl space-y-5 text-[color:var(--theme-text-primary)]">
       <Toaster position="top-center" />
 
       <header className="space-y-1">
-        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
           My appointments
         </h1>
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-[color:var(--theme-text-secondary)]">
           Request service, then track your upcoming visits here.
         </p>
       </header>
@@ -233,18 +233,18 @@ export default function PortalCustomerAppointmentsPage() {
 
       <section className={cardClass()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-neutral-100">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
             Upcoming ({upcoming.length})
           </h2>
           {loadingBookings ? (
-            <span className="text-[0.75rem] text-neutral-400">Loading…</span>
+            <span className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">Loading…</span>
           ) : null}
         </div>
 
         {loadingBookings ? (
-          <p className="mt-3 text-sm text-neutral-400">Fetching your bookings…</p>
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">Fetching your bookings…</p>
         ) : upcoming.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-400">No upcoming appointments.</p>
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No upcoming appointments.</p>
         ) : (
           <ul className="mt-3 space-y-2">
             {upcoming.map((b) => {
@@ -252,17 +252,17 @@ export default function PortalCustomerAppointmentsPage() {
               return (
                 <li
                   key={b.id}
-                  className="rounded-xl border border-white/10 bg-black/35 p-3"
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-neutral-100">
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {date}
                       </div>
-                      <div className="mt-0.5 text-xs text-neutral-300">{time}</div>
+                      <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{time}</div>
 
                       {b.notes ? (
-                        <div className="mt-2 text-xs text-neutral-400">
+                        <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                           {b.notes}
                         </div>
                       ) : null}
@@ -297,14 +297,14 @@ export default function PortalCustomerAppointmentsPage() {
       </section>
 
       <section className={cardClass()}>
-        <h2 className="text-sm font-semibold text-neutral-100">
+        <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
           Past ({past.length})
         </h2>
 
         {loadingBookings ? (
-          <p className="mt-3 text-sm text-neutral-400">Loading…</p>
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">Loading…</p>
         ) : past.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-400">No past appointments.</p>
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No past appointments.</p>
         ) : (
           <ul className="mt-3 space-y-2">
             {past.slice(0, 25).map((b) => {
@@ -312,14 +312,14 @@ export default function PortalCustomerAppointmentsPage() {
               return (
                 <li
                   key={b.id}
-                  className="rounded-xl border border-white/10 bg-black/25 p-3"
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-neutral-100">
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {date}
                       </div>
-                      <div className="mt-0.5 text-xs text-neutral-400">{time}</div>
+                      <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{time}</div>
                     </div>
 
                     <span
@@ -333,7 +333,7 @@ export default function PortalCustomerAppointmentsPage() {
                   </div>
 
                   {b.notes ? (
-                    <div className="mt-2 text-xs text-neutral-500">{b.notes}</div>
+                    <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">{b.notes}</div>
                   ) : null}
                 </li>
               );
@@ -342,7 +342,7 @@ export default function PortalCustomerAppointmentsPage() {
         )}
       </section>
 
-      <p className="text-[0.75rem] text-neutral-500">
+      <p className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
         Need to change a time? Cancel and submit a new request.
       </p>
     </div>

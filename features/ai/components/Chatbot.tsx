@@ -158,9 +158,9 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
         className="
           fixed bottom-6 right-6 z-40
           grid h-12 w-12 place-items-center
-          rounded-2xl border border-white/10
-          bg-black/80
-          shadow-[0_18px_40px_rgba(0,0,0,0.95)]
+          rounded-2xl border border-[color:var(--theme-border-soft)]
+          bg-[color:var(--theme-surface-overlay)]
+          shadow-[var(--theme-shadow-medium)]
           backdrop-blur-2xl
           transition
           hover:border-[color:var(--accent-copper-soft,#fdba74)]
@@ -168,11 +168,11 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
         "
         style={{
           backgroundImage:
-            "radial-gradient(circle at 0% 0%, rgba(248,113,22,0.55), transparent 55%), radial-gradient(circle at 100% 100%, rgba(15,23,42,0.95), #020617 80%)",
+            "var(--theme-gradient-panel)",
         }}
       >
         <span className="relative inline-flex items-center justify-center">
-          <FaRobot size={18} className="text-white" />
+          <FaRobot size={18} className="text-[color:var(--theme-text-primary)]" />
           {/* Online dot */}
           <span className="absolute -right-1 -top-1 inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]">
             <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-emerald-400/70" />
@@ -187,14 +187,14 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
             fixed bottom-24 right-6 z-40
             flex w-80 flex-col overflow-hidden
             rounded-3xl
-            border border-[color:var(--metal-border-soft,#1f2937)]
-            bg-[radial-gradient(circle_at_top,_rgba(15,23,42,0.98),#020617_88%)]
-            shadow-[0_30px_70px_rgba(0,0,0,0.95)]
+            border border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+            bg-[var(--theme-gradient-panel)]
+            shadow-[var(--theme-shadow-medium)]
             backdrop-blur-2xl
           "
         >
           {/* Header */}
-          <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-black/40 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-2 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5">
             <div className="flex items-center gap-2">
               <Link
                 href="/"
@@ -206,20 +206,20 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
                   alt="ProFixIQ"
                   width={26}
                   height={26}
-                  className="rounded-lg border border-white/10 bg-black/60"
+                  className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)]"
                   priority
                 />
               </Link>
               <div className="leading-tight">
                 <div
-                  className="text-xs font-semibold tracking-wide text-neutral-50"
+                  className="text-xs font-semibold tracking-wide text-[color:var(--theme-text-primary)]"
                   style={{ fontFamily: "var(--font-blackops)" }}
                 >
                   TechBot
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                  <span className="text-[10px] text-neutral-400">
+                  <span className="text-[10px] text-[color:var(--theme-text-secondary)]">
                     {variant === "marketing"
                       ? "Answers questions about ProFixIQ"
                       : "Helps with your ProFixIQ workspace"}
@@ -231,7 +231,7 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-md border border-white/10 bg-black/60 px-2 py-1 text-[10px] text-neutral-300 hover:bg-black/80 hover:text-white"
+              className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-[10px] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]"
             >
               Close
             </button>
@@ -239,8 +239,8 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
 
           {/* Quick prompts (only before user has asked anything) */}
           {variant === "marketing" && !hasUserMessages && (
-            <div className="border-b border-white/10 bg-black/40 px-3 py-2">
-              <p className="mb-1 text-[10px] text-neutral-400">
+            <div className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+              <p className="mb-1 text-[10px] text-[color:var(--theme-text-secondary)]">
                 Try one of these:
               </p>
               <div className="flex flex-wrap gap-1.5">
@@ -250,11 +250,11 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
                     type="button"
                     onClick={() => void sendMessage(q)}
                     className="
-                      rounded-full border border-white/12
-                      bg-neutral-900/70 px-2 py-1
-                      text-[10px] text-neutral-200
+                      rounded-full border border-[color:var(--theme-border-soft)]
+                      bg-[color:var(--theme-surface-panel)] px-2 py-1
+                      text-[10px] text-[color:var(--theme-text-primary)]
                       hover:border-[color:var(--accent-copper-soft,#fdba74)]
-                      hover:text-white
+                      hover:text-[color:var(--theme-text-primary)]
                     "
                   >
                     {q}
@@ -282,15 +282,15 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
                         ? {
                             background:
                               "linear-gradient(to right,var(--accent-copper-soft,#fdba74),var(--accent-copper,#f97316))",
-                            color: "#020617",
+                            color: "var(--theme-surface-page)",
                             boxShadow:
-                              "0 10px 30px rgba(0,0,0,0.8), 0 0 18px rgba(249,115,22,0.7)",
+                              "0 10px 30px var(--theme-surface-inset), 0 0 18px rgba(249,115,22,0.7)",
                           }
                         : {
                             background:
-                              "radial-gradient(circle at top, rgba(15,23,42,0.98), #020617 90%)",
+                              "var(--theme-gradient-panel)",
                             border: "1px solid rgba(148,163,184,0.35)",
-                            color: "#e5e7eb",
+                            color: "var(--theme-text-primary)",
                           }
                     }
                   >
@@ -299,7 +299,7 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
                 );
               })}
             {loading && (
-              <div className="mr-auto flex max-w-[70%] items-center gap-2 rounded-2xl border border-white/10 bg-black/70 px-3 py-2 text-[11px] text-neutral-300">
+              <div className="mr-auto flex max-w-[70%] items-center gap-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                 <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-[color:var(--accent-copper,#f97316)]" />
                 TechBot is thinking…
               </div>
@@ -318,15 +318,15 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
               e.preventDefault();
               void sendMessage();
             }}
-            className="flex items-center gap-2 border-t border-white/10 bg-black/55 px-3 py-2"
+            className="flex items-center gap-2 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2"
           >
             <input
               type="text"
               className="
-                flex-1 rounded-xl border border-white/10
-                bg-neutral-950/80 px-3 py-1.5
-                text-[13px] text-white
-                placeholder:text-neutral-500
+                flex-1 rounded-xl border border-[color:var(--theme-border-soft)]
+                bg-[color:var(--theme-surface-page)] px-3 py-1.5
+                text-[13px] text-[color:var(--theme-text-primary)]
+                placeholder:text-[color:var(--theme-text-muted)]
                 outline-none
                 focus:border-[color:var(--accent-copper,#f97316)]
               "
@@ -339,9 +339,9 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
               type="submit"
               className="
                 inline-flex items-center justify-center
-                rounded-xl border border-white/10
+                rounded-xl border border-[color:var(--theme-border-soft)]
                 px-3 py-1.5 text-[13px]
-                text-black shadow-sm
+                text-[color:var(--theme-text-on-accent)] shadow-sm
                 disabled:cursor-not-allowed disabled:opacity-50
               "
               style={{

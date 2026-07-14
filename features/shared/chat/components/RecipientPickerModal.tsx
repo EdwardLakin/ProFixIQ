@@ -111,12 +111,12 @@ export default function RecipientPickerModal({
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="absolute inset-0 bg-[color:var(--theme-surface-overlay)]" onClick={onClose} />
 
       <div
         role="dialog"
         aria-modal="true"
-        className="relative w-full max-w-2xl rounded-md border border-neutral-800 bg-neutral-900 p-4 text-white shadow-xl"
+        className="relative w-full max-w-2xl rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 text-[color:var(--theme-text-primary)] shadow-xl"
       >
         {/* header */}
         <div className="mb-3 flex items-center justify-between">
@@ -124,7 +124,7 @@ export default function RecipientPickerModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+            className="rounded border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm hover:bg-[color:var(--theme-surface-panel-strong)]"
           >
             Close
           </button>
@@ -133,13 +133,13 @@ export default function RecipientPickerModal({
         {/* search */}
         <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_180px]">
           <input
-            className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-3 py-2"
             placeholder="Search by name or email…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           <select
-            className="rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+            className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-3 py-2"
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
           >
@@ -155,19 +155,19 @@ export default function RecipientPickerModal({
         {/* recent */}
         {recent.length > 0 && query.trim().length === 0 && (
           <div className="mb-3">
-            <div className="mb-1 text-xs uppercase tracking-wide text-neutral-400">Recent</div>
+            <div className="mb-1 text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Recent</div>
             <div className="grid gap-2 sm:grid-cols-2">
               {recent.map((p) => (
                 <button
                   key={p.id}
                   type="button"
                   onClick={() => setSelected([p.id])}
-                  className="flex items-center gap-3 rounded border border-neutral-800 bg-neutral-950 p-2 text-left hover:border-orange-500"
+                  className="flex items-center gap-3 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-2 text-left hover:border-orange-500"
                 >
                   <Avatar name={p.full_name ?? "User"} />
                   <div className="min-w-0">
                     <div className="truncate">{p.full_name ?? "User"}</div>
-                    <div className="text-xs text-neutral-400">{p.role}</div>
+                    <div className="text-xs text-[color:var(--theme-text-secondary)]">{p.role}</div>
                   </div>
                 </button>
               ))}
@@ -176,13 +176,13 @@ export default function RecipientPickerModal({
         )}
 
         {/* results */}
-        <div className="max-h-72 overflow-auto rounded border border-neutral-800">
+        <div className="max-h-72 overflow-auto rounded border border-[color:var(--theme-border-soft)]">
           {loading ? (
-            <div className="p-3 text-neutral-400">Searching…</div>
+            <div className="p-3 text-[color:var(--theme-text-secondary)]">Searching…</div>
           ) : profiles.length === 0 ? (
-            <div className="p-3 text-neutral-400">No matches.</div>
+            <div className="p-3 text-[color:var(--theme-text-secondary)]">No matches.</div>
           ) : (
-            <ul className="divide-y divide-neutral-800">
+            <ul className="divide-y divide-[color:var(--theme-border-soft)]">
               {profiles.map((p) => {
                 const checked = selected.includes(p.id);
                 return (
@@ -190,7 +190,7 @@ export default function RecipientPickerModal({
                     key={p.id}
                     role="button"
                     tabIndex={0}
-                    className="flex items-center gap-3 bg-neutral-950 p-2 hover:bg-neutral-900"
+                    className="flex items-center gap-3 bg-[color:var(--theme-surface-page)] p-2 hover:bg-[color:var(--theme-surface-panel)]"
                     onClick={() => toggle(p.id)}
                     onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && toggle(p.id)}
                   >
@@ -198,7 +198,7 @@ export default function RecipientPickerModal({
                     <Avatar name={p.full_name ?? "User"} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate">{p.full_name ?? "User"}</div>
-                      <div className="text-xs text-neutral-400">
+                      <div className="text-xs text-[color:var(--theme-text-secondary)]">
                         {p.role} {p.email ? `• ${p.email}` : ""}
                       </div>
                     </div>
@@ -213,9 +213,9 @@ export default function RecipientPickerModal({
         {/* group name */}
         {allowGroup && selected.length > 1 && (
           <div className="mt-3">
-            <label className="mb-1 block text-sm text-neutral-300">Group name</label>
+            <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Group name</label>
             <input
-              className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2"
+              className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-3 py-2"
               placeholder="e.g., Saturday Crew"
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
@@ -225,14 +225,14 @@ export default function RecipientPickerModal({
 
         {/* footer */}
         <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs text-neutral-400">
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">
             {selected.length} selected {allowGroup && selected.length > 1 ? "• group chat" : ""}
           </div>
           <button
             type="button"
             disabled={!canStart}
             onClick={() => onStartChat(selected, groupName.trim() || undefined)}
-            className="rounded bg-orange-600 px-4 py-2 font-semibold text-black disabled:opacity-60"
+            className="rounded bg-orange-600 px-4 py-2 font-semibold text-[color:var(--theme-text-on-accent)] disabled:opacity-60"
           >
             Start
           </button>
@@ -251,7 +251,7 @@ function Avatar({ name }: { name: string }) {
     .slice(0, 2)
     .toUpperCase();
   return (
-    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-700 text-xs">
+    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--theme-surface-hover)] text-xs">
       {initials || "U"}
     </div>
   );
@@ -260,7 +260,7 @@ function Avatar({ name }: { name: string }) {
 function OnlineDot({ online }: { online: boolean }) {
   return (
     <span
-      className={`h-2 w-2 rounded-full ${online ? "bg-green-500" : "bg-neutral-600"}`}
+      className={`h-2 w-2 rounded-full ${online ? "bg-green-500" : "bg-[color:var(--theme-surface-subtle)]"}`}
       title={online ? "Online recently" : "Offline"}
     />
   );
