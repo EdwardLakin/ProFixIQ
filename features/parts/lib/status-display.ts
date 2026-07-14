@@ -111,14 +111,20 @@ export function toRequestFlowDisplay(input: {
   const status = String(input.rawStatus ?? "").toLowerCase();
   const itemStates = input.itemStates ?? [];
 
+  // Persisted terminal/request-level states must not be hidden by stale item rows.
+  if (status === "fulfilled") return "complete";
+
   if (itemStates.length > 0) {
     if (itemStates.every((s) => s === "consumed")) return "complete";
     if (itemStates.every((s) => s === "received" || s === "consumed")) return "ready";
     if (itemStates.some((s) => s !== "requested")) return "in_progress";
+
+    // A request that has been quoted or approved is operationally in progress even
+    // when its item rows have not yet moved into ordering/receiving states.
+    if (status === "approved" || status === "quoted") return "in_progress";
     return "pending";
   }
 
-  if (status === "fulfilled") return "complete";
   if (status === "approved" || status === "quoted") return "in_progress";
   return "pending";
 }
