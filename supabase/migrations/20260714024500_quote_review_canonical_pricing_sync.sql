@@ -61,7 +61,7 @@ begin
     and pr.work_order_id = v_line.work_order_id
     and pr.quote_line_id = p_quote_line_id
     and lower(coalesce(pr.status, 'requested')) not in ('cancelled','canceled','rejected','declined','voided')
-  order by coalesce(pr.updated_at, pr.created_at) desc nulls last, pr.created_at desc nulls last, pr.id desc
+  order by pr.created_at desc nulls last, pr.id desc
   limit 1;
 
   select coalesce(s.labor_rate, 0)
@@ -221,7 +221,7 @@ for each row execute function public.trg_sync_quote_line_pricing_from_parts();
 
 drop trigger if exists trg_part_requests_sync_quote_pricing on public.part_requests;
 create trigger trg_part_requests_sync_quote_pricing
-after insert or update of status, quote_line_id, updated_at or delete
+after insert or update of status, quote_line_id or delete
 on public.part_requests
 for each row execute function public.trg_sync_quote_line_pricing_from_parts();
 
