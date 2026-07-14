@@ -42,17 +42,11 @@ export async function POST(
     const session = await closeWorkOrderCorrection({
       supabase: admin,
       shopId: access.profile.shop_id,
+      workOrderId,
       correctionSessionId,
       actorUserId: access.profile.id,
       ...(body?.metadata !== undefined ? { metadata: body.metadata } : {}),
     });
-
-    if (session.work_order_id !== workOrderId) {
-      return NextResponse.json(
-        { error: "Correction session does not belong to this work order" },
-        { status: 409 },
-      );
-    }
 
     return NextResponse.json({ ok: true, session });
   } catch (error: unknown) {
