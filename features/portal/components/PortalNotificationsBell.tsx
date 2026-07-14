@@ -1,137 +1,156 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type PortalNotificationRow = DB["public"]["Tables"]["portal_notifications"]["Row"];
+type RpcClient = ReturnType<typeof createBrowserSupabase> & {
+  rpc(
+    fn: string,
+    args?: Record<string, unknown>,
+  ): Promise<{ data: unknown; error: { message: string } | null }>;
+};
 
 function classNames(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
-const COPPER = "#C57A4A";
-
 export default function PortalNotificationsBell() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const rpc = supabase as RpcClient;
   const [items, setItems] = useState<PortalNotificationRow[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      setLoading(true);
-
-      // RLS should already scope to current portal user
-      const { data, error } = await supabase
-        .from("portal_notifications")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (!mounted) return;
-
-      if (error) {
-        console.error("[portal notifications] load failed:", error.message);
-        setItems([]);
-      } else if (data) {
-        setItems(data);
-      }
-
-      setLoading(false);
-    })();
-
-    return () => {
-      mounted = false;
-    };
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("portal_notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (!error) setItems(data ?? []);
+    setLoading(false);
   }, [supabase]);
 
-  const unreadCount = items.filter(
-    (n) => "read_at" in n ? n.read_at == null : true,
-  ).length;
+  useEffect(() => {
+    void load();
+    const channel = supabase
+      .channel("portal-notifications")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "portal_notifications" },
+        () => void load(),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [load, supabase]);
+
+  const markRead = useCallback(
+    async (id: string) => {
+      const { error } = await rpc.rpc("mark_portal_notification_read", {
+        p_notification_id: id,
+      });
+      if (!error) {
+        setItems((current) =>
+          current.map((item) =>
+            item.id === id ? { ...item, read_at: item.read_at ?? new Date().toISOString() } : item,
+          ),
+        );
+      }
+    },
+    [rpc],
+  );
+
+  const markAllRead = useCallback(async () => {
+    const { error } = await rpc.rpc("mark_all_portal_notifications_read");
+    if (!error) {
+      const now = new Date().toISOString();
+      setItems((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? now })));
+    }
+  }, [rpc]);
+
+  const unreadCount = items.filter((item) => item.read_at == null).length;
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={classNames(
-          "inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs",
-          "border-white/18 bg-black/40 text-neutral-100 hover:bg-black/70 active:scale-95",
-        )}
+        onClick={() => setOpen((value) => !value)}
+        className="relative inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/18 bg-black/40 text-xs text-neutral-100 hover:bg-black/70"
         aria-label="Notifications"
       >
-        {/* simple bell glyph */}
         <span aria-hidden>🔔</span>
-        {unreadCount > 0 && (
-          <span
-            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[0.6rem] font-semibold"
-            style={{ backgroundColor: COPPER }}
-          >
+        {unreadCount > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[color:var(--accent-copper,#c57a4a)] px-1 text-[0.6rem] font-semibold">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
-        )}
+        ) : null}
       </button>
 
-      {open && (
-        <div
-          className="absolute right-0 z-50 mt-2 w-72 rounded-2xl border border-white/15 bg-black/90 p-3 text-xs text-neutral-100 shadow-[0_18px_50px_rgba(0,0,0,0.9)] backdrop-blur-xl"
-          role="dialog"
-          aria-label="Notifications"
-        >
-          <div className="mb-2 flex items-center justify-between">
+      {open ? (
+        <div className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-white/15 bg-black/95 p-3 text-xs text-neutral-100 shadow-[0_18px_50px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+          <div className="mb-2 flex items-center justify-between gap-3">
             <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
               Notifications
             </div>
-            {loading && (
-              <div className="text-[0.7rem] text-neutral-500">Loading…</div>
-            )}
+            <button
+              type="button"
+              onClick={() => void markAllRead()}
+              disabled={unreadCount === 0}
+              className={classNames(
+                "text-[0.7rem] text-neutral-300 hover:text-white",
+                unreadCount === 0 && "opacity-40",
+              )}
+            >
+              Mark all read
+            </button>
           </div>
 
-          {items.length === 0 ? (
+          {loading ? <div className="py-3 text-neutral-500">Loading…</div> : null}
+          {!loading && items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/10 bg-black/40 px-3 py-3 text-[0.7rem] text-neutral-400">
-              You don&apos;t have any notifications yet.
+              You do not have any notifications yet.
             </div>
-          ) : (
-            <ul className="space-y-2">
-              {items.map((item) => (
-                <li
-                  key={item.id}
+          ) : null}
+
+          <ul className="max-h-96 space-y-2 overflow-y-auto">
+            {items.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  onClick={() => void markRead(item.id)}
                   className={classNames(
-                    "rounded-xl border px-3 py-2",
-                    "border-white/10 bg-black/40",
-                    "hover:border-white/20",
+                    "w-full rounded-xl border px-3 py-2 text-left",
+                    item.read_at
+                      ? "border-white/8 bg-black/30"
+                      : "border-[color:var(--accent-copper,#c57a4a)]/40 bg-[color:var(--accent-copper,#c57a4a)]/10",
                   )}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">
-                        {item.kind?.replaceAll("_", " ") ?? "Update"}
-                      </div>
-                      <div className="mt-0.5 text-[0.8rem] font-semibold text-neutral-100">
-                        {item.title ?? "Notification"}
-                      </div>
-                      {item.body && (
-                        <div className="mt-0.5 text-[0.75rem] text-neutral-300">
-                          {item.body}
-                        </div>
-                      )}
-                    </div>
+                  <div className="text-[0.65rem] uppercase tracking-[0.15em] text-neutral-500">
+                    {item.kind?.replaceAll("_", " ") ?? "Update"}
                   </div>
-                  {item.created_at && (
+                  <div className="mt-0.5 text-[0.8rem] font-semibold text-neutral-100">
+                    {item.title ?? "Notification"}
+                  </div>
+                  {item.body ? (
+                    <div className="mt-0.5 text-[0.75rem] text-neutral-300">{item.body}</div>
+                  ) : null}
+                  {item.created_at ? (
                     <div className="mt-1 text-[0.65rem] text-neutral-500">
                       {new Date(item.created_at).toLocaleString()}
                     </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
