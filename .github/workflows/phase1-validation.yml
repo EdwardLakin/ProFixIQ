@@ -1,0 +1,60 @@
+name: Phase 1 validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint changed financial files
+        run: >-
+          pnpm exec eslint
+          app/api/internal/financial-outbox/tick/route.ts
+          app/api/invoice-versions/[id]/pdf/route.ts
+          app/api/invoices/send/route.ts
+          app/api/invoices/versions/[id]/void/route.ts
+          app/api/payments/manual/route.ts
+          app/api/payments/manual/reverse/route.ts
+          app/api/portal/payments/checkout/route.ts
+          app/api/portal/payments/session/[id]/route.ts
+          app/api/stripe/payments/checkout/route.ts
+          app/portal/invoices/[id]/page.tsx
+          app/portal/invoices/page.tsx
+          features/email/server/sendFinancialEventEmail.ts
+          features/integrations/quickbooks/server/syncInvoice.ts
+          features/invoices/server/financialLifecycle.ts
+          features/invoices/server/invoiceVersionQueries.ts
+          features/invoices/server/processFinancialOutbox.ts
+          features/portal/components/PortalNotificationsBell.tsx
+          features/stripe/api/stripe/webhook/route.ts
+          features/stripe/components/CustomerPaymentButton.tsx
+          features/stripe/components/PortalPaymentStatus.tsx
+
+      - name: Focused Phase 1 tests
+        run: pnpm exec vitest run tests/phase1-financial-foundation.test.ts
