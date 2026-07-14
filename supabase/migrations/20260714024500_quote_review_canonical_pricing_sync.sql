@@ -1,26 +1,25 @@
 begin;
 
 do $$
-declare
-  v_constraint_def text;
-  v_check_expression text;
 begin
-  select pg_get_constraintdef(c.oid)
-    into v_constraint_def
-  from pg_constraint c
-  where c.conrelid = 'public.work_order_quote_lines'::regclass
-    and c.conname = 'work_order_quote_lines_stage_check';
+  alter table public.work_order_quote_lines
+    drop constraint if exists work_order_quote_lines_stage_check;
 
-  if v_constraint_def is not null and position('ready_to_send' in v_constraint_def) = 0 then
-    v_check_expression := regexp_replace(v_constraint_def, '^CHECK \\((.*)\\)$', '\\1');
-
-    execute 'alter table public.work_order_quote_lines drop constraint work_order_quote_lines_stage_check';
-    execute format(
-      'alter table public.work_order_quote_lines add constraint work_order_quote_lines_stage_check check ((%s) or stage::text = %L)',
-      v_check_expression,
-      'ready_to_send'
+  alter table public.work_order_quote_lines
+    add constraint work_order_quote_lines_stage_check
+    check (
+      stage is null
+      or stage::text = any (
+        array[
+          'advisor_pending'::text,
+          'customer_pending'::text,
+          'customer_approved'::text,
+          'customer_declined'::text,
+          'sent'::text,
+          'ready_to_send'::text
+        ]
+      )
     );
-  end if;
 end;
 $$;
 
