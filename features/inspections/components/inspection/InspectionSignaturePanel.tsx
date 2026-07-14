@@ -241,18 +241,18 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-zinc-800 bg-[color:var(--theme-surface-overlay)] p-3 text-xs text-zinc-200">
+    <div className="flex flex-col gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] p-4 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-soft)]">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             {header}
           </div>
-          <div className="text-[11px] text-zinc-500">{roleSubtext(role)}</div>
+          <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">{roleSubtext(role)}</div>
         </div>
       </div>
 
       <label
-        className="mt-1 text-[11px] text-zinc-300"
+        className="mt-1 text-[11px] font-medium text-[color:var(--theme-text-secondary)]"
         onClick={() => {
           if (!nameLocked) nameInputRef.current?.focus();
         }}
@@ -265,44 +265,44 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           onChange={(e) => setName(e.target.value)}
           disabled={nameLocked}
           className={[
-            "mt-1 w-full rounded border px-2 py-1 text-xs outline-none",
+            "mt-1 h-10 w-full rounded-lg border px-3 py-2 text-sm outline-none transition",
             nameLocked
-              ? "border-zinc-800 bg-zinc-950 text-zinc-300 opacity-90"
-              : "border-zinc-700 bg-zinc-900 text-zinc-100 focus:border-orange-500",
+              ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]"
+              : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-primary)_24%,transparent)]",
           ].join(" ")}
           placeholder={role === "technician" ? "Loading your name…" : "Type your full legal name"}
         />
         {role === "technician" && nameLocked ? (
-          <div className="mt-1 text-[10px] text-zinc-500">
+          <div className="mt-1.5 text-[10px] text-[color:var(--theme-text-secondary)]">
             Tech name is pulled from your profile (edit in your account settings if needed).
           </div>
         ) : null}
       </label>
 
-      <label className="flex items-start gap-2 text-[11px] text-zinc-300">
+      <label className="flex items-start gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-[11px] text-[color:var(--theme-text-secondary)]">
         <input
           type="checkbox"
           checked={confirm}
           onChange={(e) => setConfirm(e.target.checked)}
-          className="mt-[1px] h-3 w-3 rounded border border-zinc-600 bg-zinc-900 text-orange-500"
+          className="mt-[1px] h-3.5 w-3.5 rounded border border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-page)] text-[color:var(--brand-primary)]"
         />
         <span>{confirmText(role)}</span>
       </label>
 
       {!inspectionId && (
-        <p className="text-[11px] text-amber-300">
+        <p className="rounded-xl border border-amber-500/30 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:bg-amber-950/35 dark:text-amber-200">
           This inspection has not been saved to the database yet. Once it has a persistent{" "}
           <code>inspection_id</code>, this panel will allow signing.
         </p>
       )}
 
       {role === "technician" ? (
-        <p className="text-[11px] text-zinc-400">
+        <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
           If signing fails, it usually means no saved signature exists yet.
           {techSettingsHref ? (
             <>
               {" "}
-              Add one in <span className="text-zinc-300">Tech Settings</span>.
+              Add one in <span className="font-medium text-[color:var(--theme-text-primary)]">Tech Settings</span>.
             </>
           ) : null}
         </p>
@@ -313,7 +313,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           type="button"
           onClick={handleSign}
           disabled={busy || !inspectionId}
-          className="inline-flex items-center rounded-full border border-orange-500/80 bg-orange-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-100 shadow-[0_0_18px_rgba(248,113,113,0.65)] hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex items-center rounded-lg border border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Signing…" : "Sign"}
         </button>
