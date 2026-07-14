@@ -53,21 +53,29 @@ set quantity_requested = greatest(coalesce(quantity_requested, 0), 0),
     ),
     quantity_cancelled = greatest(coalesce(quantity_cancelled, 0), 0);
 
--- Backfill distinct identity snapshots without overwriting existing immutable values.
+-- Backfill immutable identity snapshots in two deterministic passes.
 update public.work_order_parts wop
-set manufacturer_snapshot = coalesce(wop.manufacturer_snapshot, p.manufacturer, pri.requested_manufacturer),
+set manufacturer_snapshot = coalesce(wop.manufacturer_snapshot, p.manufacturer),
     supplier_snapshot = coalesce(wop.supplier_snapshot, p.supplier),
-    vendor_snapshot = coalesce(wop.vendor_snapshot, pri.vendor),
-    part_number_snapshot = coalesce(wop.part_number_snapshot, p.part_number, pri.requested_part_number),
+    part_number_snapshot = coalesce(wop.part_number_snapshot, p.part_number),
     sku_snapshot = coalesce(wop.sku_snapshot, p.sku),
-    unit_cost_snapshot = coalesce(wop.unit_cost_snapshot, pri.unit_cost, p.cost, p.default_cost),
-    unit_sell_price_snapshot = coalesce(wop.unit_sell_price_snapshot, pri.quoted_price, pri.unit_price, p.price),
+    unit_cost_snapshot = coalesce(wop.unit_cost_snapshot, p.cost, p.default_cost),
+    unit_sell_price_snapshot = coalesce(wop.unit_sell_price_snapshot, p.price),
     updated_at = wop.updated_at
 from public.parts p
-left join public.part_request_items pri
-  on pri.id = wop.source_parts_request_item_id
 where p.id = wop.part_id
   and p.shop_id = wop.shop_id;
+
+update public.work_order_parts wop
+set manufacturer_snapshot = coalesce(wop.manufacturer_snapshot, pri.requested_manufacturer),
+    vendor_snapshot = coalesce(wop.vendor_snapshot, pri.vendor),
+    part_number_snapshot = coalesce(wop.part_number_snapshot, pri.requested_part_number),
+    unit_cost_snapshot = coalesce(wop.unit_cost_snapshot, pri.unit_cost),
+    unit_sell_price_snapshot = coalesce(wop.unit_sell_price_snapshot, pri.quoted_price, pri.unit_price),
+    updated_at = wop.updated_at
+from public.part_request_items pri
+where pri.id = wop.source_parts_request_item_id
+  and pri.shop_id = wop.shop_id;
 
 alter table public.part_request_items
   validate constraint part_request_items_nonnegative_phase3;
