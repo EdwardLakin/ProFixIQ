@@ -41,7 +41,7 @@ begin
     );
   end if;
 
-  if lower(coalesce(v_line.status, '')) = any(array[
+  if lower(coalesce(v_line.status::text, '')) = any(array[
     'approved','customer_approved','declined','deferred','converted','sent','rejected','cancelled'
   ]) or v_line.approved_at is not null or v_line.declined_at is not null or v_line.work_order_line_id is not null then
     return jsonb_build_object(
@@ -60,7 +60,7 @@ begin
   where pr.shop_id = p_shop_id
     and pr.work_order_id = v_line.work_order_id
     and pr.quote_line_id = p_quote_line_id
-    and lower(coalesce(pr.status, 'requested')) not in ('cancelled','canceled','rejected','declined','voided')
+    and lower(coalesce(pr.status::text, 'requested')) not in ('cancelled','canceled','rejected','declined','voided')
   order by pr.created_at desc nulls last, pr.id desc
   limit 1;
 
@@ -105,7 +105,7 @@ begin
         and pri.work_order_id = v_line.work_order_id
         and pri.quote_line_id = p_quote_line_id
         and pri.request_id = v_request_id
-        and lower(coalesce(pri.status, 'requested')) not in ('cancelled','canceled','rejected','declined','voided')
+        and lower(coalesce(pri.status::text, 'requested')) not in ('cancelled','canceled','rejected','declined','voided')
         and greatest(coalesce(pri.qty, pri.qty_requested, pri.qty_approved, 0), 0) > 0
     )
     select
