@@ -47,9 +47,9 @@ function displayCustomerName(b: Booking): string {
 
 function statusPill(status?: string | null) {
   const s = (status || "pending").toLowerCase();
-  if (s === "confirmed") return "border-emerald-500/30 bg-emerald-900/15 text-emerald-200";
-  if (s === "cancelled") return "border-red-500/30 bg-red-900/15 text-red-200";
-  return "border-sky-400/30 bg-sky-900/20 text-sky-100";
+  if (s === "confirmed") return "border-emerald-500/30 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200";
+  if (s === "cancelled") return "border-red-500/30 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200";
+  return "border-amber-500/30 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200";
 }
 
 function bookingCardStyle(status?: string | null) {
@@ -58,10 +58,10 @@ function bookingCardStyle(status?: string | null) {
     return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-inset)]";
   }
   if (s === "confirmed") {
-    return "border-emerald-400/25 bg-emerald-500/10 hover:bg-emerald-500/15";
+    return "border-emerald-500/25 bg-emerald-50/70 hover:bg-emerald-50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30";
   }
   // pending
-  return "border-sky-400/30 bg-sky-500/10 hover:bg-sky-500/20";
+  return "border-amber-500/30 bg-amber-50/70 hover:bg-amber-50 dark:bg-amber-950/20 dark:hover:bg-amber-950/30";
 }
 
 export default function WeeklyCalendar({
@@ -101,7 +101,7 @@ export default function WeeklyCalendar({
   const todayKey = dayKeyLocal(new Date());
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
+    <div className="grid min-w-[1120px] grid-cols-7 gap-3">
       {days.map((d) => {
         const k = dayKeyLocal(d);
         const dayBookings = grouped.get(k) ?? [];
@@ -114,7 +114,7 @@ export default function WeeklyCalendar({
         return (
           <div
             key={k}
-            className="flex min-h-[160px] flex-col gap-2 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-card backdrop-blur-md overflow-hidden"
+            className="flex min-h-[240px] min-w-0 flex-col gap-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-sm"
           >
             {/* Day header */}
             <div className="flex items-center gap-2">
