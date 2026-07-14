@@ -46,7 +46,7 @@ const ActionButton = ({
     type="button"
     onClick={onClick}
     title={title}
-    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm backdrop-blur-md transition-colors"
+    className="app-shell-action inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm backdrop-blur-md transition-colors"
     style={{
       borderColor: "var(--theme-border-soft)",
       background:
