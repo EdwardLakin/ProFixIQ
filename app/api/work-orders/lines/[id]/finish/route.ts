@@ -7,11 +7,15 @@ import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobP
 type Body = {
   cause?: string | null;
   correction?: string | null;
+  operationKey?: string;
+  idempotencyKey?: string;
 };
 
 function extractLineId(req: NextRequest): string | null {
-  const m = req.nextUrl.pathname.match(/\/api\/work-orders\/lines\/([^/]+)\/finish$/);
-  return m?.[1] ?? null;
+  const match = req.nextUrl.pathname.match(
+    /\/api\/work-orders\/lines\/([^/]+)\/finish$/,
+  );
+  return match?.[1] ?? null;
 }
 
 export async function POST(req: NextRequest) {
@@ -21,7 +25,6 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createServerSupabaseRoute();
-
   const {
     data: { user },
     error: userErr,
@@ -30,12 +33,22 @@ export async function POST(req: NextRequest) {
   if (userErr) {
     return NextResponse.json({ error: userErr.message }, { status: 500 });
   }
-
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const body = (await req.json().catch(() => ({}))) as Body;
+  const operationKey =
+    req.headers.get("Idempotency-Key")?.trim() ||
+    body.operationKey?.trim() ||
+    body.idempotencyKey?.trim() ||
+    "";
+  if (!operationKey) {
+    return NextResponse.json(
+      { error: "A stable Idempotency-Key is required." },
+      { status: 400 },
+    );
+  }
 
   const result = await applyJobPunchTransition({
     supabase,
@@ -43,6 +56,7 @@ export async function POST(req: NextRequest) {
     action: "finish",
     technicianId: user.id,
     options: {
+      operationKey,
       finish: {
         cause: body.cause,
         correction: body.correction,
