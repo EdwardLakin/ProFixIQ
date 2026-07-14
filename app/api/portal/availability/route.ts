@@ -120,7 +120,12 @@ function weekdayCandidates(raw: unknown): number[] {
 type ShopsRow = Database["public"]["Tables"]["shops"]["Row"];
 type ShopPick = Pick<
   ShopsRow,
-  "id" | "slug" | "timezone" | "accepts_online_booking"
+  | "id"
+  | "slug"
+  | "timezone"
+  | "accepts_online_booking"
+  | "min_notice_minutes"
+  | "max_lead_days"
 >;
 
 type ShopHoursRow = Database["public"]["Tables"]["shop_hours"]["Row"];
@@ -152,7 +157,7 @@ export async function GET(req: NextRequest) {
     // 1) Load shop config
     const shopRes = await supabase
       .from("shops")
-      .select("id, slug, timezone, accepts_online_booking")
+      .select("id, slug, timezone, accepts_online_booking, min_notice_minutes, max_lead_days")
       .eq("slug", slug)
       .maybeSingle();
 
@@ -166,8 +171,8 @@ export async function GET(req: NextRequest) {
     }
 
     // Defaults
-    const MIN_NOTICE_MIN = 120; // 2 hours
-    const MAX_LEAD_DAYS = 30;   // 30 days
+    const MIN_NOTICE_MIN = shop.min_notice_minutes ?? 120;
+    const MAX_LEAD_DAYS = shop.max_lead_days ?? 30;
     const now = new Date();
     const maxLeadUntil = addMinutes(now, MAX_LEAD_DAYS * 24 * 60);
 
