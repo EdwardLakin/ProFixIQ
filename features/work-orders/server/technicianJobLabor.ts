@@ -24,22 +24,37 @@ type JobLaborResult =
   | { ok: true; payload?: unknown }
   | { ok: false; status: number; error: string };
 
+function internalOperationKey(parts: Array<string | null | undefined>): string {
+  return parts.map((part) => String(part ?? "").trim()).filter(Boolean).join(":");
+}
+
 export async function startTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
   lineId: string;
   technicianId: string;
-  operationKey: string;
+  operationKey?: string;
+  sourceEventId?: string | null;
   startedAtIso?: string;
   source?: "manual" | "break_resume" | "lunch_resume";
   allowConcurrentJobPunches?: boolean;
 }): Promise<JobLaborResult> {
+  const operationKey =
+    params.operationKey?.trim() ||
+    internalOperationKey([
+      "internal-start",
+      params.sourceEventId,
+      params.lineId,
+      params.technicianId,
+      params.startedAtIso,
+      params.source,
+    ]);
   return applyJobPunchTransition({
     supabase: params.supabase,
     lineId: params.lineId,
     action: "start",
     technicianId: params.technicianId,
     options: {
-      operationKey: params.operationKey,
+      operationKey,
       allowConcurrentJobPunches: params.allowConcurrentJobPunches === true,
       nowIso: params.startedAtIso,
       startSource:
@@ -56,20 +71,31 @@ export async function stopTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
   lineId: string;
   technicianId: string;
-  operationKey: string;
+  operationKey?: string;
+  sourceEventId?: string | null;
   endedAtIso?: string;
   reason?: string;
   preserveLineStatus?: boolean;
   event?: string;
   details?: Json;
 }): Promise<JobLaborResult> {
+  const operationKey =
+    params.operationKey?.trim() ||
+    internalOperationKey([
+      "internal-stop",
+      params.sourceEventId,
+      params.lineId,
+      params.technicianId,
+      params.endedAtIso,
+      params.reason,
+    ]);
   return applyJobPunchTransition({
     supabase: params.supabase,
     lineId: params.lineId,
     action: "pause",
     technicianId: params.technicianId,
     options: {
-      operationKey: params.operationKey,
+      operationKey,
       nowIso: params.endedAtIso,
       pause: {
         holdReason: params.reason,
@@ -103,23 +129,35 @@ export async function closeAllActiveTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
   shopId: string;
   technicianId: string;
-  operationKey: string;
+  operationKey?: string;
   endedAtIso: string;
   reason: string;
   event?: string;
   sourceEventId?: string | null;
+  breakPunchId?: string | null;
   details?: Json;
 }) {
+  const sourceEventId = params.sourceEventId ?? params.breakPunchId ?? null;
+  const operationKey =
+    params.operationKey?.trim() ||
+    internalOperationKey([
+      "coordinated-labor-stop",
+      sourceEventId,
+      params.shopId,
+      params.technicianId,
+      params.endedAtIso,
+      params.reason,
+    ]);
   const rpc = params.supabase as unknown as RpcClient;
   const { data, error } = await rpc.rpc("pause_all_active_technician_labor_atomic", {
     p_shop_id: params.shopId,
     p_technician_id: params.technicianId,
     p_actor_user_id: params.technicianId,
-    p_operation_key: params.operationKey,
+    p_operation_key: operationKey,
     p_at: params.endedAtIso,
     p_reason: params.reason,
     p_event: params.event ?? "job_stopped_at_end_day",
-    p_source_event_id: params.sourceEventId ?? null,
+    p_source_event_id: sourceEventId,
     p_details: params.details ?? {},
   });
 
