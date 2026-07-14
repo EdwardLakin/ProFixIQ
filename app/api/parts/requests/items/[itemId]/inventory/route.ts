@@ -3,6 +3,9 @@ import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
+type PartRow = DB["public"]["Tables"]["parts"]["Row"] & {
+  manufacturer?: string | null;
+};
 
 type Body =
   | { mode: "attach"; partId: string }
@@ -11,6 +14,7 @@ type Body =
       name: string;
       partNumber?: string | null;
       manufacturer?: string | null;
+      supplier?: string | null;
       sku?: string | null;
       category?: string | null;
       sellPrice?: number | string | null;
@@ -56,7 +60,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   if (!item) return NextResponse.json({ ok: false, error: "Request item not found." }, { status: 404 });
 
   let partId: string;
-  let selectedPart: DB["public"]["Tables"]["parts"]["Row"] | null = null;
+  let selectedPart: PartRow | null = null;
   if (body.mode === "attach") {
     if (!isUuid(body.partId)) return NextResponse.json({ ok: false, error: "Invalid partId." }, { status: 400 });
 
@@ -70,7 +74,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     if (partError) return NextResponse.json({ ok: false, error: partError.message }, { status: 500 });
     if (!part) return NextResponse.json({ ok: false, error: "Inventory part not found." }, { status: 404 });
     partId = part.id;
-    selectedPart = part as DB["public"]["Tables"]["parts"]["Row"];
+    selectedPart = part as PartRow;
   } else {
     const name = clean(body.name);
     if (!name) return NextResponse.json({ ok: false, error: "Name is required." }, { status: 400 });
@@ -88,8 +92,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
       category: clean(body.category),
       price: sellPrice,
       default_price: sellPrice,
-      supplier: clean(body.manufacturer),
-    } satisfies DB["public"]["Tables"]["parts"]["Insert"];
+      manufacturer: clean(body.manufacturer) ?? clean(item.requested_manufacturer),
+      supplier: clean(body.supplier),
+    } as unknown as DB["public"]["Tables"]["parts"]["Insert"];
 
     const { data: part, error: partError } = await supabase
       .from("parts")
@@ -99,7 +104,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
 
     if (partError) return NextResponse.json({ ok: false, error: partError.message }, { status: 500 });
     partId = part.id;
-    selectedPart = part as DB["public"]["Tables"]["parts"]["Row"];
+    selectedPart = part as PartRow;
 
     const initialQty = num(body.initialQty) ?? 0;
     const locationId = clean(body.locationId);
@@ -148,7 +153,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
           name: selectedPart.name,
           sku: selectedPart.sku,
           part_number: selectedPart.part_number,
-          manufacturer: selectedPart.supplier,
+          manufacturer: selectedPart.manufacturer ?? null,
+          supplier: selectedPart.supplier,
           sell_price: selectedPart.price ?? selectedPart.default_price ?? null,
         }
       : null,
