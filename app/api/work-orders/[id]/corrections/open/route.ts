@@ -67,7 +67,7 @@ export async function POST(
       reason,
       scope,
       operationKey: `correction:${access.profile.shop_id}:${idempotencyKey}`,
-      metadata: body?.metadata,
+      ...(body?.metadata !== undefined ? { metadata: body.metadata } : {}),
     });
     return NextResponse.json({ ok: true, session });
   } catch (error: unknown) {
