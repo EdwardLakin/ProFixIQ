@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  canTransitionBookingStatus,
+  normalizeBookingStatus,
+} from "@/features/portal/server/bookingLifecycle";
+import { notifyBookingConfirmation } from "@/features/portal/server/notifyBookingConfirmation";
 
 type DB = Database;
 
@@ -62,7 +67,7 @@ export async function PATCH(
 
     const { data: booking, error: bookingErr } = await supabase
       .from("bookings")
-      .select("id, shop_id")
+      .select("id, shop_id, status, work_order_id")
       .eq("id", id)
       .single();
 
@@ -75,23 +80,58 @@ export async function PATCH(
     }
 
     const update: DB["public"]["Tables"]["bookings"]["Update"] = {};
+    let statusUpdated = false;
 
-    if (body.status) update.status = body.status;
+    if (body.status) {
+      const nextStatus = normalizeBookingStatus(body.status);
+      if (!nextStatus || !canTransitionBookingStatus(booking.status, nextStatus)) {
+        return NextResponse.json(
+          { error: `Cannot move appointment from ${booking.status ?? "pending"} to ${body.status}` },
+          { status: 409 },
+        );
+      }
+      const { error: transitionErr } = await (supabase as never as {
+        rpc: (
+          fn: "transition_booking_status_by_staff",
+          args: { p_booking_id: string; p_status: string },
+        ) => Promise<{ data: unknown; error: { message?: string } | null }>;
+      }).rpc("transition_booking_status_by_staff", {
+        p_booking_id: booking.id,
+        p_status: nextStatus,
+      });
+
+      if (transitionErr) {
+        return NextResponse.json(
+          { error: transitionErr.message || "Failed to update appointment status" },
+          { status: 409 },
+        );
+      }
+      statusUpdated = true;
+    }
     if (body.notes !== undefined) update.notes = body.notes;
     if (body.starts_at) update.starts_at = body.starts_at;
     if (body.ends_at) update.ends_at = body.ends_at;
 
-    if (Object.keys(update).length === 0) {
+    if (Object.keys(update).length === 0 && !statusUpdated) {
       return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
-    const { data: updated, error: updateErr } = await supabase
-      .from("bookings")
-      .update(update)
-      .eq("id", id)
-      .eq("shop_id", auth.profile.shop_id)
-      .select("id, starts_at, ends_at, status, notes, customer_id, vehicle_id, work_order_id")
-      .single();
+    const updatedQuery = Object.keys(update).length > 0
+      ? supabase
+          .from("bookings")
+          .update(update)
+          .eq("id", id)
+          .eq("shop_id", auth.profile.shop_id)
+          .select("id, shop_id, starts_at, ends_at, status, notes, customer_id, vehicle_id, work_order_id")
+          .single()
+      : supabase
+          .from("bookings")
+          .select("id, shop_id, starts_at, ends_at, status, notes, customer_id, vehicle_id, work_order_id")
+          .eq("id", id)
+          .eq("shop_id", auth.profile.shop_id)
+          .single();
+
+    const { data: updated, error: updateErr } = await updatedQuery;
 
     if (updateErr || !updated) {
       return NextResponse.json(
@@ -100,7 +140,22 @@ export async function PATCH(
       );
     }
 
-    return NextResponse.json(updated);
+    let confirmationNotification: "not_requested" | "sent" | "skipped" = "not_requested";
+    if (body.status === "confirmed") {
+      try {
+        confirmationNotification = (await notifyBookingConfirmation(supabase, updated))
+          ? "sent"
+          : "skipped";
+      } catch (notificationError) {
+        confirmationNotification = "skipped";
+        console.error("booking confirmation notification failed", notificationError);
+      }
+    }
+
+    return NextResponse.json({
+      ...updated,
+      confirmation_notification: confirmationNotification,
+    });
   } catch (err) {
     console.error("portal booking PATCH error", err);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
