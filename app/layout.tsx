@@ -25,8 +25,9 @@ const blackOps = Black_Ops_One({
 });
 
 export const metadata = {
-  title: "ProFixIQ",
-  description: "Tech tools for modern shops",
+  title: "ProFixIQ | The operating system for modern repair shops",
+  description:
+    "Voice inspections, technician-built repairs, approvals, parts workflows, workforce operations, and fleet transparency—connected in one repair shop operating system.",
 };
 
 export default async function RootLayout({

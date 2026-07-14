@@ -106,6 +106,66 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* The public marketing site has a deliberate light presentation independent
+   of the signed-in application's saved theme preference. */
+.pfq-marketing {
+  --marketing-bg: #f7f5f1;
+  --marketing-surface: #ffffff;
+  --marketing-stone: #f0ece6;
+  --marketing-ink: #17202a;
+  --marketing-muted: #5f6b76;
+  --marketing-border: #ddd8d0;
+  --marketing-border-strong: #c9c2b8;
+  --marketing-copper: #c1663b;
+  --marketing-copper-dark: #8f4528;
+  --marketing-copper-light: #e7a57c;
+  --marketing-copper-soft: #f7e3d7;
+  --marketing-steel: #355b75;
+
+  --pfq-copper: var(--marketing-copper);
+  --accent-copper: var(--marketing-copper);
+  --accent-copper-soft: var(--marketing-copper-dark);
+  --accent-copper-light: var(--marketing-copper-dark);
+  --theme-surface-page: var(--marketing-bg);
+  --theme-surface-panel: #ffffff;
+  --theme-surface-panel-strong: #ffffff;
+  --theme-surface-inset: var(--marketing-stone);
+  --theme-surface-subtle: rgba(95, 107, 118, 0.09);
+  --theme-surface-hover: rgba(95, 107, 118, 0.14);
+  --theme-surface-overlay: rgba(255, 255, 255, 0.98);
+  --theme-backdrop: rgba(23, 32, 42, 0.36);
+  --theme-border-soft: var(--marketing-border);
+  --theme-border-strong: var(--marketing-border-strong);
+  --theme-text-primary: var(--marketing-ink);
+  --theme-text-secondary: var(--marketing-muted);
+  --theme-text-muted: #78838d;
+  --theme-text-on-accent: #ffffff;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: var(--marketing-border);
+  --theme-input-bg: #ffffff;
+  --theme-input-border: var(--marketing-border-strong);
+  --theme-input-text: var(--marketing-ink);
+  --theme-shadow-soft: 0 12px 30px rgba(23, 32, 42, 0.08);
+  --theme-shadow-medium: 0 22px 55px rgba(23, 32, 42, 0.11);
+  color-scheme: light;
+}
+
+.marketing-eyebrow {
+  color: var(--marketing-copper-dark);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.marketing-heading {
+  color: var(--marketing-ink);
+  font-size: clamp(2.25rem, 4.4vw, 3.5rem);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1.06;
+}
+
 html[data-theme-mode="light"] {
   /* BrandThemeBoot writes brand values inline, so mode tokens intentionally
      use !important to remain authoritative when the mode changes. */

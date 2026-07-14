@@ -1,89 +1,60 @@
 "use client";
 
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { cn } from "@shared/lib/utils";
 
-const COPPER_LIGHT = "var(--accent-copper-light)";
+const groups = [
+  {
+    title: "Product",
+    links: [
+      { label: "Workflow", href: "/#workflow" },
+      { label: "Platform", href: "/#product" },
+      { label: "Shop Boost", href: "/#shop-boost" },
+      { label: "Pricing", href: "/#pricing" },
+    ],
+  },
+  {
+    title: "Access",
+    links: [
+      { label: "Shop sign-in", href: "/sign-in" },
+      { label: "Customer portal", href: "/portal" },
+      { label: "Fleet portal", href: "/portal/fleet" },
+      { label: "Compare plans", href: "/compare-plans" },
+    ],
+  },
+];
 
 export default function Footer({ className }: { className?: string }) {
   return (
-    <div className={cn("w-full", className)}>
-      <div className="mx-auto max-w-6xl px-4">
-        <div className="relative mb-6 overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 backdrop-blur-xl">
-          <div
-            className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full blur-3xl"
-            style={{ background: "rgba(197,122,74,0.12)" }}
-          />
-          <div
-            className="pointer-events-none absolute -left-28 -bottom-28 h-96 w-96 rounded-full blur-3xl"
-            style={{ background: "var(--theme-surface-inset)" }}
-          />
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.10]"
-            style={{
-              backgroundImage:
-                "var(--theme-gradient-panel)",
-            }}
-          />
-
-          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-                Quick truth
-              </div>
-              <div className="mt-2 text-base font-extrabold text-[color:var(--theme-text-primary)] sm:text-lg">
-                If you’re still reading, you’re already wasting time. Let ProFixIQ set the shop up for you.
-              </div>
-              <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
-                Get a workflow that fits fleet reality — inspections → quotes → parts → approvals → portal.
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <a
-                href="#"
-                className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-5 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)]"
-              >
-                See what’s included
-              </a>
-              <a
-                href="#"
-                className="inline-flex items-center justify-center rounded-full px-5 py-2 text-sm font-extrabold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110"
-                style={{
-                  backgroundColor: "rgba(197,122,74,0.95)",
-                  boxShadow: "0 0 30px rgba(197,122,74,0.25)",
-                }}
-              >
-                Run Instant Shop Analysis
-              </a>
-            </div>
+    <footer className={cn("border-t border-[color:var(--marketing-border)] bg-[color:var(--marketing-ink)] text-white", className)}>
+      <div className="mx-auto max-w-[1400px] px-5 py-16 sm:px-8 sm:py-20">
+        <div className="grid gap-12 lg:grid-cols-[1.35fr_0.65fr_0.65fr]">
+          <div className="max-w-xl">
+            <Link href="/" className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[10px] font-blackops tracking-[0.12em] text-[color:var(--marketing-ink)]">PFQ</span>
+              <span className="text-lg font-bold">ProFixIQ</span>
+            </Link>
+            <h2 className="mt-8 text-3xl font-semibold leading-tight tracking-[-0.04em] sm:text-4xl">See how ProFixIQ fits your shop.</h2>
+            <p className="mt-4 max-w-lg text-base leading-7 text-slate-400">Bring inspections, repair building, approvals, parts, workforce operations, invoicing, and portals into one connected system.</p>
+            <Link href="/compare-plans" className="mt-7 inline-flex items-center gap-2 rounded-xl bg-[color:var(--marketing-copper)] px-5 py-3 text-sm font-bold text-white transition hover:bg-[color:var(--marketing-copper-dark)]">Start 14-day free trial <ArrowRight size={15} /></Link>
           </div>
 
-          <div className="relative mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] pt-4">
-            <div className="text-xs text-[color:var(--theme-text-muted)]">
-              Next: social links + verified shop reviews
+          {groups.map((group) => (
+            <div key={group.title}>
+              <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{group.title}</div>
+              <ul className="mt-5 space-y-3">
+                {group.links.map((link) => <li key={link.href}><Link href={link.href} className="text-sm text-slate-300 transition hover:text-white">{link.label}</Link></li>)}
+              </ul>
             </div>
-            <div className="text-xs text-[color:var(--theme-text-muted)]">
-              <span style={{ color: COPPER_LIGHT }}>ProFixIQ</span> • Heavy-duty &amp; fleet shop OS
-            </div>
-          </div>
+          ))}
+        </div>
+
+        <div className="mt-16 flex flex-col gap-3 border-t border-white/10 pt-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <span>© {new Date().getFullYear()} ProFixIQ Technologies. All rights reserved.</span>
+          <span>Heavy-Duty • Automotive • Fleet</span>
         </div>
       </div>
-
-      <footer
-        className={cn(
-          "w-full border-t border-[color:var(--theme-border-soft)] px-4 py-8 text-center",
-          "bg-[color:var(--theme-surface-inset)] text-sm text-[color:var(--theme-text-secondary)] backdrop-blur-xl transition-all",
-          "hover:text-[color:var(--theme-text-primary)]",
-        )}
-      >
-        <p className="font-mono text-xs tracking-wide sm:text-sm">
-          © {new Date().getFullYear()}{" "}
-          <span className="font-semibold" style={{ color: COPPER_LIGHT }}>
-            ProFixIQ
-          </span>
-          . Built for pros, powered by AI.
-        </p>
-      </footer>
-    </div>
+    </footer>
   );
 }
