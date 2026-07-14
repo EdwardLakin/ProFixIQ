@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type DB = Database;
 type RpcError = { message: string; details?: string | null; hint?: string | null };
 type RpcClient = {
   rpc: (
