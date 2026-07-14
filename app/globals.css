@@ -181,6 +181,77 @@ html[data-theme-mode="light"] {
     linear-gradient(180deg, var(--theme-app-bg), var(--theme-app-bg-secondary)) !important;
 }
 
+/* Keep pastel status pills readable against light surfaces without changing
+   their existing dark-mode colors or non-pill accent text. */
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-400"] {
+  color: #b91c1c;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-amber-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-amber-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-amber-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-amber-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-yellow-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-yellow-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-yellow-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-yellow-400"] {
+  color: #92400e;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-green-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-green-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-green-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-green-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-emerald-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-emerald-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-emerald-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-emerald-400"] {
+  color: #047857;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-cyan-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-cyan-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-cyan-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-cyan-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-sky-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-sky-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-sky-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-sky-400"] {
+  color: #0369a1;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-blue-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-blue-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-blue-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-blue-400"] {
+  color: #1d4ed8;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-violet-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-violet-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-violet-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-violet-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-purple-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-purple-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-purple-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-purple-400"] {
+  color: #6d28d9;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-50"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-400"],
+html[data-theme-mode="light"] [class*="rounded"][class*="text-[var(--accent-copper"],
+html[data-theme-mode="light"] [class*="rounded"][class*="text-[color:var(--accent-copper"],
+html[data-theme-mode="light"] .accent-chip {
+  color: #9a4b2b;
+}
+
 body {
   color: var(--theme-text-primary);
   background:
