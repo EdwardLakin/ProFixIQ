@@ -10,8 +10,8 @@ The dominant systemic problem is not isolated UI bugs. It is that important busi
 
 ### Severity profile
 
-- **27 High**: can corrupt or misstate labor, inventory, invoice, payment, or accounting state; create duplicate financial records; or expose unsafe cross-lifecycle behavior.
-- **8 Medium**: cause incorrect workflow state, poor customer visibility, stale notifications, or unsafe operational ambiguity.
+- **24 High**: can corrupt or misstate labor, inventory, invoice, payment, or accounting state; create duplicate financial records; or expose unsafe cross-lifecycle behavior.
+- **11 Medium**: cause incorrect workflow state, poor customer visibility, stale notifications, or unsafe operational ambiguity.
 
 ## Recommended repair order
 
