@@ -177,6 +177,7 @@ export async function createPortalBooking({
     .from("bookings")
     .select("id")
     .eq("shop_id", shop.id)
+    .in("status", ["pending", "confirmed"])
     .lt("starts_at", endsAt)
     .gt("ends_at", startsAt)
     .limit(1);
