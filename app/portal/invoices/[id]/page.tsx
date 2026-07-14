@@ -7,6 +7,7 @@ import {
   requireWorkOrderOwnedByCustomer,
 } from "@/features/portal/server/portalAuth";
 import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
+import PortalPaymentStatus from "@/features/stripe/components/PortalPaymentStatus";
 import {
   getInvoiceVersionById,
   getLatestCustomerVisibleInvoiceVersion,
@@ -91,9 +92,7 @@ export default async function PortalInvoicePage({
           </div>
 
           {query.payment_session ? (
-            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-              Your payment is being confirmed. The balance and receipt update from the verified payment record, not the browser redirect.
-            </div>
+            <PortalPaymentStatus sessionId={query.payment_session} />
           ) : null}
 
           <section className="rounded-3xl border border-white/10 bg-black/35 p-6 shadow-card">
@@ -153,7 +152,7 @@ export default async function PortalInvoicePage({
 
             <div className="mt-5">
               <a
-                href={`/api/work-orders/${workOrderId}/invoice-pdf?version=${selectedVersion.id}&download=1`}
+                href={`/api/invoice-versions/${selectedVersion.id}/pdf?download=1`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex rounded-full border border-white/10 bg-black/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white"
