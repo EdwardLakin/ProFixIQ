@@ -26,6 +26,7 @@ export async function startTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
   lineId: string;
   technicianId: string;
+  operationKey: string;
   startedAtIso?: string;
   source?: "manual" | "break_resume" | "lunch_resume";
   allowConcurrentJobPunches?: boolean;
@@ -36,6 +37,7 @@ export async function startTechnicianJobLabor(params: {
     action: "start",
     technicianId: params.technicianId,
     options: {
+      operationKey: params.operationKey,
       allowConcurrentJobPunches: params.allowConcurrentJobPunches === true,
       nowIso: params.startedAtIso,
       startSource:
@@ -52,6 +54,7 @@ export async function stopTechnicianJobLabor(params: {
   supabase: SupabaseClient<DB>;
   lineId: string;
   technicianId: string;
+  operationKey: string;
   endedAtIso?: string;
   reason?: string;
   preserveLineStatus?: boolean;
@@ -64,6 +67,7 @@ export async function stopTechnicianJobLabor(params: {
     action: "pause",
     technicianId: params.technicianId,
     options: {
+      operationKey: params.operationKey,
       nowIso: params.endedAtIso,
       pause: {
         holdReason: params.reason,
