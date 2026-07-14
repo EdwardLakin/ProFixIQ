@@ -9,6 +9,7 @@ import { NextResponse } from "next/server";
 
 type DB = Database;
 type ProfileScope = Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "role" | "shop_id">;
+type ShopScopedProfile = Omit<ProfileScope, "shop_id"> & { shop_id: string };
 
 type CapabilityKey = keyof ActorCapabilities;
 
@@ -18,7 +19,7 @@ type AdminPageAccessOptions = {
 };
 
 export async function requireAdminPageAccess(options: AdminPageAccessOptions): Promise<{
-  profile: ProfileScope;
+  profile: ShopScopedProfile;
   canonicalRole: CanonicalRole;
 }> {
   const supabase = createServerSupabaseRSC();
@@ -41,7 +42,10 @@ export async function requireAdminPageAccess(options: AdminPageAccessOptions): P
     redirect(options.redirectTo ?? "/dashboard");
   }
 
-  return { profile, canonicalRole: role };
+  return {
+    profile: { ...profile, shop_id: profile.shop_id },
+    canonicalRole: role,
+  };
 }
 
 type ApiAccessOptions = {
@@ -56,7 +60,7 @@ type ApiAccessOptions = {
 export async function requireShopScopedApiAccess(options: ApiAccessOptions = {}): Promise<
   | {
       ok: true;
-      profile: ProfileScope;
+      profile: ShopScopedProfile;
       canonicalRole: CanonicalRole;
       supabase: ReturnType<typeof createServerSupabaseRoute>;
     }
@@ -112,5 +116,10 @@ export async function requireShopScopedApiAccess(options: ApiAccessOptions = {})
     if (!pinCheck.ok) return { ok: false, response: pinCheck.response };
   }
 
-  return { ok: true, profile, canonicalRole, supabase };
+  return {
+    ok: true,
+    profile: { ...profile, shop_id: profile.shop_id },
+    canonicalRole,
+    supabase,
+  };
 }
