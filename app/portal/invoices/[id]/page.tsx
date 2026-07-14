@@ -1,731 +1,211 @@
-// app/portal/invoices/[id]/page.tsx (FULL FILE REPLACEMENT)
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-
-import type { Database } from "@shared/types/types/supabase";
 import {
   requireAuthedUser,
   requirePortalCustomer,
   requireWorkOrderOwnedByCustomer,
 } from "@/features/portal/server/portalAuth";
-
 import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
 import {
-  calculateShopSupplies,
-  resolveShopSuppliesOverride,
-  resolveShopSuppliesSettings,
-} from "@/features/work-orders/lib/shopSupplies";
+  getInvoiceVersionById,
+  getLatestCustomerVisibleInvoiceVersion,
+} from "@/features/invoices/server/invoiceVersionQueries";
 
 export const dynamic = "force-dynamic";
 
-const COPPER = "#C57A4A";
-
-type DB = Database;
-
-type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
-type PartRow = DB["public"]["Tables"]["parts"]["Row"];
-type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
-type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
-
-type WorkOrderForPortalInvoice = Pick<
-  WorkOrderRow,
-  | "id"
-  | "shop_id"
-  | "customer_id"
-  | "status"
-  | "approval_state"
-  | "created_at"
-  | "custom_id"
-  | "invoice_sent_at"
-  | "invoice_last_sent_to"
-  | "invoice_pdf_url"
-  | "invoice_total"
-  | "labor_total"
-  | "parts_total"
-  | "shop_supplies_enabled_override"
-  | "shop_supplies_amount_override"
->;
-
-type InvoiceLite = Pick<
-  InvoiceRow,
-  | "id"
-  | "invoice_number"
-  | "status"
-  | "currency"
-  | "subtotal"
-  | "parts_cost"
-  | "labor_cost"
-  | "discount_total"
-  | "tax_total"
-  | "total"
-  | "issued_at"
-  | "created_at"
-  | "notes"
->;
-
-type PortalLine = Pick<
-  WorkOrderLineRow,
-  "id" | "line_no" | "description" | "complaint" | "cause" | "correction" | "labor_time"
->;
-
-type PartLookupRow = Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">;
-
-type PartDisplayRow = {
-  id: string;
-  lineId?: string;
-  name: string;
-  qty: number;
-  unitPrice: number;
-  totalPrice: number;
-  sku?: string;
-  partNumber?: string;
-  unit?: string;
-};
-
-function safeNumberOrNull(v: unknown): number | null {
-  if (v == null) return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function safeNumber(v: unknown): number {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-// ✅ treat 0 as “missing” for invoice money fields
-function positiveOrNull(v: unknown): number | null {
-  const n = safeNumberOrNull(v);
-  return n != null && n > 0 ? n : null;
-}
-
-function normalizeInvoiceCurrency(v: unknown): "CAD" | "USD" {
-  const c = String(v ?? "").trim().toUpperCase();
-  return c === "CAD" ? "CAD" : "USD";
-}
-
-function normalizeCurrencyFromCountry(country: unknown): "CAD" | "USD" {
-  const c = String(country ?? "").trim().toUpperCase();
-  return c === "CA" ? "CAD" : "USD";
-}
-
-function formatCurrency(value: number | null | undefined, currency: "CAD" | "USD"): string {
-  if (value == null || Number.isNaN(value)) return "—";
+function money(value: number | null | undefined, currency: "CAD" | "USD") {
   return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-US", {
     style: "currency",
     currency,
-    maximumFractionDigits: 2,
-  }).format(value);
+  }).format(Number(value ?? 0));
 }
 
-function formatDate(value: string | null | undefined): string {
+function dateLabel(value: string | null | undefined) {
   if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString();
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
 }
 
-function compactCsv(parts: Array<string | undefined>): string {
-  return parts
-    .map((p) => (p ?? "").trim())
-    .filter((p) => p.length > 0)
-    .join(", ");
-}
-
-function dollarsToCents(n: number | null): number {
-  if (n == null || !Number.isFinite(n)) return 0;
-  return Math.max(0, Math.round(n * 100));
-}
-
-function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
+function statusLabel(value: string) {
+  return value.replaceAll("_", " ");
 }
 
 export default async function PortalInvoicePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ version?: string; payment_session?: string }>;
 }) {
   const { id: workOrderId } = await params;
-
+  const query = await searchParams;
   const supabase = createServerSupabaseRSC();
-
-  let workOrder: WorkOrderForPortalInvoice | null = null;
-  let invoice: InvoiceLite | null = null;
-  let currency: "CAD" | "USD" = "USD";
-  let stripeCurrency: "usd" | "cad" = "usd";
-
-  let lines: PortalLine[] = [];
-  let parts: PartDisplayRow[] = [];
-  let shopForSupplies: Pick<
-    ShopRow,
-    | "country"
-    | "supplies_percent"
-    | "shop_supplies_enabled"
-    | "shop_supplies_type"
-    | "shop_supplies_percent"
-    | "shop_supplies_flat_amount"
-    | "shop_supplies_cap_amount"
-  > | null = null;
-
-  // ✅ declare outside try so it’s usable later
-  let partsTotalFromAlloc = 0;
 
   try {
     const { id: userId } = await requireAuthedUser(supabase);
     const customer = await requirePortalCustomer(supabase, userId);
-    await requireWorkOrderOwnedByCustomer(supabase, workOrderId, customer.id);
-
-    const { data: wo, error: woErr } = await supabase
-      .from("work_orders")
-      .select(
-        "id, shop_id, customer_id, status, approval_state, created_at, custom_id, invoice_sent_at, invoice_last_sent_to, invoice_pdf_url, invoice_total, labor_total, parts_total, shop_supplies_enabled_override, shop_supplies_amount_override",
-      )
-      .eq("id", workOrderId)
-      .eq("customer_id", customer.id)
-      .maybeSingle<WorkOrderForPortalInvoice>();
-
-    if (woErr) throw woErr;
-    if (!wo) throw new Error("Work order not found");
-    workOrder = wo;
-
-    // Shop country (currency fallback)
-    let shopCountry: string | null = null;
-    if (workOrder.shop_id) {
-      const { data: shop, error: shopErr } = await supabase
-        .from("shops")
-        .select("country, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount")
-        .eq("id", workOrder.shop_id)
-        .maybeSingle<Pick<ShopRow, "country" | "supplies_percent" | "shop_supplies_enabled" | "shop_supplies_type" | "shop_supplies_percent" | "shop_supplies_flat_amount" | "shop_supplies_cap_amount">>();
-
-      if (shopErr) {
-        // eslint-disable-next-line no-console
-        console.warn("[portal invoice] shops query failed:", shopErr.message);
-      }
-
-      shopForSupplies = shop ?? null;
-      shopCountry = (shop?.country ?? null) as string | null;
-    }
-
-    const { data: inv, error: invErr } = await supabase
-      .from("invoices")
-      .select(
-        "id, invoice_number, status, currency, subtotal, parts_cost, labor_cost, discount_total, tax_total, total, issued_at, created_at, notes",
-      )
-      .eq("work_order_id", workOrderId)
-      .order("issued_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<InvoiceLite>();
-
-    if (invErr) {
-      // eslint-disable-next-line no-console
-      console.warn("[portal invoice] invoices query failed:", invErr.message);
-    }
-
-    invoice = inv ?? null;
-
-    currency = invoice?.currency
-      ? normalizeInvoiceCurrency(invoice.currency)
-      : normalizeCurrencyFromCountry(shopCountry);
-
-    stripeCurrency = currency === "CAD" ? "cad" : "usd";
-
-    // Lines
-    const { data: wol, error: wolErr } = await supabase
-      .from("work_order_lines")
-      .select("id, line_no, description, complaint, cause, correction, labor_time")
-      .eq("work_order_id", workOrderId)
-      .order("line_no", { ascending: true })
-      .returns<PortalLine[]>();
-
-    if (wolErr) {
-      // eslint-disable-next-line no-console
-      console.warn("[portal invoice] work_order_lines query failed:", wolErr.message);
-    }
-    lines = Array.isArray(wol) ? wol : [];
-
-    // ✅ PARTS SOURCE OF TRUTH: work_order_part_allocations
-    const { data: allocRaw, error: allocErr } = await supabase
-      .from("work_order_part_allocations")
-      .select("id, work_order_line_id, part_id, qty, unit_cost, created_at")
-      .eq("work_order_id", workOrderId)
-      .order("created_at", { ascending: true })
-      .returns<
-        Array<
-          Pick<
-            AllocationRow,
-            "id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost" | "created_at"
-          >
-        >
-      >();
-
-    if (allocErr) {
-      // eslint-disable-next-line no-console
-      console.warn("[portal invoice] work_order_part_allocations query failed:", allocErr.message);
-    }
-
-    const allocs = Array.isArray(allocRaw) ? allocRaw : [];
-
-    const partIds = Array.from(
-      new Set(
-        allocs
-          .map((a) => a.part_id)
-          .filter(isNonEmptyString)
-          .map((id) => id.trim()),
-      ),
+    const workOrder = await requireWorkOrderOwnedByCustomer(
+      supabase,
+      workOrderId,
+      customer.id,
     );
 
-    const partsMap = new Map<string, PartLookupRow>();
+    const selectedVersion = query.version?.trim()
+      ? await getInvoiceVersionById({
+          supabase,
+          invoiceVersionId: query.version.trim(),
+          shopId: workOrder.shop_id,
+          workOrderId,
+        })
+      : await getLatestCustomerVisibleInvoiceVersion({
+          supabase,
+          workOrderId,
+          shopId: workOrder.shop_id,
+        });
 
-    if (partIds.length > 0) {
-      const { data: partRows, error: partsErr } = await supabase
-        .from("parts")
-        .select("id, name, sku, part_number, unit")
-        .in("id", partIds)
-        .returns<PartLookupRow[]>();
+    if (!selectedVersion) redirect("/portal/invoices");
 
-      if (partsErr) {
-        // eslint-disable-next-line no-console
-        console.warn("[portal invoice] parts lookup failed:", partsErr.message);
-      }
+    const snapshot = selectedVersion.snapshot;
+    const payable =
+      ["issued", "partially_paid"].includes(selectedVersion.lifecycle_status) &&
+      Number(selectedVersion.outstanding_total) >= 0.5;
+    const title =
+      snapshot.workOrder.custom_id ||
+      selectedVersion.invoice_id ||
+      `Work order ${workOrderId.slice(0, 8)}`;
 
-      for (const p of Array.isArray(partRows) ? partRows : []) {
-        if (isNonEmptyString(p.id)) partsMap.set(p.id, p);
-      }
-    }
-
-    parts = allocs.map((a) => {
-      const p = isNonEmptyString(a.part_id) ? partsMap.get(a.part_id) : undefined;
-
-      const qtyRaw = safeNumber(a.qty);
-      const qty = qtyRaw > 0 ? qtyRaw : 1;
-
-      const unitPrice = safeNumber(a.unit_cost);
-      const totalPrice = Math.max(0, qty * unitPrice);
-
-      const name = (p?.name ?? "Part").trim() || "Part";
-      const partNumber = (p?.part_number ?? "").trim() || undefined;
-      const sku = (p?.sku ?? "").trim() || undefined;
-      const unit = (p?.unit ?? "").trim() || undefined;
-
-      const lidRaw = a.work_order_line_id;
-      const lineId = isNonEmptyString(lidRaw) ? lidRaw.trim() : undefined;
-
-      return {
-        id: String(a.id),
-        lineId,
-        name,
-        qty,
-        unitPrice,
-        totalPrice,
-        sku,
-        partNumber,
-        unit,
-      };
-    });
-
-    // ✅ computed from allocations (matches your confirmed 261.90 case)
-    partsTotalFromAlloc = parts.reduce((acc, p) => acc + safeNumber(p.totalPrice), 0);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[portal invoice] failed:", err);
-    redirect("/portal");
-  }
-
-  if (!workOrder) redirect("/portal");
-
-  const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
-
-  const woInvoiceTotal = positiveOrNull(workOrder.invoice_total);
-  const woLabor = positiveOrNull(workOrder.labor_total);
-  const woParts = positiveOrNull(workOrder.parts_total);
-
-  // ✅ invoice money fields: treat 0 as missing (key fix)
-  const invSubtotal = positiveOrNull(invoice?.subtotal);
-  const invLabor = positiveOrNull(invoice?.labor_cost);
-  const invParts = positiveOrNull(invoice?.parts_cost);
-  const invTotalRaw = positiveOrNull(invoice?.total);
-
-  // tax/discount can be legitimately 0 — keep as numeric (but normalize NaN -> 0)
-  const invTax = safeNumberOrNull(invoice?.tax_total) ?? 0;
-  const invDiscount = safeNumberOrNull(invoice?.discount_total) ?? 0;
-
-  // ✅ allocations parts fallback (your priced allocations)
-  const partsCostFromAlloc =
-    Number.isFinite(partsTotalFromAlloc) && partsTotalFromAlloc > 0 ? partsTotalFromAlloc : null;
-
-  // ✅ PDF-like fallback: allocations parts + WO labor (if present)
-  const computedBaseSubtotal = (woLabor ?? 0) + (partsCostFromAlloc ?? (woParts ?? 0));
-  const shopSupplies = calculateShopSupplies({
-    baseAmount: computedBaseSubtotal,
-    settings: resolveShopSuppliesSettings(shopForSupplies as Parameters<typeof resolveShopSuppliesSettings>[0]),
-    override: resolveShopSuppliesOverride(workOrder as Parameters<typeof resolveShopSuppliesOverride>[0]),
-  });
-  const shopSuppliesTotal = shopSupplies.amount > 0 ? shopSupplies.amount : null;
-
-  // ✅ derive subtotal/total from invoice components only if they’re actually present (>0)
-  const invoiceBaseSubtotal = (invLabor ?? 0) + (invParts ?? 0);
-  const derivedInvoiceSubtotal =
-    invSubtotal != null
-      ? invSubtotal <= invoiceBaseSubtotal + 0.005
-        ? invSubtotal + shopSupplies.amount
-        : invSubtotal
-      : invoiceBaseSubtotal + shopSupplies.amount;
-
-  const derivedInvoiceTotalCandidate = derivedInvoiceSubtotal + invTax - invDiscount;
-
-  const shouldUseDerivedInvoiceTotal =
-    invTotalRaw == null &&
-    Number.isFinite(derivedInvoiceTotalCandidate) &&
-    derivedInvoiceTotalCandidate > 0;
-
-  const invoiceTotalFromInvoiceRow =
-    invTotalRaw != null
-      ? invSubtotal != null && invSubtotal <= invoiceBaseSubtotal + 0.005
-        ? invTotalRaw + shopSupplies.amount
-        : invTotalRaw
-      : shouldUseDerivedInvoiceTotal
-        ? derivedInvoiceTotalCandidate
-        : null;
-
-  const computedFallbackTotal = computedBaseSubtotal + shopSupplies.amount;
-
-  // ✅ last-resort fallback: WO invoice_total OR WO labor+parts
-  const invoiceTotalFallback =
-    woInvoiceTotal != null
-      ? woInvoiceTotal
-      : woLabor != null || woParts != null
-        ? (woLabor ?? 0) + (woParts ?? 0) + shopSupplies.amount
-        : null;
-
-  // ✅ total selection: invoice-first (if real), then WO invoice_total, then computed, then fallback
-  const total =
-    invoiceTotalFromInvoiceRow ??
-    woInvoiceTotal ??
-    (Number.isFinite(computedFallbackTotal) && computedFallbackTotal > 0 ? computedFallbackTotal : null) ??
-    invoiceTotalFallback;
-
-  const payAmountCents = dollarsToCents(total);
-
-  // ✅ show breakdown even when invoice row is incomplete
-  const laborCost = invLabor ?? woLabor ?? null;
-
-  const partsCost =
-    invParts ??
-    partsCostFromAlloc ??
-    woParts ??
-    null;
-
-  // Subtotal preference:
-  // 1) invoice subtotal if present
-  // 2) (labor+parts) if either present
-  // 3) derive from total (subtract tax, add discount)
-  const subtotal =
-    invSubtotal != null
-      ? invSubtotal <= (laborCost ?? 0) + (partsCost ?? 0) + 0.005
-        ? invSubtotal + shopSupplies.amount
-        : invSubtotal
-      : (laborCost ?? 0) + (partsCost ?? 0) + shopSupplies.amount > 0
-        ? (laborCost ?? 0) + (partsCost ?? 0) + shopSupplies.amount
-        : total != null
-          ? Math.max(0, total - invTax + invDiscount)
-          : null;
-
-  const discountTotal = invDiscount > 0 ? invDiscount : null;
-  const taxTotal = invTax > 0 ? invTax : null;
-
-  const statusLabel = (invoice?.status ?? "").trim() || (workOrder.status ?? "").trim() || "—";
-
-  const issuedAt =
-    invoice?.issued_at != null
-      ? formatDate(invoice.issued_at)
-      : invoice?.created_at != null
-        ? formatDate(invoice.created_at)
-        : "—";
-
-  const notes = (invoice?.notes ?? "").trim();
-  const sentAt = workOrder.invoice_sent_at;
-  const sentTo = workOrder.invoice_last_sent_to;
-
-  const partsByLine = new Map<string, PartDisplayRow[]>();
-  const unassignedParts: PartDisplayRow[] = [];
-
-  for (const p of parts) {
-    if (p.lineId) {
-      const arr = partsByLine.get(p.lineId) ?? [];
-      arr.push(p);
-      partsByLine.set(p.lineId, arr);
-    } else {
-      unassignedParts.push(p);
-    }
-  }
-
-  const partCount = parts.reduce((acc, p) => acc + (Number.isFinite(p.qty) ? p.qty : 0), 0);
-
-  return (
-    <div className="min-h-screen px-4 text-foreground bg-background bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]">
-      <div className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center py-10">
-        <div className="w-full rounded-3xl border border-[color:var(--metal-border-soft,#1f2937)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)] shadow-[0_32px_80px_rgba(0,0,0,0.95)] px-6 py-7 sm:px-8 sm:py-9">
-          <div className="mb-5 flex items-center justify-between gap-3">
+    return (
+      <div className="min-h-screen bg-background px-4 py-10 text-foreground">
+        <main className="mx-auto max-w-4xl space-y-5">
+          <div className="flex items-center justify-between gap-3">
             <Link
               href="/portal/invoices"
-              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/70 hover:text-white"
+              className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs text-neutral-200"
             >
-              <span aria-hidden className="text-base leading-none">
-                ←
-              </span>
-              Back
+              ← Invoices
             </Link>
-
-            <div
-              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-neutral-300"
-              style={{ color: COPPER }}
-            >
-              <span>Invoice</span>
-              <span className="text-neutral-500">•</span>
-              <span className="text-neutral-300">
-                {invoice?.invoice_number?.trim()
-                  ? `#${invoice.invoice_number.trim()}`
-                  : `WO ${workOrder.custom_id ?? workOrder.id.slice(0, 8)}`}
-              </span>
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-400">
+              Version {selectedVersion.version_number}
             </div>
           </div>
 
-          <div className="mb-6 space-y-1">
-            <h1
-              className="text-2xl font-semibold text-white sm:text-3xl"
-              style={{ fontFamily: "var(--font-blackops), system-ui" }}
-            >
-              {titleLabel}
-            </h1>
-            <p className="text-xs text-neutral-400 sm:text-sm">View your invoice details and history for this work order.</p>
-          </div>
-
-          <div className="mb-6 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Invoice Total</div>
-              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(total ?? null, currency)}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">Currency: {currency}</div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Status</div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">{statusLabel}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">Issued: {issuedAt}</div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Invoice Sent</div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">{formatDate(sentAt)}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">To: {sentTo || "—"}</div>
-            </div>
-          </div>
-
-          {workOrder.shop_id ? (
-            <div className="mb-6">
-              <PortalInvoicePayButton
-                shopId={workOrder.shop_id}
-                workOrderId={workOrder.id}
-                amountCents={payAmountCents}
-                currency={stripeCurrency}
-                disabled={payAmountCents < 50}
-              />
+          {query.payment_session ? (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              Your payment is being confirmed. The balance and receipt update from the verified payment record, not the browser redirect.
             </div>
           ) : null}
 
-          {workOrder.invoice_pdf_url ? (
-            <div className="mb-6">
+          <section className="rounded-3xl border border-white/10 bg-black/35 p-6 shadow-card">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Invoice</div>
+                <h1 className="mt-1 text-2xl font-semibold text-white">{title}</h1>
+                <div className="mt-1 text-sm text-neutral-400">
+                  Issued {dateLabel(selectedVersion.issued_at)}
+                </div>
+              </div>
+              <div className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-sm capitalize text-neutral-200">
+                {statusLabel(selectedVersion.lifecycle_status)}
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Invoice total</div>
+                <div className="mt-1 text-xl font-semibold text-white">
+                  {money(selectedVersion.total, selectedVersion.currency)}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Paid</div>
+                <div className="mt-1 text-xl font-semibold text-white">
+                  {money(
+                    Number(selectedVersion.paid_total) - Number(selectedVersion.refunded_total),
+                    selectedVersion.currency,
+                  )}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Balance</div>
+                <div className="mt-1 text-xl font-semibold text-white">
+                  {money(selectedVersion.outstanding_total, selectedVersion.currency)}
+                </div>
+              </div>
+            </div>
+
+            {payable ? (
+              <div className="mt-5">
+                <PortalInvoicePayButton
+                  shopId={selectedVersion.shop_id}
+                  workOrderId={selectedVersion.work_order_id}
+                  amountCents={Math.round(Number(selectedVersion.outstanding_total) * 100)}
+                  currency={selectedVersion.currency === "CAD" ? "cad" : "usd"}
+                />
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-neutral-300">
+                {selectedVersion.lifecycle_status === "paid"
+                  ? "Paid in full."
+                  : "This invoice is not currently payable."}
+              </div>
+            )}
+
+            <div className="mt-5">
               <a
-                href={workOrder.invoice_pdf_url}
+                href={`/api/work-orders/${workOrderId}/invoice-pdf?version=${selectedVersion.id}&download=1`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-100 hover:bg-black/80"
+                className="inline-flex rounded-full border border-white/10 bg-black/50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white"
               >
-                <span>View PDF Invoice</span>
+                View issued PDF
               </a>
             </div>
-          ) : null}
+          </section>
 
-          <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Totals</div>
-              <div className="text-[11px] text-neutral-500">
-                {invoice?.id ? "Invoice record (with safe fallbacks)" : "Estimate (allocations + work order)"}
-              </div>
+          <section className="rounded-3xl border border-white/10 bg-black/30 p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">Totals</h2>
+            <div className="mt-4 space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-neutral-400">Labor</span><span>{money(snapshot.laborCost, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-400">Parts</span><span>{money(snapshot.partsCost, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-400">Shop supplies</span><span>{money(snapshot.shopSuppliesTotal, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-400">Discount</span><span>-{money(snapshot.discountTotal, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-400">Tax</span><span>{money(snapshot.taxTotal, selectedVersion.currency)}</span></div>
+              <div className="flex justify-between border-t border-white/10 pt-3 text-base font-semibold"><span>Total</span><span>{money(selectedVersion.total, selectedVersion.currency)}</span></div>
             </div>
+          </section>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Subtotal</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(subtotal ?? null, currency)}</div>
-              </div>
-
-              <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Labor</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(laborCost ?? null, currency)}</div>
-              </div>
-
-              <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Parts</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(partsCost ?? null, currency)}</div>
-              </div>
-
-              <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Shop supplies</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(shopSuppliesTotal ?? 0, currency)}</div>
-              </div>
-
-              <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Tax</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">{formatCurrency(taxTotal ?? null, currency)}</div>
-              </div>
-
-              {discountTotal != null && discountTotal > 0 ? (
-                <div className="rounded-xl border border-white/5 bg-black/40 px-3 py-2 sm:col-span-2">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Discount</div>
-                  <div className="mt-1 text-sm font-semibold text-neutral-100">-{formatCurrency(discountTotal, currency)}</div>
+          <section className="rounded-3xl border border-white/10 bg-black/30 p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">Work performed</h2>
+            <div className="mt-4 space-y-3">
+              {snapshot.lines.map((line) => (
+                <div key={line.id} className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <div className="font-semibold text-white">{line.description || line.complaint || "Service line"}</div>
+                  {line.cause ? <div className="mt-1 text-sm text-neutral-400">Cause: {line.cause}</div> : null}
+                  {line.correction ? <div className="mt-1 text-sm text-neutral-300">Correction: {line.correction}</div> : null}
                 </div>
-              ) : null}
+              ))}
+              {snapshot.lines.length === 0 ? <div className="text-sm text-neutral-500">No service lines recorded.</div> : null}
+            </div>
+          </section>
 
-              <div className="rounded-xl border border-white/10 bg-black/55 px-3 py-2 sm:col-span-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Total</div>
-                <div className="mt-1 text-lg font-semibold" style={{ color: COPPER }}>
-                  {formatCurrency(total ?? null, currency)}
+          <section className="rounded-3xl border border-white/10 bg-black/30 p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">Parts</h2>
+            <div className="mt-4 space-y-2">
+              {snapshot.parts.map((part) => (
+                <div key={part.id} className="flex justify-between gap-4 rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm">
+                  <div><div className="font-medium text-white">{part.name}</div><div className="text-neutral-500">Qty {part.qty}</div></div>
+                  <div className="text-right text-neutral-200">{money(part.totalPrice, selectedVersion.currency)}</div>
                 </div>
-              </div>
+              ))}
+              {snapshot.parts.length === 0 ? <div className="text-sm text-neutral-500">No parts recorded.</div> : null}
             </div>
-          </div>
-
-          {notes.length ? (
-            <div className="mb-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Notes</div>
-              <div className="mt-2 whitespace-pre-wrap text-sm text-neutral-200">{notes}</div>
-            </div>
-          ) : null}
-
-          <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Line Items</div>
-              <div className="text-[11px] text-neutral-500">{lines.length === 0 ? "No line items recorded yet" : `${lines.length} items`}</div>
-            </div>
-
-            {lines.length > 0 ? (
-              <div className="space-y-2">
-                {lines.map((line) => {
-                  const label = (line.description ?? "").trim() || (line.complaint ?? "").trim() || "Line item";
-
-                  const lp = partsByLine.get(line.id) ?? [];
-                  const linePartsTotal = lp.reduce((acc, p) => acc + safeNumber(p.totalPrice), 0);
-
-                  return (
-                    <div key={line.id} className="rounded-xl border border-white/5 bg-black/40 px-3 py-3">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-neutral-100">{label}</div>
-                          <div className="mt-0.5 text-[11px] text-neutral-500">
-                            Line #{line.line_no ?? "—"}
-                            {line.labor_time != null ? ` • ${String(line.labor_time)} hr` : ""}
-                            {lp.length > 0 ? ` • Parts ${formatCurrency(linePartsTotal, currency)}` : ""}
-                          </div>
-                        </div>
-                      </div>
-
-                      {(line.cause ?? "").trim().length || (line.correction ?? "").trim().length ? (
-                        <div className="mt-2 space-y-1 text-[12px] text-neutral-300">
-                          {(line.cause ?? "").trim().length ? (
-                            <div>
-                              <span className="text-neutral-500">Cause:</span>{" "}
-                              <span className="text-neutral-200">{String(line.cause)}</span>
-                            </div>
-                          ) : null}
-                          {(line.correction ?? "").trim().length ? (
-                            <div>
-                              <span className="text-neutral-500">Correction:</span>{" "}
-                              <span className="text-neutral-200">{String(line.correction)}</span>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      {lp.length > 0 ? (
-                        <div className="mt-3 rounded-lg border border-white/5 bg-black/35 px-3 py-2">
-                          <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Parts</div>
-                          <div className="mt-2 space-y-1">
-                            {lp.map((p) => (
-                              <div key={p.id} className="flex items-baseline justify-between gap-2 text-sm">
-                                <div className="min-w-0 text-neutral-200">
-                                  <span className="text-neutral-500">x{p.qty}</span> {p.name}
-                                  {p.partNumber ? <span className="text-neutral-500"> ({p.partNumber})</span> : null}
-                                </div>
-                                <div className="whitespace-nowrap font-semibold text-neutral-100">{formatCurrency(p.totalPrice, currency)}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-xs text-neutral-400">Once the shop finalizes the invoice, you&apos;ll see line items here.</div>
-            )}
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 px-4 py-4 sm:px-5 sm:py-5">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">Parts</div>
-              <div className="text-[11px] text-neutral-500">{parts.length === 0 ? "No parts recorded" : `${parts.length} parts • Qty ${partCount}`}</div>
-            </div>
-
-            {parts.length > 0 ? (
-              <div className="space-y-2">
-                {unassignedParts.length > 0 ? (
-                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[12px] text-amber-200">
-                    Some parts aren’t linked to a specific line item (missing{" "}
-                    <span className="font-mono">work_order_line_id</span>). They’re listed here anyway.
-                  </div>
-                ) : null}
-
-                {parts.map((p) => {
-                  const meta = compactCsv([
-                    p.partNumber,
-                    p.sku,
-                    p.unit ? `Unit: ${p.unit}` : undefined,
-                    p.lineId ? `Line: ${p.lineId.slice(0, 6)}…` : undefined,
-                  ]);
-
-                  return (
-                    <div
-                      key={p.id}
-                      className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-white/5 bg-black/40 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-neutral-100">{p.name}</div>
-                        {meta.length ? <div className="text-[11px] text-neutral-500">{meta}</div> : null}
-                        <div className="text-[11px] text-neutral-500">Qty: {p.qty}</div>
-                      </div>
-
-                      <div className="text-right text-xs text-neutral-300">
-                        <div className="text-[11px] text-neutral-500">Unit: {formatCurrency(p.unitPrice, currency)}</div>
-                        <div className="text-sm font-semibold">{formatCurrency(p.totalPrice, currency)}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-xs text-neutral-400">
-                Parts will appear here when they’re allocated on the work order (work_order_part_allocations).
-              </div>
-            )}
-          </div>
-        </div>
+          </section>
+        </main>
       </div>
-    </div>
-  );
+    );
+  } catch (error) {
+    console.error("[portal invoice] failed", error);
+    redirect("/portal/invoices");
+  }
 }
