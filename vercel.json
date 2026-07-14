@@ -7,6 +7,10 @@
     {
       "path": "/api/internal/import-jobs/tick",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/financial-outbox/tick",
+      "schedule": "*/2 * * * *"
     }
   ],
   "git": {
