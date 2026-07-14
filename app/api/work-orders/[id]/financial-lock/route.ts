@@ -18,7 +18,6 @@ export async function GET(
 ) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
-    allowRoles: ["owner", "admin", "manager", "advisor", "technician"],
   });
   if (!access.ok) return access.response;
 
