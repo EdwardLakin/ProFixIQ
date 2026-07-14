@@ -1,242 +1,106 @@
 import { NextResponse } from "next/server";
-import type { Database } from "@shared/types/types/supabase";
+import { z } from "zod";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type DB = Database;
-type ItemUpdate = DB["public"]["Tables"]["part_request_items"]["Update"] & {
-  requested_part_number?: string | null;
-  requested_manufacturer?: string | null;
-};
-type ItemRow = DB["public"]["Tables"]["part_request_items"]["Row"] & {
-  requested_part_number?: string | null;
-  requested_manufacturer?: string | null;
+type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
 };
 
-type Body = {
-  partId?: string | null;
-  description?: string | null;
-  qty?: number | string | null;
-  quotedPrice?: number | string | null;
-  requestedPartNumber?: string | null;
-  requestedManufacturer?: string | null;
-  workOrderLineId?: string | null;
-  poId?: string | null;
-  locationId?: string | null;
-  createAllocation?: boolean;
-  warningAccepted?: boolean;
-  warningReason?: string | null;
-};
+const nullableUuid = z.string().uuid().nullable().optional();
+const Payload = z.object({
+  partId: z.string().uuid(),
+  description: z.string().trim().min(1),
+  qty: z.coerce.number().positive(),
+  quotedPrice: z.coerce.number().nonnegative(),
+  requestedPartNumber: z.string().trim().nullable().optional(),
+  requestedManufacturer: z.string().trim().nullable().optional(),
+  workOrderLineId: z.string().uuid(),
+  poId: nullableUuid,
+  locationId: nullableUuid,
+  createAllocation: z.boolean().optional().default(false),
+  warningAccepted: z.boolean().optional().default(false),
+  warningReason: z.string().trim().nullable().optional(),
+  idempotencyKey: z.string().trim().min(1).optional(),
+});
 
-function cleanString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function isUuid(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
-}
-
-function nullableUuid(value: unknown, label: string): string | null {
-  const cleaned = cleanString(value);
-  if (!cleaned) return null;
-  if (!isUuid(cleaned)) throw new Error(`${label} must be a valid UUID.`);
-  return cleaned;
-}
-
-function finiteNumber(value: unknown, label: string): number {
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) throw new Error(`${label} must be a number.`);
-  return parsed;
-}
+type Payload = z.infer<typeof Payload>;
 
 export async function POST(
   req: Request,
-  ctx: { params: Promise<{ itemId: string }> },
+  context: { params: Promise<{ itemId: string }> },
 ) {
-  const { itemId: rawItemId } = await ctx.params;
-  const itemId = cleanString(rawItemId);
-  if (!itemId || !isUuid(itemId)) {
+  const { itemId } = await context.params;
+  if (!z.string().uuid().safeParse(itemId).success) {
     return NextResponse.json({ ok: false, error: "Invalid itemId." }, { status: 400 });
   }
 
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageWorkOrders",
+  });
   if (!access.ok) return access.response;
 
-  const supabase = access.supabase;
-  const shopId = access.profile.shop_id;
-
-  const body = (await req.json().catch(() => null)) as Body | null;
-  if (!body) {
-    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
-  }
-
-  let partId: string | null;
-  let workOrderLineId: string | null;
-  let poId: string | null;
-  let locationId: string | null;
-  let qty: number;
-  let quotedPrice: number;
-  try {
-    partId = nullableUuid(body.partId, "partId");
-    workOrderLineId = nullableUuid(body.workOrderLineId, "workOrderLineId");
-    poId = nullableUuid(body.poId, "poId");
-    locationId = nullableUuid(body.locationId, "locationId");
-    qty = finiteNumber(body.qty, "qty");
-    quotedPrice = finiteNumber(body.quotedPrice, "quotedPrice");
-  } catch (error) {
+  const json: unknown = await req.json().catch(() => null);
+  const parsed = Payload.safeParse(json);
+  if (!parsed.success) {
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Invalid request body." },
+      { ok: false, error: "Invalid request body.", issues: parsed.error.flatten() },
       { status: 400 },
     );
   }
 
-  if (qty <= 0) {
-    return NextResponse.json({ ok: false, error: "Quantity must be greater than 0." }, { status: 400 });
-  }
-  if (quotedPrice < 0) {
-    return NextResponse.json({ ok: false, error: "Quoted price must be 0 or greater." }, { status: 400 });
-  }
-
-  const { data: item, error: itemError } = await supabase
-    .from("part_request_items")
-    .select("*")
-    .eq("id", itemId)
-    .maybeSingle<ItemRow>();
-
-  if (itemError) return NextResponse.json({ ok: false, error: itemError.message }, { status: 500 });
-  if (!item) return NextResponse.json({ ok: false, error: "Request item not found or blocked by shop access." }, { status: 404 });
-
-  const { data: partRequest, error: requestError } = await supabase
-    .from("part_requests")
-    .select("id, shop_id, work_order_id, status")
-    .eq("id", item.request_id)
-    .eq("shop_id", shopId)
-    .maybeSingle();
-
-  if (requestError) return NextResponse.json({ ok: false, error: requestError.message }, { status: 500 });
-  if (!partRequest) return NextResponse.json({ ok: false, error: "Parent parts request is not available for this shop." }, { status: 403 });
-  if (!partRequest.work_order_id) {
-    return NextResponse.json({ ok: false, error: "Parent parts request is not linked to a work order." }, { status: 409 });
-  }
-
-  const { data: workOrder, error: workOrderError } = await supabase
-    .from("work_orders")
-    .select("id, shop_id")
-    .eq("id", partRequest.work_order_id)
-    .eq("shop_id", shopId)
-    .maybeSingle();
-  if (workOrderError) return NextResponse.json({ ok: false, error: workOrderError.message }, { status: 500 });
-  if (!workOrder) return NextResponse.json({ ok: false, error: "Related work order is not available for this shop." }, { status: 403 });
-
-  if (partId) {
-    const { data: part, error: partError } = await supabase
-      .from("parts")
-      .select("id")
-      .eq("id", partId)
-      .eq("shop_id", shopId)
-      .maybeSingle();
-    if (partError) return NextResponse.json({ ok: false, error: partError.message }, { status: 500 });
-    if (!part) return NextResponse.json({ ok: false, error: "Selected part is not available for this shop." }, { status: 403 });
-  }
-
-  if (!workOrderLineId) {
-    return NextResponse.json({ ok: false, error: "A work order line is required before attaching this part." }, { status: 409 });
-  }
-
-  const { data: line, error: lineError } = await supabase
-    .from("work_order_lines")
-    .select("id, work_order_id, shop_id")
-    .eq("id", workOrderLineId)
-    .eq("work_order_id", partRequest.work_order_id)
-    .eq("shop_id", shopId)
-    .maybeSingle();
-  if (lineError) return NextResponse.json({ ok: false, error: lineError.message }, { status: 500 });
-  if (!line) return NextResponse.json({ ok: false, error: "Work order line is not available for this shop or request." }, { status: 403 });
-
-  if (poId) {
-    const { data: po, error: poError } = await supabase
-      .from("purchase_orders")
-      .select("id")
-      .eq("id", poId)
-      .eq("shop_id", shopId)
-      .maybeSingle();
-    if (poError) return NextResponse.json({ ok: false, error: poError.message }, { status: 500 });
-    if (!po) return NextResponse.json({ ok: false, error: "Purchase order is not available for this shop." }, { status: 403 });
-  }
-
-  const warningAccepted = body.warningAccepted === true;
-  const warningReason = cleanString(body.warningReason);
-
-  const update: ItemUpdate = {
-    part_id: partId,
-    description: cleanString(body.description) ?? item.description ?? "Part",
-    qty,
-    qty_requested: qty,
-    quoted_price: quotedPrice,
-    unit_price: quotedPrice,
-    requested_part_number: body.requestedPartNumber === undefined ? item.requested_part_number ?? null : cleanString(body.requestedPartNumber),
-    requested_manufacturer: body.requestedManufacturer === undefined ? item.requested_manufacturer ?? null : cleanString(body.requestedManufacturer),
-    work_order_id: partRequest.work_order_id,
-    work_order_line_id: workOrderLineId,
-    po_id: poId,
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data: updatedItem, error: updateError } = await supabase
-    .from("part_request_items")
-    .update(update as DB["public"]["Tables"]["part_request_items"]["Update"])
-    .eq("id", itemId)
-    .eq("request_id", item.request_id)
-    .eq("shop_id", shopId)
-    .select("*")
-    .maybeSingle<ItemRow>();
-
-  if (updateError) return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
-  if (!updatedItem) {
-    return NextResponse.json({ ok: false, error: "Update did not apply. The item may have changed or your shop access was blocked." }, { status: 409 });
-  }
-
-  const { data: workOrderPartId, error: workOrderPartError } = await supabase.rpc(
-    "parts_ensure_work_order_part" as never,
-    { p_request_item_id: itemId } as never,
-  );
-  if (workOrderPartError) {
+  const body: Payload = parsed.data;
+  if (body.createAllocation && !body.locationId) {
     return NextResponse.json(
-      { ok: false, item: updatedItem, error: workOrderPartError.message },
-      { status: 500 },
+      { ok: false, error: "A stock location is required when creating an allocation." },
+      { status: 400 },
     );
   }
-  if (!isUuid(workOrderPartId)) {
+  if (body.warningAccepted && !body.warningReason) {
     return NextResponse.json(
-      { ok: false, item: updatedItem, error: "Canonical work-order part was not created." },
-      { status: 500 },
+      { ok: false, error: "A mismatch acknowledgement reason is required." },
+      { status: 400 },
     );
   }
 
-  let allocation: { ok: true; result?: unknown } | { ok: false; error: string } | null = null;
-  if (body.createAllocation && locationId) {
-    const { data: allocationResult, error: allocationError } = await supabase.rpc("upsert_part_allocation_from_request_item", {
-      p_request_item_id: itemId,
-      p_location_id: locationId,
-      p_create_stock_move: true,
-    });
-    allocation = allocationError ? { ok: false, error: allocationError.message } : { ok: true, result: allocationResult };
-    if (allocationError) {
-      return NextResponse.json({ ok: false, item: updatedItem, workOrderPartId, allocation, error: allocationError.message }, { status: 500 });
-    }
+  const rawKey =
+    body.idempotencyKey || req.headers.get("idempotency-key")?.trim() || "";
+  if (!rawKey) {
+    return NextResponse.json(
+      { ok: false, error: "A stable idempotency key is required." },
+      { status: 400 },
+    );
   }
 
-  if (warningAccepted && warningReason) {
-    await supabase
-      .from("work_order_parts")
-      .update({
-        mismatch_acknowledged_at: new Date().toISOString(),
-        mismatch_acknowledged_by: access.profile.id,
-        mismatch_warning_reason: warningReason,
-      } as never)
-      .eq("id", workOrderPartId)
-      .eq("shop_id", shopId);
+  const operationKey = `${access.profile.shop_id}:item-attach:${rawKey}`;
+  const rpc = access.supabase as unknown as RpcClient;
+  const { data, error } = await rpc.rpc("parts_update_attach_allocate_item_atomic", {
+    p_shop_id: access.profile.shop_id,
+    p_request_item_id: itemId,
+    p_part_id: body.partId,
+    p_description: body.description,
+    p_qty: body.qty,
+    p_unit_sell_price: body.quotedPrice,
+    p_requested_part_number: body.requestedPartNumber ?? null,
+    p_requested_manufacturer: body.requestedManufacturer ?? null,
+    p_work_order_line_id: body.workOrderLineId,
+    p_po_id: body.poId ?? null,
+    p_location_id: body.locationId ?? null,
+    p_create_allocation: body.createAllocation,
+    p_warning_accepted: body.warningAccepted,
+    p_warning_reason: body.warningReason ?? null,
+    p_operation_key: operationKey,
+    p_actor_user_id: access.profile.id,
+  });
+
+  if (error) {
+    const message = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+    const status = error.message.includes("FINANCIALLY_LOCKED") ? 409 : 400;
+    return NextResponse.json({ ok: false, error: message }, { status });
   }
 
-  return NextResponse.json({ ok: true, item: updatedItem, workOrderPartId, allocation });
+  return NextResponse.json(data);
 }
