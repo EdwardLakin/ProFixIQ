@@ -34,6 +34,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast, Toaster } from "sonner";
 
 import WeeklyCalendar from "./WeeklyCalendar";
+import FullCalendarModal from "./FullCalendarModal";
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 
@@ -76,7 +77,6 @@ function toLocalTimeInput(d: Date): string {
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
 }
-
 
 /* ----------------------------- ui helpers ----------------------------- */
 
@@ -128,7 +128,8 @@ function customerLabel(c: CustomerRow): string {
   const first = safeString(rec["first_name"]);
   const last = safeString(rec["last_name"]);
   const full = safeString(rec["full_name"]) || safeString(rec["name"]);
-  const name = full || `${first} ${last}`.trim() || safeString(rec["email"]) || "Customer";
+  const name =
+    full || `${first} ${last}`.trim() || safeString(rec["email"]) || "Customer";
   const phone = safeString(rec["phone"]) || safeString(rec["mobile"]);
   return phone ? `${name} (${phone})` : name;
 }
@@ -181,9 +182,9 @@ function canCreateWorkOrderFromBooking(b: Booking): boolean {
   if (b.work_order_id) return false;
   return Boolean(
     b.customer_id ||
-      b.customer_name?.trim() ||
-      b.customer_email?.trim() ||
-      b.customer_phone?.trim(),
+    b.customer_name?.trim() ||
+    b.customer_email?.trim() ||
+    b.customer_phone?.trim(),
   );
 }
 
@@ -201,7 +202,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
   const [loadingCustomers, setLoadingCustomers] = useState(false);
 
   const [weekStart, setWeekStart] = useState<Date>(() => startOfToday());
-  const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
+  const weekEnd = useMemo(() => addDays(weekStart, 4), [weekStart]);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pendingRequests, setPendingRequests] = useState<Booking[]>([]);
@@ -215,6 +216,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
   const [query, setQuery] = useState<string>("");
   const [listTab, setListTab] = useState<ListTab>("all");
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const bookingsAbortRef = useRef<AbortController | null>(null);
   const requestsAbortRef = useRef<AbortController | null>(null);
@@ -281,7 +283,9 @@ export default function PortalAppointmentsPage(): JSX.Element {
         const authorizedSlug = rows[0].slug as string;
         setShopSlug(authorizedSlug);
         if (shopSlug !== authorizedSlug) {
-          router.replace(`/dashboard/appointments?shop=${encodeURIComponent(authorizedSlug)}`);
+          router.replace(
+            `/dashboard/appointments?shop=${encodeURIComponent(authorizedSlug)}`,
+          );
         }
       }
     })();
@@ -337,39 +341,47 @@ export default function PortalAppointmentsPage(): JSX.Element {
     };
   }, [supabase, selectedShop]);
 
-  const refreshBookings = useCallback(async (slug: string, ws: Date, we: Date) => {
-    if (!slug) return;
+  const refreshBookings = useCallback(
+    async (slug: string, ws: Date, we: Date) => {
+      if (!slug) return;
 
-    bookingsAbortRef.current?.abort();
-    const ac = new AbortController();
-    bookingsAbortRef.current = ac;
+      bookingsAbortRef.current?.abort();
+      const ac = new AbortController();
+      bookingsAbortRef.current = ac;
 
-    setLoadingBookings(true);
-    setBookingsError(null);
-    try {
-      const start = isoDate(ws);
-      const end = isoDate(we);
+      setLoadingBookings(true);
+      setBookingsError(null);
+      try {
+        const start = isoDate(ws);
+        const end = isoDate(we);
 
-      const res = await fetch(
-        `/api/portal/bookings?shop=${encodeURIComponent(slug)}&start=${start}&end=${end}`,
-        { cache: "no-store", signal: ac.signal },
-      );
+        const res = await fetch(
+          `/api/portal/bookings?shop=${encodeURIComponent(slug)}&start=${start}&end=${end}`,
+          { cache: "no-store", signal: ac.signal },
+        );
 
-      const body = (await res.json().catch(() => null)) as Booking[] | { error?: string } | null;
-      if (!res.ok) {
-        const message = body && !Array.isArray(body) ? body.error : null;
-        throw new Error(message || "Failed to load appointments.");
+        const body = (await res.json().catch(() => null)) as
+          | Booking[]
+          | { error?: string }
+          | null;
+        if (!res.ok) {
+          const message = body && !Array.isArray(body) ? body.error : null;
+          throw new Error(message || "Failed to load appointments.");
+        }
+        setBookings(Array.isArray(body) ? body : []);
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        // eslint-disable-next-line no-console
+        console.error(err);
+        setBookingsError(
+          err instanceof Error ? err.message : "Failed to load appointments.",
+        );
+      } finally {
+        setLoadingBookings(false);
       }
-      setBookings(Array.isArray(body) ? body : []);
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setBookingsError(err instanceof Error ? err.message : "Failed to load appointments.");
-    } finally {
-      setLoadingBookings(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   const refreshPendingRequests = useCallback(async (slug: string) => {
     if (!slug) return;
@@ -382,7 +394,10 @@ export default function PortalAppointmentsPage(): JSX.Element {
         `/api/portal/bookings?shop=${encodeURIComponent(slug)}&status=pending`,
         { cache: "no-store", signal: ac.signal },
       );
-      const body = (await res.json().catch(() => null)) as Booking[] | { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as
+        | Booking[]
+        | { error?: string }
+        | null;
       if (!res.ok) {
         const message = body && !Array.isArray(body) ? body.error : null;
         throw new Error(message || "Failed to load appointment requests.");
@@ -390,7 +405,11 @@ export default function PortalAppointmentsPage(): JSX.Element {
       setPendingRequests(Array.isArray(body) ? body : []);
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      setBookingsError(err instanceof Error ? err.message : "Failed to load appointment requests.");
+      setBookingsError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load appointment requests.",
+      );
     } finally {
       setLoadingRequests(false);
     }
@@ -409,8 +428,14 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
   // derived groups
   const pending = pendingRequests;
-  const confirmed = useMemo(() => bookings.filter((b) => statusOf(b) === "confirmed"), [bookings]);
-  const cancelled = useMemo(() => bookings.filter((b) => statusOf(b) === "cancelled"), [bookings]);
+  const confirmed = useMemo(
+    () => bookings.filter((b) => statusOf(b) === "confirmed"),
+    [bookings],
+  );
+  const cancelled = useMemo(
+    () => bookings.filter((b) => statusOf(b) === "cancelled"),
+    [bookings],
+  );
 
   const totalForWeek = bookings.length;
 
@@ -500,7 +525,8 @@ export default function PortalAppointmentsPage(): JSX.Element {
         error?: string;
       };
 
-      if (!res.ok || !j.booking) throw new Error(j?.error || "Unable to create appointment.");
+      if (!res.ok || !j.booking)
+        throw new Error(j?.error || "Unable to create appointment.");
 
       const created = j.booking;
       const confirmRes = await fetch(`/api/portal/bookings/${created.id}`, {
@@ -508,7 +534,8 @@ export default function PortalAppointmentsPage(): JSX.Element {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "confirmed" }),
       });
-      if (!confirmRes.ok) throw new Error("Appointment was created but could not be confirmed.");
+      if (!confirmRes.ok)
+        throw new Error("Appointment was created but could not be confirmed.");
 
       toast.success("Appointment created and confirmed.");
       closePanel();
@@ -522,7 +549,10 @@ export default function PortalAppointmentsPage(): JSX.Element {
     }
   }
 
-  async function handleUpdate(id: string, patch: Partial<Booking>) {
+  async function handleUpdate(
+    id: string,
+    patch: Partial<Booking>,
+  ): Promise<boolean> {
     try {
       const res = await fetch(`/api/portal/bookings/${id}`, {
         method: "PATCH",
@@ -539,16 +569,20 @@ export default function PortalAppointmentsPage(): JSX.Element {
         refreshBookings(shopSlug, weekStart, weekEnd),
         refreshPendingRequests(shopSlug),
       ]);
+      return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Update failed";
       toast.error(message);
+      return false;
     }
   }
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this appointment?")) return;
     try {
-      const res = await fetch(`/api/portal/bookings/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/portal/bookings/${id}`, {
+        method: "DELETE",
+      });
       if (!res.ok) throw new Error("Delete failed.");
       toast.success("Appointment deleted.");
       setBookings((prev) => prev.filter((b) => b.id !== id));
@@ -560,12 +594,12 @@ export default function PortalAppointmentsPage(): JSX.Element {
     }
   }
 
-  async function approveBooking(b: Booking) {
-    await handleUpdate(b.id, { status: "confirmed" });
+  async function approveBooking(b: Booking): Promise<boolean> {
+    return handleUpdate(b.id, { status: "confirmed" });
   }
 
-  async function declineBooking(b: Booking) {
-    await handleUpdate(b.id, { status: "cancelled" });
+  async function declineBooking(b: Booking): Promise<boolean> {
+    return handleUpdate(b.id, { status: "cancelled" });
   }
 
   function buildWorkOrderCreateHref(b: Booking): string {
@@ -603,10 +637,13 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
-        <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[color:var(--theme-text-primary)]">Appointments</h1>
-        <p className="text-sm text-[color:var(--theme-text-secondary)]">
-          Review customer requests, protect shop capacity, and move approved visits into work.
-        </p>
+          <h1 className="text-3xl font-semibold tracking-[-0.03em] text-[color:var(--theme-text-primary)]">
+            Appointments
+          </h1>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
+            Review customer requests, protect shop capacity, and move approved
+            visits into work.
+          </p>
         </div>
         <Button type="button" onClick={() => openCreate(isoDate(weekStart))}>
           New appointment
@@ -631,12 +668,14 @@ export default function PortalAppointmentsPage(): JSX.Element {
                 <div className="text-[0.65rem] uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
                   Week
                 </div>
-                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{weekLabel}</div>
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  {weekLabel}
+                </div>
               </div>
 
               <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
                 <div className="text-[0.65rem] uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
-                  This week
+                  Five-day view
                 </div>
                 <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {totalForWeek} booking{totalForWeek === 1 ? "" : "s"}
@@ -647,21 +686,27 @@ export default function PortalAppointmentsPage(): JSX.Element {
                 <div className="text-[0.65rem] uppercase tracking-[0.13em] text-amber-700 dark:text-amber-200">
                   Pending review
                 </div>
-                <div className="text-sm font-semibold text-amber-900 dark:text-amber-100">{pending.length}</div>
+                <div className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                  {pending.length}
+                </div>
               </div>
 
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-50 px-3 py-2 dark:bg-emerald-950/25">
                 <div className="text-[0.65rem] uppercase tracking-[0.13em] text-emerald-700 dark:text-emerald-200">
                   Confirmed
                 </div>
-                <div className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">{confirmed.length}</div>
+                <div className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                  {confirmed.length}
+                </div>
               </div>
 
               <div className="rounded-xl border border-red-500/20 bg-red-50 px-3 py-2 dark:bg-red-950/25">
                 <div className="text-[0.65rem] uppercase tracking-[0.13em] text-red-700 dark:text-red-200">
                   Cancelled
                 </div>
-                <div className="text-sm font-semibold text-red-900 dark:text-red-100">{cancelled.length}</div>
+                <div className="text-sm font-semibold text-red-900 dark:text-red-100">
+                  {cancelled.length}
+                </div>
               </div>
             </div>
           </div>
@@ -686,7 +731,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                 size="sm"
                 onClick={() => {
                   const d = new Date(weekStart);
-                  d.setDate(d.getDate() - 7);
+                  d.setDate(d.getDate() - 5);
                   setWeekStart(d);
                   closePanel();
                 }}
@@ -710,7 +755,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
                 size="sm"
                 onClick={() => {
                   const d = new Date(weekStart);
-                  d.setDate(d.getDate() + 7);
+                  d.setDate(d.getDate() + 5);
                   setWeekStart(d);
                   closePanel();
                 }}
@@ -726,11 +771,30 @@ export default function PortalAppointmentsPage(): JSX.Element {
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_420px]">
         {/* Left: Calendar big */}
         <div className={cardClass()}>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Weekly calendar</h2>
-            {loadingBookings ? (
-              <span className="text-[0.75rem] text-[color:var(--theme-text-muted)]">Loading…</span>
-            ) : null}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Five-day schedule
+              </h2>
+              <p className="mt-0.5 text-[0.75rem] text-[color:var(--theme-text-muted)]">
+                A focused view of the shop&apos;s next operating window.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {loadingBookings ? (
+                <span className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
+                  Loading…
+                </span>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setCalendarOpen(true)}
+              >
+                Full calendar
+              </Button>
+            </div>
           </div>
 
           {bookingsError ? (
@@ -750,7 +814,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
             </div>
           ) : null}
 
-          <div className="overflow-x-auto pb-2">
+          <div>
             <WeeklyCalendar
               weekStart={weekStart}
               bookings={filteredBookings}
@@ -761,7 +825,8 @@ export default function PortalAppointmentsPage(): JSX.Element {
           </div>
 
           <p className="mt-3 text-[0.75rem] text-[color:var(--theme-text-muted)]">
-            Click a day to create. Click an appointment to edit.
+            Select a day to create an appointment, or open the full calendar for
+            month and day views.
           </p>
         </div>
 
@@ -780,13 +845,16 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
             {filteredPending.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-[color:var(--theme-text-muted)]">
-                No pending requests{query.trim() ? " matching your search." : "."}
+                No pending requests
+                {query.trim() ? " matching your search." : "."}
               </div>
             ) : (
               <ul className="divide-y divide-[color:var(--theme-border-soft)]">
                 {filteredPending
                   .slice()
-                  .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))
+                  .sort(
+                    (a, b) => +new Date(a.starts_at) - +new Date(b.starts_at),
+                  )
                   .map((b) => (
                     <li
                       key={b.id}
@@ -818,8 +886,12 @@ export default function PortalAppointmentsPage(): JSX.Element {
                           </div>
 
                           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
-                            {b.customer_phone ? <span>{b.customer_phone}</span> : null}
-                            {b.customer_email ? <span>{b.customer_email}</span> : null}
+                            {b.customer_phone ? (
+                              <span>{b.customer_phone}</span>
+                            ) : null}
+                            {b.customer_email ? (
+                              <span>{b.customer_email}</span>
+                            ) : null}
                           </div>
 
                           {b.notes ? (
@@ -869,11 +941,18 @@ export default function PortalAppointmentsPage(): JSX.Element {
                           ) : null}
 
                           {/* "..." menu */}
-                          <div className="relative" ref={menuOpenFor === b.id ? menuRef : undefined}>
+                          <div
+                            className="relative"
+                            ref={menuOpenFor === b.id ? menuRef : undefined}
+                          >
                             <button
                               type="button"
                               className={subtleButtonClass()}
-                              onClick={() => setMenuOpenFor((prev) => (prev === b.id ? null : b.id))}
+                              onClick={() =>
+                                setMenuOpenFor((prev) =>
+                                  prev === b.id ? null : b.id,
+                                )
+                              }
                               aria-label="More actions"
                             >
                               …
@@ -957,35 +1036,55 @@ export default function PortalAppointmentsPage(): JSX.Element {
       <div className={cardClass()}>
         <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-            Week agenda ({filteredBookings.length})
+            Five-day agenda ({filteredBookings.length})
           </h2>
 
           <div className="flex flex-wrap items-center gap-2">
-            <TabButton active={listTab === "all"} onClick={() => setListTab("all")}>
+            <TabButton
+              active={listTab === "all"}
+              onClick={() => setListTab("all")}
+            >
               All
             </TabButton>
-            <TabButton active={listTab === "pending"} onClick={() => setListTab("pending")}>
+            <TabButton
+              active={listTab === "pending"}
+              onClick={() => setListTab("pending")}
+            >
               Pending
             </TabButton>
-            <TabButton active={listTab === "confirmed"} onClick={() => setListTab("confirmed")}>
+            <TabButton
+              active={listTab === "confirmed"}
+              onClick={() => setListTab("confirmed")}
+            >
               Confirmed
             </TabButton>
-            <TabButton active={listTab === "cancelled"} onClick={() => setListTab("cancelled")}>
+            <TabButton
+              active={listTab === "cancelled"}
+              onClick={() => setListTab("cancelled")}
+            >
               Cancelled
             </TabButton>
           </div>
         </div>
 
         {loadingBookings ? (
-          <p className="text-sm text-[color:var(--theme-text-muted)]">Fetching appointments…</p>
+          <p className="text-sm text-[color:var(--theme-text-muted)]">
+            Fetching appointments…
+          </p>
         ) : filteredListByTab.length === 0 ? (
           <p className="text-sm text-[color:var(--theme-text-muted)]">
-            No appointments{query.trim() ? " matching your search." : " for this week."}
+            No appointments
+            {query.trim()
+              ? " matching your search."
+              : " in this five-day view."}
           </p>
         ) : (
           <ul className="divide-y divide-[color:var(--theme-border-soft)]">
             {filteredListByTab.map((b) => (
-              <li key={b.id} className="flex flex-wrap items-start gap-3 py-3 text-sm">
+              <li
+                key={b.id}
+                className="flex flex-wrap items-start gap-3 py-3 text-sm"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="font-medium text-[color:var(--theme-text-primary)]">
@@ -1006,14 +1105,20 @@ export default function PortalAppointmentsPage(): JSX.Element {
                   </div>
 
                   {b.notes ? (
-                    <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">{b.notes}</div>
+                    <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
+                      {b.notes}
+                    </div>
                   ) : null}
                 </div>
 
                 <div className="flex items-center gap-2">
                   {statusOf(b) === "pending" ? (
                     <>
-                      <Button type="button" size="xs" onClick={() => void approveBooking(b)}>
+                      <Button
+                        type="button"
+                        size="xs"
+                        onClick={() => void approveBooking(b)}
+                      >
                         Approve
                       </Button>
                       <Button
@@ -1048,7 +1153,12 @@ export default function PortalAppointmentsPage(): JSX.Element {
                     </Button>
                   ) : null}
 
-                  <Button type="button" size="xs" variant="outline" onClick={() => openEdit(b)}>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    onClick={() => openEdit(b)}
+                  >
                     Edit
                   </Button>
                   <Button
@@ -1067,6 +1177,19 @@ export default function PortalAppointmentsPage(): JSX.Element {
         )}
       </div>
 
+      <FullCalendarModal
+        open={calendarOpen}
+        shopSlug={shopSlug}
+        initialDate={weekStart}
+        onOpenChange={setCalendarOpen}
+        onCreate={openCreate}
+        onEdit={openEdit}
+        onApprove={approveBooking}
+        onDecline={declineBooking}
+        onOpenWorkOrder={openLinkedWorkOrder}
+        onCreateWorkOrder={openWorkOrderCreate}
+      />
+
       {/* Mobile drawer */}
       {panelMode ? (
         <div className="2xl:hidden">
@@ -1080,9 +1203,16 @@ export default function PortalAppointmentsPage(): JSX.Element {
           <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-auto rounded-t-3xl border border-[color:var(--desktop-border)] bg-[var(--desktop-panel-bg)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                {panelMode === "edit" ? "Edit appointment" : "Create appointment"}
+                {panelMode === "edit"
+                  ? "Edit appointment"
+                  : "Create appointment"}
               </div>
-              <Button type="button" size="xs" variant="outline" onClick={closePanel}>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={closePanel}
+              >
                 Close
               </Button>
             </div>
@@ -1191,7 +1321,9 @@ function CreateForm({
     const name = full || `${first} ${last}`.trim();
 
     setCustomerName(name || "");
-    setCustomerEmail(safeString(rec["email"]) || safeString(rec["contact_email"]));
+    setCustomerEmail(
+      safeString(rec["email"]) || safeString(rec["contact_email"]),
+    );
     setCustomerPhone(safeString(rec["phone"]) || safeString(rec["mobile"]));
   };
 
@@ -1212,7 +1344,9 @@ function CreateForm({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Create appointment</h3>
+      <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+        Create appointment
+      </h3>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-[color:var(--theme-text-secondary)]">
@@ -1334,8 +1468,12 @@ function EditForm({
   const start = useMemo(() => new Date(booking.starts_at), [booking.starts_at]);
   const end = useMemo(() => new Date(booking.ends_at), [booking.ends_at]);
 
-  const [date, setDate] = useState<string>(() => booking.starts_at.slice(0, 10));
-  const [startsAt, setStartsAt] = useState<string>(() => toLocalTimeInput(start));
+  const [date, setDate] = useState<string>(() =>
+    booking.starts_at.slice(0, 10),
+  );
+  const [startsAt, setStartsAt] = useState<string>(() =>
+    toLocalTimeInput(start),
+  );
   const [endsAt, setEndsAt] = useState<string>(() => toLocalTimeInput(end));
 
   useEffect(() => {
@@ -1345,10 +1483,16 @@ function EditForm({
     setEndsAt(toLocalTimeInput(new Date(booking.ends_at)));
   }, [booking.id, booking.starts_at, booking.ends_at]);
 
-  const [customerId, setCustomerId] = useState<string>(booking.customer_id ?? "");
+  const [customerId, setCustomerId] = useState<string>(
+    booking.customer_id ?? "",
+  );
   const [customerName, setCustomerName] = useState(booking.customer_name ?? "");
-  const [customerEmail, setCustomerEmail] = useState(booking.customer_email ?? "");
-  const [customerPhone, setCustomerPhone] = useState(booking.customer_phone ?? "");
+  const [customerEmail, setCustomerEmail] = useState(
+    booking.customer_email ?? "",
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    booking.customer_phone ?? "",
+  );
   const [notes, setNotes] = useState(booking.notes ?? "");
   const [status, setStatus] = useState(booking.status ?? "pending");
 
@@ -1364,7 +1508,9 @@ function EditForm({
     const name = full || `${first} ${last}`.trim();
 
     setCustomerName(name || "");
-    setCustomerEmail(safeString(rec["email"]) || safeString(rec["contact_email"]));
+    setCustomerEmail(
+      safeString(rec["email"]) || safeString(rec["contact_email"]),
+    );
     setCustomerPhone(safeString(rec["phone"]) || safeString(rec["mobile"]));
   };
 
@@ -1389,7 +1535,9 @@ function EditForm({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Edit appointment</h3>
+      <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+        Edit appointment
+      </h3>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-[color:var(--theme-text-secondary)]">
@@ -1481,7 +1629,11 @@ function EditForm({
 
       <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Status
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className={fieldClass()}>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className={fieldClass()}
+        >
           <option value="pending">Pending</option>
           <option value="confirmed">Confirmed</option>
           <option value="cancelled">Cancelled</option>
@@ -1507,10 +1659,15 @@ function EditForm({
       </div>
 
       <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-[0.75rem] text-[color:var(--theme-text-muted)]">
-        <div className="font-semibold text-[color:var(--theme-text-secondary)]">Current time window</div>
-        <div className="mt-1">{formatRange(booking.starts_at, booking.ends_at)}</div>
+        <div className="font-semibold text-[color:var(--theme-text-secondary)]">
+          Current time window
+        </div>
+        <div className="mt-1">
+          {formatRange(booking.starts_at, booking.ends_at)}
+        </div>
         <div className="mt-2 text-[color:var(--theme-text-muted)]">
-          Tip: If times looked “shifted” before, that was UTC slicing. This form now uses local time.
+          Tip: If times looked “shifted” before, that was UTC slicing. This form
+          now uses local time.
         </div>
       </div>
     </form>
