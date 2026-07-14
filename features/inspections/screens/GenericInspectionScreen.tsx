@@ -3168,7 +3168,7 @@ type SmartMatchRow = {
         isEmbed ? "sticky bottom-0 -mx-3 md:-mx-5" : "fixed inset-x-0 bottom-0",
       )}>
         <div className="mx-auto flex max-w-[1240px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">{actions}</div>
+          <div className="grid grid-cols-2 gap-2 [&>*]:w-full [&>*:last-child:nth-child(odd)]:col-span-2 sm:flex sm:flex-wrap sm:items-center sm:[&>*]:w-auto">{actions}</div>
           <div className="order-first text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:order-none">
             Draft auto-saves locally
           </div>
