@@ -24,12 +24,26 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => null)) as {
     allowConcurrentJobPunches?: boolean;
+    operationKey?: string;
+    idempotencyKey?: string;
   } | null;
+  const operationKey =
+    req.headers.get("Idempotency-Key")?.trim() ||
+    body?.operationKey?.trim() ||
+    body?.idempotencyKey?.trim() ||
+    "";
+  if (!operationKey) {
+    return NextResponse.json(
+      { error: "A stable Idempotency-Key is required." },
+      { status: 400 },
+    );
+  }
 
   const result = await startTechnicianJobLabor({
     supabase,
     lineId: id,
     technicianId: auth.user.id,
+    operationKey,
     allowConcurrentJobPunches: body?.allowConcurrentJobPunches === true,
   });
 
