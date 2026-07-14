@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 export function isUuid(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value.trim());
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.trim(),
+    )
+  );
 }
 
 export function positiveNumber(value: unknown): number | null {
@@ -10,16 +15,52 @@ export function positiveNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function idempotencyKey(req: Request, body: Record<string, unknown>, fallback: string): string {
+export function idempotencyKey(
+  req: Request,
+  body: Record<string, unknown>,
+): string | null {
   const header = req.headers.get("Idempotency-Key")?.trim();
-  const fromBody = typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : "";
-  return header || fromBody || fallback;
+  const camel = typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : "";
+  const snake = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+  return header || camel || snake || null;
 }
 
-export async function runPartsLifecycleRpc(_req: Request, rpc: string, args: Record<string, unknown>) {
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
+
+export async function runPartsLifecycleRpc(
+  _req: Request,
+  rpcName: string,
+  args: Record<string, unknown>,
+) {
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageWorkOrders",
+  });
   if (!access.ok) return access.response;
-  const { data, error } = await access.supabase.rpc(rpc as never, args as never);
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 409 });
+
+  const rawKey =
+    typeof args.p_idempotency_key === "string" ? args.p_idempotency_key.trim() : "";
+  if (!rawKey) {
+    return NextResponse.json(
+      { ok: false, error: "A stable idempotency key is required." },
+      { status: 400 },
+    );
+  }
+
+  const scopedArgs = {
+    ...args,
+    p_idempotency_key: `${access.profile.shop_id}:${rpcName}:${rawKey}`,
+  };
+  const rpc = access.supabase as unknown as RpcClient;
+  const { data, error } = await rpc.rpc(rpcName, scopedArgs);
+  if (error) {
+    const message = [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+    return NextResponse.json({ ok: false, error: message }, { status: 409 });
+  }
   return NextResponse.json({ ok: true, result: data });
 }
