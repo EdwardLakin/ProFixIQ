@@ -284,7 +284,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 border-emerald-500/35 bg-emerald-50 px-2 text-[11px] text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/25 dark:text-emerald-200"
                 onClick={() => markAll("ok")}
                 type="button"
               >
@@ -293,7 +293,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 border-red-500/30 px-2 text-[11px] text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
                 onClick={() => markAll("fail")}
                 type="button"
               >
@@ -302,7 +302,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 border-sky-500/30 px-2 text-[11px] text-sky-700 hover:bg-sky-50 dark:text-sky-200 dark:hover:bg-sky-950/25"
                 onClick={() => markAll("na")}
                 type="button"
               >
@@ -311,7 +311,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 border-amber-500/35 px-2 text-[11px] text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/25"
                 onClick={() => markAll("recommend")}
                 type="button"
               >
@@ -419,6 +419,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                       key={keyBase}
                       className={[
                         "relative px-3 py-3.5",
+                        isFailOrRec ? "lg:col-span-2" : "",
                         "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
                         rail,
                         submitted ? "ring-1 ring-emerald-500/35" : "",
