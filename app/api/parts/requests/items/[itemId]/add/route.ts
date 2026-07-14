@@ -33,7 +33,7 @@ function cleanString(value: unknown): string | null {
 
 function isUuid(value: unknown): value is string {
   if (typeof value !== "string") return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value.trim());
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
 }
 
 function nullableUuid(value: unknown, label: string): string | null {
@@ -115,17 +115,18 @@ export async function POST(
 
   if (requestError) return NextResponse.json({ ok: false, error: requestError.message }, { status: 500 });
   if (!partRequest) return NextResponse.json({ ok: false, error: "Parent parts request is not available for this shop." }, { status: 403 });
-
-  if (partRequest.work_order_id) {
-    const { data: workOrder, error: workOrderError } = await supabase
-      .from("work_orders")
-      .select("id, shop_id")
-      .eq("id", partRequest.work_order_id)
-      .eq("shop_id", shopId)
-      .maybeSingle();
-    if (workOrderError) return NextResponse.json({ ok: false, error: workOrderError.message }, { status: 500 });
-    if (!workOrder) return NextResponse.json({ ok: false, error: "Related work order is not available for this shop." }, { status: 403 });
+  if (!partRequest.work_order_id) {
+    return NextResponse.json({ ok: false, error: "Parent parts request is not linked to a work order." }, { status: 409 });
   }
+
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders")
+    .select("id, shop_id")
+    .eq("id", partRequest.work_order_id)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+  if (workOrderError) return NextResponse.json({ ok: false, error: workOrderError.message }, { status: 500 });
+  if (!workOrder) return NextResponse.json({ ok: false, error: "Related work order is not available for this shop." }, { status: 403 });
 
   if (partId) {
     const { data: part, error: partError } = await supabase
@@ -138,19 +139,19 @@ export async function POST(
     if (!part) return NextResponse.json({ ok: false, error: "Selected part is not available for this shop." }, { status: 403 });
   }
 
-  if (workOrderLineId) {
-    const { data: line, error: lineError } = await supabase
-      .from("work_order_lines")
-      .select("id, work_order_id, work_orders!inner(id, shop_id)")
-      .eq("id", workOrderLineId)
-      .eq("work_orders.shop_id", shopId)
-      .maybeSingle();
-    if (lineError) return NextResponse.json({ ok: false, error: lineError.message }, { status: 500 });
-    if (!line) return NextResponse.json({ ok: false, error: "Work order line is not available for this shop." }, { status: 403 });
-    if (partRequest.work_order_id && line.work_order_id !== partRequest.work_order_id) {
-      return NextResponse.json({ ok: false, error: "Work order line does not belong to this parts request work order." }, { status: 403 });
-    }
+  if (!workOrderLineId) {
+    return NextResponse.json({ ok: false, error: "A work order line is required before attaching this part." }, { status: 409 });
   }
+
+  const { data: line, error: lineError } = await supabase
+    .from("work_order_lines")
+    .select("id, work_order_id, shop_id")
+    .eq("id", workOrderLineId)
+    .eq("work_order_id", partRequest.work_order_id)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+  if (lineError) return NextResponse.json({ ok: false, error: lineError.message }, { status: 500 });
+  if (!line) return NextResponse.json({ ok: false, error: "Work order line is not available for this shop or request." }, { status: 403 });
 
   if (poId) {
     const { data: po, error: poError } = await supabase
@@ -175,6 +176,7 @@ export async function POST(
     unit_price: quotedPrice,
     requested_part_number: body.requestedPartNumber === undefined ? item.requested_part_number ?? null : cleanString(body.requestedPartNumber),
     requested_manufacturer: body.requestedManufacturer === undefined ? item.requested_manufacturer ?? null : cleanString(body.requestedManufacturer),
+    work_order_id: partRequest.work_order_id,
     work_order_line_id: workOrderLineId,
     po_id: poId,
     updated_at: new Date().toISOString(),
@@ -194,6 +196,23 @@ export async function POST(
     return NextResponse.json({ ok: false, error: "Update did not apply. The item may have changed or your shop access was blocked." }, { status: 409 });
   }
 
+  const { data: workOrderPartId, error: workOrderPartError } = await supabase.rpc(
+    "parts_ensure_work_order_part" as never,
+    { p_request_item_id: itemId } as never,
+  );
+  if (workOrderPartError) {
+    return NextResponse.json(
+      { ok: false, item: updatedItem, error: workOrderPartError.message },
+      { status: 500 },
+    );
+  }
+  if (!isUuid(workOrderPartId)) {
+    return NextResponse.json(
+      { ok: false, item: updatedItem, error: "Canonical work-order part was not created." },
+      { status: 500 },
+    );
+  }
+
   let allocation: { ok: true; result?: unknown } | { ok: false; error: string } | null = null;
   if (body.createAllocation && locationId) {
     const { data: allocationResult, error: allocationError } = await supabase.rpc("upsert_part_allocation_from_request_item", {
@@ -203,7 +222,7 @@ export async function POST(
     });
     allocation = allocationError ? { ok: false, error: allocationError.message } : { ok: true, result: allocationResult };
     if (allocationError) {
-      return NextResponse.json({ ok: false, item: updatedItem, allocation, error: allocationError.message }, { status: 500 });
+      return NextResponse.json({ ok: false, item: updatedItem, workOrderPartId, allocation, error: allocationError.message }, { status: 500 });
     }
   }
 
@@ -215,9 +234,9 @@ export async function POST(
         mismatch_acknowledged_by: access.profile.id,
         mismatch_warning_reason: warningReason,
       } as never)
-      .eq("source_parts_request_item_id", itemId)
+      .eq("id", workOrderPartId)
       .eq("shop_id", shopId);
   }
 
-  return NextResponse.json({ ok: true, item: updatedItem, allocation });
+  return NextResponse.json({ ok: true, item: updatedItem, workOrderPartId, allocation });
 }
