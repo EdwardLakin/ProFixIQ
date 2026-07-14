@@ -98,7 +98,7 @@ export async function POST(req: Request) {
     if (!accountId.startsWith("acct_")) {
       return NextResponse.json({ error: "Shop is not connected to Stripe yet" }, { status: 409 });
     }
-    if (!shop?.stripe_charges_enabled || !shop.payouts_enabled) {
+    if (!shop?.stripe_charges_enabled || !shop.stripe_payouts_enabled) {
       return NextResponse.json({ error: "Stripe onboarding not complete for this shop" }, { status: 409 });
     }
 
