@@ -1,0 +1,26 @@
+name: Phase 2 Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/work-orders/**"
+      - "features/work-orders/server/financialCorrectionLifecycle.ts"
+      - "supabase/migrations/20260714030000_phase2_financial_lifecycle_protection.sql"
+      - "supabase/migrations/20260714030100_phase2_correction_close_and_postcheck.sql"
+      - "tests/phase2-financial-lifecycle-protection.test.ts"
+      - ".github/workflows/phase2-validation.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm vitest run tests/phase2-financial-lifecycle-protection.test.ts
