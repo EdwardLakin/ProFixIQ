@@ -1,111 +1,85 @@
-// app/api/work-orders/assign-line/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
-
-const ASSIGNABLE_TECH_ROLES = ["mechanic", "tech", "foreman", "lead_hand"] as const;
+type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
 
 function must(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env ${name}`);
-  return v;
+  const value = process.env[name];
+  if (!value) throw new Error(`Missing env ${name}`);
+  return value;
 }
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as {
+    const body = (await req.json().catch(() => null)) as {
       work_order_line_id?: string;
       tech_id?: string;
-    };
+      operationKey?: string;
+      idempotencyKey?: string;
+    } | null;
 
-    const lineId = body.work_order_line_id;
-    const techId = body.tech_id;
-    const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+    const lineId = body?.work_order_line_id?.trim() ?? "";
+    const techId = body?.tech_id?.trim() ?? "";
+    const rawOperationKey =
+      req.headers.get("Idempotency-Key")?.trim() ||
+      body?.operationKey?.trim() ||
+      body?.idempotencyKey?.trim() ||
+      "";
+
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageWorkOrders",
+    });
     if (!access.ok) return access.response;
-    const assignedBy = access.profile.id;
-    const shopId = access.profile.shop_id;
 
     if (!lineId || !techId) {
       return NextResponse.json(
         { error: "work_order_line_id and tech_id are required" },
-        { status: 400 }
+        { status: 400 },
+      );
+    }
+    if (!rawOperationKey) {
+      return NextResponse.json(
+        { error: "A stable Idempotency-Key is required." },
+        { status: 400 },
       );
     }
 
-    const url = must("NEXT_PUBLIC_SUPABASE_URL");
-    const service = must("SUPABASE_SERVICE_ROLE_KEY");
-    const supabase = createClient<DB>(url, service);
+    const admin = createClient<DB>(
+      must("NEXT_PUBLIC_SUPABASE_URL"),
+      must("SUPABASE_SERVICE_ROLE_KEY"),
+    ) as unknown as RpcClient;
 
-    const { data: line, error: lineReadErr } = await supabase
-      .from("work_order_lines")
-      .select("id, line_type, work_order_id, work_orders!inner(id, shop_id)")
-      .eq("id", lineId)
-      .eq("work_orders.shop_id", shopId)
-      .maybeSingle();
+    const { data, error } = await admin.rpc(
+      "assign_work_order_line_technician_atomic",
+      {
+        p_shop_id: access.profile.shop_id,
+        p_work_order_line_id: lineId,
+        p_technician_id: techId,
+        p_assigned_by: access.profile.id,
+        p_operation_key: `${access.profile.shop_id}:assign-line:${rawOperationKey}`,
+      },
+    );
 
-    if (lineReadErr) {
-      return NextResponse.json({ error: lineReadErr.message }, { status: 400 });
-    }
-    if (!line) {
-      return NextResponse.json({ error: "Line not found" }, { status: 404 });
-    }
-    if ((line.line_type ?? "job") === "info") {
-      return NextResponse.json({ error: "Info lines cannot be technician-assigned." }, { status: 409 });
-    }
-
-    const { data: technician, error: technicianErr } = await supabase
-      .from("profiles")
-      .select("id, role")
-      .eq("id", techId)
-      .eq("shop_id", shopId)
-      .maybeSingle();
-    if (technicianErr) {
-      return NextResponse.json({ error: technicianErr.message }, { status: 400 });
-    }
-    if (!technician) {
-      return NextResponse.json({ error: "Technician not found" }, { status: 404 });
-    }
-    if (!technician.role || !ASSIGNABLE_TECH_ROLES.includes(technician.role as (typeof ASSIGNABLE_TECH_ROLES)[number])) {
-      return NextResponse.json({ error: "Technician not found" }, { status: 404 });
+    if (error) {
+      const message = [error.message, error.details, error.hint]
+        .filter(Boolean)
+        .join(" — ");
+      const status = message.includes("FINANCIALLY_LOCKED") ? 409 : 400;
+      return NextResponse.json({ error: message }, { status });
     }
 
-    // 1) keep the simple column up to date
-    const { error: lineErr } = await supabase
-      .from("work_order_lines")
-      .update({ assigned_tech_id: techId })
-      .eq("id", lineId)
-      .eq("work_order_id", line.work_order_id);
-
-    if (lineErr) {
-      return NextResponse.json({ error: lineErr.message }, { status: 400 });
-    }
-
-    // 2) also record in the 1..n table (ignore duplicates)
-    const { error: relErr } = await supabase
-      .from("work_order_line_technicians")
-      .upsert(
-        {
-          work_order_line_id: lineId,
-          technician_id: techId,
-          assigned_by: assignedBy,
-        },
-        {
-          // because you declared unique (work_order_line_id, technician_id)
-          onConflict: "work_order_line_id,technician_id",
-        }
-      );
-
-    if (relErr) {
-      // not fatal for UI
-      console.warn("assign-line: technician link failed:", relErr.message);
-    }
-
-    return NextResponse.json({ ok: true });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unexpected error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json(data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

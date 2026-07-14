@@ -5,8 +5,10 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
 
 function getId(req: NextRequest) {
-  const m = req.nextUrl.pathname.match(/\/api\/work-orders\/lines\/([^/]+)\/resume$/);
-  return m?.[1] ?? null;
+  const match = req.nextUrl.pathname.match(
+    /\/api\/work-orders\/lines\/([^/]+)\/resume$/,
+  );
+  return match?.[1] ?? null;
 }
 
 export async function POST(req: NextRequest) {
@@ -15,12 +17,30 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServerSupabaseRoute();
   const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
-  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (authErr)
+    return NextResponse.json({ error: authErr.message }, { status: 500 });
+  if (!auth?.user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json().catch(() => null)) as
-    | { allowConcurrentJobPunches?: boolean; toAwaiting?: boolean }
+    | {
+        allowConcurrentJobPunches?: boolean;
+        toAwaiting?: boolean;
+        operationKey?: string;
+        idempotencyKey?: string;
+      }
     | null;
+  const operationKey =
+    req.headers.get("Idempotency-Key")?.trim() ||
+    body?.operationKey?.trim() ||
+    body?.idempotencyKey?.trim() ||
+    "";
+  if (!operationKey) {
+    return NextResponse.json(
+      { error: "A stable Idempotency-Key is required." },
+      { status: 400 },
+    );
+  }
 
   const result = await applyJobPunchTransition({
     supabase,
@@ -28,6 +48,7 @@ export async function POST(req: NextRequest) {
     action: "resume",
     technicianId: auth.user.id,
     options: {
+      operationKey,
       allowConcurrentJobPunches: body?.allowConcurrentJobPunches === true,
       resume: {
         toAwaiting: body?.toAwaiting === true,
