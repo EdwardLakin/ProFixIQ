@@ -312,6 +312,17 @@ html[data-theme-mode="light"] .accent-chip {
   color: #9a4b2b;
 }
 
+/* Header action controls are not status pills. Give them an explicit mode-aware
+   text contract so translucent header surfaces cannot wash out their labels. */
+.app-shell-action {
+  color: var(--theme-text-primary) !important;
+}
+
+html[data-theme-mode="light"] .app-shell-action {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #0f172a !important;
+}
+
 body {
   color: var(--theme-text-primary);
   background:
