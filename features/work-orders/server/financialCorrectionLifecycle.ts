@@ -77,6 +77,7 @@ export async function openWorkOrderCorrection(input: {
 export async function closeWorkOrderCorrection(input: {
   supabase: SupabaseClient<DB>;
   shopId: string;
+  workOrderId: string;
   correctionSessionId: string;
   actorUserId: string;
   metadata?: Json;
@@ -85,6 +86,7 @@ export async function closeWorkOrderCorrection(input: {
     "close_work_order_correction_session",
     {
       p_shop_id: input.shopId,
+      p_work_order_id: input.workOrderId,
       p_correction_session_id: input.correctionSessionId,
       p_actor_user_id: input.actorUserId,
       p_metadata: input.metadata ?? {},
