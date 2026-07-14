@@ -14,41 +14,33 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 
-const supabaseAdmin = createClient<DB>(
+const admin = createClient<DB>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
-
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
 
-type RequestBody = {
+type Body = {
   workOrderId?: string;
   customerEmail?: string;
   customerName?: string;
   shopName?: string;
 };
 
-type SendInvoiceResponse = {
-  ok?: boolean;
-  invoiceVersionId?: string;
-  error?: string;
-  sentWithWarnings?: boolean;
-  warnings?: Array<{ step: string; message: string }>;
-};
-
-function joinName(first?: string | null, last?: string | null): string | undefined {
-  const value = [first?.trim(), last?.trim()].filter(Boolean).join(" ").trim();
-  return value || undefined;
+function joinedName(first?: string | null, last?: string | null) {
+  return [first?.trim(), last?.trim()].filter(Boolean).join(" ").trim() || undefined;
 }
 
-function pickShopName(
-  shop?: Pick<ShopRow, "business_name" | "shop_name" | "name"> | null,
-): string | undefined {
+function resolvedShopName(
+  shop: Pick<ShopRow, "business_name" | "shop_name" | "name"> | null,
+  override?: string,
+) {
   return (
+    override?.trim() ||
     shop?.business_name?.trim() ||
     shop?.shop_name?.trim() ||
     shop?.name?.trim() ||
-    undefined
+    "ProFixIQ"
   );
 }
 
@@ -60,33 +52,24 @@ export async function POST(req: Request) {
     });
     if (!access.ok) return access.response;
 
-    const body = (await req.json().catch(() => null)) as RequestBody | null;
+    const body = (await req.json().catch(() => null)) as Body | null;
     const workOrderId = body?.workOrderId?.trim() ?? "";
     if (!workOrderId) {
       return NextResponse.json({ error: "Missing work order ID" }, { status: 400 });
     }
 
-    const { data: workOrder, error: workOrderError } = await supabaseAdmin
+    const { data: workOrder } = await admin
       .from("work_orders")
       .select("id,shop_id,customer_id,customer_name,status")
       .eq("id", workOrderId)
       .eq("shop_id", access.profile.shop_id)
       .maybeSingle<
-        Pick<
-          WorkOrderRow,
-          "id" | "shop_id" | "customer_id" | "customer_name" | "status"
-        >
+        Pick<WorkOrderRow, "id" | "shop_id" | "customer_id" | "customer_name" | "status">
       >();
+    if (!workOrder) return NextResponse.json({ error: "Invalid work order" }, { status: 404 });
 
-    if (workOrderError || !workOrder) {
-      return NextResponse.json({ error: "Invalid work order" }, { status: 404 });
-    }
-
-    const normalizedStatus = String(workOrder.status ?? "")
-      .trim()
-      .toLowerCase()
-      .replaceAll(" ", "_");
-    if (!["completed", "ready_to_invoice", "invoiced"].includes(normalizedStatus)) {
+    const status = String(workOrder.status ?? "").trim().toLowerCase().replaceAll(" ", "_");
+    if (!["completed", "ready_to_invoice", "invoiced"].includes(status)) {
       return NextResponse.json(
         { error: `Work order status ${workOrder.status ?? "unknown"} is not ready for invoicing` },
         { status: 409 },
@@ -94,64 +77,48 @@ export async function POST(req: Request) {
     }
 
     const review = await reviewWorkOrder({
-      supabase: supabaseAdmin,
+      supabase: admin,
       workOrderId,
       shopId: workOrder.shop_id,
       kind: "invoice_review",
     });
     if (!review.ok) {
       return NextResponse.json(
-        {
-          error: "Invoice review failed. Resolve blocking issues before sending.",
-          issues: review.issues,
-        },
+        { error: "Invoice review failed.", issues: review.issues },
         { status: 400 },
       );
     }
 
-    const snapshot = await getInvoiceSnapshotForWorkOrder({
-      supabase: supabaseAdmin,
-      workOrderId,
-    });
-    const invoiceTotal = Number(snapshot.total ?? 0);
-    if (!Number.isFinite(invoiceTotal) || invoiceTotal <= 0) {
-      return NextResponse.json(
-        { error: "Cannot send invoice with a zero total. Add labor or parts before invoicing." },
-        { status: 400 },
-      );
+    const snapshot = await getInvoiceSnapshotForWorkOrder({ supabase: admin, workOrderId });
+    const total = Number(snapshot.total ?? 0);
+    if (!Number.isFinite(total) || total <= 0) {
+      return NextResponse.json({ error: "Cannot issue a zero-total invoice." }, { status: 400 });
     }
 
     const [{ data: shop }, { data: customer }] = await Promise.all([
-      supabaseAdmin
+      admin
         .from("shops")
         .select("business_name,shop_name,name")
         .eq("id", workOrder.shop_id)
         .maybeSingle<Pick<ShopRow, "business_name" | "shop_name" | "name">>(),
       workOrder.customer_id
-        ? supabaseAdmin
+        ? admin
             .from("customers")
             .select("id,user_id,name,first_name,last_name,email")
             .eq("id", workOrder.customer_id)
             .maybeSingle<
-              Pick<
-                CustomerRow,
-                "id" | "user_id" | "name" | "first_name" | "last_name" | "email"
-              >
+              Pick<CustomerRow, "id" | "user_id" | "name" | "first_name" | "last_name" | "email">
             >()
         : Promise.resolve({ data: null, error: null }),
     ]);
 
-    const customerEmail =
-      body?.customerEmail?.trim().toLowerCase() || customer?.email?.trim().toLowerCase() || "";
-    if (!customerEmail) {
-      return NextResponse.json(
-        { error: "Missing customer email. Add an email to the customer before invoicing." },
-        { status: 400 },
-      );
+    const email = body?.customerEmail?.trim().toLowerCase() || customer?.email?.trim().toLowerCase() || "";
+    if (!email) {
+      return NextResponse.json({ error: "Missing customer email." }, { status: 400 });
     }
 
-    const nowIso = new Date().toISOString();
-    const { data: pendingInvoice } = await supabaseAdmin
+    const now = new Date().toISOString();
+    const { data: pending } = await admin
       .from("invoices")
       .select("id")
       .eq("work_order_id", workOrderId)
@@ -161,8 +128,7 @@ export async function POST(req: Request) {
       .limit(1)
       .maybeSingle<{ id: string }>();
 
-    let invoiceId = pendingInvoice?.id ?? null;
-    const invoicePayload = {
+    const payload = {
       shop_id: workOrder.shop_id,
       work_order_id: workOrderId,
       customer_id: workOrder.customer_id,
@@ -172,62 +138,62 @@ export async function POST(req: Request) {
       parts_cost: snapshot.partsCost ?? 0,
       discount_total: snapshot.discountTotal ?? 0,
       tax_total: snapshot.taxTotal ?? 0,
-      total: invoiceTotal,
+      total,
       status: "issued_pending_send",
-      issued_at: nowIso,
-    } satisfies DB["public"]["Tables"]["invoices"]["Insert"];
+      issued_at: now,
+    } as DB["public"]["Tables"]["invoices"]["Insert"];
 
+    let invoiceId = pending?.id ?? null;
     if (invoiceId) {
-      const { error } = await supabaseAdmin
+      const { error } = await admin
         .from("invoices")
-        .update(invoicePayload)
+        .update(payload)
         .eq("id", invoiceId)
         .eq("shop_id", workOrder.shop_id);
-      if (error) throw new Error(`Failed to persist invoice: ${error.message}`);
+      if (error) throw new Error(error.message);
     } else {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await admin
         .from("invoices")
-        .insert(invoicePayload)
+        .insert(payload)
         .select("id")
         .single<{ id: string }>();
-      if (error || !data?.id) {
-        throw new Error(`Failed to create invoice: ${error?.message ?? "unknown error"}`);
-      }
+      if (error || !data?.id) throw new Error(error?.message ?? "Failed to create invoice");
       invoiceId = data.id;
     }
+    if (!invoiceId) throw new Error("Invoice persistence did not return an id");
 
-    const invoiceVersion = await finalizeInvoiceVersion({
-      supabase: supabaseAdmin,
+    const version = await finalizeInvoiceVersion({
+      supabase: admin,
       shopId: workOrder.shop_id,
       workOrderId,
       invoiceId,
       snapshot,
-      actorUserId: access.user.id,
+      actorUserId: access.profile.id,
       operationKey: req.headers.get("idempotency-key")?.trim() || `invoice-send:${workOrderId}`,
     });
 
-    const baseUrl = SITE_URL.trim().replace(/\/+$/, "");
-    const portalInvoiceUrl = `${baseUrl}/portal/invoices/${workOrderId}?version=${invoiceVersion.id}`;
-    const invoicePdfUrl = `${baseUrl}/api/work-orders/${workOrderId}/invoice-pdf?version=${invoiceVersion.id}&download=1`;
-    const shopName = body?.shopName?.trim() || pickShopName(shop) || "ProFixIQ";
-    const customerName =
+    const base = SITE_URL.trim().replace(/\/+$/, "");
+    const portalUrl = `${base}/portal/invoices/${workOrderId}?version=${version.id}`;
+    const pdfUrl = `${base}/api/invoice-versions/${version.id}/pdf?download=1`;
+    const shopLabel = resolvedShopName(shop, body?.shopName);
+    const customerLabel =
       body?.customerName?.trim() ||
       customer?.name?.trim() ||
-      joinName(customer?.first_name, customer?.last_name) ||
+      joinedName(customer?.first_name, customer?.last_name) ||
       workOrder.customer_name?.trim() ||
       undefined;
     const brand = await getActiveBrandForRender(workOrder.shop_id);
 
     await sendInvoiceReadyEmail({
       shopId: workOrder.shop_id,
-      to: customerEmail,
-      portalUrl: portalInvoiceUrl,
+      to: email,
+      portalUrl,
       workOrderId,
-      invoiceTotal: invoiceVersion.total,
+      invoiceTotal: version.total,
       laborTotal: snapshot.laborCost ?? 0,
       partsTotal: snapshot.partsCost ?? 0,
-      customerName,
-      shopName,
+      customerName: customerLabel,
+      shopName: shopLabel,
       brandLogoUrl: brand?.logoUrl ?? null,
       brandPrimaryColor: brand?.colors.primary ?? null,
       brandSecondaryColor: brand?.colors.secondary ?? null,
@@ -237,9 +203,9 @@ export async function POST(req: Request) {
       {
         step: "invoice_status_after_send",
         run: async () => {
-          const { error } = await supabaseAdmin
+          const { error } = await admin
             .from("invoices")
-            .update({ status: "issued", issued_at: nowIso })
+            .update({ status: "issued", issued_at: now })
             .eq("id", invoiceId)
             .eq("shop_id", workOrder.shop_id);
           if (error) throw new Error(error.message);
@@ -248,15 +214,15 @@ export async function POST(req: Request) {
       {
         step: "work_order_invoice_state_update",
         run: async () => {
-          const { error } = await supabaseAdmin
+          const { error } = await admin
             .from("work_orders")
             .update({
               status: "invoiced",
-              invoice_sent_at: nowIso,
-              invoice_last_sent_to: customerEmail,
-              invoice_total: invoiceVersion.total,
-              invoice_url: portalInvoiceUrl,
-              invoice_pdf_url: invoicePdfUrl,
+              invoice_sent_at: now,
+              invoice_last_sent_to: email,
+              invoice_total: version.total,
+              invoice_url: portalUrl,
+              invoice_pdf_url: pdfUrl,
             } as DB["public"]["Tables"]["work_orders"]["Update"])
             .eq("id", workOrderId)
             .eq("shop_id", workOrder.shop_id);
@@ -267,16 +233,16 @@ export async function POST(req: Request) {
         step: "invoice_sent_audit_log",
         run: async () => {
           await logOperationalEvent({
-            supabase: supabaseAdmin,
+            supabase: admin,
             event: "invoice_sent",
             entityType: "invoice_version",
-            entityId: invoiceVersion.id,
+            entityId: version.id,
             details: {
               work_order_id: workOrderId,
               invoice_id: invoiceId,
-              invoice_version_id: invoiceVersion.id,
-              invoice_total: invoiceVersion.total,
-              recipient: customerEmail,
+              invoice_version_id: version.id,
+              invoice_total: version.total,
+              recipient: email,
             },
           });
         },
@@ -286,13 +252,13 @@ export async function POST(req: Request) {
             {
               step: "portal_invoice_notification_insert",
               run: async () => {
-                const { error } = await supabaseAdmin.from("portal_notifications").insert({
+                const { error } = await admin.from("portal_notifications").insert({
                   user_id: customer.user_id,
                   customer_id: customer.id,
                   work_order_id: workOrderId,
                   kind: "invoice_ready",
                   title: "Invoice ready",
-                  body: `Your invoice for Work Order ${workOrderId} at ${shopName} is ready to view.`,
+                  body: `Your invoice for Work Order ${workOrderId} at ${shopLabel} is ready to view.`,
                 });
                 if (error) throw new Error(error.message);
               },
@@ -303,13 +269,13 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      invoiceVersionId: invoiceVersion.id,
+      invoiceVersionId: version.id,
       sentWithWarnings: warnings.length > 0 || undefined,
-      warnings: warnings.length > 0 ? warnings : undefined,
-    } satisfies SendInvoiceResponse);
+      warnings: warnings.length ? warnings : undefined,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error sending invoice";
-    console.error("[invoices/send] Invoice Send Failed:", message);
+    console.error("[invoices/send] failed:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
