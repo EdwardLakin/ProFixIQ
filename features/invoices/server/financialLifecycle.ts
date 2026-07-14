@@ -10,6 +10,20 @@ type RpcClient = SupabaseClient<DB> & {
   ): Promise<{ data: unknown; error: { message: string } | null }>;
 };
 
+type DynamicQuery = {
+  eq(column: string, value: string): DynamicQuery;
+  in(column: string, values: string[]): DynamicQuery;
+  order(column: string, options: { ascending: boolean }): DynamicQuery;
+  limit(value: number): DynamicQuery;
+  maybeSingle<T>(): Promise<{ data: T | null; error: { message: string } | null }>;
+};
+
+type DynamicClient = {
+  from(table: string): {
+    select(columns: string): DynamicQuery;
+  };
+};
+
 export type InvoiceVersionLifecycleStatus =
   | "draft"
   | "issued"
@@ -128,33 +142,20 @@ export async function getActiveInvoiceVersion(args: {
   workOrderId: string;
   shopId?: string;
 }): Promise<InvoiceVersionRecord | null> {
-  const client = args.supabase as unknown as {
-    from(table: string): {
-      select(columns: string): {
-        eq(column: string, value: string): ReturnType<typeof buildQuery>;
-      };
-    };
-  };
-
-  function buildQuery(): never {
-    throw new Error("type-only helper");
-  }
-
+  const client = args.supabase as unknown as DynamicClient;
   let query = client
     .from("invoice_versions")
-    .select("id,shop_id,work_order_id,invoice_id,version_number,lifecycle_status,currency,subtotal,discount_total,tax_total,total,paid_total,refunded_total,outstanding_total,snapshot,issued_at")
-    .eq("work_order_id", args.workOrderId) as unknown as {
-      eq(column: string, value: string): unknown;
-      in(column: string, values: string[]): unknown;
-      order(column: string, opts: { ascending: boolean }): unknown;
-      limit(value: number): unknown;
-      maybeSingle<T>(): Promise<{ data: T | null; error: { message: string } | null }>;
-    };
+    .select(
+      "id,shop_id,work_order_id,invoice_id,version_number,lifecycle_status,currency,subtotal,discount_total,tax_total,total,paid_total,refunded_total,outstanding_total,snapshot,issued_at",
+    )
+    .eq("work_order_id", args.workOrderId);
 
-  if (args.shopId) query = query.eq("shop_id", args.shopId) as typeof query;
-  query = query.in("lifecycle_status", ["issued", "partially_paid", "paid"]) as typeof query;
-  query = query.order("version_number", { ascending: false }) as typeof query;
-  query = query.limit(1) as typeof query;
+  if (args.shopId) query = query.eq("shop_id", args.shopId);
+  query = query
+    .in("lifecycle_status", ["issued", "partially_paid", "paid"])
+    .order("version_number", { ascending: false })
+    .limit(1);
+
   const { data, error } = await query.maybeSingle<InvoiceVersionRecord>();
   if (error) throw new Error(error.message);
   return data;
