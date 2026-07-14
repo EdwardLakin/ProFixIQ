@@ -18,10 +18,15 @@ export function positiveNumber(value: unknown): number | null {
 export function idempotencyKey(
   req: Request,
   body: Record<string, unknown>,
+  _legacyFallback?: string,
 ): string | null {
   const header = req.headers.get("Idempotency-Key")?.trim();
   const camel = typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim() : "";
   const snake = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+
+  // The optional third argument exists only so older route callers compile during
+  // the Phase 3 transition. It is deliberately ignored: retryable operations must
+  // receive a stable key from the caller rather than deriving one from payload data.
   return header || camel || snake || null;
 }
 
