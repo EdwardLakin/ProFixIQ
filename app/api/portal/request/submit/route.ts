@@ -105,7 +105,7 @@ export async function POST(req: Request) {
 
     const warnings: string[] = [];
     const alreadySubmitted = Boolean(wo.portal_submitted_at);
-    const alreadyFinalized = booking.status === "confirmed" && booking.work_order_id === wo.id;
+    const alreadyFinalized = booking.status === "pending" && booking.work_order_id === wo.id;
     if (alreadySubmitted && alreadyFinalized) {
       return NextResponse.json(
         {
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
     if (woUpdErr) return bad("Failed to save agreement/signature", 500);
 
     const bookingUpdate: DB["public"]["Tables"]["bookings"]["Update"] = {
-      status: "confirmed",
+      status: "pending",
       work_order_id: wo.id,
     };
 
