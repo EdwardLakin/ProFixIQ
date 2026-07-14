@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import {
   getActiveInvoiceVersion,
   postPaymentEvent,
 } from "@/features/invoices/server/financialLifecycle";
 
+type DB = Database;
 const PAYMENT_ROLES = ["owner", "admin", "manager", "advisor"] as const;
 const METHODS = new Set(["cash", "cheque", "terminal", "eft", "financing", "other"]);
 
@@ -34,9 +36,7 @@ export async function POST(req: Request) {
     const idempotencyKey =
       body?.idempotencyKey?.trim() || req.headers.get("idempotency-key")?.trim() || "";
 
-    if (!workOrderId) {
-      return NextResponse.json({ error: "Missing workOrderId" }, { status: 400 });
-    }
+    if (!workOrderId) return NextResponse.json({ error: "Missing workOrderId" }, { status: 400 });
     if (!METHODS.has(method)) {
       return NextResponse.json({ error: "Unsupported payment method" }, { status: 400 });
     }
@@ -47,9 +47,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "An idempotency key is required" }, { status: 400 });
     }
 
-    const supabase = createServerSupabaseRoute();
+    const admin = createClient<DB>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
     const invoiceVersion = await getActiveInvoiceVersion({
-      supabase,
+      supabase: admin,
       workOrderId,
       shopId: access.profile.shop_id,
     });
@@ -72,7 +75,7 @@ export async function POST(req: Request) {
     }
 
     const result = await postPaymentEvent({
-      supabase,
+      supabase: admin,
       shopId: access.profile.shop_id,
       workOrderId,
       invoiceVersionId: invoiceVersion.id,
