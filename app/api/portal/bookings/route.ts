@@ -47,9 +47,11 @@ export async function GET(req: Request): Promise<Response> {
   const shopSlug = url.searchParams.get("shop") ?? "";
   const start = url.searchParams.get("start") ?? "";
   const end = url.searchParams.get("end") ?? "";
+  const status = url.searchParams.get("status") ?? "";
+  const pendingQueue = status === "pending";
 
-  if (!shopSlug || !start || !end) {
-    return bad("Missing shop, start, or end");
+  if (!shopSlug || (!pendingQueue && (!start || !end))) {
+    return bad("Missing shop or date range");
   }
 
   // Auth
@@ -87,14 +89,8 @@ export async function GET(req: Request): Promise<Response> {
     return bad("You cannot view bookings for this shop", 403);
   }
 
-  // Build date window for the week (inclusive)
-  const startIso = new Date(`${start}T00:00:00.000Z`).toISOString();
-  const endDate = new Date(`${end}T00:00:00.000Z`);
-  endDate.setDate(endDate.getDate() + 1); // next day
-  const endIso = endDate.toISOString();
-
   // Query bookings + customer + shop slug
-  const { data: rows, error: rowsErr } = await supabase
+  let bookingsQuery = supabase
     .from("bookings")
     .select(
       `
@@ -119,12 +115,28 @@ export async function GET(req: Request): Promise<Response> {
       `,
     )
     .eq("shop_id", shop.id)
-    .gte("starts_at", startIso)
-    .lt("starts_at", endIso)
     .order("starts_at", { ascending: true });
 
+  if (pendingQueue) {
+    bookingsQuery = bookingsQuery.eq("status", "pending");
+  } else {
+    const startIso = new Date(`${start}T00:00:00.000Z`).toISOString();
+    const endDate = new Date(`${end}T00:00:00.000Z`);
+    endDate.setDate(endDate.getDate() + 1);
+    const endIso = endDate.toISOString();
+    bookingsQuery = bookingsQuery.gte("starts_at", startIso).lt("starts_at", endIso);
+  }
+
+  const { data: rows, error: rowsErr } = await bookingsQuery;
+
   if (rowsErr || !rows) {
-    return bad("Failed to load bookings", 500);
+    console.error("appointments GET failed", {
+      shopId: shop.id,
+      pendingQueue,
+      message: rowsErr?.message,
+      code: rowsErr?.code,
+    });
+    return bad(rowsErr?.message || "Failed to load bookings", 500);
   }
 
   const bookings = rows as unknown as BookingRow[];
