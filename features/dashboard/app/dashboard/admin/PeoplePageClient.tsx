@@ -55,7 +55,7 @@ function certificationPosture(row: PersonRow) {
   if (row.expiring_certifications > 0) return { label: "Expiring ≤30d", tone: "text-amber-300" };
   if (row.cert_expiring_60 > 0) return { label: "Expiring 31-60d", tone: "text-yellow-200" };
   if (row.open_certifications > 0) return { label: "Active", tone: "text-emerald-300" };
-  return { label: "No certs", tone: "text-neutral-400" };
+  return { label: "No certs", tone: "text-[color:var(--theme-text-secondary)]" };
 }
 
 export default function PeoplePageClient() {
@@ -181,7 +181,7 @@ export default function PeoplePageClient() {
         <AdminToolbar>
           <AdminField label="Search" className="flex-1">
             <input
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-orange-400/70"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-400/70"
               placeholder="Name, email, phone, role, workforce role"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -189,7 +189,7 @@ export default function PeoplePageClient() {
           </AdminField>
           <AdminField label="Employment status" className="w-full md:w-56">
             <select
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-orange-400/70"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-orange-400/70"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as "all" | "active" | "inactive" | "on_leave")}
             >
@@ -201,7 +201,7 @@ export default function PeoplePageClient() {
           </AdminField>
           <AdminField label="Triage filter" className="w-full md:w-56">
             <select
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-orange-400/70"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-orange-400/70"
               value={actionFilter}
               onChange={(event) => setActionFilter(event.target.value as "all" | "needs_action" | "payroll_issues" | "cert_expiry")}
             >
@@ -224,7 +224,7 @@ export default function PeoplePageClient() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400">
+              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                 <tr>
                   <th className="px-4 py-2.5 text-left">Person</th>
                   <th className="px-4 py-2.5 text-left">Identity role</th>
@@ -235,7 +235,7 @@ export default function PeoplePageClient() {
                   <th className="px-4 py-2.5 text-left">Follow-up</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                 {filteredRows.map((row) => {
                   const cert = certificationPosture(row);
                   const topReason = row.action_reasons[0];
@@ -248,34 +248,34 @@ export default function PeoplePageClient() {
                   return (
                     <tr
                       key={row.id}
-                      className="cursor-pointer text-neutral-200 transition hover:bg-white/5"
+                      className="cursor-pointer text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
                       onClick={() => {
                         window.location.href = `/dashboard/admin/people/${row.id}`;
                       }}
                     >
                       <td className="px-4 py-2.5">
-                        <p className="font-medium text-neutral-100">{row.full_name ?? "Unnamed"}</p>
-                        <p className="text-xs text-neutral-500">{row.email ?? "No email"}</p>
-                        <p className="text-xs text-neutral-400">{row.action_counts.blocking} blocking • {row.action_counts.warning} warning</p>
+                        <p className="font-medium text-[color:var(--theme-text-primary)]">{row.full_name ?? "Unnamed"}</p>
+                        <p className="text-xs text-[color:var(--theme-text-muted)]">{row.email ?? "No email"}</p>
+                        <p className="text-xs text-[color:var(--theme-text-secondary)]">{row.action_counts.blocking} blocking • {row.action_counts.warning} warning</p>
                       </td>
                       <td className="px-4 py-2.5"><AdminBadge>{row.role ?? "Unassigned"}</AdminBadge></td>
                       <td className="px-4 py-2.5">
                         <p>{row.workforce_role ?? "General"}</p>
-                        <p className="text-xs text-neutral-500">{row.employment_status ?? "active"}</p>
+                        <p className="text-xs text-[color:var(--theme-text-muted)]">{row.employment_status ?? "active"}</p>
                       </td>
                       <td className="px-4 py-2.5 text-xs">
                         <p className={cert.tone}>{cert.label}</p>
-                        <p className="text-neutral-400">{row.open_certifications} open • {row.expired_certifications} expired</p>
+                        <p className="text-[color:var(--theme-text-secondary)]">{row.open_certifications} open • {row.expired_certifications} expired</p>
                       </td>
                       <td className="px-4 py-2.5 text-xs">
                         {row.payroll_blocking_exceptions > 0 ? `${row.payroll_blocking_exceptions} blocking` : row.payroll_warning_exceptions > 0 ? `${row.payroll_warning_exceptions} warning` : row.payroll_ready ? "Ready" : "Not ready"}
-                        <p className="text-neutral-400">{row.payroll_open_period_entries} open entries</p>
+                        <p className="text-[color:var(--theme-text-secondary)]">{row.payroll_open_period_entries} open entries</p>
                       </td>
                       <td className="px-4 py-2.5 text-xs">
                         <p className={row.has_schedule_template ? "text-emerald-300" : "text-amber-300"}>
                           {row.has_schedule_template ? "Template set" : "No template"}
                         </p>
-                        <p className="text-neutral-400">
+                        <p className="text-[color:var(--theme-text-secondary)]">
                           {row.pending_time_off_requests} pending · {row.upcoming_approved_time_away} upcoming away
                         </p>
                       </td>

@@ -43,18 +43,18 @@ export default function MenuItemSuggestionsPage() {
   }, [supabase]);
 
   return (
-    <div className="min-h-screen bg-black p-6 text-white">
+    <div className="min-h-screen bg-[color:var(--theme-surface-page)] p-6 text-[color:var(--theme-text-primary)]">
       <h1 className="text-xl font-semibold text-[color:var(--accent-copper-light,#fdba74)]">Review services</h1>
-      <p className="mt-1 text-xs text-neutral-400">menu_item_suggestions</p>
+      <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">menu_item_suggestions</p>
       {error ? <p className="mt-4 text-sm text-red-400">{error}</p> : null}
       <div className="mt-4 space-y-2">
         {rows.map((row) => (
-          <div key={row.id} className="rounded-lg border border-neutral-800 bg-neutral-950 p-3 text-sm">
-            <p className="font-medium text-neutral-100">{row.title ?? "Untitled suggestion"}</p>
-            <p className="mt-1 text-xs text-neutral-400">{row.reason ?? "No reason provided."}</p>
+          <div key={row.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3 text-sm">
+            <p className="font-medium text-[color:var(--theme-text-primary)]">{row.title ?? "Untitled suggestion"}</p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{row.reason ?? "No reason provided."}</p>
           </div>
         ))}
-        {rows.length === 0 && !error ? <p className="text-sm text-neutral-400">No service suggestions.</p> : null}
+        {rows.length === 0 && !error ? <p className="text-sm text-[color:var(--theme-text-secondary)]">No service suggestions.</p> : null}
       </div>
     </div>
   );

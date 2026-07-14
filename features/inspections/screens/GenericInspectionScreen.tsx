@@ -2534,10 +2534,10 @@ type SmartMatchRow = {
   const passiveCard = `${PANEL_VARIANTS.passive} px-3 py-2.5 md:px-4 md:py-3`;
 
   const sectionTitle =
-    "text-base md:text-lg font-semibold text-[var(--theme-text-primary,#E2E8F0)] text-center tracking-[0.12em] uppercase";
+    "text-base md:text-lg font-semibold text-[var(--theme-text-primary,var(--theme-text-primary))] text-center tracking-[0.12em] uppercase";
 
   const hint =
-    "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-neutral-400";
+    "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]";
 
 
   const findingsHref = useMemo(() => {
@@ -2577,7 +2577,7 @@ type SmartMatchRow = {
         type="button"
         variant="outline"
         size="sm"
-        className="font-medium border-white/20 text-[11px] tracking-[0.16em] uppercase text-neutral-200"
+        className="font-medium border-[color:var(--theme-border-soft)] text-[11px] tracking-[0.16em] uppercase text-[color:var(--theme-text-primary)]"
         onClick={() => router.push(findingsHref)}
         disabled={isLocked}
       >
@@ -2612,7 +2612,7 @@ type SmartMatchRow = {
     (session.sections?.length ?? 0) === 0
   ) {
     return (
-      <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>
+      <div className="p-4 text-sm text-[color:var(--theme-text-secondary)]">Loading inspection…</div>
     );
   }
 
@@ -2629,17 +2629,17 @@ type SmartMatchRow = {
 
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,_color-mix(in_srgb,var(--brand-accent,#E39A6E)_18%,transparent),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]"
+        className="pointer-events-none fixed inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
       />
 
       <div className="relative space-y-3">
         <div className={headerCard}>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--theme-card-border,#334155)] pb-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-2">
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--theme-text-muted,#64748B)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--theme-text-muted,var(--theme-text-muted))]">
                 Inspection
               </div>
-              <div className="mt-0.5 text-base md:text-lg font-semibold text-[var(--theme-text-primary,#E2E8F0)]">
+              <div className="mt-0.5 text-base md:text-lg font-semibold text-[var(--theme-text-primary,var(--theme-text-primary))]">
                 {session?.templateitem || templateName || "Inspection"}
               </div>
             </div>
@@ -2683,7 +2683,7 @@ type SmartMatchRow = {
                         ? "bg-amber-400"
                         : voiceState === "error"
                           ? "bg-red-400"
-                          : "bg-neutral-500",
+                          : "bg-[color:var(--theme-surface-subtle)]",
                     voiceState === "listening" ? "animate-pulse" : "",
                   ].join(" ")}
                 />
@@ -2727,7 +2727,7 @@ type SmartMatchRow = {
             <Button
               type="button"
               variant="outline"
-              className="w-full justify-center border-orange-300/70 bg-black/60 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:bg-black/80 sm:w-auto"
+              className="w-full justify-center border-orange-300/70 bg-[color:var(--theme-surface-overlay)] text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-400 hover:bg-[color:var(--theme-surface-overlay)] sm:w-auto"
               onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
             >
               Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
@@ -2751,7 +2751,7 @@ type SmartMatchRow = {
 
           {Array.isArray(session.voiceTrace) && session.voiceTrace.length > 0 && (
             <details className={`${passiveCard} mt-2`}>
-              <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-300">
+              <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Voice log ({session.voiceTrace.length})
               </summary>
               <div className="mt-2 space-y-2">
@@ -2765,11 +2765,11 @@ type SmartMatchRow = {
                     return (
                       <div
                         key={e.id}
-                        className="rounded-xl border border-white/10 bg-black/50 px-3 py-2"
+                        className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-xs text-neutral-200">{e.rawFinal}</div>
-                          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                          <div className="text-xs text-[color:var(--theme-text-primary)]">{e.rawFinal}</div>
+                          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                             {new Date(e.ts).toLocaleTimeString()}
                           </div>
                         </div>
@@ -2777,7 +2777,7 @@ type SmartMatchRow = {
                         <div className="mt-1 flex items-center gap-2 text-[11px]">
                           <span className="text-emerald-200">✓ {okCount}</span>
                           <span className="text-red-200">✕ {failCount}</span>
-                          <span className="text-neutral-500">parsed: {(e.parsed ?? []).length}</span>
+                          <span className="text-[color:var(--theme-text-muted)]">parsed: {(e.parsed ?? []).length}</span>
                         </div>
                       </div>
                     );
@@ -2893,7 +2893,7 @@ type SmartMatchRow = {
                         </button>
                         <button
                           type="button"
-                          className="rounded-full border border-neutral-500/60 bg-neutral-800/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-700"
+                          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
                           onClick={() => toggleSectionCollapsed(sectionIndex)}
                         >
                           {collapsed ? "Expand" : "Collapse"}
@@ -2902,7 +2902,7 @@ type SmartMatchRow = {
                     ) : (
                       <button
                         type="button"
-                        className="rounded-full border border-neutral-600/70 bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-800"
+                        className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
                         onClick={() => toggleSectionCollapsed(sectionIndex)}
                       >
                         {collapsed ? "Expand" : "Collapse"}
@@ -2912,7 +2912,7 @@ type SmartMatchRow = {
                 )}
 
                 {collapsed ? (
-                  <p className="mt-2 text-center text-[11px] text-neutral-400">
+                  <p className="mt-2 text-center text-[11px] text-[color:var(--theme-text-secondary)]">
                     Section collapsed. Tap <span className="font-semibold">Expand</span>{" "}
                     to reopen.
                   </p>
@@ -3098,18 +3098,18 @@ type SmartMatchRow = {
                             onDismissSmartMatch={dismissSmartMatch}
                           />
 
-                          <div className="mt-3 rounded-xl border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_65%,transparent)] px-3 py-3">
+                          <div className="mt-3 rounded-xl border border-[var(--theme-card-border,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--theme-surface-2,var(--theme-surface-page))_65%,transparent)] px-3 py-3">
                             <div className="mb-2 flex items-center justify-between gap-2">
-                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,#64748B)]">
+                              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--theme-text-muted,var(--theme-text-muted))]">
                                 Section authoring
                               </div>
-                              <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">
+                              <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
                                 Add custom item
                               </div>
                             </div>
                             <div className="flex flex-col gap-2 md:flex-row md:items-center">
                               <input
-                                className="flex-1 rounded-lg border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_80%,transparent)] px-3 py-1.5 text-sm text-[var(--theme-text-primary,#E2E8F0)] placeholder:text-[var(--theme-text-muted,#64748B)] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_55%,transparent)]"
+                                className="flex-1 rounded-lg border border-[var(--theme-card-border,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--theme-surface-2,var(--theme-surface-page))_80%,transparent)] px-3 py-1.5 text-sm text-[var(--theme-text-primary,var(--theme-text-primary))] placeholder:text-[var(--theme-text-muted,var(--theme-text-muted))] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_55%,transparent)]"
                                 placeholder="Item label (e.g. Rear frame inspection)"
                                 value={newLabel}
                                 onChange={(e) =>
@@ -3122,7 +3122,7 @@ type SmartMatchRow = {
                               />
                               <div className="flex items-center gap-2 md:w-auto">
                                 <select
-                                  className="rounded-lg border border-[var(--theme-card-border,#334155)] bg-[color:color-mix(in_srgb,var(--theme-surface-2,#0B1220)_80%,transparent)] px-2 py-1.5 text-sm text-[var(--theme-text-primary,#E2E8F0)] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_55%,transparent)]"
+                                  className="rounded-lg border border-[var(--theme-card-border,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--theme-surface-2,var(--theme-surface-page))_80%,transparent)] px-2 py-1.5 text-sm text-[var(--theme-text-primary,var(--theme-text-primary))] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_55%,transparent)]"
                                   value={newUnit}
                                   onChange={(e) =>
                                     setNewItemUnits((prev) => ({
@@ -3178,19 +3178,19 @@ type SmartMatchRow = {
         </div>
 
         {!isEmbed && (
-          <div className="mt-4 md:mt-6 border-t border-white/5 pt-4">
-            <div className="text-xs text-neutral-400 md:text-right">
-              <span className="font-semibold text-neutral-200">Legend:</span> P =
+          <div className="mt-4 md:mt-6 border-t border-[color:var(--theme-border-soft)] pt-4">
+            <div className="text-xs text-[color:var(--theme-text-secondary)] md:text-right">
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">Legend:</span> P =
               Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
             </div>
           </div>
         )}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/92 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur">
         <div className="mx-auto flex max-w-[1100px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">{actions}</div>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             Draft auto-saves locally
           </div>
         </div>
@@ -3198,7 +3198,7 @@ type SmartMatchRow = {
 
       {showMissingLineWarning && (
         <div className="fixed inset-x-0 bottom-[52px] z-50 px-3">
-          <div className="mx-auto max-w-[1100px] rounded-xl border border-red-500/40 bg-black/80 px-3 py-2 text-xs text-red-200 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
+          <div className="mx-auto max-w-[1100px] rounded-xl border border-red-500/40 bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs text-red-200 shadow-[var(--theme-shadow-medium)]">
             Missing <code>workOrderLineId</code> — save/finish will be blocked.
           </div>
         </div>

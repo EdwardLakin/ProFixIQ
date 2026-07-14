@@ -306,7 +306,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
             title="Account created successfully"
             description="This person is now provisioned for access and linked to the canonical People record. Continue setup here."
           />
-          <div className="space-y-1 px-4 pb-4 text-xs text-neutral-300">
+          <div className="space-y-1 px-4 pb-4 text-xs text-[color:var(--theme-text-secondary)]">
             <p>Next actions:</p>
             <p>• Complete workforce profile (role/category/start date).</p>
             <p>• Add certifications/licensing if required.</p>
@@ -330,12 +330,12 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         {detail.needs_action ? (
           <div className="space-y-2 px-4 pb-4">
             {detail.action_reasons.map((reason, idx) => (
-              <div key={`${reason.code}-${idx}`} className="flex flex-col gap-2 rounded-lg border border-white/10 bg-black/30 p-3 md:flex-row md:items-center md:justify-between">
+              <div key={`${reason.code}-${idx}`} className="flex flex-col gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className={`text-xs uppercase tracking-[0.16em] ${reason.severity === "blocking" ? "text-red-300" : reason.severity === "warning" ? "text-amber-300" : "text-sky-300"}`}>{reason.severity}</p>
-                  <p className="text-sm text-neutral-100">{reason.label}</p>
+                  <p className="text-sm text-[color:var(--theme-text-primary)]">{reason.label}</p>
                 </div>
-                <Link href={reason.action_href} className="inline-flex rounded-lg border border-white/15 bg-black/30 px-3 py-1.5 text-xs font-medium text-orange-300 hover:text-orange-200">
+                <Link href={reason.action_href} className="inline-flex rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-medium text-orange-300 hover:text-orange-200">
                   {reason.action_label} →
                 </Link>
               </div>
@@ -357,8 +357,8 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
           <AdminStatCard label="Schedule rows" value={detail.schedule_posture.recurring_rows} />
           <AdminStatCard label="Upcoming time away" value={detail.schedule_posture.upcoming_approved_away_count} />
         </AdminStatGrid>
-        <div className="p-4 text-xs text-neutral-300">
-          <p className="mb-2 font-medium text-neutral-100">Top missing items</p>
+        <div className="p-4 text-xs text-[color:var(--theme-text-secondary)]">
+          <p className="mb-2 font-medium text-[color:var(--theme-text-primary)]">Top missing items</p>
           {missingChecklist.length === 0 ? <p>Record is operationally complete.</p> : missingChecklist.map((item) => <p key={item}>• {item}</p>)}
         </div>
       </AdminPanel>
@@ -371,7 +371,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
           <AdminStatCard label="Overrides (next 2 weeks)" value={detail.schedule_posture.upcoming_override_count} />
           <AdminStatCard label="Approved away blocks" value={detail.schedule_posture.upcoming_approved_away_count} />
         </div>
-        <div className="px-4 pb-4 text-xs text-neutral-300">
+        <div className="px-4 pb-4 text-xs text-[color:var(--theme-text-secondary)]">
           <p className="mb-2">Next actions:</p>
           <p>• <Link className="text-orange-300 hover:text-orange-200" href="/dashboard/admin/scheduling">Open scheduling board</Link></p>
           <p>• <Link className="text-orange-300 hover:text-orange-200" href={`/dashboard/admin/payroll-time?person_id=${personId}`}>Open payroll-time review</Link></p>
@@ -390,17 +390,17 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         </div>
         <AdminToolbar>
           <AdminField label="Full name" className="flex-1">
-            <input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.full_name ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, full_name: e.target.value } : prev)} />
+            <input className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={detail.full_name ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, full_name: e.target.value } : prev)} />
           </AdminField>
           <AdminField label="Email (source of truth)" className="flex-1">
-            <input className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-neutral-400" value={detail.email ?? ""} disabled />
+            <input className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)]" value={detail.email ?? ""} disabled />
           </AdminField>
           <AdminField label="Phone" className="flex-1">
-            <input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.phone ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, phone: e.target.value } : prev)} />
+            <input className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={detail.phone ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, phone: e.target.value } : prev)} />
           </AdminField>
           <AdminField label="App role" className="w-full md:w-64">
             <select
-              className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"
               value={detail.role ?? ""}
               onChange={(e) => setDetail((prev) => (prev ? { ...prev, role: e.target.value || null } : prev))}
             >
@@ -413,7 +413,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
             </select>
           </AdminField>
         </AdminToolbar>
-        <div className="px-4 pb-4 text-xs text-neutral-400">
+        <div className="px-4 pb-4 text-xs text-[color:var(--theme-text-secondary)]">
           App role controls access and permissions. Workforce role/title is managed separately.
         </div>
       </AdminPanel>
@@ -422,29 +422,29 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         <AdminPanelTitle title="Workforce Profile" description="Employment posture, workforce category, and payroll readiness belong to workforce management." />
         <AdminToolbar>
           <AdminField label="Workforce role" className="flex-1">
-            <input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.workforce_profile.workforce_role ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, workforce_role: e.target.value } } : prev)} />
+            <input className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={detail.workforce_profile.workforce_role ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, workforce_role: e.target.value } } : prev)} />
           </AdminField>
           <AdminField label="Category" className="flex-1">
-            <input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.workforce_profile.workforce_category ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, workforce_category: e.target.value } } : prev)} />
+            <input className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={detail.workforce_profile.workforce_category ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, workforce_category: e.target.value } } : prev)} />
           </AdminField>
           <AdminField label="Employment status" className="w-full md:w-52">
-            <select className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.workforce_profile.employment_status} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, employment_status: e.target.value as "active" | "inactive" | "on_leave" } } : prev)}>
+            <select className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={detail.workforce_profile.employment_status} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, employment_status: e.target.value as "active" | "inactive" | "on_leave" } } : prev)}>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
               <option value="on_leave">On leave</option>
             </select>
           </AdminField>
           <AdminField label="Start date" className="w-full md:w-52">
-            <input type="date" className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={detail.workforce_profile.start_date ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, start_date: e.target.value || null } } : prev)} />
+            <input type="date" className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={detail.workforce_profile.start_date ?? ""} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, start_date: e.target.value || null } } : prev)} />
           </AdminField>
         </AdminToolbar>
         <div className="grid gap-3 p-4 md:grid-cols-2">
-          <label className="inline-flex items-center gap-2 text-xs text-neutral-300">
+          <label className="inline-flex items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
             <input type="checkbox" checked={detail.workforce_profile.payroll_ready} onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, payroll_ready: e.target.checked } } : prev)} />
             Payroll/time-ready for active period processing
           </label>
           <textarea
-            className="min-h-24 rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs text-neutral-200"
+            className="min-h-24 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]"
             placeholder="Employment status context / workforce notes"
             value={detail.workforce_profile.notes ?? ""}
             onChange={(e) => setDetail((prev) => prev ? { ...prev, workforce_profile: { ...prev.workforce_profile, notes: e.target.value } } : prev)}
@@ -455,11 +455,11 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
       <AdminPanel>
         <AdminPanelTitle title="Certifications & Licensing" description="Track workforce credentials, edit records in place, and act on expiry risk." />
         <AdminToolbar>
-          <AdminField label="Name" className="flex-1"><input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={newCert.cert_name} onChange={(e) => setNewCert((prev) => ({ ...prev, cert_name: e.target.value }))} /></AdminField>
-          <AdminField label="Type" className="w-full md:w-40"><input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={newCert.cert_type} onChange={(e) => setNewCert((prev) => ({ ...prev, cert_type: e.target.value }))} /></AdminField>
-          <AdminField label="Number" className="w-full md:w-40"><input className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={newCert.cert_number ?? ""} onChange={(e) => setNewCert((prev) => ({ ...prev, cert_number: e.target.value }))} /></AdminField>
-          <AdminField label="Expiry" className="w-full md:w-44"><input type="date" className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={newCert.expiry_date ?? ""} onChange={(e) => setNewCert((prev) => ({ ...prev, expiry_date: e.target.value || null }))} /></AdminField>
-          <AdminField label="Status" className="w-full md:w-40"><select className="w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm" value={newCert.status} onChange={(e) => setNewCert((prev) => ({ ...prev, status: e.target.value as Certification["status"] }))}><option value="active">active</option><option value="pending">pending</option><option value="expired">expired</option><option value="revoked">revoked</option></select></AdminField>
+          <AdminField label="Name" className="flex-1"><input className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={newCert.cert_name} onChange={(e) => setNewCert((prev) => ({ ...prev, cert_name: e.target.value }))} /></AdminField>
+          <AdminField label="Type" className="w-full md:w-40"><input className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={newCert.cert_type} onChange={(e) => setNewCert((prev) => ({ ...prev, cert_type: e.target.value }))} /></AdminField>
+          <AdminField label="Number" className="w-full md:w-40"><input className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={newCert.cert_number ?? ""} onChange={(e) => setNewCert((prev) => ({ ...prev, cert_number: e.target.value }))} /></AdminField>
+          <AdminField label="Expiry" className="w-full md:w-44"><input type="date" className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={newCert.expiry_date ?? ""} onChange={(e) => setNewCert((prev) => ({ ...prev, expiry_date: e.target.value || null }))} /></AdminField>
+          <AdminField label="Status" className="w-full md:w-40"><select className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={newCert.status} onChange={(e) => setNewCert((prev) => ({ ...prev, status: e.target.value as Certification["status"] }))}><option value="active">active</option><option value="pending">pending</option><option value="expired">expired</option><option value="revoked">revoked</option></select></AdminField>
           <Button type="button" variant="default" className="mt-5" onClick={() => void addCertification()} disabled={certSaving}>{certSaving ? "Saving…" : "Add credential"}</Button>
         </AdminToolbar>
 
@@ -474,15 +474,15 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
           <AdminEmptyState title="No credentials yet" body="Add certifications/licenses so readiness and expiry posture are visible." />
         ) : (
           <div id="certifications" className="overflow-x-auto">
-            <div className="px-4 pb-2 text-xs text-neutral-400">
+            <div className="px-4 pb-2 text-xs text-[color:var(--theme-text-secondary)]">
               <p>Expired: {groupedCertifications.expired.length} • Expiring soon: {groupedCertifications.expiringSoon.length} • Active: {groupedCertifications.active.length}</p>
             </div>
             <table className="min-w-full text-sm">
-              <thead className="bg-black/30 text-xs uppercase tracking-[0.12em] text-neutral-400"><tr><th className="px-4 py-2.5 text-left">Credential</th><th className="px-4 py-2.5 text-left">Issuer</th><th className="px-4 py-2.5 text-left">Dates</th><th className="px-4 py-2.5 text-left">Posture</th><th className="px-4 py-2.5 text-left">Actions</th></tr></thead>
-              <tbody className="divide-y divide-white/10">
+              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]"><tr><th className="px-4 py-2.5 text-left">Credential</th><th className="px-4 py-2.5 text-left">Issuer</th><th className="px-4 py-2.5 text-left">Dates</th><th className="px-4 py-2.5 text-left">Posture</th><th className="px-4 py-2.5 text-left">Actions</th></tr></thead>
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                 {[...groupedCertifications.expired, ...groupedCertifications.expiringSoon, ...groupedCertifications.active].map((cert) => (
-                  <tr key={cert.id} className="text-neutral-200">
-                    <td className="px-4 py-2.5"><p className="font-medium text-neutral-100">{cert.cert_name}</p><p className="text-xs text-neutral-500">{cert.cert_type} {cert.cert_number ? `• ${cert.cert_number}` : ""}</p></td>
+                  <tr key={cert.id} className="text-[color:var(--theme-text-primary)]">
+                    <td className="px-4 py-2.5"><p className="font-medium text-[color:var(--theme-text-primary)]">{cert.cert_name}</p><p className="text-xs text-[color:var(--theme-text-muted)]">{cert.cert_type} {cert.cert_number ? `• ${cert.cert_number}` : ""}</p></td>
                     <td className="px-4 py-2.5 text-xs">{cert.issuing_body ?? "—"}</td>
                     <td className="px-4 py-2.5 text-xs">Issued: {cert.issue_date ?? "—"}<br />Expires: {cert.expiry_date ?? "—"}{typeof cert.days_remaining === "number" ? <><br />{cert.days_remaining >= 0 ? `${cert.days_remaining} days remaining` : `${Math.abs(cert.days_remaining)} days overdue`}</> : null}</td>
                     <td className="px-4 py-2.5"><AdminBadge>{certPosture(cert)}</AdminBadge></td>
@@ -531,17 +531,17 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         )}
 
         {editingCertId ? (
-          <div className="m-4 rounded-xl border border-white/15 bg-black/35 p-4">
-            <p className="mb-2 text-sm font-medium text-white">Edit credential</p>
+          <div className="m-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+            <p className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">Edit credential</p>
             <div className="grid gap-3 md:grid-cols-3">
-              <input className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs" placeholder="Name" value={editingCert.cert_name} onChange={(e) => setEditingCert((prev) => ({ ...prev, cert_name: e.target.value }))} />
-              <input className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs" placeholder="Type" value={editingCert.cert_type} onChange={(e) => setEditingCert((prev) => ({ ...prev, cert_type: e.target.value }))} />
-              <select className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs" value={editingCert.status} onChange={(e) => setEditingCert((prev) => ({ ...prev, status: e.target.value as Certification["status"] }))}><option value="active">active</option><option value="pending">pending</option><option value="expired">expired</option><option value="revoked">revoked</option></select>
-              <input className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs" placeholder="Number" value={editingCert.cert_number ?? ""} onChange={(e) => setEditingCert((prev) => ({ ...prev, cert_number: e.target.value }))} />
-              <input className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs" placeholder="Issuing body" value={editingCert.issuing_body ?? ""} onChange={(e) => setEditingCert((prev) => ({ ...prev, issuing_body: e.target.value }))} />
-              <input type="date" className="rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs" value={editingCert.expiry_date ?? ""} onChange={(e) => setEditingCert((prev) => ({ ...prev, expiry_date: e.target.value || null }))} />
+              <input className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs" placeholder="Name" value={editingCert.cert_name} onChange={(e) => setEditingCert((prev) => ({ ...prev, cert_name: e.target.value }))} />
+              <input className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs" placeholder="Type" value={editingCert.cert_type} onChange={(e) => setEditingCert((prev) => ({ ...prev, cert_type: e.target.value }))} />
+              <select className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs" value={editingCert.status} onChange={(e) => setEditingCert((prev) => ({ ...prev, status: e.target.value as Certification["status"] }))}><option value="active">active</option><option value="pending">pending</option><option value="expired">expired</option><option value="revoked">revoked</option></select>
+              <input className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs" placeholder="Number" value={editingCert.cert_number ?? ""} onChange={(e) => setEditingCert((prev) => ({ ...prev, cert_number: e.target.value }))} />
+              <input className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs" placeholder="Issuing body" value={editingCert.issuing_body ?? ""} onChange={(e) => setEditingCert((prev) => ({ ...prev, issuing_body: e.target.value }))} />
+              <input type="date" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs" value={editingCert.expiry_date ?? ""} onChange={(e) => setEditingCert((prev) => ({ ...prev, expiry_date: e.target.value || null }))} />
             </div>
-            <textarea className="mt-3 min-h-20 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-xs" placeholder="Notes" value={editingCert.notes ?? ""} onChange={(e) => setEditingCert((prev) => ({ ...prev, notes: e.target.value }))} />
+            <textarea className="mt-3 min-h-20 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs" placeholder="Notes" value={editingCert.notes ?? ""} onChange={(e) => setEditingCert((prev) => ({ ...prev, notes: e.target.value }))} />
             <div className="mt-3 flex gap-2">
               <Button type="button" variant="default" onClick={() => void saveEditedCertification()} disabled={certSaving}>{certSaving ? "Saving…" : "Save certification"}</Button>
               <Button type="button" variant="ghost" onClick={() => setEditingCertId(null)}>Cancel</Button>
@@ -554,20 +554,20 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
       <AdminPanel>
         <AdminPanelTitle title="Payroll Time Posture" description="Review payroll-readiness context before jumping into period approval/export." />
         <div className="grid gap-3 p-4 text-xs md:grid-cols-2">
-          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-            <p className="font-medium text-neutral-100">Readiness posture</p>
+          <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+            <p className="font-medium text-[color:var(--theme-text-primary)]">Readiness posture</p>
             <p className={`mt-1 font-medium ${detail.payroll_posture.is_payroll_ready ? "text-emerald-300" : "text-red-300"}`}>{detail.payroll_posture.is_payroll_ready ? "Ready for payroll processing" : `Not payroll ready — ${Math.max(1, detail.payroll_posture.blocking_exceptions)} blocking issue${Math.max(1, detail.payroll_posture.blocking_exceptions) > 1 ? "s" : ""}`}</p>
             <p>{detail.payroll_posture.blocking_exceptions} blocking • {detail.payroll_posture.warning_exceptions} warning</p>
             <p>{detail.payroll_posture.in_current_period ? "Included in current open period" : "No open-period entries yet"}</p>
           </div>
-          <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-            <p className="font-medium text-neutral-100">Missing data for review</p>
+          <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+            <p className="font-medium text-[color:var(--theme-text-primary)]">Missing data for review</p>
             {detail.payroll_posture.missing_workforce_data.length === 0 ? (
               <p>None.</p>
             ) : (
               detail.payroll_posture.missing_workforce_data.map((item) => <p key={item}>• {item}</p>)
             )}
-            <Link href={`/dashboard/admin/payroll-time?person_id=${detail.id}`} className="mt-2 inline-block rounded-lg border border-white/15 bg-black/30 px-3 py-2 font-medium text-orange-300 hover:text-orange-200">Fix payroll issues →</Link>
+            <Link href={`/dashboard/admin/payroll-time?person_id=${detail.id}`} className="mt-2 inline-block rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 font-medium text-orange-300 hover:text-orange-200">Fix payroll issues →</Link>
           </div>
         </div>
       </AdminPanel>
@@ -578,11 +578,11 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         {detail.audit_preview.length === 0 ? (
           <AdminEmptyState title="No recent activity" body="No audit trail rows matched this person in the latest window." />
         ) : (
-          <div className="space-y-2 p-4 text-sm text-neutral-300">
+          <div className="space-y-2 p-4 text-sm text-[color:var(--theme-text-secondary)]">
             {detail.audit_preview.map((row) => (
-              <div key={row.id} className="rounded-lg border border-white/10 bg-black/25 p-3">
-                <p className="font-medium text-neutral-100">{row.action ?? "event"}</p>
-                <p className="text-xs text-neutral-400">{row.created_at ? new Date(row.created_at).toLocaleString() : "Unknown time"} • target: {row.target ?? "—"} • actor: {row.actor_id ?? "—"}</p>
+              <div key={row.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <p className="font-medium text-[color:var(--theme-text-primary)]">{row.action ?? "event"}</p>
+                <p className="text-xs text-[color:var(--theme-text-secondary)]">{row.created_at ? new Date(row.created_at).toLocaleString() : "Unknown time"} • target: {row.target ?? "—"} • actor: {row.actor_id ?? "—"}</p>
               </div>
             ))}
           </div>
@@ -591,7 +591,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
 
       <AdminPanel>
         <AdminPanelTitle title="Documents" description="Document workflows will be added once upload/index foundation lands in People." />
-        <div className="p-4 text-xs text-neutral-400">Documents are intentionally deferred in this pass to avoid placeholder-only records without retrieval and governance controls.</div>
+        <div className="p-4 text-xs text-[color:var(--theme-text-secondary)]">Documents are intentionally deferred in this pass to avoid placeholder-only records without retrieval and governance controls.</div>
       </AdminPanel>
 
       <AdminToolbar>

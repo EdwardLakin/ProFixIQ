@@ -223,12 +223,12 @@ export default function PricingRefreshPage(): JSX.Element {
   }
 
   return (
-    <div className="space-y-4 p-4 text-white">
-      <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+    <div className="space-y-4 p-4 text-[color:var(--theme-text-primary)]">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-neutral-100">Pricing Refresh Queue</h1>
-            <p className="text-sm text-neutral-400">
+            <h1 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Pricing Refresh Queue</h1>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
               Stale and expired repair pricing that needs supplier refresh.
             </p>
           </div>
@@ -238,13 +238,13 @@ export default function PricingRefreshPage(): JSX.Element {
               value={supplierName}
               onChange={(e) => setSupplierName(e.target.value)}
               placeholder="Supplier name"
-              className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
             />
             <button
               type="button"
               onClick={() => void exportSelected()}
               disabled={busy || selectedIds.length === 0}
-              className="rounded-lg border border-[#8b5a2b]/60 bg-black/30 px-3 py-2 text-sm font-semibold text-[#c88a4d] disabled:opacity-60"
+              className="rounded-lg border border-[#8b5a2b]/60 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-semibold text-[#c88a4d] disabled:opacity-60"
             >
               {busy ? "Creating…" : "Create Export Batch"}
             </button>
@@ -252,12 +252,12 @@ export default function PricingRefreshPage(): JSX.Element {
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
         <div className="mb-3">
-          <h2 className="text-base font-semibold text-neutral-100">Import Supplier Pricing</h2>
-          <p className="text-sm text-neutral-400">
+          <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">Import Supplier Pricing</h2>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             Paste rows as CSV or tab-separated:
-            <span className="ml-1 text-neutral-300">
+            <span className="ml-1 text-[color:var(--theme-text-secondary)]">
               part_number, description, qty, unit_cost, sell, notes
             </span>
           </p>
@@ -268,7 +268,7 @@ export default function PricingRefreshPage(): JSX.Element {
             value={batchId}
             onChange={(e) => setBatchId(e.target.value)}
             placeholder="Batch ID"
-            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+            className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
           />
 
           <textarea
@@ -278,7 +278,7 @@ export default function PricingRefreshPage(): JSX.Element {
               "12345, Front brake pad set, 1, 89.95, 149.95, supplier quote\n98765, Front rotor, 2, 72.50, 119.95, coated"
             }
             rows={8}
-            className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+            className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
           />
 
           <div className="flex flex-wrap items-center gap-2">
@@ -286,7 +286,7 @@ export default function PricingRefreshPage(): JSX.Element {
               type="button"
               onClick={() => void importPastedRows()}
               disabled={busy || !batchId.trim() || !pasteValue.trim()}
-              className="rounded-lg border border-[#8b5a2b]/60 bg-black/30 px-3 py-2 text-sm font-semibold text-[#c88a4d] disabled:opacity-60"
+              className="rounded-lg border border-[#8b5a2b]/60 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-semibold text-[#c88a4d] disabled:opacity-60"
             >
               {busy ? "Importing…" : "Import + Map + Review"}
             </button>
@@ -294,11 +294,11 @@ export default function PricingRefreshPage(): JSX.Element {
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
         {loading ? (
-          <div className="text-sm text-neutral-400">Loading pricing queue…</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading pricing queue…</div>
         ) : rows.length === 0 ? (
-          <div className="text-sm text-neutral-400">No stale or expired pricing found.</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">No stale or expired pricing found.</div>
         ) : (
           <div className="space-y-3">
             {rows.map((row) => {
@@ -309,7 +309,7 @@ export default function PricingRefreshPage(): JSX.Element {
               return (
                 <label
                   key={row.menuRepairItemId}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-white/10 bg-black/30 p-3"
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
                 >
                   <input
                     type="checkbox"
@@ -320,18 +320,18 @@ export default function PricingRefreshPage(): JSX.Element {
 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="font-medium text-neutral-100">{row.name}</div>
-                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-xs text-neutral-300">
+                      <div className="font-medium text-[color:var(--theme-text-primary)]">{row.name}</div>
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-xs text-[color:var(--theme-text-secondary)]">
                         {row.pricingStatus}
                       </span>
                     </div>
 
-                    <div className="mt-1 text-sm text-neutral-400">
+                    <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                       {vehicle || "Vehicle not set"}
                       {row.supplierName ? ` • ${row.supplierName}` : ""}
                     </div>
 
-                    <div className="mt-1 text-xs text-neutral-500">
+                    <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                       Valid until: {row.validUntil ?? "—"} • Days until expiry:{" "}
                       {row.daysUntilExpiry ?? "—"}
                     </div>

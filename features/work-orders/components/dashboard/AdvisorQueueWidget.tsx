@@ -93,7 +93,7 @@ function woHref(wo: WorkOrder): string {
 }
 
 const PANEL =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-br from-black/80 via-slate-950/90 to-black/85 shadow-[0_20px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+  "var(--theme-gradient-panel)";
 
 const CHIP_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]";
@@ -123,17 +123,17 @@ function BucketButton({
       onClick={onClick}
       className={[
         "rounded-xl border px-3 py-3 text-left transition",
-        "border-white/10 bg-black/35 hover:border-[color:var(--accent-copper-soft,#fdba74)]/60",
+        "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] hover:border-[color:var(--accent-copper-soft,#fdba74)]/60",
         active
           ? "ring-1 ring-[color:var(--accent-copper-soft,#fdba74)]/70 shadow-[0_0_30px_rgba(249,115,22,0.35)]"
           : "",
       ].join(" ")}
     >
-      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
         {BUCKET_LABEL[bucket]}
       </div>
-      <div className="mt-1 text-2xl font-semibold text-white">{count}</div>
-      <div className="mt-1 text-[11px] text-neutral-500">{BUCKET_HINT[bucket]}</div>
+      <div className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{count}</div>
+      <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">{BUCKET_HINT[bucket]}</div>
     </button>
   );
 }
@@ -141,7 +141,7 @@ function BucketButton({
 export default function AdvisorQueueWidget({ embedded = false }: { embedded?: boolean }): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
-  
+
   const [role, setRole] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -324,14 +324,14 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
 
   return (
     <section className={embedded ? "space-y-4" : PANEL + " overflow-hidden"}>
-      <div className={embedded ? "flex items-center justify-end gap-2" : "flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3"}>
+      <div className={embedded ? "flex items-center justify-end gap-2" : "flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-4 py-3"}>
         <div className="min-w-0">
           {!embedded ? (
             <>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 My advisor queue
               </div>
-              <div className="mt-1 text-sm font-semibold text-white">
+              <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Only work orders assigned to you (last 30 days)
               </div>
             </>
@@ -342,7 +342,7 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
           <button
             type="button"
             onClick={() => void load()}
-            className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-xs font-semibold text-neutral-200 hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-black/55"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-[color:var(--theme-surface-inset)]"
             title="Refresh widget"
           >
             Refresh
@@ -357,7 +357,7 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
       </div>
 
       {loading ? (
-        <div className="px-4 py-5 text-sm text-neutral-300">Loading queue…</div>
+        <div className="px-4 py-5 text-sm text-[color:var(--theme-text-secondary)]">Loading queue…</div>
       ) : err ? (
         <div className="px-4 py-5 text-sm text-red-200">{err}</div>
       ) : (
@@ -380,38 +380,38 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
                 <Link
                   key={wo.id}
                   href={woHref(wo)}
-                  className="block rounded-xl border border-white/10 bg-black/35 px-3 py-3 text-sm text-neutral-100 transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-black/45"
+                  className="block rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-[color:var(--theme-surface-inset)]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate font-semibold text-white">
+                        <span className="truncate font-semibold text-[color:var(--theme-text-primary)]">
                           {woLabel(wo)}
                         </span>
                         <span className={CHIP_BASE + " " + CHIP[bucket]}>
                           {BUCKET_LABEL[bucket]}
                         </span>
-                        <span className="text-[11px] text-neutral-500">
+                        <span className="text-[11px] text-[color:var(--theme-text-muted)]">
                           {formatDate(wo.created_at)}
                         </span>
                       </div>
 
-                      <div className="mt-1 text-[11px] text-neutral-400">
+                      <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                         Lines:{" "}
-                        <span className="text-neutral-300">{counts.awaiting} awaiting</span> ·{" "}
-                        <span className="text-neutral-300">
+                        <span className="text-[color:var(--theme-text-secondary)]">{counts.awaiting} awaiting</span> ·{" "}
+                        <span className="text-[color:var(--theme-text-secondary)]">
                           {counts.in_progress} in progress
                         </span>{" "}
                         ·{" "}
-                        <span className="text-neutral-300">{counts.on_hold} on hold</span> ·{" "}
-                        <span className="text-neutral-300">
+                        <span className="text-[color:var(--theme-text-secondary)]">{counts.on_hold} on hold</span> ·{" "}
+                        <span className="text-[color:var(--theme-text-secondary)]">
                           {counts.completed} completed
                         </span>
                       </div>
                       <WorkOrderAiIndicatorBadge indicator={indicatorsByWo[wo.id]} className="mt-2" />
                     </div>
 
-                    <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-neutral-200">
+                    <span className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[11px] text-[color:var(--theme-text-primary)]">
                       Open →
                     </span>
                   </div>
@@ -420,14 +420,14 @@ export default function AdvisorQueueWidget({ embedded = false }: { embedded?: bo
             })}
 
             {visibleRows.length === 0 ? (
-              <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-sm text-neutral-400">
+              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]">
                 No work orders in this bucket.
               </div>
             ) : null}
           </div>
 
-          <div className="text-[11px] text-neutral-500">
-            This widget is read-only. Use <span className="text-neutral-300">Work Orders → View</span> for status changes, invoice review, and assignments.
+          <div className="text-[11px] text-[color:var(--theme-text-muted)]">
+            This widget is read-only. Use <span className="text-[color:var(--theme-text-secondary)]">Work Orders → View</span> for status changes, invoice review, and assignments.
           </div>
         </div>
       )}

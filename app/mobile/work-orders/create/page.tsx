@@ -262,15 +262,15 @@ function CustomerSearch({
 
   return (
     <div ref={wrapRef} className="relative">
-      <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/15 bg-black/80 backdrop-blur-xl shadow-lg shadow-black/70">
+      <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] backdrop-blur-xl shadow-lg shadow-[var(--theme-shadow-medium)]">
         {busy && (
-          <div className="px-3 py-2 text-xs text-neutral-300">Searching…</div>
+          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">Searching…</div>
         )}
         {rows.map((c) => (
           <button
             key={c.id}
             type="button"
-            className="block w-full px-3 py-2 text-left text-sm transition hover:bg-[var(--accent-copper)]/15 hover:text-neutral-50"
+            className="block w-full px-3 py-2 text-left text-sm transition hover:bg-[var(--accent-copper)]/15 hover:text-[color:var(--theme-text-primary)]"
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -278,16 +278,16 @@ function CustomerSearch({
               setOpen(false);
             }}
           >
-            <div className="truncate text-neutral-100">
+            <div className="truncate text-[color:var(--theme-text-primary)]">
               {formatCustomerTitle(c)}
             </div>
-            <div className="truncate text-xs text-neutral-400">
+            <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">
               {formatCustomerSub(c)}
             </div>
           </button>
         ))}
         {!busy && rows.length === 0 && (
-          <div className="px-3 py-2 text-xs text-neutral-400">No matches</div>
+          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">No matches</div>
         )}
       </div>
     </div>
@@ -416,15 +416,15 @@ function VehicleSearch({
 
   return (
     <div ref={wrapRef} className="relative">
-      <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/15 bg-black/80 backdrop-blur-xl shadow-lg shadow-black/70">
+      <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] backdrop-blur-xl shadow-lg shadow-[var(--theme-shadow-medium)]">
         {busy && (
-          <div className="px-3 py-2 text-xs text-neutral-300">Searching…</div>
+          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">Searching…</div>
         )}
         {rows.map((v) => (
           <button
             key={v.id}
             type="button"
-            className="block w-full px-3 py-2 text-left text-sm transition hover:bg-[var(--accent-copper)]/15 hover:text-neutral-50"
+            className="block w-full px-3 py-2 text-left text-sm transition hover:bg-[var(--accent-copper)]/15 hover:text-[color:var(--theme-text-primary)]"
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -432,14 +432,14 @@ function VehicleSearch({
               setOpen(false);
             }}
           >
-            <div className="truncate text-neutral-100">{formatVehicleTitle(v)}</div>
-            <div className="truncate text-xs text-neutral-400">
+            <div className="truncate text-[color:var(--theme-text-primary)]">{formatVehicleTitle(v)}</div>
+            <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">
               {formatVehicleSub(v) || "—"}
             </div>
           </button>
         ))}
         {!busy && rows.length === 0 && (
-          <div className="px-3 py-2 text-xs text-neutral-400">No matches</div>
+          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">No matches</div>
         )}
       </div>
     </div>
@@ -890,18 +890,18 @@ export default function MobileCreateWorkOrderPage() {
     <div className="px-4 py-4">
       <div className="mx-auto max-w-xl space-y-6">
         {/* Header card */}
-        <section className="metal-panel metal-panel--card rounded-2xl border border-white/10 px-4 py-4 shadow-card text-white">
+        <section className="metal-panel metal-panel--card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 shadow-card text-[color:var(--theme-text-primary)]">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h1 className="text-lg font-blackops tracking-[0.16em] text-[var(--accent-copper-light)]">
                 Create Work Order
               </h1>
-              <p className="mt-1 text-[0.75rem] text-neutral-300">
+              <p className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                 Pick a customer + vehicle, then create the ticket.
               </p>
             </div>
             {woCustomId && (
-              <div className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[0.7rem] font-mono text-neutral-100">
+              <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[0.7rem] font-mono text-[color:var(--theme-text-primary)]">
                 WO&nbsp;
                 <span className="text-[var(--accent-copper-soft)]">
                   {woCustomId}
@@ -912,15 +912,15 @@ export default function MobileCreateWorkOrderPage() {
 
           {/* Visit type / waiter toggle */}
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-neutral-400">
+            <span className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Visit type
             </span>
-            <div className="inline-flex overflow-hidden rounded-full border border-white/15 bg-black/60 text-[0.7rem]">
+            <div className="inline-flex overflow-hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[0.7rem]">
               <button
                 type="button"
                 onClick={() => void handleWaiterChange(false)}
                 className={`px-3 py-1.5 font-medium transition ${
-                  !isWaiter ? "bg-white/10 text-neutral-50" : "text-neutral-400"
+                  !isWaiter ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]" : "text-[color:var(--theme-text-secondary)]"
                 }`}
               >
                 Drop-off
@@ -928,10 +928,10 @@ export default function MobileCreateWorkOrderPage() {
               <button
                 type="button"
                 onClick={() => void handleWaiterChange(true)}
-                className={`px-3 py-1.5 font-medium transition border-l border-white/10 ${
+                className={`px-3 py-1.5 font-medium transition border-l border-[color:var(--theme-border-soft)] ${
                   isWaiter
                     ? "bg-[var(--accent-copper)]/20 text-[var(--accent-copper-light)]"
-                    : "text-neutral-400"
+                    : "text-[color:var(--theme-text-secondary)]"
                 }`}
               >
                 Waiter
@@ -953,10 +953,10 @@ export default function MobileCreateWorkOrderPage() {
         </section>
 
         {/* Customer + Vehicle (stripped but DB-backed) */}
-        <div className="glass-card rounded-2xl border border-white/10 px-3 py-3 text-white">
+        <div className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-3 py-3 text-[color:var(--theme-text-primary)]">
           {/* Customer */}
           <div className="space-y-2">
-            <div className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-neutral-400">
+            <div className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Customer
             </div>
 
@@ -1039,11 +1039,11 @@ export default function MobileCreateWorkOrderPage() {
             </div>
           </div>
 
-          <div className="my-4 h-px bg-white/10" />
+          <div className="my-4 h-px bg-[color:var(--theme-surface-subtle)]" />
 
           {/* Vehicle */}
           <div className="space-y-2">
-            <div className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-neutral-400">
+            <div className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Vehicle
             </div>
 
@@ -1081,7 +1081,7 @@ export default function MobileCreateWorkOrderPage() {
                 }}
               />
               {!customer.id && (
-                <p className="text-[0.7rem] text-neutral-500">
+                <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                   Select a customer first to search their vehicles.
                 </p>
               )}
@@ -1319,12 +1319,12 @@ export default function MobileCreateWorkOrderPage() {
               type="button"
               disabled={!shopId || creatingWo}
               onClick={() => void handleCreateWorkOrder()}
-              className="mt-4 w-full rounded-full bg-[var(--accent-copper)] py-3 text-sm font-semibold text-black shadow-[0_0_25px_rgba(0,0,0,0.9)] transition active:opacity-85 disabled:opacity-60"
+              className="mt-4 w-full rounded-full bg-[var(--accent-copper)] py-3 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[var(--theme-shadow-medium)] transition active:opacity-85 disabled:opacity-60"
             >
               {creatingWo ? "Creating…" : "Create Work Order"}
             </button>
           ) : (
-            <p className="mt-4 text-center text-[0.7rem] text-neutral-400">
+            <p className="mt-4 text-center text-[0.7rem] text-[color:var(--theme-text-secondary)]">
               Work order created — add lines below, then continue.
             </p>
           )}
@@ -1346,7 +1346,7 @@ export default function MobileCreateWorkOrderPage() {
               }}
             />
 
-            <div className="glass-card rounded-2xl border border-white/10 px-3 py-3">
+            <div className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-3 py-3">
               <MobileJobLineAdd
                 workOrderId={wo.id}
                 vehicleId={vehicle.id}
@@ -1370,7 +1370,7 @@ export default function MobileCreateWorkOrderPage() {
             <button
               disabled={loading}
               onClick={() => void handleContinue()}
-              className="w-full rounded-full bg-[var(--accent-copper)] py-3 text-sm font-semibold text-black shadow-[0_0_25px_rgba(0,0,0,0.9)] transition active:opacity-85 disabled:opacity-60"
+              className="w-full rounded-full bg-[var(--accent-copper)] py-3 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[var(--theme-shadow-medium)] transition active:opacity-85 disabled:opacity-60"
             >
               {loading ? "Saving…" : "Approve & Continue"}
             </button>

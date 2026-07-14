@@ -37,25 +37,25 @@ export default async function PortalInvoicesPage() {
     });
 
     return (
-      <div className="space-y-6 text-white">
+      <div className="space-y-6 text-[color:var(--theme-text-primary)]">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold">Invoices</h1>
-            <p className="mt-1 text-sm text-neutral-400">
+            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
               Issued invoice versions, payment balances, and historical corrections.
             </p>
           </div>
           <Link
             href="/portal"
-            className="rounded-full border border-white/10 bg-black/40 px-4 py-2 text-xs text-neutral-200"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs text-[color:var(--theme-text-primary)]"
           >
             ← Portal
           </Link>
         </div>
 
-        <section className="rounded-3xl border border-white/10 bg-black/30 p-4 shadow-card">
+        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card">
           {versions.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/10 p-5 text-sm text-neutral-400">
+            <div className="rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] p-5 text-sm text-[color:var(--theme-text-secondary)]">
               No invoices have been issued yet.
             </div>
           ) : (
@@ -66,23 +66,23 @@ export default async function PortalInvoicesPage() {
                   <Link
                     key={version.id}
                     href={`/portal/invoices/${version.work_order_id}?version=${version.id}`}
-                    className="block rounded-2xl border border-white/10 bg-black/35 p-4 transition hover:border-white/20 hover:bg-black/45"
+                    className="block rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)]"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <div className="font-semibold text-white">{label}</div>
-                        <div className="mt-1 text-xs text-neutral-500">
+                        <div className="font-semibold text-[color:var(--theme-text-primary)]">{label}</div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                           Version {version.version_number} • Issued {dateLabel(version.issued_at)}
                         </div>
-                        <div className="mt-1 text-xs capitalize text-neutral-400">
+                        <div className="mt-1 text-xs capitalize text-[color:var(--theme-text-secondary)]">
                           {version.lifecycle_status.replaceAll("_", " ")}
                         </div>
                       </div>
                       <div className="text-left sm:text-right">
-                        <div className="text-lg font-semibold text-white">
+                        <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
                           {money(version.total, version.currency)}
                         </div>
-                        <div className="text-xs text-neutral-500">
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">
                           Balance {money(version.outstanding_total, version.currency)}
                         </div>
                       </div>

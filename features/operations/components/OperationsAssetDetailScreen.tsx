@@ -75,7 +75,7 @@ export function OperationsAssetDetailScreen({
 }: OperationsAssetDetailScreenProps) {
   if (loading && !asset && !issues.length) {
     return (
-      <section className="rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 px-4 py-6 text-xs text-neutral-300">
+      <section className="rounded-3xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-6 text-xs text-[color:var(--theme-text-secondary)]">
         Loading asset detail…
       </section>
     );
@@ -91,7 +91,7 @@ export function OperationsAssetDetailScreen({
 
   if (!asset) {
     return (
-      <section className="rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 px-4 py-6 text-xs text-neutral-300">
+      <section className="rounded-3xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-6 text-xs text-[color:var(--theme-text-secondary)]">
         {notFoundLabel ?? `${terminology.assetLabel} not found.`}
       </section>
     );
@@ -102,26 +102,26 @@ export function OperationsAssetDetailScreen({
       <header className="metal-card rounded-3xl p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
               {headerLabel ?? terminology.assetLabel}
             </p>
             <h1
-              className="mt-1 text-3xl text-neutral-100"
+              className="mt-1 text-3xl text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
               {asset.label}
             </h1>
 
             {metadata.length > 0 && (
-              <div className="mt-3 grid gap-2 text-xs text-neutral-300 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2 text-xs text-[color:var(--theme-text-secondary)] sm:grid-cols-2">
                 {metadata.map((item) => (
                   <div key={item.label}>
-                    <span className="text-neutral-500">{item.label}:</span>{" "}
+                    <span className="text-[color:var(--theme-text-muted)]">{item.label}:</span>{" "}
                     <span
                       className={
                         item.mono
-                          ? "font-mono text-[11px] text-neutral-100"
-                          : "text-neutral-100"
+                          ? "font-mono text-[11px] text-[color:var(--theme-text-primary)]"
+                          : "text-[color:var(--theme-text-primary)]"
                       }
                     >
                       {item.value ?? "—"}
@@ -136,8 +136,8 @@ export function OperationsAssetDetailScreen({
             <OperationsAssetStatusBadge status={asset.status} />
 
             {asset.nextInspectionDate && (
-              <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-right">
-                <div className="text-[11px] text-neutral-400">
+              <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-right">
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                   {nextInspectionLabel ?? `Next ${terminology.inspectionLabel.toLowerCase()}`}
                 </div>
                 <div className="text-sm font-semibold text-sky-200">
@@ -154,8 +154,8 @@ export function OperationsAssetDetailScreen({
                     href={action.href}
                     className={
                       action.variant === "secondary"
-                        ? "rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1.5 font-semibold text-neutral-200 hover:bg-neutral-900/50"
-                        : "rounded-full bg-[color:var(--accent-copper)] px-3 py-1.5 font-semibold text-black shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
+                        ? "rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
+                        : "rounded-full bg-[color:var(--accent-copper)] px-3 py-1.5 font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_16px_rgba(193,102,59,0.7)] hover:opacity-95"
                     }
                   >
                     {action.label}
@@ -171,11 +171,11 @@ export function OperationsAssetDetailScreen({
         <section className="metal-card rounded-3xl p-4">
           <header className="mb-3 flex items-center justify-between gap-3 border-b border-[color:var(--metal-border-soft)] pb-2">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 {issuesTitle}
               </p>
               {issuesDescription && (
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   {issuesDescription}
                 </p>
               )}
@@ -183,7 +183,7 @@ export function OperationsAssetDetailScreen({
             {allInspectionsHref && (
               <Link
                 href={allInspectionsHref}
-                className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900/60"
+                className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
               >
                 {allInspectionsLabel}
               </Link>
@@ -192,7 +192,7 @@ export function OperationsAssetDetailScreen({
 
           <div className="space-y-3 text-xs">
             {issues.length === 0 && (
-              <p className="py-4 text-center text-xs text-neutral-500">
+              <p className="py-4 text-center text-xs text-[color:var(--theme-text-muted)]">
                 {issuesEmptyLabel ??
                   `No open issues for this ${terminology.assetLabel.toLowerCase()}.`}
               </p>
@@ -201,15 +201,15 @@ export function OperationsAssetDetailScreen({
             {issues.map((issue) => (
               <div
                 key={issue.id}
-                className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2"
+                className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2"
               >
                 <div className="flex items-center justify-between gap-2">
                   <OperationsIssueSeverityChip severity={issue.severity} />
-                  <span className="text-[10px] text-neutral-500">
+                  <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                     {new Date(issue.createdAt).toLocaleDateString()}
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] text-neutral-200">
+                <p className="mt-1 text-[11px] text-[color:var(--theme-text-primary)]">
                   {issue.summary}
                 </p>
                 {renderIssueActions && (
@@ -224,11 +224,11 @@ export function OperationsAssetDetailScreen({
 
         <section className="metal-card rounded-3xl p-4">
           <header className="mb-3 border-b border-[color:var(--metal-border-soft)] pb-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               {statsTitle}
             </p>
             {statsDescription && (
-              <p className="mt-1 text-xs text-neutral-500">
+              <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                 {statsDescription}
               </p>
             )}
@@ -338,12 +338,12 @@ function StatBlock({
   helper?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2">
-      <div className="text-[11px] text-neutral-500">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-neutral-100">
+    <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+      <div className="text-[11px] text-[color:var(--theme-text-muted)]">{label}</div>
+      <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
         {value}
       </div>
-      {helper && <div className="mt-1 text-[10px] text-neutral-500">{helper}</div>}
+      {helper && <div className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">{helper}</div>}
     </div>
   );
 }

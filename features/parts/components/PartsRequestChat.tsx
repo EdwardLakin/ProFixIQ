@@ -105,7 +105,7 @@ export default function PartsRequestChat({ requestId, senderId }: Props) {
   }
 
   return (
-    <div className="border-t border-gray-700 mt-3 pt-2">
+    <div className="border-t border-[color:var(--theme-border-soft)] mt-3 pt-2">
       <div className="max-h-40 overflow-y-auto space-y-2 text-sm">
         {messages.map((msg) => {
           const ts = msg.created_at ? new Date(msg.created_at) : null;
@@ -114,12 +114,12 @@ export default function PartsRequestChat({ requestId, senderId }: Props) {
               key={msg.id}
               className={`p-2 rounded ${
                 msg.sender_id === senderId
-                  ? "bg-orange-600 text-white ml-auto text-right"
-                  : "bg-gray-700 text-white mr-auto"
+                  ? "bg-orange-600 text-[color:var(--theme-text-primary)] ml-auto text-right"
+                  : "bg-[color:var(--theme-surface-hover)] text-[color:var(--theme-text-primary)] mr-auto"
               }`}
             >
               <p>{msg.message}</p>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-[color:var(--theme-text-secondary)]">
                 {ts ? ts.toLocaleTimeString() : ""}
               </p>
             </div>
@@ -134,11 +134,11 @@ export default function PartsRequestChat({ requestId, senderId }: Props) {
           onChange={(e) => setNewMsg(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
           placeholder="Type a message..."
-          className="flex-1 rounded bg-neutral-800 border border-neutral-600 px-3 py-2 text-white"
+          className="flex-1 rounded bg-[color:var(--theme-surface-panel-strong)] border border-[color:var(--theme-border-soft)] px-3 py-2 text-[color:var(--theme-text-primary)]"
         />
         <button
           onClick={handleSend}
-          className="bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded text-white"
+          className="bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded text-[color:var(--theme-text-primary)]"
           disabled={!requestId || !newMsg.trim()}
         >
           Send

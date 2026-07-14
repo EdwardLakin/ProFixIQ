@@ -234,7 +234,7 @@ export default function SummaryPage() {
     <div
       className={`min-h-screen px-4 pb-24 pt-4 ${
         isCustomerView
-          ? "bg-slate-950 text-slate-50"
+          ? "bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]"
           : "bg-background text-foreground"
       }`}
     >
@@ -281,7 +281,7 @@ export default function SummaryPage() {
       {/* Customer & Vehicle info */}
       <div className="mb-6 grid gap-4 rounded-xl border border-border bg-card p-4 md:grid-cols-2">
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-neutral-50">
+          <h2 className="mb-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
             Customer
           </h2>
           <p className="text-sm">
@@ -307,7 +307,7 @@ export default function SummaryPage() {
         </div>
 
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-neutral-50">
+          <h2 className="mb-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
             Vehicle
           </h2>
           <p className="text-sm">
@@ -355,7 +355,7 @@ export default function SummaryPage() {
               key={sectionIndex}
               className="mb-6 overflow-hidden rounded-xl border border-border bg-card"
             >
-              <div className="bg-muted px-4 py-2 text-sm font-semibold text-neutral-100">
+              <div className="bg-muted px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 {section.title}
               </div>
               <div className="space-y-6 p-4">
@@ -369,7 +369,7 @@ export default function SummaryPage() {
                         ? "bg-red-500/10 text-red-300 border border-red-500/40"
                         : status === "recommend"
                         ? "bg-amber-500/10 text-amber-200 border border-amber-500/40"
-                        : "bg-slate-500/10 text-slate-200 border border-slate-500/40";
+                        : "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)]";
 
                     return (
                       <div
@@ -544,7 +544,7 @@ export default function SummaryPage() {
             variant={isCustomerView ? "default" : "outline"}
             className={`w-full ${
               isCustomerView
-                ? "bg-green-600 text-white hover:bg-green-500"
+                ? "bg-green-600 text-[color:var(--theme-text-primary)] hover:bg-green-500"
                 : "border-emerald-500/60 text-emerald-300 hover:bg-emerald-500/10"
             }`}
             onClick={handleSubmit}

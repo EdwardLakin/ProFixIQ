@@ -78,7 +78,7 @@ export function SymptomsBlock(props: {
                 style={{
                   padding: "10px 12px",
                   borderRadius: 999,
-                  border: "1px solid rgba(0,0,0,0.15)",
+                  border: "1px solid var(--theme-surface-inset)",
                   opacity: active ? 1 : 0.7,
                 }}
               >

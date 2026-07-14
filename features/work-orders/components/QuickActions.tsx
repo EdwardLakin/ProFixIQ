@@ -19,7 +19,7 @@ export default function QuickActions() {
         <button
           key={action.path}
           onClick={() => router.push(action.path)}
-          className="rounded-2xl border border-white/10 bg-black/30 p-4 text-left text-sm font-semibold text-neutral-100 shadow-card backdrop-blur-xl transition hover:bg-black/40"
+          className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-left text-sm font-semibold text-[color:var(--theme-text-primary)] shadow-card backdrop-blur-xl transition hover:bg-[color:var(--theme-surface-inset)]"
         >
           {action.label}
         </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { 
+import {
   useCallback,
   useEffect,
   useRef,
@@ -184,10 +184,10 @@ function ScannerPane({
         </div>
       )}
 
-      <div className="rounded border border-neutral-800 bg-neutral-950 p-2">
+      <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-2">
         <video
           ref={videoRef}
-          className="aspect-video w-full rounded bg-black"
+          className="aspect-video w-full rounded bg-[color:var(--theme-surface-page)]"
           playsInline
           muted
           autoPlay
@@ -195,9 +195,9 @@ function ScannerPane({
       </div>
 
       {error ? (
-        <div className="text-xs text-slate-200">{error}</div>
+        <div className="text-xs text-[color:var(--theme-text-primary)]">{error}</div>
       ) : (
-        <div className="text-xs text-neutral-400">
+        <div className="text-xs text-[color:var(--theme-text-secondary)]">
           {active
             ? "Point the camera at the VIN barcode / label…"
             : "Initializing camera…"}
@@ -205,8 +205,8 @@ function ScannerPane({
       )}
 
       {/* Photo upload → OCR route */}
-      <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-        <div className="mb-2 text-sm text-neutral-200">
+      <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
+        <div className="mb-2 text-sm text-[color:var(--theme-text-primary)]">
           Or upload a photo of the VIN label
         </div>
         <input
@@ -214,7 +214,7 @@ function ScannerPane({
           accept="image/*"
           capture="environment"
           disabled={isBusy}
-          className="block w-full text-xs text-neutral-300 file:mr-3 file:rounded file:border-0 file:bg-[linear-gradient(135deg,rgba(197,122,74,0.9),rgba(197,122,74,0.75))] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-black hover:file:bg-[linear-gradient(135deg,rgba(197,122,74,1),rgba(197,122,74,0.85))] disabled:opacity-60"
+          className="block w-full text-xs text-[color:var(--theme-text-secondary)] file:mr-3 file:rounded file:border-0 file:bg-[linear-gradient(135deg,rgba(197,122,74,0.9),rgba(197,122,74,0.75))] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-[color:var(--theme-text-on-accent)] hover:file:bg-[linear-gradient(135deg,rgba(197,122,74,1),rgba(197,122,74,0.85))] disabled:opacity-60"
           onChange={async (e) => {
             if (isBusy) return;
             const file = e.target.files?.[0];
@@ -272,13 +272,13 @@ function ScannerPane({
             }
           }}
         />
-        <div className="mt-2 text-[11px] text-neutral-500">
+        <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
           Tip: Take a close, well-lit photo of the VIN sticker on the door frame or
           dash.
         </div>
       </div>
 
-      <div className="text-[11px] text-neutral-500">
+      <div className="text-[11px] text-[color:var(--theme-text-muted)]">
         We will decode with NHTSA and fill the vehicle form; you stay in control
         of saving.
       </div>

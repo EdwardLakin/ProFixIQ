@@ -23,8 +23,8 @@ function chipClass(status: string | null | undefined): string {
   if (s.includes("approval"))
     return "border-blue-400/60 bg-blue-500/10 text-blue-200";
   if (s.includes("hold"))
-    return "border-slate-400/50 bg-slate-500/10 text-slate-200";
-  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-200";
+    return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
+  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-primary)]";
 }
 
 function safeTrim(v: unknown): string {
@@ -150,13 +150,13 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
   };
 
   return (
-    <div className="min-h-screen desktop-backdrop px-4 py-6 text-white">
+    <div className="min-h-screen desktop-backdrop px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto max-w-4xl space-y-4">
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={goBack}
-            className="inline-flex items-center gap-2 desktop-btn-secondary px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/70"
+            className="inline-flex items-center gap-2 desktop-btn-secondary px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
           >
             <span aria-hidden className="text-base leading-none">
               ←
@@ -164,42 +164,42 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
             Back
           </button>
 
-          <div className="text-[11px] text-neutral-500">
-            View: <span className="font-mono text-neutral-300">WO story</span>
+          <div className="text-[11px] text-[color:var(--theme-text-muted)]">
+            View: <span className="font-mono text-[color:var(--theme-text-secondary)]">WO story</span>
           </div>
         </div>
 
         <div className="desktop-panel p-5">
           {loading ? (
-            <div className="text-sm text-neutral-300">Loading…</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
           ) : err ? (
             <div className="space-y-2">
               <div className="text-sm text-red-200">{err}</div>
-              <div className="text-[11px] text-neutral-500">
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                 If this is a permissions issue, confirm your RLS / shop scope is
                 set for staff.
               </div>
             </div>
           ) : !wo ? (
-            <div className="text-sm text-neutral-300">Work order not found.</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">Work order not found.</div>
           ) : (
             <>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div
-                    className="text-xl font-semibold text-white"
+                    className="text-xl font-semibold text-[color:var(--theme-text-primary)]"
                     style={{ fontFamily: "var(--font-blackops), system-ui" }}
                   >
                     {title}
                   </div>
-                  <div className="mt-1 text-[12px] text-neutral-400">
+                  <div className="mt-1 text-[12px] text-[color:var(--theme-text-secondary)]">
                     {custLabel} • {vehicleLabel}
                   </div>
-                  <div className="mt-1 text-[11px] text-neutral-500">
-                    Updated: <span className="text-neutral-300">{updatedAt}</span>
+                  <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                    Updated: <span className="text-[color:var(--theme-text-secondary)]">{updatedAt}</span>
                   </div>
-                  <div className="mt-1 text-[11px] text-neutral-500">
-                    Expected completion: <span className="text-neutral-300">{expectedCompletionAt}</span>
+                  <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                    Expected completion: <span className="text-[color:var(--theme-text-secondary)]">{expectedCompletionAt}</span>
                   </div>
                 </div>
 
@@ -212,19 +212,19 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                   >
                     {String(wo.status ?? "—").replaceAll("_", " ")}
                   </span>
-                  <span className="desktop-pill px-2 py-0.5 text-[10px] font-mono text-neutral-400">
+                  <span className="desktop-pill px-2 py-0.5 text-[10px] font-mono text-[color:var(--theme-text-secondary)]">
                     {wo.id.slice(0, 8)}
                   </span>
                 </div>
               </div>
 
               <div className="mt-5 desktop-panel-soft p-4">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Jobs (Punchable)
                 </div>
 
                 {lines.filter((line) => (line.line_type ?? "job") !== "info").length === 0 ? (
-                  <div className="text-sm text-neutral-300">No jobs added yet.</div>
+                  <div className="text-sm text-[color:var(--theme-text-secondary)]">No jobs added yet.</div>
                 ) : (
                   <div className="space-y-2">
                     {lines
@@ -246,17 +246,17 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                         >
                           <div className="flex items-baseline justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="text-sm font-medium text-neutral-100">
+                              <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
                                 {label}
                               </div>
-                              <div className="mt-0.5 text-[11px] text-neutral-500">
+                              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                                 Line #{l.line_no ?? "—"}
                                 {typeof l.labor_time === "number"
                                   ? ` • ${l.labor_time} hr`
                                   : ""}
                               </div>
                             </div>
-                            <div className="text-[11px] text-neutral-500">
+                            <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                               {safeTrim(l.status)
                                 ? `Status: ${String(l.status).replaceAll("_", " ")}`
                                 : ""}
@@ -264,14 +264,14 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                           </div>
 
                           {/* ✅ Removed: Complaint row (since label is the complaint/title) */}
-                          <div className="mt-2 space-y-1 text-[12px] text-neutral-300">
+                          <div className="mt-2 space-y-1 text-[12px] text-[color:var(--theme-text-secondary)]">
                             <div>
-                              <span className="text-neutral-500">Cause:</span>{" "}
-                              <span className="text-neutral-200">{cause || "—"}</span>
+                              <span className="text-[color:var(--theme-text-muted)]">Cause:</span>{" "}
+                              <span className="text-[color:var(--theme-text-primary)]">{cause || "—"}</span>
                             </div>
                             <div>
-                              <span className="text-neutral-500">Correction:</span>{" "}
-                              <span className="text-neutral-200">
+                              <span className="text-[color:var(--theme-text-muted)]">Correction:</span>{" "}
+                              <span className="text-[color:var(--theme-text-primary)]">
                                 {correction || "—"}
                               </span>
                             </div>
@@ -282,18 +282,18 @@ export default function WorkOrderReadOnlyStoryPage(): JSX.Element {
                   </div>
                 )}
 
-                <div className="mb-2 mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                <div className="mb-2 mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Info / Context
                 </div>
                 {lines.filter((line) => (line.line_type ?? "job") === "info").length === 0 ? (
-                  <div className="text-sm text-neutral-500">No info/context lines.</div>
+                  <div className="text-sm text-[color:var(--theme-text-muted)]">No info/context lines.</div>
                 ) : (
                   <div className="space-y-2">
                     {lines
                       .filter((line) => (line.line_type ?? "job") === "info")
                       .map((line) => (
                         <div key={line.id} className="desktop-item-card p-3">
-                          <div className="text-sm text-neutral-100">
+                          <div className="text-sm text-[color:var(--theme-text-primary)]">
                             {safeTrim(line.description) || safeTrim(line.complaint) || "Context line"}
                           </div>
                         </div>

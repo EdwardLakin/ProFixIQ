@@ -556,7 +556,7 @@ export default function MenuItemDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[220px] items-center justify-center text-sm text-neutral-300">
+      <div className="flex min-h-[220px] items-center justify-center text-sm text-[color:var(--theme-text-secondary)]">
         Loading…
       </div>
     );
@@ -565,11 +565,11 @@ export default function MenuItemDetailPage() {
   if (!rawItem || !item) {
     return (
       <div className="space-y-3 p-4">
-        <div className="text-sm text-neutral-300">Menu item not found.</div>
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">Menu item not found.</div>
         <button
           type="button"
           onClick={() => router.push("/menu")}
-          className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 hover:border-orange-500"
+          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-orange-500"
         >
           Back to menu
         </button>
@@ -581,27 +581,27 @@ export default function MenuItemDetailPage() {
     <div className="relative space-y-6 fade-in">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
       />
 
       {/* header */}
-      <section className="metal-card flex flex-col gap-3 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:flex-row md:items-center md:justify-between">
+      <section className="metal-card flex flex-col gap-3 rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-5 py-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:flex-row md:items-center md:justify-between">
         <div>
           <h1
-            className="text-2xl font-semibold text-white"
+            className="text-2xl font-semibold text-[color:var(--theme-text-primary)]"
             style={{ fontFamily: "var(--font-blackops), system-ui" }}
           >
             Edit Menu Item
           </h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             Update details, linked inspection, and parts.
           </p>
 
           {shopId ? (
-            <p className="mt-1 text-[11px] text-neutral-500">
+            <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
               Labor rate (shop):{" "}
-              <span className="font-medium text-neutral-200">{money(shopLaborRate)}</span>
-              <span className="text-neutral-500"> / hr</span>
+              <span className="font-medium text-[color:var(--theme-text-primary)]">{money(shopLaborRate)}</span>
+              <span className="text-[color:var(--theme-text-muted)]"> / hr</span>
             </p>
           ) : null}
         </div>
@@ -610,7 +610,7 @@ export default function MenuItemDetailPage() {
           <button
             type="button"
             onClick={() => router.push("/menu")}
-            className="rounded-full border border-neutral-700 bg-neutral-950 px-4 py-2 text-sm text-neutral-100 hover:border-orange-500 hover:bg-neutral-900"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-orange-500 hover:bg-[color:var(--theme-surface-panel)]"
           >
             Back
           </button>
@@ -618,7 +618,7 @@ export default function MenuItemDetailPage() {
             type="button"
             onClick={del}
             disabled={deleting}
-            className="rounded-full border border-red-500/60 bg-black/70 px-4 py-2 text-sm text-red-200 hover:bg-red-500/10 disabled:opacity-60"
+            className="rounded-full border border-red-500/60 bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-sm text-red-200 hover:bg-red-500/10 disabled:opacity-60"
           >
             {deleting ? "Deleting…" : "Delete"}
           </button>
@@ -626,7 +626,7 @@ export default function MenuItemDetailPage() {
             type="button"
             onClick={save}
             disabled={busy}
-            className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/80 via-[color:var(--accent-copper,#f97316)]/15 to-black/80 px-5 py-2 text-sm font-semibold text-neutral-50 hover:border-[color:var(--accent-copper-light,#fed7aa)] disabled:opacity-60"
+            className="rounded-full border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--accent-copper,#f97316)]/15 to-[color:var(--theme-surface-page)] px-5 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-copper-light,#fed7aa)] disabled:opacity-60"
           >
             {busy ? "Saving…" : "Save changes"}
           </button>
@@ -634,56 +634,56 @@ export default function MenuItemDetailPage() {
       </section>
 
       {/* main form */}
-      <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 p-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:p-6">
+      <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-6">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2 md:col-span-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Service name
             </label>
             <input
               value={item.name}
               onChange={(e) => setItemField("name", e.target.value)}
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 backdrop-blur-md"
+              className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] backdrop-blur-md"
             />
           </div>
 
           <div className="grid gap-2 md:col-span-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Description
             </label>
             <textarea
               value={item.description}
               onChange={(e) => setItemField("description", e.target.value)}
-              className="min-h-[90px] w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 backdrop-blur-md"
+              className="min-h-[90px] w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] backdrop-blur-md"
             />
           </div>
 
           <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Labor time (hrs)
             </label>
             <input
               value={item.laborTimeStr}
               onChange={(e) => setItemField("laborTimeStr", cleanNumericString(e.target.value))}
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 backdrop-blur-md"
+              className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] backdrop-blur-md"
               placeholder={selectedTemplate?.labor_hours != null ? `Template: ${selectedTemplate.labor_hours}` : "e.g. 1.5"}
             />
             {!item.laborTimeStr.trim() && selectedTemplate?.labor_hours != null ? (
-              <div className="text-[11px] text-neutral-500">
+              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                 Using template labor:{" "}
-                <span className="text-neutral-200">{selectedTemplate.labor_hours.toFixed(1)}h</span>
+                <span className="text-[color:var(--theme-text-primary)]">{selectedTemplate.labor_hours.toFixed(1)}h</span>
               </div>
             ) : null}
           </div>
 
           <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Active
             </label>
             <select
               value={item.isActive ? "yes" : "no"}
               onChange={(e) => setItemField("isActive", e.target.value === "yes")}
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 backdrop-blur-md"
+              className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] backdrop-blur-md"
             >
               <option value="yes">Active</option>
               <option value="no">Inactive</option>
@@ -692,13 +692,13 @@ export default function MenuItemDetailPage() {
 
           {/* template */}
           <div className="grid gap-2 md:col-span-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Inspection template (optional)
             </label>
             <select
               value={item.inspectionTemplateId}
               onChange={(e) => setItemField("inspectionTemplateId", e.target.value)}
-              className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 backdrop-blur-md"
+              className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] backdrop-blur-md"
             >
               <option value="">— none —</option>
               {templates.map((t) => (
@@ -709,52 +709,52 @@ export default function MenuItemDetailPage() {
               ))}
             </select>
 
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-[11px] text-[color:var(--theme-text-muted)]">
               If templates are blocked by RLS, we can switch this to a server-fed endpoint.
             </p>
           </div>
         </div>
 
         {/* parts editor */}
-        <div className="mt-6 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-          <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-black/80 via-slate-950/80 to-black/80 px-4 py-2.5">
-            <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+        <div className="mt-6 rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
+          <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-2.5">
+            <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Parts
             </h3>
-            <span className="text-[11px] text-neutral-500">Linked via part_id</span>
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">Linked via part_id</span>
           </div>
 
           <div className="space-y-3 p-4">
             {parts.map((p, idx) => (
               <div
                 key={p.id ?? `${idx}`}
-                className="grid grid-cols-1 items-center gap-2 rounded-xl border border-white/5 bg-black/60 p-3 text-sm shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md md:grid-cols-[2fr_0.8fr_0.8fr_auto_auto]"
+                className="grid grid-cols-1 items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 text-sm shadow-[var(--theme-shadow-medium)] backdrop-blur-md md:grid-cols-[2fr_0.8fr_0.8fr_auto_auto]"
               >
                 <input
                   placeholder="Part label"
                   value={p.name}
                   onChange={(e) => setPartField(idx, "name", e.target.value)}
-                  className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+                  className="w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none"
                 />
                 <input
                   placeholder="Qty"
                   inputMode="numeric"
                   value={p.quantityStr}
                   onChange={(e) => setPartField(idx, "quantityStr", e.target.value)}
-                  className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+                  className="w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none"
                 />
                 <input
                   placeholder="Unit cost"
                   inputMode="decimal"
                   value={p.unitCostStr}
                   onChange={(e) => setPartField(idx, "unitCostStr", e.target.value)}
-                  className="w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none"
+                  className="w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none"
                 />
 
                 <button
                   type="button"
                   onClick={() => setPickerOpenForRow(idx)}
-                  className="rounded-lg border border-[color:var(--accent-copper-soft,#fdba74)]/60 px-3 py-2 text-xs font-medium text-neutral-100 hover:bg-[color:var(--accent-copper,#f97316)]/15"
+                  className="rounded-lg border border-[color:var(--accent-copper-soft,#fdba74)]/60 px-3 py-2 text-xs font-medium text-[color:var(--theme-text-primary)] hover:bg-[color:var(--accent-copper,#f97316)]/15"
                 >
                   Pick
                 </button>
@@ -768,9 +768,9 @@ export default function MenuItemDetailPage() {
                 </button>
 
                 <div className="md:col-span-5">
-                  <div className="text-[11px] text-neutral-500">
+                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                     Linked Part:{" "}
-                    <span className="font-mono text-neutral-300">
+                    <span className="font-mono text-[color:var(--theme-text-secondary)]">
                       {p.part_id ? `${p.part_id.slice(0, 8)}…` : "— not linked —"}
                     </span>
                   </div>
@@ -787,34 +787,34 @@ export default function MenuItemDetailPage() {
             </button>
 
             {/* Manual parts request */}
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/55 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md">
+            <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-md">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Manual parts request
                   </div>
-                  <div className="mt-1 text-[11px] text-neutral-500">
+                  <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                     Internal (UI flag only). Creates a parts request from the current parts rows.
                   </div>
                 </div>
 
-                <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] text-neutral-400">
-                  Items: <span className="text-neutral-200">{requestItemsPreview.length}</span>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                  Items: <span className="text-[color:var(--theme-text-primary)]">{requestItemsPreview.length}</span>
                 </span>
               </div>
 
               <div className="mt-3 grid gap-2">
-                <label className="text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
+                <label className="text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Work order ID (required)
                 </label>
                 <input
                   value={requestWorkOrderId}
                   onChange={(e) => setRequestWorkOrderId(e.target.value)}
                   placeholder="Paste work_order_id"
-                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 backdrop-blur-md"
+                  className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] backdrop-blur-md"
                 />
 
-                <div className="flex items-center gap-2 pt-1 text-[11px] text-neutral-400">
+                <div className="flex items-center gap-2 pt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                   <input
                     id="unlinked-only"
                     type="checkbox"
@@ -827,22 +827,22 @@ export default function MenuItemDetailPage() {
                   </label>
                 </div>
 
-                <label className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
+                <label className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Notes (optional)
                 </label>
                 <textarea
                   value={requestNotes}
                   onChange={(e) => setRequestNotes(e.target.value)}
                   placeholder="e.g. Urgent, customer waiting…"
-                  className="min-h-[70px] w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 backdrop-blur-md"
+                  className="min-h-[70px] w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] backdrop-blur-md"
                 />
 
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div className="text-[11px] text-neutral-500">
+                  <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                     {requestItemsPreview.length ? (
                       <span>
                         Preview:{" "}
-                        <span className="text-neutral-300">
+                        <span className="text-[color:var(--theme-text-secondary)]">
                           {requestItemsPreview
                             .slice(0, 3)
                             .map((r) => `${r.desc} ×${r.qty}`)
@@ -859,7 +859,7 @@ export default function MenuItemDetailPage() {
                     type="button"
                     onClick={createPartsRequest}
                     disabled={!canRequestParts}
-                    className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/70 bg-black/70 px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-[color:var(--accent-copper,#f97316)]/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center justify-center rounded-full border border-[color:var(--accent-copper,#f97316)]/70 bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--accent-copper,#f97316)]/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {requesting ? "Requesting…" : "Create parts request (internal)"}
                   </button>
@@ -873,16 +873,16 @@ export default function MenuItemDetailPage() {
         {/* totals */}
         <div className="mt-5 space-y-2 text-sm">
           <div className="flex flex-wrap items-center gap-4 text-xs md:text-sm">
-            <div className="text-neutral-300">
-              Parts: <span className="text-white">{money(partsTotal)}</span>
+            <div className="text-[color:var(--theme-text-secondary)]">
+              Parts: <span className="text-[color:var(--theme-text-primary)]">{money(partsTotal)}</span>
             </div>
-            <div className="text-neutral-300">
+            <div className="text-[color:var(--theme-text-secondary)]">
               Labor:{" "}
-              <span className="text-white">
+              <span className="text-[color:var(--theme-text-primary)]">
                 {effectiveLaborHours.toFixed(1)}h × {money(shopLaborRate)}/hr = {money(laborPreview)}
               </span>
             </div>
-            <div className="text-neutral-300">
+            <div className="text-[color:var(--theme-text-secondary)]">
               Preview total:{" "}
               <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">
                 {money(totalPreview)}
@@ -890,9 +890,9 @@ export default function MenuItemDetailPage() {
             </div>
           </div>
 
-          <div className="text-[11px] text-neutral-500">
+          <div className="text-[11px] text-[color:var(--theme-text-muted)]">
             Saved (server) totals:{" "}
-            <span className="text-neutral-200">
+            <span className="text-[color:var(--theme-text-primary)]">
               parts {money(rawItem.part_cost)} • total {money(rawItem.total_price)}
             </span>
           </div>

@@ -208,10 +208,10 @@ export default function SettingsPage() {
       ? "text-emerald-400"
       : statusType === "error"
       ? "text-red-400"
-      : "text-neutral-300";
+      : "text-[color:var(--theme-text-secondary)]";
 
   if (!userId) {
-    return <div className="p-6 text-sm text-neutral-300">Loading settings…</div>;
+    return <div className="p-6 text-sm text-[color:var(--theme-text-secondary)]">Loading settings…</div>;
   }
 
   return (
@@ -219,7 +219,7 @@ export default function SettingsPage() {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-blackops text-orange-400">User Settings</h1>
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             Manage your profile identity, security, and communication details.
           </p>
         </div>
@@ -240,9 +240,9 @@ export default function SettingsPage() {
           onAvatarChange={setAvatarUrl}
         />
 
-        <section className="space-y-3 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
-          <h2 className="text-sm font-semibold text-neutral-50">Account</h2>
-          <p className="text-xs text-neutral-400">
+        <section className="space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Account</h2>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
             Status: {emailVerified ? "Email verified" : "Email not verified"}
           </p>
           <Button
@@ -254,7 +254,7 @@ export default function SettingsPage() {
           </Button>
 
           <div className="pt-3">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-300">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
               Change password
             </h3>
             <div className="grid gap-2">
@@ -298,21 +298,21 @@ export default function SettingsPage() {
         {status ? <span className={`text-sm ${statusClass}`}>{status}</span> : null}
       </div>
 
-      <section className="space-y-3 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
-        <h2 className="text-sm font-semibold text-neutral-50">Time Off</h2>
-        <p className="text-xs text-neutral-400">
+      <section className="space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
+        <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Time Off</h2>
+        <p className="text-xs text-[color:var(--theme-text-secondary)]">
           Submit and track your own time away requests. Approved requests automatically block schedule availability.
         </p>
         <div className="grid gap-2 md:grid-cols-2">
-          <select className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm" value={requestType} onChange={(e) => setRequestType(e.target.value)}>
+          <select className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" value={requestType} onChange={(e) => setRequestType(e.target.value)}>
             <option value="vacation">Vacation</option>
             <option value="sick">Sick</option>
             <option value="personal">Personal</option>
             <option value="unpaid">Unpaid</option>
           </select>
-          <input className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm" type="datetime-local" value={requestStart} onChange={(e) => setRequestStart(e.target.value)} />
-          <input className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm" type="datetime-local" value={requestEnd} onChange={(e) => setRequestEnd(e.target.value)} />
-          <input className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm md:col-span-2" placeholder="Reason (optional)" value={requestReason} onChange={(e) => setRequestReason(e.target.value)} />
+          <input className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" type="datetime-local" value={requestStart} onChange={(e) => setRequestStart(e.target.value)} />
+          <input className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm" type="datetime-local" value={requestEnd} onChange={(e) => setRequestEnd(e.target.value)} />
+          <input className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm md:col-span-2" placeholder="Reason (optional)" value={requestReason} onChange={(e) => setRequestReason(e.target.value)} />
         </div>
         <Button onClick={submitTimeOff} disabled={busy || !requestStart || !requestEnd}>
           {busy ? "Submitting…" : "Request time off"}
@@ -320,19 +320,19 @@ export default function SettingsPage() {
 
         <div className="space-y-2">
           {requests.length === 0 ? (
-            <p className="text-xs text-neutral-500">No time off requests yet.</p>
+            <p className="text-xs text-[color:var(--theme-text-muted)]">No time off requests yet.</p>
           ) : (
             requests.map((r) => (
-              <div key={r.id} className="rounded-lg border border-white/10 bg-black/30 p-3 text-sm">
+              <div key={r.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium text-neutral-100">
+                  <p className="font-medium text-[color:var(--theme-text-primary)]">
                     {r.request_type} · {new Date(r.starts_at).toLocaleString()} → {new Date(r.ends_at).toLocaleString()}
                   </p>
-                  <span className="text-xs uppercase tracking-wide text-neutral-300">{r.status}</span>
+                  <span className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">{r.status}</span>
                 </div>
-                <p className="mt-1 text-xs text-neutral-400">{r.reason ?? "No note"}</p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{r.reason ?? "No note"}</p>
                 {r.status === "pending" ? (
-                  <button className="mt-2 rounded border border-white/15 px-2 py-1 text-xs text-neutral-200" onClick={() => void cancelPendingRequest(r.id)} disabled={busy}>
+                  <button className="mt-2 rounded border border-[color:var(--theme-border-soft)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)]" onClick={() => void cancelPendingRequest(r.id)} disabled={busy}>
                     Cancel request
                   </button>
                 ) : null}

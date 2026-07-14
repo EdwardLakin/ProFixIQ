@@ -49,7 +49,7 @@ export default function Section({ children, className, id, ariaLabel }: SectionP
           className="absolute inset-0 opacity-[0.07]"
           style={{
             backgroundImage:
-              "repeating-linear-gradient(90deg, rgba(255,255,255,0.05), rgba(0,0,0,0.10) 1px, rgba(0,0,0,0.20) 3px, rgba(255,255,255,0.02) 4px)",
+              "var(--theme-gradient-panel)",
           }}
         />
 

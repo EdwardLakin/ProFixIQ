@@ -22,7 +22,7 @@ const toneClassName: Record<
   NonNullable<CsvImportPreviewMetric["tone"]>,
   string
 > = {
-  default: "border-white/10 bg-white/[0.03] text-white",
+  default: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
   success: "border-emerald-500/20 bg-emerald-950/20 text-emerald-100",
   warning: "border-amber-500/20 bg-amber-950/20 text-amber-100",
   error: "border-red-500/20 bg-red-950/20 text-red-100",
@@ -60,14 +60,14 @@ export function CsvImportPreviewCard({
   ];
 
   return (
-    <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">
+    <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <span className="font-semibold text-neutral-100">Selected file:</span>{" "}
+          <span className="font-semibold text-[color:var(--theme-text-primary)]">Selected file:</span>{" "}
           {fileName ?? "No CSV selected"}
         </div>
         {headersCount > 0 ? (
-          <div className="text-xs text-neutral-400">
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">
             Detected {headersCount} columns
           </div>
         ) : null}
@@ -85,7 +85,7 @@ export function CsvImportPreviewCard({
               className={`rounded-lg border p-2 ${toneClassName[metric.tone ?? "default"]}`}
             >
               <div className="text-lg font-semibold">{metric.value}</div>
-              <div className="text-xs text-neutral-400">{metric.label}</div>
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">{metric.label}</div>
             </div>
           ))}
         </div>

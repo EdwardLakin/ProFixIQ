@@ -111,11 +111,11 @@ export default function PropertyAssetDetailDemo({
           : "Demo history and cost indicators only — no accounting, leases, rent, or live work order conversion is wired."
       }
     >
-      <div className="mt-4 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 px-3 py-2 text-[11px] text-neutral-300">
-        <div className="font-semibold text-neutral-100">
+      <div className="mt-4 rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+        <div className="font-semibold text-[color:var(--theme-text-primary)]">
           {isLive ? "Read-only property note" : "Property placeholder note"}
         </div>
-        <p className="mt-1 text-neutral-400">
+        <p className="mt-1 text-[color:var(--theme-text-secondary)]">
           {isLive
             ? "This screen reads property operations data through the logged-in user's Supabase RLS context and does not add write actions yet."
             : "This screen proves the reusable operations asset detail layout with property terminology and static data only."}

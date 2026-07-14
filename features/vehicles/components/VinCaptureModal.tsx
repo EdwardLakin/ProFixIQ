@@ -66,7 +66,7 @@ export default function VinCaptureModalContent({
             <button
               type="button"
               onClick={onContinueManual}
-              className="rounded-full border border-neutral-500/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-100 hover:bg-white/10"
+              className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
             >
               Continue manually
             </button>
@@ -76,11 +76,11 @@ export default function VinCaptureModalContent({
 
       <div className="grid gap-6 sm:grid-cols-2">
         {/* Manual Entry */}
-        <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/50 p-4 shadow-[0_16px_40px_rgba(0,0,0,0.9)]">
+        <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)]">
           <h3 className="font-blackops text-[0.75rem] tracking-[0.18em] text-orange-300">
             MANUAL ENTRY
           </h3>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Enter a valid 17-character VIN. No I, O, or Q.
           </p>
 
@@ -92,7 +92,7 @@ export default function VinCaptureModalContent({
           >
             <input type="hidden" name="user_id" value={userId} />
 
-            <label className="block text-xs text-neutral-300">
+            <label className="block text-xs text-[color:var(--theme-text-secondary)]">
               VIN
               <input
                 name="vin"
@@ -106,7 +106,7 @@ export default function VinCaptureModalContent({
                 autoCapitalize="characters"
                 spellCheck={false}
                 placeholder="1HGCM82633A004352"
-                className="mt-1 w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder-neutral-500 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/70"
+                className="mt-1 w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder-neutral-500 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/70"
               />
             </label>
 
@@ -117,13 +117,13 @@ export default function VinCaptureModalContent({
             ) : null}
 
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-[11px] text-neutral-500">
+              <span className="text-[11px] text-[color:var(--theme-text-muted)]">
                 Decoded via NHTSA vPIC
               </span>
               <button
                 type="submit"
                 disabled={isDecoding}
-                className="rounded-full border border-orange-500 bg-black/80 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-orange-100 hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-full border border-orange-500 bg-[color:var(--theme-surface-overlay)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-orange-100 hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isDecoding ? "Decoding…" : "Decode VIN"}
               </button>
@@ -132,19 +132,19 @@ export default function VinCaptureModalContent({
         </section>
 
         {/* Scanner card */}
-        <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/50 p-4 shadow-[0_16px_40px_rgba(0,0,0,0.9)]">
+        <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)]">
           <h3 className="font-blackops text-[0.75rem] tracking-[0.18em] text-orange-300">
             SCAN VIN
           </h3>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Use the camera or upload a photo of the VIN label.
           </p>
 
-          <div className="mt-3 min-h-[220px] rounded-xl border border-dashed border-neutral-700 bg-neutral-950/60 p-3">
+          <div className="mt-3 min-h-[220px] rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
             {scanSlot ? (
               scanSlot
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+              <div className="flex h-full items-center justify-center text-sm text-[color:var(--theme-text-muted)]">
                 Scanner not loaded
               </div>
             )}

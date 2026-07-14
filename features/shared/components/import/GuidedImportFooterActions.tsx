@@ -36,7 +36,7 @@ export function GuidedImportFooterActions({
         type="button"
         onClick={onConfirm}
         disabled={importing || completing || !canConfirm}
-        className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.45)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
+        className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.45)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-55"
       >
         {importing
           ? "Importing…"
@@ -58,7 +58,7 @@ export function GuidedImportFooterActions({
           type="button"
           onClick={onSkip}
           disabled={skipDisabled || importing || completing}
-          className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55"
+          className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-55"
         >
           {skipLabel}
         </button>

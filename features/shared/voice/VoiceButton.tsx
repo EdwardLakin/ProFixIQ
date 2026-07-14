@@ -45,7 +45,7 @@ export default function VoiceButton() {
       ) : null}
 
       {state.transcript ? (
-        <div className="text-xs text-neutral-200 bg-neutral-900/80 border border-neutral-800 rounded px-2 py-1 max-w-[320px]">
+        <div className="text-xs text-[color:var(--theme-text-primary)] bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)] rounded px-2 py-1 max-w-[320px]">
           {state.transcript}
         </div>
       ) : null}

@@ -10,7 +10,7 @@ export function ProfileAutofillBanner(props: {
   return (
     <div
       style={{
-        border: "1px solid rgba(0,0,0,0.12)",
+        border: "1px solid var(--theme-surface-inset)",
         borderRadius: 12,
         padding: 12,
         display: "grid",

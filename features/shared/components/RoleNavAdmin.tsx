@@ -31,21 +31,21 @@ export default function RoleNavAdmin() {
   if (!isAdmin) return null;
 
   return (
-    <div className="hidden md:flex md:w-64 flex-col gap-4 border-r border-white/5 bg-surface/80 backdrop-blur">
+    <div className="hidden md:flex md:w-64 flex-col gap-4 border-r border-[color:var(--theme-border-soft)] bg-surface/80 backdrop-blur">
       {/* everything admin can reach is now in the tile-based sidebar already */}
-      <div className="px-4 pt-4 space-y-3 border-t border-white/5">
-        <p className="text-xs font-medium text-neutral-400">Admin tools</p>
+      <div className="px-4 pt-4 space-y-3 border-t border-[color:var(--theme-border-soft)]">
+        <p className="text-xs font-medium text-[color:var(--theme-text-secondary)]">Admin tools</p>
         <Link
           href="/ai/assistant"
-          className="block text-sm text-neutral-200 hover:text-white"
+          className="block text-sm text-[color:var(--theme-text-primary)] hover:text-[color:var(--theme-text-primary)]"
         >
           AI Assistant
         </Link>
       </div>
 
       {userId ? (
-        <div className="px-4 pb-4 border-t border-white/5">
-          <p className="text-xs font-medium text-neutral-400 mb-2">
+        <div className="px-4 pb-4 border-t border-[color:var(--theme-border-soft)]">
+          <p className="text-xs font-medium text-[color:var(--theme-text-secondary)] mb-2">
             Shift tracker
           </p>
           <ShiftTracker userId={userId} />

@@ -19,8 +19,8 @@ export default function Workspace() {
             key={t.key}
             onClick={() => setActive(t.key)}
             className={`rounded px-3 py-1 text-sm border
-              ${active === t.key ? "bg-orange-500 text-black border-orange-500"
-                                 : "bg-neutral-900 text-white border-white/15 hover:border-orange-500"}`}
+              ${active === t.key ? "bg-orange-500 text-[color:var(--theme-text-on-accent)] border-orange-500"
+                                 : "bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] hover:border-orange-500"}`}
           >
             {t.label}
           </button>
@@ -31,7 +31,7 @@ export default function Workspace() {
         <iframe
           key={t.key}
           src={t.src}
-          className={`${active === t.key ? "block" : "hidden"} flex-1 w-full rounded-lg border border-white/10`}
+          className={`${active === t.key ? "block" : "hidden"} flex-1 w-full rounded-lg border border-[color:var(--theme-border-soft)]`}
         />
       ))}
     </div>

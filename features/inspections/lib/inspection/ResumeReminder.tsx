@@ -13,7 +13,7 @@ const ResumeReminder = () => {
       <p className="text-sm mb-2">Inspection paused – tap to resume.</p>
       <button
         onClick={resumeSession}
-        className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-4 rounded"
+        className="bg-yellow-600 hover:bg-yellow-700 text-[color:var(--theme-text-primary)] font-bold py-1 px-4 rounded"
       >
         Resume
       </button>

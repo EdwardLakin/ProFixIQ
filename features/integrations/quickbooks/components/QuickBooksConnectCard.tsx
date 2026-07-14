@@ -108,42 +108,42 @@ export default function QuickBooksConnectCard() {
   const connected = Boolean(status?.connected && status.connection);
 
   return (
-    <Card className="rounded-2xl border border-white/10 bg-black/30 p-6 text-white">
+    <Card className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-[color:var(--theme-text-primary)]">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">QuickBooks Online</h2>
-          <p className="mt-1 text-sm text-neutral-300">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             Connect your shop to QuickBooks and push finalized invoices into accounting.
           </p>
         </div>
 
-        <div className="rounded-full border border-white/10 px-3 py-1 text-xs text-neutral-200">
+        <div className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)]">
           {loading ? "Checking…" : connected ? "Connected" : "Not connected"}
         </div>
       </div>
 
       {connected && status?.connection ? (
-        <div className="mb-4 space-y-1 text-sm text-neutral-300">
+        <div className="mb-4 space-y-1 text-sm text-[color:var(--theme-text-secondary)]">
           <div>
-            <span className="text-neutral-400">Realm ID:</span>{" "}
+            <span className="text-[color:var(--theme-text-secondary)]">Realm ID:</span>{" "}
             {status.connection.realmId}
           </div>
           <div>
-            <span className="text-neutral-400">Environment:</span>{" "}
+            <span className="text-[color:var(--theme-text-secondary)]">Environment:</span>{" "}
             {status.connection.environment}
           </div>
           <div>
-            <span className="text-neutral-400">Connected:</span>{" "}
+            <span className="text-[color:var(--theme-text-secondary)]">Connected:</span>{" "}
             {new Date(status.connection.connectedAt).toLocaleString()}
           </div>
           <div>
-            <span className="text-neutral-400">Last sync:</span>{" "}
+            <span className="text-[color:var(--theme-text-secondary)]">Last sync:</span>{" "}
             {status.connection.lastSyncAt
               ? new Date(status.connection.lastSyncAt).toLocaleString()
               : "—"}
           </div>
           <div>
-            <span className="text-neutral-400">Last error:</span>{" "}
+            <span className="text-[color:var(--theme-text-secondary)]">Last error:</span>{" "}
             {status.connection.lastError || "—"}
           </div>
         </div>
@@ -168,7 +168,7 @@ export default function QuickBooksConnectCard() {
             <Button
               onClick={handleDisconnect}
               disabled={busy || loading}
-              className="border border-white/15 bg-transparent hover:bg-white/5"
+              className="border border-[color:var(--theme-border-soft)] bg-transparent hover:bg-[color:var(--theme-surface-subtle)]"
             >
               {busy ? "Disconnecting…" : "Disconnect"}
             </Button>

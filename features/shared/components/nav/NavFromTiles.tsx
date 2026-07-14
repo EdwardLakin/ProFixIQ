@@ -84,7 +84,7 @@ export default function NavFromTiles({
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="h-24 animate-pulse rounded-2xl border border-white/10 bg-black/30 shadow-card backdrop-blur-xl"
+              className="h-24 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card backdrop-blur-xl"
             />
           ))}
         </div>

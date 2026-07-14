@@ -27,15 +27,15 @@ const RANGE_LABELS: Record<Range, string> = {
 /* ---------------------------------------------------------------------- */
 
 const T = {
-  border: "border-[color:var(--metal-border-soft,#1f2937)]",
-  borderStrong: "border-[color:var(--metal-border,#111827)]", // ✅ ADD THIS
+  border: "border-[color:var(--metal-border-soft,var(--theme-border-soft))]",
+  borderStrong: "border-[color:var(--metal-border,var(--theme-surface-page))]", // ✅ ADD THIS
   panel:
-    "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-black/35 backdrop-blur-md",
+    "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-[color:var(--theme-surface-inset)] backdrop-blur-md",
   panelStrong:
-    "bg-[radial-gradient(900px_520px_at_18%_0%,rgba(197,106,47,0.12),transparent_55%),linear-gradient(180deg,rgba(0,0,0,0.62),rgba(0,0,0,0.42))] backdrop-blur-md",
-  shadow: "shadow-[0_18px_40px_rgba(0,0,0,0.85)]",
+    "bg-[var(--theme-gradient-panel)] backdrop-blur-md",
+  shadow: "shadow-[var(--theme-shadow-medium)]",
   copperFill:
-    "border-[color:var(--accent-copper,#c56a2f)] bg-[color:var(--accent-copper,#c56a2f)] text-black shadow-[0_0_22px_rgba(197,106,47,0.35)]",
+    "border-[color:var(--accent-copper,#c56a2f)] bg-[color:var(--accent-copper,#c56a2f)] text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(197,106,47,0.35)]",
   copperSoftText: "text-[color:var(--accent-copper-soft,#e7a36c)]",
   copperSoftBorder: "border-[color:var(--accent-copper-soft,#e7a36c)]/55",
 };
@@ -141,7 +141,7 @@ export default function TechLeaderboardPage() {
           ].join(" ")}
         >
           <div className="space-y-1">
-            <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Time range
             </div>
 
@@ -161,8 +161,8 @@ export default function TechLeaderboardPage() {
                           : [
                               "text-sm",
                               T.border,
-                              "bg-black/25",
-                              "hover:bg-black/35",
+                              "bg-[color:var(--theme-surface-inset)]",
+                              "hover:bg-[color:var(--theme-surface-inset)]",
                             ].join(" ")
                       }
                       onClick={() => setRange(r)}
@@ -174,7 +174,7 @@ export default function TechLeaderboardPage() {
               )}
             </div>
 
-            <div className="text-[0.7rem] text-neutral-400">
+            <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
               {dateRangeLabel}
             </div>
           </div>
@@ -190,7 +190,7 @@ export default function TechLeaderboardPage() {
         {loading && (
           <div
             className={[
-              "rounded-2xl border px-4 py-6 text-sm text-neutral-400",
+              "rounded-2xl border px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]",
               T.border,
               T.panel,
               T.shadow,
@@ -204,7 +204,7 @@ export default function TechLeaderboardPage() {
         {!loading && !error && rows.length === 0 && (
           <div
             className={[
-              "rounded-2xl border px-4 py-6 text-sm text-neutral-400",
+              "rounded-2xl border px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]",
               T.border,
               T.panel,
               T.shadow,
@@ -229,7 +229,7 @@ export default function TechLeaderboardPage() {
                 <h2 className="text-sm font-semibold text-foreground">
                   Technician performance
                 </h2>
-                <p className="text-[0.7rem] text-neutral-400">
+                <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                   Revenue, jobs, hours and efficiency per technician.
                 </p>
               </div>
@@ -239,7 +239,7 @@ export default function TechLeaderboardPage() {
               <table className="min-w-full border-collapse text-left text-xs sm:text-sm">
                 <thead
                   className={[
-                    "border-b bg-black/35",
+                    "border-b bg-[color:var(--theme-surface-inset)]",
                     T.borderStrong,
                   ].join(" ")}
                 >
@@ -270,18 +270,18 @@ export default function TechLeaderboardPage() {
                         key={row.techId}
                         className={[
                           "border-b last:border-0",
-                          "odd:bg-black/10 even:bg-black/0",
-                          "hover:bg-black/20",
+                          "odd:bg-[color:var(--theme-surface-inset)] even:bg-[color:var(--theme-surface-inset)]",
+                          "hover:bg-[color:var(--theme-surface-inset)]",
                           T.border,
                         ].join(" ")}
                       >
-                        <Td className="font-mono text-[11px] text-neutral-500">
+                        <Td className="font-mono text-[11px] text-[color:var(--theme-text-muted)]">
                           {idx + 1}
                         </Td>
-                        <Td className="text-sm font-medium text-neutral-100">
+                        <Td className="text-sm font-medium text-[color:var(--theme-text-primary)]">
                           {row.name}
                         </Td>
-                        <Td className="text-[11px] text-neutral-500">
+                        <Td className="text-[11px] text-[color:var(--theme-text-muted)]">
                           {row.role ?? "—"}
                         </Td>
                         <Td>{row.jobs}</Td>
@@ -291,7 +291,7 @@ export default function TechLeaderboardPage() {
                         <Td>
                           {row.clockedHours.toFixed(1)}
                           {row.clockedHours > 0 && (
-                            <span className="ml-1 text-[11px] text-neutral-500">
+                            <span className="ml-1 text-[11px] text-[color:var(--theme-text-muted)]">
                               ({billedVsClockedPct.toFixed(0)}% billed)
                             </span>
                           )}
@@ -350,7 +350,7 @@ function efficiencyBadge(
     return {
       label: "Silver",
       className:
-        "bg-slate-200/10 border-slate-200/35 text-slate-100",
+        "bg-[color:var(--theme-surface-subtle)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)]",
       emoji: "🥈",
     };
   }
@@ -374,7 +374,7 @@ function Th({
 }) {
   return (
     <th
-      className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400 ${className}`}
+      className={`px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] ${className}`}
     >
       {children}
     </th>
@@ -389,7 +389,7 @@ function Td({
   className?: string;
 }) {
   return (
-    <td className={`px-3 py-2 text-xs text-neutral-100 ${className}`}>
+    <td className={`px-3 py-2 text-xs text-[color:var(--theme-text-primary)] ${className}`}>
       {children}
     </td>
   );

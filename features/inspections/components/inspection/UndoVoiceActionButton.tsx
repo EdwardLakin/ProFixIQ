@@ -16,7 +16,7 @@ const UndoVoiceActionButton: React.FC<UndoVoiceActionButtonProps> = ({
 
   return (
     <button
-      className="fixed bottom-24 right-4 z-50 bg-orange-500 text-white p-2 rounded-full shadow-md hover:bg-orange-600"
+      className="fixed bottom-24 right-4 z-50 bg-orange-500 text-[color:var(--theme-text-primary)] p-2 rounded-full shadow-md hover:bg-orange-600"
       onClick={() => {
         onUndo();
         setVisible(false);

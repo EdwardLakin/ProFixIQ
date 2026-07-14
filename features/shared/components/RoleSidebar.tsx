@@ -149,7 +149,7 @@ export default function RoleSidebar({
     return (
       <div
         className="p-4 text-xs"
-        style={{ color: "var(--theme-sidebar-text,#d4d4d8)" }}
+        style={{ color: "var(--theme-sidebar-text,var(--theme-text-primary))" }}
       >
         Loading navigation…
       </div>
@@ -165,7 +165,7 @@ export default function RoleSidebar({
       className="flex-1 overflow-y-auto space-y-3 py-3"
       style={{
         background:
-          "linear-gradient(to bottom, color-mix(in srgb, var(--theme-sidebar-bg,#020617) 92%, black), var(--theme-sidebar-bg,#020617), color-mix(in srgb, var(--theme-sidebar-bg,#020617) 80%, black))",
+          "var(--theme-gradient-panel)",
       }}
     >
       {sortedGroups.map(([group, groupTiles]) => {
@@ -186,12 +186,12 @@ export default function RoleSidebar({
               style={{
                 borderRadius: "var(--theme-radius-lg,0.75rem)",
                 borderColor: hasActive
-                  ? "color-mix(in srgb, var(--brand-primary,#C1663B) 55%, var(--theme-card-border,#334155))"
-                  : "color-mix(in srgb, var(--theme-card-border,#334155) 85%, transparent)",
+                  ? "color-mix(in srgb, var(--brand-primary,#C1663B) 55%, var(--theme-card-border,var(--theme-border-soft)))"
+                  : "color-mix(in srgb, var(--theme-card-border,var(--theme-border-soft)) 85%, transparent)",
                 background: hasActive
-                  ? "color-mix(in srgb, var(--theme-sidebar-active-bg,var(--brand-primary,#C1663B)) 10%, var(--theme-sidebar-bg,#020617))"
-                  : "color-mix(in srgb, var(--theme-sidebar-bg,#020617) 82%, black)",
-                color: "var(--theme-sidebar-text,#D4D4D8)",
+                  ? "color-mix(in srgb, var(--theme-sidebar-active-bg,var(--brand-primary,#C1663B)) 10%, var(--theme-sidebar-bg,var(--theme-surface-page)))"
+                  : "color-mix(in srgb, var(--theme-sidebar-bg,var(--theme-surface-page)) 82%, var(--theme-surface-page))",
+                color: "var(--theme-sidebar-text,var(--theme-text-primary))",
                 boxShadow: hasActive
                   ? "0 0 0 1px color-mix(in srgb, var(--brand-primary,#C1663B) 20%, transparent)"
                   : "none",
@@ -211,7 +211,7 @@ export default function RoleSidebar({
                   <span
                     className="inline-block h-1.5 w-1.5 rounded-full opacity-40"
                     style={{
-                      background: "var(--theme-text-secondary,#94A3B8)",
+                      background: "var(--theme-text-secondary,var(--theme-text-muted))",
                     }}
                   />
                 )}
@@ -220,8 +220,8 @@ export default function RoleSidebar({
                   className="text-[0.64rem] font-semibold uppercase tracking-[0.2em]"
                   style={{
                     color: hasActive
-                      ? "var(--theme-text-primary,#FFFFFF)"
-                      : "var(--theme-text-secondary,#94A3B8)",
+                      ? "var(--theme-text-primary,var(--theme-text-inverse))"
+                      : "var(--theme-text-secondary,var(--theme-text-muted))",
                   }}
                 >
                   {group}
@@ -234,7 +234,7 @@ export default function RoleSidebar({
                   style={{
                     color: hasActive
                       ? "var(--brand-primary,#C1663B)"
-                      : "var(--theme-text-secondary,#94A3B8)",
+                      : "var(--theme-text-secondary,var(--theme-text-muted))",
                   }}
                 />
               ) : (
@@ -243,7 +243,7 @@ export default function RoleSidebar({
                   style={{
                     color: hasActive
                       ? "var(--brand-primary,#C1663B)"
-                      : "var(--theme-text-secondary,#94A3B8)",
+                      : "var(--theme-text-secondary,var(--theme-text-muted))",
                   }}
                 />
               )}
@@ -265,15 +265,15 @@ export default function RoleSidebar({
                         borderRadius: "var(--theme-radius-md,0.5rem)",
                         borderColor: active
                           ? "var(--theme-sidebar-active-bg,var(--brand-primary,#C1663B))"
-                          : "color-mix(in srgb, var(--theme-card-border,#334155) 85%, transparent)",
+                          : "color-mix(in srgb, var(--theme-card-border,var(--theme-border-soft)) 85%, transparent)",
                         background: active
                           ? "var(--theme-sidebar-active-bg,var(--brand-primary,#C1663B))"
-                          : "color-mix(in srgb, var(--theme-sidebar-bg,#020617) 58%, white 4%)",
+                          : "color-mix(in srgb, var(--theme-sidebar-bg,var(--theme-surface-page)) 58%, var(--theme-text-inverse) 4%)",
                         color: active
-                          ? "var(--theme-sidebar-active-text,#000000)"
-                          : "var(--theme-sidebar-text,#D4D4D8)",
+                          ? "var(--theme-sidebar-active-text,var(--theme-text-on-accent))"
+                          : "var(--theme-sidebar-text,var(--theme-text-primary))",
                         boxShadow: active
-                          ? "var(--theme-shadow-soft,0_14px_30px_rgba(0,0,0,0.35))"
+                          ? "var(--theme-shadow-soft,0_14px_30px_var(--theme-surface-inset))"
                           : "none",
                       }}
                     >
@@ -281,8 +281,8 @@ export default function RoleSidebar({
                         className="truncate text-[0.8rem] font-medium"
                         style={{
                           color: active
-                            ? "var(--theme-sidebar-active-text,#000000)"
-                            : "var(--theme-text-primary,#FFFFFF)",
+                            ? "var(--theme-sidebar-active-text,var(--theme-text-on-accent))"
+                            : "var(--theme-text-primary,var(--theme-text-inverse))",
                         }}
                       >
                         {t.title}
@@ -293,8 +293,8 @@ export default function RoleSidebar({
                           className="text-[0.68rem]"
                           style={{
                             color: active
-                              ? "color-mix(in srgb, var(--theme-sidebar-active-text,#000000) 80%, transparent)"
-                              : "var(--theme-text-secondary,#94A3B8)",
+                              ? "color-mix(in srgb, var(--theme-sidebar-active-text,var(--theme-text-on-accent)) 80%, transparent)"
+                              : "var(--theme-text-secondary,var(--theme-text-muted))",
                           }}
                         >
                           {t.cta}

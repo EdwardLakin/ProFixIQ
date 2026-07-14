@@ -13,7 +13,7 @@ export default function ChatListPage(): JSX.Element {
 
   return (
     <PageShell title="Inbox">
-      <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/30 p-4 text-sm text-neutral-300">
+      <div className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
         <p className="mb-3">Inbox is now layered as an operational modal so messaging stays in context.</p>
         <button
           type="button"

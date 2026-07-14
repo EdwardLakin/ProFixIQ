@@ -324,17 +324,17 @@ export default function InboxModal({
       bodyScrollable={false}
     >
       <div className="mb-2.5">
-        <p className="text-[11px] text-neutral-500">Shop communication center</p>
+        <p className="text-[11px] text-[color:var(--theme-text-muted)]">Shop communication center</p>
       </div>
 
       <div className="grid h-[min(72vh,760px)] grid-cols-1 gap-2.5 md:grid-cols-[290px_1fr] xl:grid-cols-[280px_1fr_230px]">
-        <aside className="flex min-h-0 flex-col rounded-xl border border-white/10 bg-black/35">
-          <div className="border-b border-white/5 p-2">
+        <aside className="flex min-h-0 flex-col rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+          <div className="border-b border-[color:var(--theme-border-soft)] p-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search inbox"
-              className="h-8 w-full rounded border border-white/10 bg-black/60 px-2 text-xs"
+              className="h-8 w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 text-xs"
             />
           </div>
 
@@ -352,9 +352,9 @@ export default function InboxModal({
                   key={row.conversation.id}
                   type="button"
                   onClick={() => setActiveConversationId(row.conversation.id)}
-                  className={`flex w-full items-start gap-2 border-b border-white/5 px-2 py-1.5 text-left transition hover:bg-white/5 ${
+                  className={`flex w-full items-start gap-2 border-b border-[color:var(--theme-border-soft)] px-2 py-1.5 text-left transition hover:bg-[color:var(--theme-surface-subtle)] ${
                     activeConversationId === row.conversation.id
-                      ? "bg-white/5 ring-1 ring-[var(--accent-copper-soft)]/35"
+                      ? "bg-[color:var(--theme-surface-subtle)] ring-1 ring-[var(--accent-copper-soft)]/35"
                       : ""
                   }`}
                 >
@@ -364,15 +364,15 @@ export default function InboxModal({
                     size="sm"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[11px] font-semibold text-neutral-100">
+                    <p className="truncate text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
                       {title}
                     </p>
-                    <p className="truncate text-[10px] text-neutral-400">
+                    <p className="truncate text-[10px] text-[color:var(--theme-text-secondary)]">
                       {row.latest_message?.content ?? "No messages"}
                     </p>
                   </div>
                   {row.unread_count > 0 ? (
-                    <span className="rounded-full bg-[var(--accent-copper-soft)] px-1.5 py-0.5 text-[9px] font-bold text-black">
+                    <span className="rounded-full bg-[var(--accent-copper-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[color:var(--theme-text-on-accent)]">
                       {row.unread_count}
                     </span>
                   ) : null}
@@ -382,8 +382,8 @@ export default function InboxModal({
           </div>
         </aside>
 
-        <section className="flex min-h-0 flex-col rounded-xl border border-white/10 bg-black/30">
-          <div className="border-b border-white/5 px-3 py-1.5 text-xs font-medium text-neutral-200">
+        <section className="flex min-h-0 flex-col rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+          <div className="border-b border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--theme-text-primary)]">
             {activeConversation
               ? activeConversation.conversation.title ?? "Thread"
               : "New message"}
@@ -410,7 +410,7 @@ export default function InboxModal({
                     className={`max-w-[78%] rounded-lg border px-2.5 py-1.5 text-xs leading-relaxed ${
                       mine
                         ? "border-orange-500/35 bg-orange-500/18 text-orange-50"
-                        : "border-white/10 bg-black/55 text-neutral-100"
+                        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
                     }`}
                   >
                     {m.content}
@@ -421,12 +421,12 @@ export default function InboxModal({
           </div>
 
           {!activeConversationId ? (
-            <div className="space-y-2 border-t border-white/5 p-2.5 text-xs">
+            <div className="space-y-2 border-t border-[color:var(--theme-border-soft)] p-2.5 text-xs">
               <div className="flex gap-2">
                 <select
                   value={roleFilter}
                   onChange={(e) => setRoleFilter(e.target.value)}
-                  className="h-8 rounded border border-white/10 bg-black/60 px-2 py-1"
+                  className="h-8 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1"
                 >
                   <option value="all">All roles</option>
                   <option value="tech">Tech</option>
@@ -436,14 +436,14 @@ export default function InboxModal({
                 </select>
                 <button
                   type="button"
-                  className="h-8 rounded border border-white/10 px-2"
+                  className="h-8 rounded border border-[color:var(--theme-border-soft)] px-2"
                   onClick={() => setSelectedRecipients(recipientOptions.map((u) => u.id))}
                 >
                   Select all
                 </button>
               </div>
 
-              <div className="max-h-20 overflow-auto rounded border border-white/10 p-2">
+              <div className="max-h-20 overflow-auto rounded border border-[color:var(--theme-border-soft)] p-2">
                 {recipientOptions.map((u) => (
                   <label key={u.id} className="mb-1 flex items-center gap-2">
                     <input
@@ -480,41 +480,41 @@ export default function InboxModal({
             </div>
           ) : null}
 
-          <div className="flex gap-2 border-t border-white/5 p-2.5">
+          <div className="flex gap-2 border-t border-[color:var(--theme-border-soft)] p-2.5">
             <textarea
               value={compose}
               onChange={(e) => setCompose(e.target.value)}
               placeholder={activeConversationId ? "Reply…" : "Compose…"}
-              className="h-14 flex-1 rounded border border-white/10 bg-black/60 px-2 py-1.5 text-xs"
+              className="h-14 flex-1 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1.5 text-xs"
             />
             <button
               type="button"
               onClick={() => void sendMessage()}
               disabled={sending || (!activeConversationId && selectedRecipients.length === 0)}
-              className="h-14 rounded bg-[var(--accent-copper-soft)] px-3 py-2 text-xs font-semibold text-black disabled:opacity-60"
+              className="h-14 rounded bg-[var(--accent-copper-soft)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-on-accent)] disabled:opacity-60"
             >
               {sending ? "Sending" : "Send"}
             </button>
           </div>
         </section>
 
-        <aside className="hidden rounded-xl border border-white/10 bg-black/35 p-2.5 text-xs text-neutral-300 xl:block">
-          <h3 className="mb-2 text-[10px] uppercase tracking-[0.14em] text-neutral-400">
+        <aside className="hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5 text-xs text-[color:var(--theme-text-secondary)] xl:block">
+          <h3 className="mb-2 text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
             Context
           </h3>
 
           {activeConversation ? (
             <>
-              <p className="mb-1 text-neutral-100">
+              <p className="mb-1 text-[color:var(--theme-text-primary)]">
                 Type: {activeConversation.conversation.context_type ?? "general"}
               </p>
 
               {activeConversation.conversation.context_id ? (
-                <p className="mb-3 text-neutral-400">
+                <p className="mb-3 text-[color:var(--theme-text-secondary)]">
                   ID: {activeConversation.conversation.context_id}
                 </p>
               ) : (
-                <div className="mb-3 rounded border border-white/5 bg-black/40 p-2 text-[11px] text-neutral-400">
+                <div className="mb-3 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                   General thread with no linked record.
                 </div>
               )}
@@ -527,14 +527,14 @@ export default function InboxModal({
                   Open linked record
                 </Link>
               ) : (
-                <p className="text-[11px] text-neutral-500">
+                <p className="text-[11px] text-[color:var(--theme-text-muted)]">
                   No direct deep-link route available.
                 </p>
               )}
             </>
           ) : (
-            <div className="rounded border border-white/5 bg-black/40 p-2 text-[11px] text-neutral-400">
-              <p className="mb-1 text-neutral-200">No thread selected.</p>
+            <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+              <p className="mb-1 text-[color:var(--theme-text-primary)]">No thread selected.</p>
               <p>Compose mode uses current page context when available.</p>
             </div>
           )}

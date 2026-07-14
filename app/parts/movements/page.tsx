@@ -123,14 +123,14 @@ export default function StockMovementsPage(): JSX.Element {
       description="Ledger with direct source links for PO, request receive, and WO allocation context."
       actions={<button onClick={() => void load()} className={ui.buttonSecondary}>Refresh</button>}
     >
-      <div className="space-y-4 text-white">
+      <div className="space-y-4 text-[color:var(--theme-text-primary)]">
 
       {err ? <div className="desktop-panel-soft border-red-500/30 bg-red-950/30 p-3 text-sm text-red-200">{err}</div> : null}
       {loading ? <div className={ui.loadingState}>Loading…</div> : (
         <div className="desktop-panel-soft overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-neutral-400">
+              <tr className="text-left text-[color:var(--theme-text-secondary)]">
                 <th className="p-3">Time</th><th className="p-3">Part</th><th className="p-3">Location</th><th className="p-3">Qty</th><th className="p-3">Source</th><th className="p-3">Trace links</th>
               </tr>
             </thead>
@@ -144,19 +144,19 @@ export default function StockMovementsPage(): JSX.Element {
                 const ctx = ctxMap[refId] ?? ctxMap[String(m.id)] ?? null;
                 return (
                   <tr key={String(m.id)} className="border-t border-[color:var(--desktop-border)] align-top">
-                    <td className="p-3.5 text-xs text-neutral-400">{m.created_at ? new Date(m.created_at).toLocaleString() : "—"}</td>
+                    <td className="p-3.5 text-xs text-[color:var(--theme-text-secondary)]">{m.created_at ? new Date(m.created_at).toLocaleString() : "—"}</td>
                     <td className="p-3.5">
-                      <div className="font-medium text-neutral-100">{partSummary?.name ?? "Unknown part"}</div>
+                      <div className="font-medium text-[color:var(--theme-text-primary)]">{partSummary?.name ?? "Unknown part"}</div>
                       {partSummary && partSummary.labeledIdentifiers.length > 0 ? (
-                        <div className="text-xs text-neutral-500">{partIdentifierLabel(partSummary)}</div>
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">{partIdentifierLabel(partSummary)}</div>
                       ) : null}
                     </td>
-                    <td className="p-3.5 text-neutral-300">{loc?.code ?? "LOC"} <span className="text-xs text-neutral-500">{loc?.name ?? ""}</span></td>
+                    <td className="p-3.5 text-[color:var(--theme-text-secondary)]">{loc?.code ?? "LOC"} <span className="text-xs text-[color:var(--theme-text-muted)]">{loc?.name ?? ""}</span></td>
                     <td className="p-3.5"><span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${qty >= 0 ? "border-emerald-500/30 bg-emerald-950/20 text-emerald-200" : "border-rose-500/30 bg-rose-950/20 text-rose-200"}`}>{qty >= 0 ? "+" : ""}{qty}</span></td>
-                    <td className="p-3.5"><div className="text-neutral-200">{ctx?.sourceLabel ?? sourceLabel(m.reference_kind, m.reason)}</div><div className="text-xs text-neutral-500">{reasonLabel(m.reason)}</div></td>
+                    <td className="p-3.5"><div className="text-[color:var(--theme-text-primary)]">{ctx?.sourceLabel ?? sourceLabel(m.reference_kind, m.reason)}</div><div className="text-xs text-[color:var(--theme-text-muted)]">{reasonLabel(m.reason)}</div></td>
                     <td className="p-3.5 text-xs">
                       <div className="flex flex-wrap gap-2">
-                        {ctx?.workOrderId ? <Link className="desktop-link-chip hover:text-white" href={`/work-orders/${encodeURIComponent(ctx.workOrderId)}`}>WO {ctx.workOrderId.slice(0, 8)}</Link> : <span className="text-neutral-500">No WO</span>}
+                        {ctx?.workOrderId ? <Link className="desktop-link-chip hover:text-[color:var(--theme-text-primary)]" href={`/work-orders/${encodeURIComponent(ctx.workOrderId)}`}>WO {ctx.workOrderId.slice(0, 8)}</Link> : <span className="text-[color:var(--theme-text-muted)]">No WO</span>}
                         {ctx?.requestItemId ? <span className="desktop-link-chip">Req item {ctx.requestItemId.slice(0, 8)}</span> : null}
                       </div>
                     </td>

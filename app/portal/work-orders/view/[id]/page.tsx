@@ -290,16 +290,16 @@ export default async function PortalWorkOrderViewerPage({
 
     return (
       <div className="mx-auto w-full max-w-[1100px] px-3 py-4 sm:px-6">
-        <div className="mb-4 rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur">
+        <div className="mb-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-white">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Intake
-                <span className="ml-2 text-[11px] font-medium text-neutral-300">
+                <span className="ml-2 text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
                   {intakeSubmitted ? "Submitted" : "Not submitted"}
                 </span>
               </div>
-              <div className="mt-1 text-xs text-neutral-300">{intakeCtaHint}</div>
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{intakeCtaHint}</div>
             </div>
 
             <Link

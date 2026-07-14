@@ -132,11 +132,11 @@ export default function PublicProfileClient({ slug }: Props) {
   const gallery = images.slice(1);
 
   const Card =
-    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-xl shadow-card sm:p-6";
+    "rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl shadow-card sm:p-6";
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl p-6 text-sm text-neutral-400">
+      <div className="mx-auto max-w-4xl p-6 text-sm text-[color:var(--theme-text-secondary)]">
         Loading shop…
       </div>
     );
@@ -151,7 +151,7 @@ export default function PublicProfileClient({ slug }: Props) {
         >
           Shop not found
         </h1>
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-[color:var(--theme-text-secondary)]">
           We couldn’t find a shop with slug{" "}
           <span className="font-mono">{slug}</span>.
         </p>
@@ -162,7 +162,7 @@ export default function PublicProfileClient({ slug }: Props) {
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
       {hero ? (
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-black/25 shadow-card backdrop-blur-xl">
+        <div className="overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card backdrop-blur-xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={hero}
@@ -173,7 +173,7 @@ export default function PublicProfileClient({ slug }: Props) {
       ) : null}
 
       <header className="space-y-2">
-        <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-neutral-400">
+        <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
           <SignalDot />
           Public shop profile
         </div>
@@ -186,16 +186,16 @@ export default function PublicProfileClient({ slug }: Props) {
         </h1>
 
         {data.description ? (
-          <p className="text-sm text-neutral-300">{data.description}</p>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">{data.description}</p>
         ) : null}
       </header>
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className={Card}>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
             Contact
           </h2>
-          <ul className="space-y-1 text-sm text-neutral-100">
+          <ul className="space-y-1 text-sm text-[color:var(--theme-text-primary)]">
             {data.phone_number ? <li>📞 {data.phone_number}</li> : null}
             {data.email ? <li>✉️ {data.email}</li> : null}
             {data.website ? (
@@ -215,10 +215,10 @@ export default function PublicProfileClient({ slug }: Props) {
         </div>
 
         <div className={Card + " md:col-span-2"}>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
             Location
           </h2>
-          <p className="text-sm text-neutral-100">
+          <p className="text-sm text-[color:var(--theme-text-primary)]">
             {[data.address, data.city, data.province, data.postal_code]
               .filter(Boolean)
               .join(", ")}
@@ -243,7 +243,7 @@ export default function PublicProfileClient({ slug }: Props) {
 
       {gallery.length > 0 ? (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-neutral-50">Gallery</h2>
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Gallery</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {gallery.map((url) => (
               // eslint-disable-next-line @next/next/no-img-element
@@ -251,7 +251,7 @@ export default function PublicProfileClient({ slug }: Props) {
                 key={url}
                 src={url}
                 alt="Shop photo"
-                className="h-40 w-full rounded-2xl border border-white/10 bg-black/25 object-cover"
+                className="h-40 w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] object-cover"
               />
             ))}
           </div>
@@ -261,7 +261,7 @@ export default function PublicProfileClient({ slug }: Props) {
       <div className="pt-2">
         <Link
           href={`/portal/booking?shop=${encodeURIComponent(slug)}`}
-          className="inline-flex items-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black transition hover:brightness-110"
+          className="inline-flex items-center rounded-full border border-[rgba(193,102,59,0.35)] bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] transition hover:brightness-110"
           style={{
             boxShadow: "0 0 26px rgba(197,122,74,0.18)",
           }}
@@ -279,11 +279,11 @@ export default function PublicProfileClient({ slug }: Props) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <SignalDot />
-              <h2 className="text-lg font-semibold text-neutral-50">
+              <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
                 Customer reviews
               </h2>
             </div>
-            <span className="text-xs text-neutral-500">
+            <span className="text-xs text-[color:var(--theme-text-muted)]">
               Evidence-first feedback
             </span>
           </div>

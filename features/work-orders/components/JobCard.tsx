@@ -77,12 +77,12 @@ const PRIORITY_OPTIONS: JobLinePriority[] = ["urgent", "high", "normal", "low"];
 const PRIORITY_CHIP_STYLES: Record<JobLinePriority, string> = {
   urgent: "border-red-400/50 bg-red-500/10 text-red-100",
   high: "border-amber-400/50 bg-amber-500/10 text-amber-100",
-  normal: "border-white/12 bg-black/25 text-neutral-300",
-  low: "border-slate-400/45 bg-slate-500/10 text-slate-300",
+  normal: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]",
+  low: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]",
 };
 
 const METALLIC_CARD_SURFACE =
-  "bg-[linear-gradient(155deg,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0.02)_18%,rgba(15,23,42,0.82)_54%,rgba(2,6,23,0.96)_100%)]";
+  "bg-[var(--theme-gradient-panel)]";
 
 function norm(s: unknown): string {
   return String(s ?? "").trim().toLowerCase();
@@ -114,9 +114,9 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
   if (normalized === "in_progress" || raw === "active") {
     return {
       label: null,
-      railClass: "bg-slate-500/60",
-      chipClass: "border-white/12 bg-white/5 text-neutral-200",
-      borderClass: "border-white/10",
+      railClass: "bg-[color:var(--theme-surface-subtle)]",
+      chipClass: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
+      borderClass: "border-[color:var(--theme-border-soft)]",
       glowClass: "",
       muted: false,
     };
@@ -125,9 +125,9 @@ function resolveStatusVisual(status: string | null | undefined): StatusVisual {
   if (normalized === "completed" || normalized === "ready_to_invoice" || normalized === "invoiced") {
     return {
       label: statusLabelFromKey(normalized),
-      railClass: "bg-slate-400/75",
-      chipClass: "border-slate-400/55 bg-slate-500/10 text-slate-200",
-      borderClass: "border-slate-500/45",
+      railClass: "bg-[color:var(--theme-surface-subtle)]",
+      chipClass: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
+      borderClass: "border-[color:var(--theme-border-soft)]",
       glowClass: "",
       muted: true,
     };
@@ -268,7 +268,7 @@ function ReviewPill({
           ? "border-emerald-400/50 bg-emerald-400/10 text-emerald-100"
           : tone === "warn"
             ? "border-amber-400/55 bg-amber-400/10 text-amber-100"
-            : "border-white/12 bg-white/5 text-neutral-200",
+            : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]",
       )}
     >
       {icon}
@@ -285,9 +285,9 @@ function MetaTile({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
-      <div className="mt-1 text-sm text-neutral-100">{value}</div>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">{label}</div>
+      <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">{value}</div>
     </div>
   );
 }
@@ -400,10 +400,10 @@ export function JobCard({
           isPunchedIn ? "border-cyan-300/70 shadow-[0_0_28px_rgba(34,211,238,0.24)]" : statusVisual.borderClass,
           !isPunchedIn && statusVisual.glowClass,
           isPunchedIn && "[animation:pulse_3.2s_ease-in-out_infinite]",
-          statusVisual.muted && "border-slate-600/35 opacity-[0.74] saturate-[0.56] contrast-[0.9]",
-          "hover:-translate-y-[1px] hover:border-white/25",
-          "focus-within:border-white/35",
-          isSelected && !isPunchedIn && "border-white/35 shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
+          statusVisual.muted && "border-[color:var(--theme-border-soft)] opacity-[0.74] saturate-[0.56] contrast-[0.9]",
+          "hover:-translate-y-[1px] hover:border-[color:var(--theme-border-soft)]",
+          "focus-within:border-[color:var(--theme-border-soft)]",
+          isSelected && !isPunchedIn && "border-[color:var(--theme-border-soft)] shadow-[0_0_0_1px_rgba(148,163,184,0.45)]",
           isSelected && isPunchedIn && "shadow-[0_0_0_1px_rgba(226,232,240,0.38),0_0_28px_rgba(34,211,238,0.24)]",
         )}
       >
@@ -414,10 +414,10 @@ export function JobCard({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-white/12 bg-black/35 px-2 text-xs font-semibold text-neutral-100">
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
                     {index + 1}
                   </span>
-                  <h3 className={cn("truncate font-semibold text-white", compact ? "text-sm sm:text-[15px]" : "text-[15px] sm:text-base")}>
+                  <h3 className={cn("truncate font-semibold text-[color:var(--theme-text-primary)]", compact ? "text-sm sm:text-[15px]" : "text-[15px] sm:text-base")}>
                     {jobLabel}
                   </h3>
                   {statusVisual.label ? (
@@ -425,7 +425,7 @@ export function JobCard({
                       className={cn(
                         "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
                         statusVisual.chipClass,
-                        statusVisual.muted && "text-slate-300",
+                        statusVisual.muted && "text-[color:var(--theme-text-secondary)]",
                       )}
                     >
                       {statusVisual.label}
@@ -451,7 +451,7 @@ export function JobCard({
                   ) : null}
                 </div>
 
-                <p className="text-xs uppercase tracking-[0.16em] text-neutral-500">
+                <p className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   Created {createdLabel}
                 </p>
               </div>
@@ -489,7 +489,7 @@ export function JobCard({
                   variant="ghost"
                   size="sm"
                   onClick={() => setCollapsed((v) => !v)}
-                  className={cn("border border-white/10 bg-black/20", compact && "px-2")}
+                  className={cn("border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]", compact && "px-2")}
                 >
                   {collapsed ? (
                     <>
@@ -551,22 +551,22 @@ export function JobCard({
                 </div>
 
                 {(line.complaint || line.cause || line.correction || line.hold_reason) ? (
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3 text-xs text-neutral-300">
+                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
                     {line.complaint ? <div>Complaint: {line.complaint}</div> : null}
                     {line.cause ? <div>Cause: {line.cause}</div> : null}
                     {line.correction ? <div>Correction: {line.correction}</div> : null}
                     {line.hold_reason ? <div>Blocker: {line.hold_reason}</div> : null}
-                    <div className="mt-2 text-[11px] text-neutral-500">Updated {updatedLabel}</div>
+                    <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">Updated {updatedLabel}</div>
                   </div>
                 ) : null}
 
                 {canAssign && onAssign ? (
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Assign technician</div>
+                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Assign technician</div>
 
                     <div className="mt-2.5 flex flex-wrap gap-1.5">
                       {technicians.length === 0 ? (
-                        <span className="text-sm text-neutral-400">No technicians available.</span>
+                        <span className="text-sm text-[color:var(--theme-text-secondary)]">No technicians available.</span>
                       ) : (
                         technicians.map((tech) => {
                           const isAssigned = tech.id === line.assigned_tech_id;
@@ -580,7 +580,7 @@ export function JobCard({
                                 "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
                                 isAssigned
                                   ? "border-cyan-300/50 bg-cyan-500/10 text-cyan-100"
-                                  : "border-white/10 bg-white/5 text-neutral-200 hover:border-white/20 hover:bg-white/10",
+                                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]",
                               )}
                             >
                               {tech.full_name || "Unnamed tech"}
@@ -593,10 +593,10 @@ export function JobCard({
                 ) : null}
 
                 {onPriorityChange ? (
-                  <div className="rounded-xl border border-white/10 bg-black/25 p-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">Job priority</div>
+                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Job priority</div>
                     <select
-                      className="mt-2 w-full rounded-lg border border-white/15 bg-black/40 px-2.5 py-1.5 text-sm text-neutral-100"
+                      className="mt-2 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1.5 text-sm text-[color:var(--theme-text-primary)]"
                       value={linePriority}
                       onChange={(event) => onPriorityChange(event.target.value as JobLinePriority)}
                     >

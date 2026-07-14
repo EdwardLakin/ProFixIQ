@@ -136,14 +136,14 @@ export default function ChatDock(): JSX.Element {
       <div className="flex gap-2">
         <button
           type="button"
-          className="rounded bg-orange-600 px-3 py-1.5 font-semibold text-black hover:bg-orange-700"
+          className="rounded bg-orange-600 px-3 py-1.5 font-semibold text-[color:var(--theme-text-on-accent)] hover:bg-orange-700"
           onClick={() => setPickerOpen(true)}
         >
           New
         </button>
         <button
           type="button"
-          className="rounded border border-neutral-700 px-3 py-1.5 text-sm text-white hover:bg-neutral-800"
+          className="rounded border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
           onClick={() => setOpen((v) => !v)}
         >
           {open ? "Close Chat" : "Open Chat"}
@@ -152,20 +152,20 @@ export default function ChatDock(): JSX.Element {
 
       {/* Drawer */}
       {open && (
-        <div className="fixed bottom-4 right-4 z-[120] w-[min(420px,95vw)] overflow-hidden rounded-md border border-neutral-800 bg-neutral-900 shadow-xl">
-          <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
-            <div className="font-semibold text-neutral-200">{title}</div>
+        <div className="fixed bottom-4 right-4 z-[120] w-[min(420px,95vw)] overflow-hidden rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-xl">
+          <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] px-3 py-2">
+            <div className="font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
             <div className="flex gap-2">
               <button
                 type="button"
-                className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                className="rounded border border-[color:var(--theme-border-soft)] px-2 py-1 text-xs hover:bg-[color:var(--theme-surface-panel-strong)]"
                 onClick={() => setPickerOpen(true)}
               >
                 Change…
               </button>
               <button
                 type="button"
-                className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                className="rounded border border-[color:var(--theme-border-soft)] px-2 py-1 text-xs hover:bg-[color:var(--theme-surface-panel-strong)]"
                 onClick={() => setOpen(false)}
               >
                 ×
@@ -175,9 +175,9 @@ export default function ChatDock(): JSX.Element {
 
           <div className="max-h-[50vh] overflow-auto p-3">
             {loading ? (
-              <div className="text-neutral-400">Loading…</div>
+              <div className="text-[color:var(--theme-text-secondary)]">Loading…</div>
             ) : messages.length === 0 ? (
-              <div className="text-neutral-500">No messages yet.</div>
+              <div className="text-[color:var(--theme-text-muted)]">No messages yet.</div>
             ) : (
               <ul className="space-y-2">
                 {messages.map((m) => {
@@ -186,7 +186,7 @@ export default function ChatDock(): JSX.Element {
                     <li key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                       <div
                         className={`max-w-[80%] whitespace-pre-wrap rounded px-3 py-2 text-sm ${
-                          mine ? "bg-orange-600 text-black" : "bg-neutral-800 text-white"
+                          mine ? "bg-orange-600 text-[color:var(--theme-text-on-accent)]" : "bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)]"
                         }`}
                         title={m.created_at ?? ""}
                       >
@@ -199,10 +199,10 @@ export default function ChatDock(): JSX.Element {
             )}
           </div>
 
-          <div className="flex items-center gap-2 border-t border-neutral-800 p-2">
+          <div className="flex items-center gap-2 border-t border-[color:var(--theme-border-soft)] p-2">
             <input
               ref={inputRef}
-              className="flex-1 rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-white"
+              className="flex-1 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-3 py-2 text-[color:var(--theme-text-primary)]"
               placeholder={conv ? "Type a message…" : "Pick recipients to start…"}
               disabled={!conv || sending}
               onKeyDown={(e) => {
@@ -214,7 +214,7 @@ export default function ChatDock(): JSX.Element {
             />
             <button
               type="button"
-              className="rounded bg-orange-600 px-3 py-2 font-semibold text-black disabled:opacity-60"
+              className="rounded bg-orange-600 px-3 py-2 font-semibold text-[color:var(--theme-text-on-accent)] disabled:opacity-60"
               onClick={() => void send()}
               disabled={!conv || sending}
             >

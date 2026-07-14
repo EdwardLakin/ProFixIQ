@@ -81,12 +81,12 @@ function SignalDot() {
 
 function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/12 backdrop-blur-xl">
+    <div className="relative overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] backdrop-blur-xl">
       <div
         className="pointer-events-none absolute inset-0"
         style={{
           boxShadow:
-            "0 0 0 1px rgba(255,255,255,0.05) inset, 0 18px 60px rgba(0,0,0,0.35)",
+            "0 0 0 1px rgba(255,255,255,0.05) inset, 0 18px 60px var(--theme-surface-inset)",
         }}
       />
 
@@ -104,13 +104,13 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
         className="pointer-events-none absolute inset-0 opacity-[0.10]"
         style={{
           backgroundImage:
-            "repeating-linear-gradient(115deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.00) 2px, rgba(0,0,0,0.35) 6px)",
+            "var(--theme-gradient-panel)",
         }}
       />
 
       <div className="relative p-6 sm:p-7">
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-neutral-400">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.26em] text-[color:var(--theme-text-secondary)]">
             <SignalDot />
             <span style={{ color: "rgba(226,232,240,0.78)" }}>{p.kicker}</span>
           </div>
@@ -128,13 +128,13 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
         </div>
 
         <h3
-          className="mt-3 text-2xl text-white sm:text-3xl"
+          className="mt-3 text-2xl text-[color:var(--theme-text-primary)] sm:text-3xl"
           style={{ fontFamily: "var(--font-blackops)" }}
         >
           {p.title}
         </h3>
 
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-neutral-300 sm:text-base">
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[color:var(--theme-text-secondary)] sm:text-base">
           {p.description}
         </p>
 
@@ -142,7 +142,7 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
           {p.includes.map((x) => (
             <div
               key={x}
-              className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/18 px-4 py-3"
+              className="flex items-start gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3"
             >
               <span
                 className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
@@ -152,13 +152,13 @@ function PillarLane({ p, idx }: { p: Pillar; idx: number }) {
                 }}
                 aria-hidden
               />
-              <span className="text-sm text-neutral-200">{x}</span>
+              <span className="text-sm text-[color:var(--theme-text-primary)]">{x}</span>
             </div>
           ))}
         </div>
 
         <div className="mt-7 flex items-center gap-2">
-          <div className="h-px flex-1 bg-white/5" />
+          <div className="h-px flex-1 bg-[color:var(--theme-surface-subtle)]" />
           <div className="h-[2px] w-14 rounded-full" style={{ backgroundColor: COPPER }} />
         </div>
       </div>
@@ -175,14 +175,14 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
           style={{
             background:
               "radial-gradient(circle_at_20%_10%, rgba(197,122,74,0.14), transparent 55%)," +
-              "radial-gradient(circle_at_80%_80%, rgba(15,23,42,0.75), #020617 70%)",
+              "var(--theme-gradient-panel)",
           }}
         />
         <div
           className="absolute inset-0 opacity-[0.10]"
           style={{
             backgroundImage:
-              "repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 8px)",
+              "var(--theme-gradient-panel)",
           }}
         />
         <div
@@ -206,17 +206,17 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
             </div>
 
             <h2
-              className="mt-2 text-3xl text-white md:text-5xl"
+              className="mt-2 text-3xl text-[color:var(--theme-text-primary)] md:text-5xl"
               style={{
                 fontFamily: "var(--font-blackops)",
-                textShadow: "0 0 48px rgba(0,0,0,0.75)",
+                boxShadow: "var(--theme-shadow-medium)",
               }}
             >
               Everything included.{" "}
               <span style={{ color: COPPER }}>One&nbsp;workflow</span>.
             </h2>
 
-            <p className="mx-auto mt-4 max-w-2xl text-sm text-neutral-300 sm:text-base">
+            <p className="mx-auto mt-4 max-w-2xl text-sm text-[color:var(--theme-text-secondary)] sm:text-base">
               Fleet-grade tools that also work perfectly for automotive shops — built to reduce screen time and keep work moving.
             </p>
           </div>
@@ -228,7 +228,7 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
           ))}
         </div>
 
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/12 p-6 backdrop-blur-xl">
+        <div className="relative overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 backdrop-blur-xl">
           <div
             className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
             style={{ background: "rgba(197,122,74,0.12)" }}
@@ -236,24 +236,24 @@ export default function FeaturesSection({ showHeading = false }: FeaturesSection
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="text-base font-extrabold text-white">
+              <div className="text-base font-extrabold text-[color:var(--theme-text-primary)]">
                 This system gets smarter the more you use it.
               </div>
-              <div className="mt-1 text-sm text-neutral-300">
+              <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                 Automation and suggestions improve as your inspections, quotes, and work orders grow.
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-300">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">
                 <SignalDot />
                 Less screen time
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">
                 <SignalDot />
                 Faster approvals
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">
                 <SignalDot />
                 Cleaner billing
               </span>

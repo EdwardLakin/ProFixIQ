@@ -54,7 +54,7 @@ export function ConditionsBlock(props: {
                 style={{
                   padding: "10px 12px",
                   borderRadius: 999,
-                  border: "1px solid rgba(0,0,0,0.15)",
+                  border: "1px solid var(--theme-surface-inset)",
                   opacity: (c.temperature ?? []).includes(v) ? 1 : 0.65,
                 }}
               >
@@ -80,7 +80,7 @@ export function ConditionsBlock(props: {
               style={{
                 padding: "10px 12px",
                 borderRadius: 999,
-                border: "1px solid rgba(0,0,0,0.15)",
+                border: "1px solid var(--theme-surface-inset)",
                 opacity: (c.driving_state ?? []).includes(v) ? 1 : 0.65,
               }}
             >

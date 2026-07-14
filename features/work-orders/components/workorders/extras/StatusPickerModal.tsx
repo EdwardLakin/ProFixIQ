@@ -61,12 +61,12 @@ export default function StatusPickerModal(props: {
       submitText="Apply"
     >
       <div className="flex flex-col gap-3">
-        <div className="text-center text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+        <div className="text-center text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
           Work order status
         </div>
 
         <select
-          className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+          className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
           value={value}
           onChange={(e) => setValue(e.target.value as StatusPick)}
         >
@@ -80,7 +80,7 @@ export default function StatusPickerModal(props: {
           })}
         </select>
 
-        <p className="text-center text-[11px] text-neutral-500">
+        <p className="text-center text-[11px] text-[color:var(--theme-text-muted)]">
           This updates the <span className="font-semibold">work order</span> status
           (advisor/manager only).
         </p>

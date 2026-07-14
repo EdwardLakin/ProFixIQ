@@ -293,13 +293,13 @@ export default function ReceivePage(): JSX.Element {
         </div>
       </div>
 
-      <div className="text-xs text-neutral-500">
-        Shop: <span className="text-neutral-300">{shopId ? shopId.slice(0, 8) : "—"}</span>
+      <div className="text-xs text-[color:var(--theme-text-muted)]">
+        Shop: <span className="text-[color:var(--theme-text-secondary)]">{shopId ? shopId.slice(0, 8) : "—"}</span>
       </div>
 
       <div className="desktop-toolbar-row grid gap-3 p-3 sm:grid-cols-3">
         <div className="sm:col-span-1">
-          <div className="text-xs text-neutral-400 mb-1">Purchase Order (optional)</div>
+          <div className="text-xs text-[color:var(--theme-text-secondary)] mb-1">Purchase Order (optional)</div>
           <select
             className={ui.input}
             value={selectedPo}
@@ -315,7 +315,7 @@ export default function ReceivePage(): JSX.Element {
         </div>
 
         <div>
-          <div className="text-xs text-neutral-400 mb-1">Location</div>
+          <div className="text-xs text-[color:var(--theme-text-secondary)] mb-1">Location</div>
           <select
             className={ui.input}
             value={selectedLoc}
@@ -330,7 +330,7 @@ export default function ReceivePage(): JSX.Element {
         </div>
 
         <div>
-          <div className="text-xs text-neutral-400 mb-1">Quantity</div>
+          <div className="text-xs text-[color:var(--theme-text-secondary)] mb-1">Quantity</div>
           <input
             type="number"
             min={0.01}
@@ -344,13 +344,13 @@ export default function ReceivePage(): JSX.Element {
 
       {/* Result panel */}
       <div className="desktop-panel-soft p-3">
-        <div className="text-xs uppercase tracking-[0.18em] text-neutral-500 mb-2">
+        <div className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)] mb-2">
           Last receive
         </div>
 
         {!lastResult ? (
-          <div className="text-sm text-neutral-400">
-            Scan a barcode to receive into <span className="text-neutral-200">{locLabel}</span>.
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">
+            Scan a barcode to receive into <span className="text-[color:var(--theme-text-primary)]">{locLabel}</span>.
           </div>
         ) : "error" in lastResult ? (
           <div className="text-sm text-red-300">{lastResult.error}</div>
@@ -361,7 +361,7 @@ export default function ReceivePage(): JSX.Element {
             </div>
 
             {lastResult.mode === "po" ? (
-              <pre className="mt-2 max-h-64 overflow-auto rounded border border-neutral-800 bg-black/60 p-2 text-xs text-neutral-200">
+              <pre className="mt-2 max-h-64 overflow-auto rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-xs text-[color:var(--theme-text-primary)]">
                 {JSON.stringify(lastResult.result ?? {}, null, 2)}
               </pre>
             ) : null}
@@ -393,14 +393,14 @@ export default function ReceivePage(): JSX.Element {
               Stop Scanner
             </button>
           )}
-          <span className="text-xs text-neutral-400">
+          <span className="text-xs text-[color:var(--theme-text-secondary)]">
             Use mobile camera to scan UPC/EAN/Code128.
           </span>
         </div>
 
         <div
           ref={videoRef}
-          className="aspect-video w-full overflow-hidden rounded border border-neutral-800 bg-black"
+          className="aspect-video w-full overflow-hidden rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]"
         />
       </div>
     </PageShell>

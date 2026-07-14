@@ -113,16 +113,16 @@ function MiniStat({
   return (
     <div
       className={[
-        "metal-card rounded-2xl border px-3 py-3 text-center shadow-[0_16px_32px_rgba(0,0,0,0.65)]",
+        "metal-card rounded-2xl border px-3 py-3 text-center shadow-[var(--theme-shadow-medium)]",
         accent
-          ? "border border-[var(--accent-copper-soft)]/75 shadow-[0_16px_32px_rgba(0,0,0,0.65),0_0_20px_rgba(212,118,49,0.45)]"
+          ? "border border-[var(--accent-copper-soft)]/75 shadow-[var(--theme-shadow-medium)]"
           : "border border-[var(--metal-border-soft)]",
       ].join(" ")}
     >
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
-      <div className="mt-1 text-lg font-semibold text-white">{value}</div>
+      <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
     </div>
   );
 }
@@ -300,18 +300,18 @@ export default function MobileWorkOrdersListPage() {
   }, [rows]);
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
         {/* HERO (MobileTechHome vibe) */}
-        <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+        <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[var(--theme-shadow-medium)]">
           <div className="space-y-1">
-            <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+            <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
               ProFixIQ • Tech
             </div>
             <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-[var(--accent-copper)]">
               Jobs
             </h1>
-            <p className="text-[0.75rem] text-neutral-300">
+            <p className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">
               Work orders for this shop. Tap a card to open details.
             </p>
           </div>
@@ -323,7 +323,7 @@ export default function MobileWorkOrdersListPage() {
         </section>
 
         {/* Filters (metal-card) */}
-        <section className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
+        <section className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[var(--theme-shadow-medium)]">
           <div className="space-y-2">
             <input
               value={q}
@@ -331,8 +331,8 @@ export default function MobileWorkOrdersListPage() {
               onKeyDown={(e) => e.key === "Enter" && void load()}
               placeholder="Search id, customer, plate, YMM…"
               className={[
-                "w-full rounded-xl border px-3 py-2 text-xs text-neutral-100 outline-none [color-scheme:dark]",
-                "border-[var(--metal-border-soft)] bg-black/35 placeholder:text-neutral-500",
+                "w-full rounded-xl border px-3 py-2 text-xs text-[color:var(--theme-text-primary)] outline-none [color-scheme:dark]",
+                "border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] placeholder:text-[color:var(--theme-text-muted)]",
                 "focus:border-[var(--accent-copper-soft)]/70 focus:ring-1 focus:ring-[rgba(212,118,49,0.35)]",
               ].join(" ")}
             />
@@ -342,8 +342,8 @@ export default function MobileWorkOrdersListPage() {
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 className={[
-                  "w-full rounded-xl border px-3 py-2 text-xs text-neutral-100 outline-none [color-scheme:dark]",
-                  "border-[var(--metal-border-soft)] bg-black/35",
+                  "w-full rounded-xl border px-3 py-2 text-xs text-[color:var(--theme-text-primary)] outline-none [color-scheme:dark]",
+                  "border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)]",
                   "focus:border-[var(--accent-copper-soft)]/70 focus:ring-1 focus:ring-[rgba(212,118,49,0.35)]",
                 ].join(" ")}
               >
@@ -363,16 +363,16 @@ export default function MobileWorkOrdersListPage() {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="rounded-xl border border-[var(--metal-border-soft)] bg-black/35 px-4 py-2 text-xs font-semibold text-neutral-100 hover:border-[var(--accent-copper-soft)]/70 hover:bg-white/5"
+                className="rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/70 hover:bg-[color:var(--theme-surface-subtle)]"
               >
                 Refresh
               </button>
             </div>
 
             <div className="flex items-center justify-between pt-1">
-              <div className="text-[0.7rem] text-neutral-400">
+              <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                 Showing{" "}
-                <span className="font-semibold text-white">{rows.length}</span>
+                <span className="font-semibold text-[color:var(--theme-text-primary)]">{rows.length}</span>
               </div>
 
               {/* If you actually have a mobile create route, change this.
@@ -401,11 +401,11 @@ export default function MobileWorkOrdersListPage() {
         {/* List */}
         <section className="space-y-2">
           {loading ? (
-            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-sm text-neutral-300">
+            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
               Loading work orders…
             </div>
           ) : rows.length === 0 ? (
-            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-sm text-neutral-400">
+            <div className="metal-card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
               No work orders match your filters.
             </div>
           ) : (
@@ -430,32 +430,32 @@ export default function MobileWorkOrdersListPage() {
                 <Link
                   key={wo.id}
                   href={`/mobile/work-orders/${wo.id}`}
-                  className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.75)] active:scale-[0.99]"
+                  className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 shadow-[var(--theme-shadow-medium)] active:scale-[0.99]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+                      <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                         {wo.created_at ? format(new Date(wo.created_at), "PP") : "—"}
                       </div>
 
-                      <div className="mt-0.5 truncate text-[0.95rem] font-semibold text-white">
+                      <div className="mt-0.5 truncate text-[0.95rem] font-semibold text-[color:var(--theme-text-primary)]">
                         {idLabel}
                       </div>
 
-                      <div className="mt-1 flex flex-col gap-1 text-[0.75rem] text-neutral-300">
+                      <div className="mt-1 flex flex-col gap-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate">{customerName}</span>
                           {wo.customers?.phone ? (
-                            <span className="shrink-0 font-mono text-neutral-500">
+                            <span className="shrink-0 font-mono text-[color:var(--theme-text-muted)]">
                               {wo.customers.phone}
                             </span>
                           ) : null}
                         </div>
 
-                        <div className="truncate text-[0.7rem] text-neutral-400">
+                        <div className="truncate text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                           {veh.label || "No vehicle"}
                           {veh.plate ? (
-                            <span className="ml-1 text-neutral-500">
+                            <span className="ml-1 text-[color:var(--theme-text-muted)]">
                               ({veh.plate})
                             </span>
                           ) : null}
@@ -489,7 +489,7 @@ export default function MobileWorkOrdersListPage() {
                       </span>
                     )}
                     {signal.unassigned > 0 && (
-                      <span className="rounded-full border border-neutral-500/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-neutral-300">
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                         {signal.unassigned} unassigned
                       </span>
                     )}

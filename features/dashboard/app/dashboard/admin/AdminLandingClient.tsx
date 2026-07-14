@@ -182,10 +182,10 @@ export default function AdminLandingClient() {
             <Link
               key={route.href}
               href={route.href}
-              className="rounded-xl border border-white/10 bg-black/25 p-4 transition hover:border-orange-400/70 hover:bg-black/40"
+              className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70 hover:bg-[color:var(--theme-surface-inset)]"
             >
-              <p className="text-sm font-semibold text-white">{route.label}</p>
-              <p className="mt-2 text-xs text-neutral-400">{route.description}</p>
+              <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{route.label}</p>
+              <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">{route.description}</p>
               <p className="mt-3 text-xs font-medium text-orange-300">Next: {route.nextStep}</p>
             </Link>
           ))}
@@ -198,20 +198,20 @@ export default function AdminLandingClient() {
           description="Recommended operating sequence for daily admin review."
         />
         <div className="grid gap-3 p-4 md:grid-cols-3">
-          <div className="rounded-xl border border-white/10 bg-black/25 p-4">
-            <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Governance</p>
-            <p className="mt-2 text-sm font-medium text-white">People → Audit</p>
-            <p className="mt-2 text-xs text-neutral-400">Validate account changes, then inspect privileged actions for anomalies.</p>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+            <p className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Governance</p>
+            <p className="mt-2 text-sm font-medium text-[color:var(--theme-text-primary)]">People → Audit</p>
+            <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">Validate account changes, then inspect privileged actions for anomalies.</p>
           </div>
-          <div className="rounded-xl border border-white/10 bg-black/25 p-4">
-            <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Workforce</p>
-            <p className="mt-2 text-sm font-medium text-white">People → Payroll Time</p>
-            <p className="mt-2 text-xs text-neutral-400">Close profile/certification gaps, then review payroll exceptions.</p>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+            <p className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Workforce</p>
+            <p className="mt-2 text-sm font-medium text-[color:var(--theme-text-primary)]">People → Payroll Time</p>
+            <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">Close profile/certification gaps, then review payroll exceptions.</p>
           </div>
-          <div className="rounded-xl border border-white/10 bg-black/25 p-4">
-            <p className="text-xs uppercase tracking-[0.12em] text-neutral-400">Tenant quality</p>
-            <p className="mt-2 text-sm font-medium text-white">Shops → People</p>
-            <p className="mt-2 text-xs text-neutral-400">Resolve shop metadata gaps and verify ownership/account coverage.</p>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+            <p className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Tenant quality</p>
+            <p className="mt-2 text-sm font-medium text-[color:var(--theme-text-primary)]">Shops → People</p>
+            <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">Resolve shop metadata gaps and verify ownership/account coverage.</p>
           </div>
         </div>
       </AdminPanel>
@@ -221,14 +221,14 @@ export default function AdminLandingClient() {
           title="Governance Guidance"
           description="Use canonical pages for task completion and auditable operational decisions."
         />
-        <div className="space-y-2 p-4 text-sm text-neutral-300">
+        <div className="space-y-2 p-4 text-sm text-[color:var(--theme-text-secondary)]">
           <p>• Use People for account-level edits and role governance actions.</p>
           <p>• Use Workforce Readiness View for workforce profile completeness, profile setup posture, and payroll readiness context.</p>
           <p>• Use Payroll Time for pay-period review, exception resolution, period approval, and export snapshots.</p>
           <p>• Use Shops to identify incomplete tenant records before operational impact.</p>
           <p>• Use Audit to validate sensitive changes and investigate anomalies quickly.</p>
           {summary ? (
-            <p className="pt-1 text-xs text-neutral-400">
+            <p className="pt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Shops currently needing baseline profile follow-up (email/phone/timezone missing): {summary.incompleteShopCount}
             </p>
           ) : null}

@@ -72,19 +72,19 @@ export default function TechAssistant({
   };
 
   const inputBase =
-    "w-full rounded-md bg-black/70 border border-[var(--metal-border-soft)] text-white " +
-    "placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]";
+    "w-full rounded-md bg-[color:var(--theme-surface-overlay)] border border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)] " +
+    "placeholder:text-[color:var(--theme-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]";
 
   return (
-    <div className="space-y-5 text-sm text-white">
+    <div className="space-y-5 text-sm text-[color:var(--theme-text-primary)]">
       {/* CARD: Vehicle + Notes + Attach */}
-      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/65 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
-        <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)]">
+        <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Vehicle &amp; Context
         </div>
 
         <div className="mb-3">
-          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Vehicle
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -125,7 +125,7 @@ export default function TechAssistant({
         </div>
 
         <div className="mb-3">
-          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Notes
           </div>
           <textarea
@@ -137,11 +137,11 @@ export default function TechAssistant({
         </div>
 
         <div>
-          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Attach
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="cursor-pointer rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-white/5 disabled:opacity-60">
+            <label className="cursor-pointer rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60">
               <input
                 ref={fileRef}
                 type="file"
@@ -167,7 +167,7 @@ export default function TechAssistant({
               disabled={sending || uploading}
             />
             <button
-              className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-white/5 disabled:opacity-60"
+              className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
               onClick={resetConversation}
               type="button"
               disabled={sending || uploading}
@@ -187,7 +187,7 @@ export default function TechAssistant({
       </div>
 
       {/* CARD: Conversation */}
-      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/70 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
+      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)]">
         {/* Scrollable messages */}
         <div
           ref={scrollRef}
@@ -201,13 +201,13 @@ export default function TechAssistant({
             return mine ? (
               <div key={i} className="flex justify-end">
                 <div
-                  className={`${bubble} bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-black font-semibold`}
+                  className={`${bubble} bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] font-semibold`}
                 >
                   {m.content}
                   {m.attachments?.length ? (
-                    <div className="mt-2 space-y-1 text-[11px] font-medium text-black/80">
+                    <div className="mt-2 space-y-1 text-[11px] font-medium text-[color:var(--theme-text-on-accent)]">
                       {m.attachments.map((attachment) => (
-                        <div key={attachment.id} className="flex items-center gap-2 rounded-lg bg-black/10 p-1">
+                        <div key={attachment.id} className="flex items-center gap-2 rounded-lg bg-[color:var(--theme-surface-inset)] p-1">
                           {attachment.url ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={attachment.url} alt={attachment.fileName ?? "Attached diagnostic photo"} className="h-12 w-12 rounded object-cover" />
@@ -221,8 +221,8 @@ export default function TechAssistant({
               </div>
             ) : (
               <div key={i} className="flex justify-start">
-                <div className={`${bubble} bg-neutral-950/90 text-neutral-200`}>
-                  <div className="prose prose-invert prose-sm !text-neutral-200">
+                <div className={`${bubble} bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]`}>
+                  <div className="prose prose-invert prose-sm !text-[color:var(--theme-text-primary)]">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
@@ -238,13 +238,13 @@ export default function TechAssistant({
                           </ol>
                         ),
                         h3: ({ children }) => (
-                          <h3 className="mt-2 mb-1 text-sm font-semibold text-white">
+                          <h3 className="mt-2 mb-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                             {children}
                           </h3>
                         ),
                         p: ({ children }) => <p className="my-1">{children}</p>,
                         strong: ({ children }) => (
-                          <strong className="font-semibold text-white">
+                          <strong className="font-semibold text-[color:var(--theme-text-primary)]">
                             {children}
                           </strong>
                         ),
@@ -260,7 +260,7 @@ export default function TechAssistant({
 
           {(sending || partial.length > 0) && (
             <div className="flex justify-start">
-              <div className="max-w-[95%] rounded-xl bg-neutral-950/90 px-3 py-2 text-sm text-neutral-300 opacity-90">
+              <div className="max-w-[95%] rounded-xl bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)] opacity-90">
                 {partial.length > 0 ? partial : "Assistant is thinking…"}
               </div>
             </div>
@@ -270,7 +270,7 @@ export default function TechAssistant({
         {/* Composer */}
         <form
           onSubmit={onSubmit}
-          className="flex gap-2 border-t border-[var(--metal-border-soft)] bg-black/70 p-3"
+          className="flex gap-2 border-t border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3"
         >
           <input
             ref={inputRef}
@@ -281,7 +281,7 @@ export default function TechAssistant({
             disabled={sending || uploading}
           />
           <button
-            className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_20px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
+            className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_20px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
             disabled={sending || !canSend}
             type="submit"
           >
@@ -294,7 +294,7 @@ export default function TechAssistant({
       {workOrderLineId && (
         <div className="pt-1">
           <button
-            className="rounded-full bg-purple-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white shadow-[0_0_18px_rgba(147,51,234,0.7)] hover:bg-purple-500 disabled:opacity-60"
+            className="rounded-full bg-purple-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] shadow-[0_0_18px_rgba(147,51,234,0.7)] hover:bg-purple-500 disabled:opacity-60"
             disabled={sending || uploading}
             onClick={async () => {
               try {

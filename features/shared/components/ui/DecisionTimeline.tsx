@@ -20,7 +20,7 @@ type Props = {
 function stageTone(state: DecisionTimelineStage["state"]): string {
   if (state === "current") return "border-[var(--accent-copper-light)]/50 bg-[var(--accent-copper)]/12 text-[var(--accent-copper-light)]";
   if (state === "past") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
-  return "border-white/10 bg-black/30 text-neutral-500";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-muted)]";
 }
 
 export default function DecisionTimeline({
@@ -36,12 +36,12 @@ export default function DecisionTimeline({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/10 bg-black/25",
+        "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
         compact ? "p-2.5" : "p-3",
         className,
       )}
     >
-      <div className={cn("text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500", compact ? "mb-1.5" : "mb-2")}>
+      <div className={cn("text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]", compact ? "mb-1.5" : "mb-2")}>
         Decision timeline
       </div>
       <ol
@@ -73,7 +73,7 @@ export default function DecisionTimeline({
               </StatusBadge>
             </div>
             {stage.description && !compact ? (
-              <div className="mt-1 text-[11px] text-neutral-400">{stage.description}</div>
+              <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">{stage.description}</div>
             ) : null}
           </li>
         ))}

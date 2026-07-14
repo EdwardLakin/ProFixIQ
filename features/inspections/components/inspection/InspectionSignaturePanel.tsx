@@ -241,7 +241,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-zinc-800 bg-black/60 p-3 text-xs text-zinc-200">
+    <div className="flex flex-col gap-2 rounded-md border border-zinc-800 bg-[color:var(--theme-surface-overlay)] p-3 text-xs text-zinc-200">
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">

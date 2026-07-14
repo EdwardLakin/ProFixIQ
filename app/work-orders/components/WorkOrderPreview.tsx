@@ -101,16 +101,16 @@ export function WorkOrderPreview({ woId }: Props) {
   }, [supabase, woId]);
 
   if (!woId) {
-    return <div className="text-neutral-400 text-sm">No work order id provided yet.</div>;
+    return <div className="text-[color:var(--theme-text-secondary)] text-sm">No work order id provided yet.</div>;
   }
 
   if (loading) {
     return (
       <div
-        className="rounded-lg border p-5 text-neutral-300"
+        className="rounded-lg border p-5 text-[color:var(--theme-text-secondary)]"
         style={{
           borderColor: "var(--accent-copper, #f97316)",
-          backgroundColor: "var(--theme-card-bg, #0a0a0a)",
+          backgroundColor: "var(--theme-card-bg, var(--theme-surface-page))",
         }}
       >
         Loading work order…
@@ -138,7 +138,7 @@ export function WorkOrderPreview({ woId }: Props) {
       className="rounded-lg border p-5 shadow-xl"
       style={{
         borderColor: "var(--accent-copper, #f97316)",
-        backgroundColor: "var(--theme-card-bg, #0a0a0a)",
+        backgroundColor: "var(--theme-card-bg, var(--theme-surface-page))",
       }}
     >
       <div className="flex items-start justify-between gap-4">
@@ -148,83 +148,83 @@ export function WorkOrderPreview({ woId }: Props) {
         >
           Work Order #{String(wo.id).slice(0, 8)}
         </h3>
-        <span className="text-[11px] px-2 py-1 rounded bg-neutral-900 text-neutral-300 border border-neutral-800">
+        <span className="text-[11px] px-2 py-1 rounded bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-secondary)] border border-[color:var(--theme-border-soft)]">
           {wo.status ?? "unknown"}
         </span>
       </div>
 
       <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm" style={{ fontFamily: "'Roboto', system-ui, sans-serif" }}>
         <section className="space-y-1">
-          <div className="text-neutral-400">Customer</div>
-          <div className="text-neutral-100">{customerName}</div>
-          <div className="text-neutral-300">{customer?.email || "—"}</div>
-          <div className="text-neutral-300">{customer?.phone || "—"}</div>
+          <div className="text-[color:var(--theme-text-secondary)]">Customer</div>
+          <div className="text-[color:var(--theme-text-primary)]">{customerName}</div>
+          <div className="text-[color:var(--theme-text-secondary)]">{customer?.email || "—"}</div>
+          <div className="text-[color:var(--theme-text-secondary)]">{customer?.phone || "—"}</div>
         </section>
 
         <section className="space-y-1">
-          <div className="text-neutral-400">Vehicle</div>
-          <div className="text-neutral-100">{vehicleLabel || "—"}</div>
-          <div className="text-neutral-300">Plate/VIN: {plateOrVin}</div>
-          <div className="text-neutral-300">
+          <div className="text-[color:var(--theme-text-secondary)]">Vehicle</div>
+          <div className="text-[color:var(--theme-text-primary)]">{vehicleLabel || "—"}</div>
+          <div className="text-[color:var(--theme-text-secondary)]">Plate/VIN: {plateOrVin}</div>
+          <div className="text-[color:var(--theme-text-secondary)]">
             Color: {vehicle?.color || "—"} · Mileage: {vehicle?.mileage ?? "—"} · Unit: {vehicle?.unit_number || "—"}
           </div>
         </section>
       </div>
 
-      <div className="mt-5 border-t border-neutral-800 pt-4">
-        <div className="text-sm text-neutral-400 mb-2" style={{ fontFamily: "'Roboto', system-ui, sans-serif" }}>
+      <div className="mt-5 border-t border-[color:var(--theme-border-soft)] pt-4">
+        <div className="text-sm text-[color:var(--theme-text-secondary)] mb-2" style={{ fontFamily: "'Roboto', system-ui, sans-serif" }}>
           Lines
         </div>
         {lines.length === 0 ? (
-          <div className="text-neutral-500 text-sm">No lines yet.</div>
+          <div className="text-[color:var(--theme-text-muted)] text-sm">No lines yet.</div>
         ) : (
           <ul className="space-y-3">
             {lines.map((l) => (
-              <li key={l.id} className="rounded border border-neutral-800 bg-neutral-900 p-3">
+              <li key={l.id} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-neutral-100">{l.description || "(no description)"}</div>
-                  <span className="text-[11px] px-2 py-0.5 rounded bg-neutral-950 text-neutral-300 border border-neutral-800">
+                  <div className="text-[color:var(--theme-text-primary)]">{l.description || "(no description)"}</div>
+                  <span className="text-[11px] px-2 py-0.5 rounded bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-secondary)] border border-[color:var(--theme-border-soft)]">
                     {l.job_type || "—"}
                   </span>
                 </div>
-                <div className="mt-1 text-xs text-neutral-400">
+                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                   Labor time: {l.labor_time ?? 0} · Status: {l.status || "—"}
                 </div>
                 {(l.complaint || l.cause || l.correction) && (
                   <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                    <div className="bg-neutral-950/60 rounded p-2 border border-neutral-800">
-                      <div className="text-neutral-400 mb-1">Complaint</div>
-                      <div className="text-neutral-200">{l.complaint || "—"}</div>
+                    <div className="bg-[color:var(--theme-surface-page)] rounded p-2 border border-[color:var(--theme-border-soft)]">
+                      <div className="text-[color:var(--theme-text-secondary)] mb-1">Complaint</div>
+                      <div className="text-[color:var(--theme-text-primary)]">{l.complaint || "—"}</div>
                     </div>
-                    <div className="bg-neutral-950/60 rounded p-2 border border-neutral-800">
-                      <div className="text-neutral-400 mb-1">Cause</div>
-                      <div className="text-neutral-200">{l.cause || "—"}</div>
+                    <div className="bg-[color:var(--theme-surface-page)] rounded p-2 border border-[color:var(--theme-border-soft)]">
+                      <div className="text-[color:var(--theme-text-secondary)] mb-1">Cause</div>
+                      <div className="text-[color:var(--theme-text-primary)]">{l.cause || "—"}</div>
                     </div>
-                    <div className="bg-neutral-950/60 rounded p-2 border border-neutral-800">
-                      <div className="text-neutral-400 mb-1">Correction</div>
-                      <div className="text-neutral-200">{l.correction || "—"}</div>
+                    <div className="bg-[color:var(--theme-surface-page)] rounded p-2 border border-[color:var(--theme-border-soft)]">
+                      <div className="text-[color:var(--theme-text-secondary)] mb-1">Correction</div>
+                      <div className="text-[color:var(--theme-text-primary)]">{l.correction || "—"}</div>
                     </div>
                   </div>
                 )}
-                {l.notes && <div className="mt-2 text-xs text-neutral-300">Notes: {l.notes}</div>}
+                {l.notes && <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">Notes: {l.notes}</div>}
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      <div className="mt-5 border-t border-neutral-800 pt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
-          <div className="text-neutral-400">Parts Total</div>
-          <div className="text-neutral-100">${(wo.parts_total ?? 0).toFixed(2)}</div>
+      <div className="mt-5 border-t border-[color:var(--theme-border-soft)] pt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+        <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
+          <div className="text-[color:var(--theme-text-secondary)]">Parts Total</div>
+          <div className="text-[color:var(--theme-text-primary)]">${(wo.parts_total ?? 0).toFixed(2)}</div>
         </div>
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
-          <div className="text-neutral-400">Labor Total</div>
-          <div className="text-neutral-100">${(wo.labor_total ?? 0).toFixed(2)}</div>
+        <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
+          <div className="text-[color:var(--theme-text-secondary)]">Labor Total</div>
+          <div className="text-[color:var(--theme-text-primary)]">${(wo.labor_total ?? 0).toFixed(2)}</div>
         </div>
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
-          <div className="text-neutral-400">Invoice Total</div>
-          <div className="text-neutral-100">${(wo.invoice_total ?? 0).toFixed(2)}</div>
+        <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
+          <div className="text-[color:var(--theme-text-secondary)]">Invoice Total</div>
+          <div className="text-[color:var(--theme-text-primary)]">${(wo.invoice_total ?? 0).toFixed(2)}</div>
         </div>
       </div>
 
@@ -254,8 +254,8 @@ export function WorkOrderPreview({ woId }: Props) {
       )}
 
       {wo.notes && (
-        <div className="mt-4 text-sm text-neutral-200">
-          <div className="text-neutral-400 mb-1">Notes</div>
+        <div className="mt-4 text-sm text-[color:var(--theme-text-primary)]">
+          <div className="text-[color:var(--theme-text-secondary)] mb-1">Notes</div>
           <p className="whitespace-pre-wrap">{wo.notes}</p>
         </div>
       )}

@@ -212,11 +212,11 @@ function CustomerAutocomplete({
             absolute z-20 mt-1 w-full overflow-hidden rounded-xl
             border border-[color:var(--desktop-border)]
             bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl
-            shadow-[0_18px_45px_rgba(0,0,0,0.70)]
+            shadow-[var(--theme-shadow-medium)]
           "
         >
           {busy && (
-            <div className="px-3 py-2 text-xs text-white/60">Searching…</div>
+            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">Searching…</div>
           )}
           {rows.map((c) => {
             const normalized = hydrateCustomerFields(c);
@@ -236,7 +236,7 @@ function CustomerAutocomplete({
                 className="
                   block w-full cursor-pointer px-3 py-2 text-left text-sm transition
                   hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.20))]
-                  hover:text-white
+                  hover:text-[color:var(--theme-text-primary)]
                 "
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -245,13 +245,13 @@ function CustomerAutocomplete({
                   setOpen(false);
                 }}
               >
-                <div className="truncate text-white/90">{top}</div>
-                <div className="truncate text-xs text-white/50">{sub || "—"}</div>
+                <div className="truncate text-[color:var(--theme-text-primary)]">{top}</div>
+                <div className="truncate text-xs text-[color:var(--theme-text-muted)]">{sub || "—"}</div>
               </button>
             );
           })}
           {!busy && rows.length === 0 && (
-            <div className="px-3 py-2 text-xs text-white/45">No matches</div>
+            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">No matches</div>
           )}
         </div>
       )}
@@ -342,11 +342,11 @@ function UnitNumberAutocomplete({
             absolute z-20 mt-1 w-full overflow-hidden rounded-xl
             border border-[color:var(--desktop-border)]
             bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl
-            shadow-[0_18px_45px_rgba(0,0,0,0.70)]
+            shadow-[var(--theme-shadow-medium)]
           "
         >
           {busy && (
-            <div className="px-3 py-2 text-xs text-white/60">Searching…</div>
+            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">Searching…</div>
           )}
           {rows.map((v) => {
             const title =
@@ -369,7 +369,7 @@ function UnitNumberAutocomplete({
                 className="
                   block w-full cursor-pointer px-3 py-2 text-left text-sm transition
                   hover:bg-[color:var(--accent-copper-900,rgba(120,63,28,0.20))]
-                  hover:text-white
+                  hover:text-[color:var(--theme-text-primary)]
                 "
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -378,13 +378,13 @@ function UnitNumberAutocomplete({
                   setOpen(false);
                 }}
               >
-                <div className="truncate text-white/90">{title}</div>
-                <div className="truncate text-xs text-white/50">{sub || "—"}</div>
+                <div className="truncate text-[color:var(--theme-text-primary)]">{title}</div>
+                <div className="truncate text-xs text-[color:var(--theme-text-muted)]">{sub || "—"}</div>
               </button>
             );
           })}
           {!busy && rows.length === 0 && (
-            <div className="px-3 py-2 text-xs text-white/45">No matches</div>
+            <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">No matches</div>
           )}
         </div>
       )}
@@ -597,13 +597,13 @@ export default function CustomerVehicleForm({
   };
 
   const panelClass =
-    "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.45)] backdrop-blur-xl";
+    "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
   const chipClass =
-    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] text-white/60";
-  const labelClass = "text-xs text-neutral-300";
+    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] text-[color:var(--theme-text-muted)]";
+  const labelClass = "text-xs text-[color:var(--theme-text-secondary)]";
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6 text-white">
+    <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-6 text-[color:var(--theme-text-primary)]">
       {/* Header card */}
       <section className={`${panelClass} px-4 py-4`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -611,7 +611,7 @@ export default function CustomerVehicleForm({
             <h1 className="text-lg font-blackops tracking-[0.16em] text-[var(--accent-copper-light)]">
               Customer &amp; Vehicle
             </h1>
-            <p className="mt-1 text-[0.75rem] text-white/55">
+            <p className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
               Search existing customers and units, or enter new details to attach
               to this visit.
             </p>
@@ -639,10 +639,10 @@ export default function CustomerVehicleForm({
         {/* Customer card */}
         <section className={`${panelClass} space-y-4 px-4 py-4 sm:px-6 sm:py-6`}>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-white sm:text-base">
+            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
               Customer Info
             </h2>
-            <span className="text-[11px] text-white/45">
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">
               Start typing to search existing customers in this shop.
             </span>
           </div>
@@ -651,7 +651,7 @@ export default function CustomerVehicleForm({
             {/* Business name + autocomplete */}
             <div className="sm:col-span-2 space-y-1">
               <label className={labelClass}>
-                Business name <span className="text-white/35">(optional)</span>
+                Business name <span className="text-[color:var(--theme-text-muted)]">(optional)</span>
               </label>
               <input
                 className="input"
@@ -784,10 +784,10 @@ export default function CustomerVehicleForm({
         {/* Vehicle card */}
         <section className={`${panelClass} space-y-4 px-4 py-4 sm:px-6 sm:py-6`}>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-white sm:text-base">
+            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
               Vehicle Info
             </h2>
-            <span className="text-[11px] text-white/45">
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">
               Use unit # or plate to pull an existing vehicle for this customer.
             </span>
           </div>
@@ -1037,8 +1037,8 @@ export default function CustomerVehicleForm({
               className="
                 inline-flex items-center rounded-full
                 bg-[var(--accent-copper)]
-                px-4 py-2 text-sm font-semibold text-black
-                shadow-[0_0_25px_rgba(0,0,0,0.85)]
+                px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)]
+                shadow-[var(--theme-shadow-medium)]
                 transition hover:opacity-90
                 disabled:cursor-not-allowed disabled:opacity-60
               "
@@ -1063,7 +1063,7 @@ export default function CustomerVehicleForm({
               className="
                 inline-flex items-center rounded-full
                 border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]
-                px-3 py-1.5 text-xs sm:text-sm text-white/75
+                px-3 py-1.5 text-xs sm:text-sm text-[color:var(--theme-text-secondary)]
                 transition hover:border-red-400/60 hover:bg-red-950/35 hover:text-red-200
               "
               title="Clear Customer & Vehicle fields (does not delete an existing Work Order)"
@@ -1073,7 +1073,7 @@ export default function CustomerVehicleForm({
           )}
 
           {workOrderExists ? (
-            <span className="text-xs text-white/45">
+            <span className="text-xs text-[color:var(--theme-text-muted)]">
               Work order already exists — you can add lines now.
             </span>
           ) : null}

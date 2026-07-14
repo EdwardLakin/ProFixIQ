@@ -152,42 +152,42 @@ export default function LandingShopBoost() {
           style={{
             background:
               "radial-gradient(circle_at_18%_10%, rgba(197,122,74,0.12), transparent 52%)," +
-              "radial-gradient(circle_at_85%_20%, rgba(15,23,42,0.45), transparent 55%)," +
-              "radial-gradient(circle_at_70%_85%, rgba(2,6,23,0.95), rgba(2,6,23,0.65) 55%, transparent 75%)",
+              "var(--theme-gradient-panel)" +
+              "var(--theme-gradient-panel)",
           }}
         />
         <div
           className="absolute inset-0 opacity-[0.12]"
           style={{
             backgroundImage:
-              "repeating-linear-gradient(135deg, rgba(255,255,255,0.07) 0px, rgba(255,255,255,0.00) 3px, rgba(0,0,0,0.45) 9px)",
+              "var(--theme-gradient-panel)",
           }}
         />
         <div
           className="absolute inset-0"
           style={{
             boxShadow:
-              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 50px 120px rgba(0,0,0,0.55)",
+              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 50px 120px var(--theme-surface-inset)",
           }}
         />
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-px max-w-5xl bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-px max-w-5xl bg-gradient-to-r from-transparent via-[color:var(--theme-surface-subtle)] to-transparent" />
 
       <div className="pt-10 text-center">
-        <div className="mx-auto inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-neutral-300">
+        <div className="mx-auto inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-[color:var(--theme-text-secondary)]">
           <SignalDot />
           <span style={{ color: COPPER_LIGHT }}>Shop Boost Setup</span>
-          <span className="text-white/10">•</span>
-          <span className="text-neutral-400">Day-one ready</span>
+          <span className="text-[color:var(--theme-text-muted)]">•</span>
+          <span className="text-[color:var(--theme-text-secondary)]">Day-one ready</span>
         </div>
 
-        <h2 className="mx-auto mt-4 max-w-4xl text-3xl font-semibold text-white sm:text-4xl">
+        <h2 className="mx-auto mt-4 max-w-4xl text-3xl font-semibold text-[color:var(--theme-text-primary)] sm:text-4xl">
           From blank system to shop-ready in{" "}
           <span style={{ color: COPPER_LIGHT }}>Just, Three, Steps</span>.
         </h2>
 
-        <p className="mx-auto mt-4 max-w-4xl text-sm leading-relaxed text-neutral-300 sm:text-base">
+        <p className="mx-auto mt-4 max-w-4xl text-sm leading-relaxed text-[color:var(--theme-text-secondary)] sm:text-base">
           Don’t spend weeks configuring software. ProFixIQ reads how your shop
           already works and builds around it — inspections, menus, automation,
           and portals that match fleet reality.
@@ -201,10 +201,10 @@ export default function LandingShopBoost() {
           return (
             <div
               key={s.num}
-              className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/16 px-5 py-4 backdrop-blur-xl"
+              className="relative overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-5 py-4 backdrop-blur-xl"
               style={{
                 boxShadow:
-                  "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+                  "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px var(--theme-surface-inset)",
               }}
             >
               <div
@@ -213,7 +213,7 @@ export default function LandingShopBoost() {
               />
               <div
                 className="pointer-events-none absolute -left-24 -bottom-24 h-64 w-64 rounded-full blur-3xl"
-                style={{ background: "rgba(15,23,42,0.35)" }}
+                style={{ background: "var(--theme-surface-inset)" }}
               />
 
               <div className="relative flex items-start justify-between gap-3">
@@ -244,26 +244,26 @@ export default function LandingShopBoost() {
                   </span>
 
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                       {s.kicker}
                     </div>
-                    <div className="mt-0.5 text-base font-extrabold text-white">
+                    <div className="mt-0.5 text-base font-extrabold text-[color:var(--theme-text-primary)]">
                       {s.title}
                     </div>
                   </div>
                 </div>
 
-                <div className="hidden items-center gap-2 text-xs text-neutral-400 sm:flex">
+                <div className="hidden items-center gap-2 text-xs text-[color:var(--theme-text-secondary)] sm:flex">
                   <SignalDot />
                   {s.badge}
                 </div>
               </div>
 
-              <p className="relative mt-3 text-sm leading-relaxed text-neutral-300">
+              <p className="relative mt-3 text-sm leading-relaxed text-[color:var(--theme-text-secondary)]">
                 {s.body}
               </p>
 
-              <div className="relative mt-5 h-px w-full bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+              <div className="relative mt-5 h-px w-full bg-gradient-to-r from-transparent via-[color:var(--theme-surface-subtle)] to-transparent" />
               <div
                 className="relative mt-2 h-[2px] w-16 rounded-full"
                 style={{
@@ -279,10 +279,10 @@ export default function LandingShopBoost() {
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div
-          className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/16 p-6 backdrop-blur-xl"
+          className="relative overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 backdrop-blur-xl"
           style={{
             boxShadow:
-              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px var(--theme-surface-inset)",
           }}
         >
           <div
@@ -292,10 +292,10 @@ export default function LandingShopBoost() {
 
           <div className="relative flex items-start justify-between gap-3">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                 What you get immediately
               </div>
-              <div className="mt-1 text-xl font-extrabold text-white">
+              <div className="mt-1 text-xl font-extrabold text-[color:var(--theme-text-primary)]">
                 Instant owner snapshot (the “holy sh*t” moment).
               </div>
             </div>
@@ -312,7 +312,7 @@ export default function LandingShopBoost() {
             </span>
           </div>
 
-          <p className="mt-4 text-sm leading-relaxed text-neutral-300">
+          <p className="mt-4 text-sm leading-relaxed text-[color:var(--theme-text-secondary)]">
             A fast picture of what your shop actually does, where revenue hides,
             and which menus, inspections, and automations should be built first.
           </p>
@@ -330,7 +330,7 @@ export default function LandingShopBoost() {
                       : "rgba(255,255,255,0.10)",
                     backgroundColor: active
                       ? "rgba(197,122,74,0.12)"
-                      : "rgba(0,0,0,0.20)",
+                      : "var(--theme-surface-inset)",
                     color: active
                       ? "rgba(255,255,255,0.92)"
                       : "rgba(226,232,240,0.82)",
@@ -348,21 +348,21 @@ export default function LandingShopBoost() {
         </div>
 
         <div
-          className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/16 p-6 backdrop-blur-xl"
+          className="relative overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 backdrop-blur-xl"
           style={{
             boxShadow:
-              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px rgba(0,0,0,0.38)",
+              "0 0 0 1px rgba(255,255,255,0.04) inset, 0 18px 60px var(--theme-surface-inset)",
           }}
         >
           <div
             className="pointer-events-none absolute -left-24 -bottom-24 h-72 w-72 rounded-full blur-3xl"
-            style={{ background: "rgba(15,23,42,0.34)" }}
+            style={{ background: "var(--theme-surface-inset)" }}
           />
 
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
             Why shops move fast here
           </div>
-          <div className="mt-1 text-xl font-extrabold text-white">
+          <div className="mt-1 text-xl font-extrabold text-[color:var(--theme-text-primary)]">
             Setup becomes momentum — not a project.
           </div>
 
@@ -375,10 +375,10 @@ export default function LandingShopBoost() {
             ].map((item) => (
               <div
                 key={item}
-                className="flex items-start gap-3 rounded-xl border border-white/10 bg-black/18 px-4 py-3"
+                className="flex items-start gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3"
               >
                 <SignalDot />
-                <div className="text-sm text-neutral-200">{item}</div>
+                <div className="text-sm text-[color:var(--theme-text-primary)]">{item}</div>
               </div>
             ))}
           </div>

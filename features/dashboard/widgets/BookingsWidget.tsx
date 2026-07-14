@@ -99,7 +99,7 @@ export default function BookingsWidget() {
       rightSlot={
         <Link
           href="/dashboard/bookings"
-          className="rounded-full border border-white/10 bg-black/30 px-3 py-1 text-xs font-semibold text-neutral-200 transition hover:bg-black/45"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
         >
           Open bookings →
         </Link>
@@ -113,9 +113,9 @@ export default function BookingsWidget() {
           <Metric label="Confirmed" value={loading ? "…" : String(confirmed)} tone="primary" />
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-          <div className="text-[11px] text-neutral-400">Next up</div>
-          <div className="mt-1 text-sm text-neutral-100">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+          <div className="text-[11px] text-[color:var(--theme-text-secondary)]">Next up</div>
+          <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
             {loading
               ? "Loading…"
               : nextUp
@@ -147,11 +147,11 @@ function Metric({
       ? "text-[color:var(--brand-accent)]"
       : tone === "primary"
         ? "text-[color:var(--brand-primary)]"
-        : "text-neutral-100";
+        : "text-[color:var(--theme-text-primary)]";
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-      <div className="text-[11px] text-neutral-400">{label}</div>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+      <div className="text-[11px] text-[color:var(--theme-text-secondary)]">{label}</div>
       <div className={["mt-1 text-lg font-semibold", toneClass].join(" ")}>{value}</div>
     </div>
   );

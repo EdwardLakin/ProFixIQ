@@ -106,9 +106,9 @@ const looksLikeUuid = (s: string | null): boolean =>
   !!s && s.includes("-") && s.length >= 36;
 
 const CARD_BASE =
-  "rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur-xl";
+  "rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 const CARD_INNER =
-  "rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-[color:var(--desktop-item-bg)]";
+  "rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--desktop-item-bg)]";
 
 const STATUS_CHIP_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide";
@@ -289,10 +289,10 @@ function DetailRow({
   if (value == null || String(value).trim().length === 0) return null;
   return (
     <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
-      <div className="mt-1 min-w-0 break-words text-sm font-medium text-white">
+      <div className="mt-1 min-w-0 break-words text-sm font-medium text-[color:var(--theme-text-primary)]">
         {value}
       </div>
     </div>
@@ -464,17 +464,17 @@ function Modal({ title, open, onClose, children, footer }: ModalProps) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl rounded-2xl border border-[color:var(--desktop-border)] bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.10),rgba(2,6,23,0.98))] shadow-[0_28px_90px_rgba(0,0,0,0.95)]">
+      <div className="w-full max-w-2xl rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
         <div className="flex items-center justify-between gap-3 border-b border-[color:var(--desktop-border)] px-4 py-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-white">
+            <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
               {title}
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-200 hover:bg-black/55"
+            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)]"
           >
             Close
           </button>
@@ -511,14 +511,14 @@ function TopBar({
       <button
         type="button"
         onClick={onBack}
-        className="inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/55 hover:text-white"
+        className="inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)] hover:text-[color:var(--theme-text-primary)]"
       >
         <span aria-hidden className="text-base leading-none">
           ←
         </span>
         Back
       </button>
-      <div className="text-[10px] text-neutral-500">{rightLabel}</div>
+      <div className="text-[10px] text-[color:var(--theme-text-muted)]">{rightLabel}</div>
     </div>
   );
 }
@@ -1623,16 +1623,16 @@ export default function CustomerProfilePage(): JSX.Element {
   // ------------------ DIRECTORY MODE ------------------
   if (isDirectoryMode || sp.get("mode") === "search") {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 text-neutral-100">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-5 text-[color:var(--theme-text-primary)]">
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-200 hover:border-[var(--accent-copper-soft)]/70 hover:text-white"
+            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/70 hover:text-[color:var(--theme-text-primary)]"
           >
             ← Back
           </button>
-          <div className="text-xs text-neutral-500">Customers</div>
+          <div className="text-xs text-[color:var(--theme-text-muted)]">Customers</div>
         </div>
 
         <GuidedPageStepPanel
@@ -1648,7 +1648,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
         {customerImportPlaceholderVisible ? (
           <div
-            className={`${CARD_BASE} border-[var(--accent-copper-soft)]/55 p-4 text-sm text-neutral-200`}
+            className={`${CARD_BASE} border-[var(--accent-copper-soft)]/55 p-4 text-sm text-[color:var(--theme-text-primary)]`}
             data-guided-customer-import-placeholder
           >
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper,#C57A4A)]">
@@ -1656,7 +1656,7 @@ export default function CustomerProfilePage(): JSX.Element {
             </div>
             <p className="mt-2">
               Customer CSV import will be connected here. For now, use{" "}
-              <span className="font-semibold text-white">
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">
                 + Create Customer
               </span>{" "}
               to add records safely.
@@ -1667,7 +1667,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 setCreateCustomerError(null);
                 setCreateCustomerOpen(true);
               }}
-              className="mt-3 rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black hover:brightness-110"
+              className="mt-3 rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] hover:brightness-110"
             >
               + Create Customer
             </button>
@@ -1683,12 +1683,12 @@ export default function CustomerProfilePage(): JSX.Element {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1
-                className="text-2xl font-semibold text-white"
+                className="text-2xl font-semibold text-[color:var(--theme-text-primary)]"
                 style={{ fontFamily: "var(--font-blackops), system-ui" }}
               >
                 Customer Files
               </h1>
-              <p className="mt-1 text-xs text-neutral-400">
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Search by name, email, or phone. Open a customer to view the
                 full file.
               </p>
@@ -1701,7 +1701,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   setCreateCustomerError(null);
                   setCreateCustomerOpen(true);
                 }}
-                className="rounded-xl border border-[var(--accent-copper-soft)]/55 bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper)] hover:bg-black/55"
+                className="rounded-xl border border-[var(--accent-copper-soft)]/55 bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper)] hover:bg-[color:var(--theme-surface-inset)]"
               >
                 + Create Customer
               </button>
@@ -1716,12 +1716,12 @@ export default function CustomerProfilePage(): JSX.Element {
                   }
                 }}
                 placeholder="Search customers..."
-                className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
               <button
                 type="button"
                 onClick={() => void runSearch()}
-                className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:opacity-60"
+                className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:opacity-60"
                 disabled={searching}
               >
                 {searching ? "Searching…" : "Search"}
@@ -1731,7 +1731,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
           <div className="mt-4">
             {results.length === 0 ? (
-              <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
+              <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
                 {searching
                   ? "Searching…"
                   : directoryRows.length === 0
@@ -1750,10 +1750,10 @@ export default function CustomerProfilePage(): JSX.Element {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-white">
+                          <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                             {bestCustomerDisplayName(r)}
                           </div>
-                          <div className="mt-0.5 truncate text-[11px] text-neutral-400">
+                          <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-secondary)]">
                             {r.business_name?.trim() &&
                             (r.first_name || r.last_name)
                               ? fmtName(r)
@@ -1763,7 +1763,7 @@ export default function CustomerProfilePage(): JSX.Element {
                                   ? fmtName(r)
                                   : "—"}
                           </div>
-                          <div className="mt-0.5 text-[11px] text-neutral-400">
+                          <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                             {compactSecondaryDetails({
                               firstName: r.first_name,
                               lastName: r.last_name,
@@ -1774,7 +1774,7 @@ export default function CustomerProfilePage(): JSX.Element {
                             }) ?? "No contact details imported"}
                           </div>
                         </div>
-                        <div className="text-[10px] text-neutral-500">
+                        <div className="text-[10px] text-[color:var(--theme-text-muted)]">
                           {safeDate(r.created_at)}
                         </div>
                       </div>
@@ -1799,7 +1799,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 type="button"
                 onClick={() => setCreateCustomerOpen(false)}
                 disabled={creatingCustomer}
-                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/55 disabled:opacity-60"
+                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)] disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -1807,7 +1807,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 type="button"
                 onClick={() => void createCustomer()}
                 disabled={creatingCustomer}
-                className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:opacity-60"
+                className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:opacity-60"
               >
                 {creatingCustomer ? "Creating…" : "Create customer"}
               </button>
@@ -1815,7 +1815,7 @@ export default function CustomerProfilePage(): JSX.Element {
           }
         >
           <div className="space-y-4">
-            <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs leading-5 text-neutral-300">
+            <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
               Use this as a secondary management path. The primary launch flow
               remains Work Order → Customer → Vehicle.
             </div>
@@ -1827,7 +1827,7 @@ export default function CustomerProfilePage(): JSX.Element {
             ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Customer type
                 <select
                   value={newCustomer.customerType}
@@ -1837,7 +1837,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       customerType: e.target.value as NewCustomerType,
                     }))
                   }
-                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 >
                   <option value="individual">Individual</option>
                   <option value="business">Business</option>
@@ -1845,7 +1845,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 </select>
               </label>
 
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 {newCustomer.customerType === "individual"
                   ? "Customer name"
                   : "Business name"}
@@ -1868,13 +1868,13 @@ export default function CustomerProfilePage(): JSX.Element {
                       ? "Jane Doe"
                       : "Acme Fleet Services"
                   }
-                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </label>
             </div>
 
             {newCustomer.customerType !== "individual" ? (
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Contact name
                 <input
                   value={newCustomer.customerName}
@@ -1885,13 +1885,13 @@ export default function CustomerProfilePage(): JSX.Element {
                     }))
                   }
                   placeholder="Primary contact"
-                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </label>
             ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Phone
                 <input
                   value={newCustomer.phone}
@@ -1902,10 +1902,10 @@ export default function CustomerProfilePage(): JSX.Element {
                     }))
                   }
                   placeholder="(555) 555-1234"
-                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </label>
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Email
                 <input
                   value={newCustomer.email}
@@ -1916,12 +1916,12 @@ export default function CustomerProfilePage(): JSX.Element {
                     }))
                   }
                   placeholder="customer@example.com"
-                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </label>
             </div>
 
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
               Address
               <input
                 value={newCustomer.address}
@@ -1932,12 +1932,12 @@ export default function CustomerProfilePage(): JSX.Element {
                   }))
                 }
                 placeholder="Street address"
-                className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
             </label>
 
             <div className="grid gap-3 sm:grid-cols-3">
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 City
                 <input
                   value={newCustomer.city}
@@ -1947,10 +1947,10 @@ export default function CustomerProfilePage(): JSX.Element {
                       city: e.target.value,
                     }))
                   }
-                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </label>
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 State / Province
                 <input
                   value={newCustomer.province}
@@ -1960,10 +1960,10 @@ export default function CustomerProfilePage(): JSX.Element {
                       province: e.target.value,
                     }))
                   }
-                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </label>
-              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                 Postal code
                 <input
                   value={newCustomer.postalCode}
@@ -1973,12 +1973,12 @@ export default function CustomerProfilePage(): JSX.Element {
                       postalCode: e.target.value,
                     }))
                   }
-                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </label>
             </div>
 
-            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+            <label className="block text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
               Notes
               <textarea
                 value={newCustomer.notes}
@@ -1990,7 +1990,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 }
                 rows={3}
                 placeholder="Launch-essential customer notes"
-                className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                className="mt-1 w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
             </label>
           </div>
@@ -2004,12 +2004,12 @@ export default function CustomerProfilePage(): JSX.Element {
     return (
       <PageShell>
         <div className={`${CARD_BASE} p-4`}>
-          <div className="text-sm text-neutral-200">
+          <div className="text-sm text-[color:var(--theme-text-primary)]">
             This route expects a customer id.
           </div>
-          <div className="mt-2 text-xs text-neutral-400">
+          <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
             Use{" "}
-            <span className="font-mono text-neutral-200">
+            <span className="font-mono text-[color:var(--theme-text-primary)]">
               /customers/search
             </span>{" "}
             to open the customer directory.
@@ -2017,7 +2017,7 @@ export default function CustomerProfilePage(): JSX.Element {
           <div className="mt-4">
             <button
               type="button"
-              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black"
+              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)]"
               onClick={() => router.push("/customers/search")}
             >
               Open Customer Directory
@@ -2036,7 +2036,7 @@ export default function CustomerProfilePage(): JSX.Element {
       <GuidedPageStepPanel />
 
       {viewError && (
-        <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[0_18px_45px_rgba(0,0,0,0.75)]">
+        <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[var(--theme-shadow-medium)]">
           {viewError}
         </div>
       )}
@@ -2070,7 +2070,7 @@ export default function CustomerProfilePage(): JSX.Element {
                     return (
                       <>
                         <h1
-                          className="truncate text-2xl font-semibold text-white sm:text-3xl"
+                          className="truncate text-2xl font-semibold text-[color:var(--theme-text-primary)] sm:text-3xl"
                           style={{
                             fontFamily: "var(--font-blackops), system-ui",
                           }}
@@ -2079,12 +2079,12 @@ export default function CustomerProfilePage(): JSX.Element {
                         </h1>
 
                         {biz && (customer.first_name || customer.last_name) ? (
-                          <div className="mt-1 text-xs text-neutral-400">
+                          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                             {fmtName(customer)}
                           </div>
                         ) : null}
 
-                        <div className="mt-2 text-sm text-neutral-300">
+                        <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                           {compactSecondaryDetails({
                             firstName: customer.first_name,
                             lastName: customer.last_name,
@@ -2106,7 +2106,7 @@ export default function CustomerProfilePage(): JSX.Element {
                     );
                   })()}
 
-                  <div className="mt-2 text-sm leading-6 text-neutral-400">
+                  <div className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
                     <div>
                       {asText(
                         (customer as unknown as Record<string, unknown>)[
@@ -2137,7 +2137,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setEditCustomerOpen(true)}
-                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
                   >
                     Edit customer
                   </button>
@@ -2153,7 +2153,7 @@ export default function CustomerProfilePage(): JSX.Element {
                         }`,
                       )
                     }
-                    className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
+                    className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
                   >
                     Create Work Order
                   </button>
@@ -2164,10 +2164,10 @@ export default function CustomerProfilePage(): JSX.Element {
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-white sm:text-base">
+                  <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
                     Vehicles
                   </h2>
-                  <p className="mt-1 text-[11px] text-neutral-400">
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                     Select a vehicle to view details and files.
                   </p>
                 </div>
@@ -2176,7 +2176,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => setAddVehicleOpen(true)}
-                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[12px] font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
                   >
                     + Add vehicle
                   </button>
@@ -2187,7 +2187,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       onChange={(e) =>
                         setSelectedVehicleId(e.target.value || null)
                       }
-                      className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none"
+                      className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none"
                     >
                       {vehicles.map((v) => (
                         <option key={v.id} value={v.id}>
@@ -2201,7 +2201,7 @@ export default function CustomerProfilePage(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => setEditVehicleOpen(true)}
-                      className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[12px] font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+                      className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
                     >
                       Edit vehicle
                     </button>
@@ -2211,7 +2211,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
               {vehicles.length === 0 ? (
                 <div
-                  className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}
+                  className={`${CARD_INNER} mt-3 p-3 text-sm text-[color:var(--theme-text-secondary)]`}
                 >
                   No vehicles linked to this customer yet.
                 </div>
@@ -2219,7 +2219,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 <div className="mt-3 space-y-3">
                   <div className={`${CARD_INNER} p-4`}>
                     <div className="min-w-0 space-y-2">
-                      <div className="break-words text-lg font-semibold leading-tight text-white sm:text-xl">
+                      <div className="break-words text-lg font-semibold leading-tight text-[color:var(--theme-text-primary)] sm:text-xl">
                         <span aria-hidden className="mr-2">
                           🚗
                         </span>
@@ -2274,7 +2274,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
                     {vehicleExtraDetails.length > 0 ? (
                       <div className="mt-3">
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                           Additional vehicle details
                         </div>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -2290,9 +2290,9 @@ export default function CustomerProfilePage(): JSX.Element {
                     ) : null}
 
                     {selectedVehicleImportedHistory.length > 0 ? (
-                      <div className="mt-4 rounded-xl border border-[var(--accent-copper-soft)]/35 bg-black/20 p-3">
+                      <div className="mt-4 rounded-xl border border-[var(--accent-copper-soft)]/35 bg-[color:var(--theme-surface-inset)] p-3">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                             Imported history for selected vehicle
                           </div>
                           <span className="rounded-full border border-[var(--accent-copper-soft)]/45 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper,#C57A4A)]">
@@ -2319,10 +2319,10 @@ export default function CustomerProfilePage(): JSX.Element {
                                   >
                                     <div className="flex items-start justify-between gap-2">
                                       <div className="min-w-0">
-                                        <div className="text-xs font-semibold text-white">
+                                        <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
                                           {formatHistoryDate(row.service_date)}
                                         </div>
-                                        <div className="mt-1 text-[11px] text-neutral-400">
+                                        <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                                           {[
                                             row.work_order_number
                                               ? `WO ${row.work_order_number}`
@@ -2374,10 +2374,10 @@ export default function CustomerProfilePage(): JSX.Element {
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-semibold text-white sm:text-base">
+                  <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
                     Service History
                   </h2>
-                  <p className="mt-1 text-[11px] text-neutral-400">
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                     Unified timeline of live ProFixIQ work orders and read-only
                     imported vehicle history.
                   </p>
@@ -2396,7 +2396,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
               {serviceHistory.length === 0 ? (
                 <div
-                  className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}
+                  className={`${CARD_INNER} mt-3 p-3 text-sm text-[color:var(--theme-text-secondary)]`}
                 >
                   No service history yet.
                 </div>
@@ -2436,12 +2436,12 @@ export default function CustomerProfilePage(): JSX.Element {
                         >
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold text-white">
+                              <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                                 {customId
                                   ? `WO ${customId}`
                                   : `WO #${wo.id.slice(0, 8)}`}
                               </div>
-                              <div className="mt-0.5 text-[11px] text-neutral-400">
+                              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                                 {safeDate(wo.created_at)}
                                 {vehicleLabel ? ` • ${vehicleLabel}` : ""}
                               </div>
@@ -2451,7 +2451,7 @@ export default function CustomerProfilePage(): JSX.Element {
                               <span className={chipClass(status)}>
                                 {lifecycleLabel}
                               </span>
-                              <span className="rounded-full border border-slate-600/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-300">
+                              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                                 {status.replaceAll("_", " ")}
                               </span>
                             </div>
@@ -2490,10 +2490,10 @@ export default function CustomerProfilePage(): JSX.Element {
           {/* RIGHT */}
           <aside className="space-y-6">
             <div className={`${CARD_BASE} p-4`}>
-              <h3 className="text-sm font-semibold text-white">
+              <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Upload Vehicle Photos
               </h3>
-              <p className="mt-1 text-[11px] text-neutral-400">
+              <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                 Condition photos, damage evidence, before/after.
               </p>
               <div className="mt-3">
@@ -2506,10 +2506,10 @@ export default function CustomerProfilePage(): JSX.Element {
                     if (f) void handleUpload(f, "photo");
                     e.currentTarget.value = "";
                   }}
-                  className="w-full text-sm text-neutral-200"
+                  className="w-full text-sm text-[color:var(--theme-text-primary)]"
                 />
                 {uploadingPhoto ? (
-                  <div className="mt-2 text-[11px] text-neutral-400">
+                  <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                     Uploading photo…
                   </div>
                 ) : null}
@@ -2517,10 +2517,10 @@ export default function CustomerProfilePage(): JSX.Element {
             </div>
 
             <div className={`${CARD_BASE} p-4`}>
-              <h3 className="text-sm font-semibold text-white">
+              <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Upload Documents
               </h3>
-              <p className="mt-1 text-[11px] text-neutral-400">
+              <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                 Registration, CVIP, inspection PDFs, misc docs.
               </p>
               <div className="mt-3">
@@ -2533,10 +2533,10 @@ export default function CustomerProfilePage(): JSX.Element {
                     if (f) void handleUpload(f, "document");
                     e.currentTarget.value = "";
                   }}
-                  className="w-full text-sm text-neutral-200"
+                  className="w-full text-sm text-[color:var(--theme-text-primary)]"
                 />
                 {uploadingDoc ? (
-                  <div className="mt-2 text-[11px] text-neutral-400">
+                  <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                     Uploading document…
                   </div>
                 ) : null}
@@ -2546,10 +2546,10 @@ export default function CustomerProfilePage(): JSX.Element {
             <div className={`${CARD_BASE} p-4`}>
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">
+                  <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     Vehicle Gallery & Files
                   </h3>
-                  <p className="mt-1 text-[11px] text-neutral-400">
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                     Files shown for the selected vehicle.
                   </p>
                 </div>
@@ -2557,7 +2557,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => void fetchRawMedia(selectedVehicleId)}
-                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[11px] font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+                    className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[11px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
                   >
                     Refresh
                   </button>
@@ -2566,13 +2566,13 @@ export default function CustomerProfilePage(): JSX.Element {
 
               {!selectedVehicleId ? (
                 <div
-                  className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}
+                  className={`${CARD_INNER} mt-3 p-3 text-sm text-[color:var(--theme-text-secondary)]`}
                 >
                   Select a vehicle to view files.
                 </div>
               ) : media.length === 0 ? (
                 <div
-                  className={`${CARD_INNER} mt-3 p-3 text-sm text-neutral-300`}
+                  className={`${CARD_INNER} mt-3 p-3 text-sm text-[color:var(--theme-text-secondary)]`}
                 >
                   No files uploaded yet.
                 </div>
@@ -2602,7 +2602,7 @@ export default function CustomerProfilePage(): JSX.Element {
                             className="h-28 w-full object-cover"
                           />
                         ) : (
-                          <div className="flex h-28 w-full items-center justify-center px-2 text-center text-[11px] text-neutral-300">
+                          <div className="flex h-28 w-full items-center justify-center px-2 text-center text-[11px] text-[color:var(--theme-text-secondary)]">
                             Open file
                           </div>
                         )}
@@ -2630,7 +2630,7 @@ export default function CustomerProfilePage(): JSX.Element {
               href={viewerItem.displayUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
             >
               Open in new tab
             </a>
@@ -2638,11 +2638,11 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!viewerItem ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
+          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
             No file selected.
           </div>
         ) : !viewerItem.displayUrl ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
+          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
             This file doesn’t have a viewable URL yet (likely a private bucket
             without a signed URL).
           </div>
@@ -2654,7 +2654,7 @@ export default function CustomerProfilePage(): JSX.Element {
             className="w-full rounded-xl"
           />
         ) : (
-          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
+          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
             Document ready. Use “Open in new tab”.
           </div>
         )}
@@ -2670,14 +2670,14 @@ export default function CustomerProfilePage(): JSX.Element {
             <button
               type="button"
               onClick={() => setEditCustomerOpen(false)}
-              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-white hover:border-white/25"
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)]"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => void saveCustomer()}
-              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
+              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
             >
               Save
             </button>
@@ -2701,7 +2701,7 @@ export default function CustomerProfilePage(): JSX.Element {
             ] as const
           ).map(([label, key]) => (
             <div key={key} className="space-y-1">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 {label}
               </div>
               <input
@@ -2709,7 +2709,7 @@ export default function CustomerProfilePage(): JSX.Element {
                 onChange={(e) =>
                   setCustDraft((p) => ({ ...p, [key]: e.target.value }))
                 }
-                className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
               />
             </div>
           ))}
@@ -2726,14 +2726,14 @@ export default function CustomerProfilePage(): JSX.Element {
             <button
               type="button"
               onClick={() => setEditVehicleOpen(false)}
-              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-white hover:border-white/25"
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)]"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => void saveVehicle()}
-              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
+              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
             >
               Save
             </button>
@@ -2741,7 +2741,7 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!selectedVehicle ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
+          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
             No vehicle selected.
           </div>
         ) : (
@@ -2778,7 +2778,7 @@ export default function CustomerProfilePage(): JSX.Element {
               ] as const
             ).map(([label, key]) => (
               <div key={key} className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   {label}
                 </div>
                 <input
@@ -2796,7 +2796,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       return { ...p, [key]: raw };
                     });
                   }}
-                  className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </div>
             ))}
@@ -2814,14 +2814,14 @@ export default function CustomerProfilePage(): JSX.Element {
             <button
               type="button"
               onClick={() => setAddVehicleOpen(false)}
-              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-white hover:border-white/25"
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)]"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => void createVehicle()}
-              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-black shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
+              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
               disabled={!customer}
             >
               Create
@@ -2830,7 +2830,7 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {!customer ? (
-          <div className={`${CARD_INNER} p-3 text-sm text-neutral-300`}>
+          <div className={`${CARD_INNER} p-3 text-sm text-[color:var(--theme-text-secondary)]`}>
             No customer loaded.
           </div>
         ) : (
@@ -2867,7 +2867,7 @@ export default function CustomerProfilePage(): JSX.Element {
               ] as const
             ).map(([label, key]) => (
               <div key={key} className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   {label}
                 </div>
                 <input
@@ -2885,7 +2885,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       return { ...p, [key]: raw };
                     });
                   }}
-                  className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                  className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                 />
               </div>
             ))}

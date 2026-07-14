@@ -17,7 +17,7 @@ export default function QuoteReviewPanelClient(props: {
   return (
     <div className={cn(PANEL_VARIANTS.secondary, "flex h-full min-h-0 flex-col rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-2")}>
       <div className="flex items-center justify-between gap-2 px-2 py-1">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+        <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
           Quote Review
           <StatusBadge variant="info">
             (WO {props.workOrderLabel ?? props.workOrderId.slice(0, 8)}…)
@@ -26,7 +26,7 @@ export default function QuoteReviewPanelClient(props: {
 
         <button
           type="button"
-          className="rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-xs text-neutral-200 hover:bg-white/5"
+          className="rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
           onClick={() =>
             router.push(`/work-orders/${props.workOrderLabel ?? props.workOrderId}`)
           }

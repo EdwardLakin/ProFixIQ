@@ -46,20 +46,20 @@ type Mode = "tech" | "view";
 
 const statusTextColor: Record<string, string> = {
   in_progress: "text-sky-200",
-  awaiting: "text-slate-200",
+  awaiting: "text-[color:var(--theme-text-primary)]",
   queued: "text-indigo-200",
   on_hold: "text-amber-200",
   completed: "text-emerald-200",
   paused: "text-amber-200",
   assigned: "text-sky-200",
-  unassigned: "text-neutral-200",
+  unassigned: "text-[color:var(--theme-text-primary)]",
   awaiting_approval: "text-blue-200",
   declined: "text-red-200",
 };
 
 const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
-  "text-neutral-200";
+  "text-[color:var(--theme-text-primary)]";
 
 /* ---------------------------- UI (theme-only) ---------------------------- */
 
@@ -67,7 +67,7 @@ const panel = "mobile-tech-panel";
 
 const card = "mobile-tech-subpanel";
 
-const fieldLabel = "text-[11px] uppercase tracking-[0.18em] text-neutral-400";
+const fieldLabel = "text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]";
 
 const btnBase = "rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors";
 const btnNeutral = `${btnBase} mobile-tech-btn-secondary`;
@@ -831,8 +831,8 @@ export default function MobileFocusedJob(props: {
     : isOnHold
       ? "border-amber-300/60 bg-amber-500/14 text-amber-100"
       : isCompleted
-        ? "border-slate-400/55 bg-slate-500/10 text-slate-200"
-        : "border-slate-500/60 bg-slate-900/55 text-slate-200";
+        ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]";
 
   const elapsedText =
     line?.punched_in_at && (isActive || isCompleted)
@@ -850,7 +850,7 @@ export default function MobileFocusedJob(props: {
               closeAllSubModals();
               onBack();
             }}
-            className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-black/45 px-3 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
+            className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
           >
             <span>←</span>
             <span className="uppercase tracking-[0.16em]">Back</span>
@@ -884,7 +884,7 @@ export default function MobileFocusedJob(props: {
         <div className="px-3 pt-2">
           <div className="mobile-tech-subpanel px-3 py-2 text-xs">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-neutral-200">Sync status</span>
+              <span className="text-[color:var(--theme-text-primary)]">Sync status</span>
               <span
                 className={
                   syncSummary.conflicted > 0 || syncSummary.failed > 0
@@ -905,14 +905,14 @@ export default function MobileFocusedJob(props: {
                         : "Synced"}
               </span>
             </div>
-            <div className="mt-1 text-[11px] text-neutral-400">
+            <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
               Pending: {pendingWrites} • Failed: {syncSummary.failed} • Conflicted: {syncSummary.conflicted}
             </div>
             {(pendingWrites > 0 || syncSummary.failed > 0 || syncSummary.conflicted > 0) && (
               <button
                 type="button"
                 onClick={() => void replayOfflineMutations()}
-                className="mobile-tech-btn-secondary mt-2 rounded-md px-2 py-1 text-[11px] text-neutral-100"
+                className="mobile-tech-btn-secondary mt-2 rounded-md px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)]"
               >
                 Retry sync now
               </button>
@@ -925,11 +925,11 @@ export default function MobileFocusedJob(props: {
           <div className="mx-auto max-w-4xl space-y-4">
             {busy && !line ? (
               <div className="grid gap-3">
-                <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
-                <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
+                <div className="h-6 w-40 animate-pulse rounded-full bg-[color:var(--theme-surface-subtle)]" />
+                <div className="h-24 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
               </div>
             ) : !line ? (
-              <div className={`${panel} px-4 py-4 text-sm text-neutral-300`}>
+              <div className={`${panel} px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
                 No job found.
               </div>
             ) : (
@@ -938,7 +938,7 @@ export default function MobileFocusedJob(props: {
                 {mode === "tech" && line && (
                   <div className={`${panel} px-4 py-3`}>
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                         Current Job State
                       </div>
                       <span
@@ -951,20 +951,20 @@ export default function MobileFocusedJob(props: {
                       </span>
                     </div>
 
-                    <div className="mb-3 text-xs text-neutral-300">
+                    <div className="mb-3 text-xs text-[color:var(--theme-text-secondary)]">
                       {line.punched_in_at ? (
                         <div>
                           Started {format(new Date(line.punched_in_at), "PPp")}
-                          {elapsedText ? <span className="text-neutral-400"> • Elapsed {elapsedText}</span> : null}
+                          {elapsedText ? <span className="text-[color:var(--theme-text-secondary)]"> • Elapsed {elapsedText}</span> : null}
                         </div>
                       ) : (
-                        <div className="text-neutral-400">Not started yet.</div>
+                        <div className="text-[color:var(--theme-text-secondary)]">Not started yet.</div>
                       )}
                       {(isOnHold || line.hold_reason) && line.hold_reason ? (
                         <div className="mt-1 text-amber-200">Hold reason: {line.hold_reason}</div>
                       ) : null}
                       {isCompleted && line.punched_out_at ? (
-                        <div className="mt-1 text-neutral-400">
+                        <div className="mt-1 text-[color:var(--theme-text-secondary)]">
                           Finished {format(new Date(line.punched_out_at), "PPp")}
                         </div>
                       ) : null}
@@ -1046,7 +1046,7 @@ export default function MobileFocusedJob(props: {
 
                 {/* supporting timing/details */}
                 <details className={`${card} px-3 py-2`}>
-                  <summary className="cursor-pointer list-none text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                  <summary className="cursor-pointer list-none text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Timing & status details
                   </summary>
                   <div className="mt-2 grid gap-2 text-sm md:grid-cols-3">
@@ -1058,11 +1058,11 @@ export default function MobileFocusedJob(props: {
                     </div>
                     <div>
                       <div className={fieldLabel}>Start</div>
-                      <div className="mt-1 text-neutral-100">{createdStart}</div>
+                      <div className="mt-1 text-[color:var(--theme-text-primary)]">{createdStart}</div>
                     </div>
                     <div>
                       <div className={fieldLabel}>Finish</div>
-                      <div className="mt-1 text-neutral-100">{createdFinish}</div>
+                      <div className="mt-1 text-[color:var(--theme-text-primary)]">{createdFinish}</div>
                     </div>
                   </div>
                 </details>
@@ -1072,28 +1072,28 @@ export default function MobileFocusedJob(props: {
                   <div className="grid gap-3 md:grid-cols-2">
                     <div>
                       <div className={fieldLabel}>Vehicle</div>
-                      <div className="mt-1 truncate text-neutral-100">
+                      <div className="mt-1 truncate text-[color:var(--theme-text-primary)]">
                         {vehicle
                           ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
-                      <div className="mt-0.5 text-[11px] text-neutral-400">
+                      <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
 
                     <div>
                       <div className={fieldLabel}>Customer</div>
-                      <div className="mt-1 truncate text-neutral-100">
+                      <div className="mt-1 truncate text-[color:var(--theme-text-primary)]">
                         {customer
                           ? [customer.first_name ?? "", customer.last_name ?? ""]
                               .filter(Boolean)
                               .join(" ") || "—"
                           : "—"}
                       </div>
-                      <div className="mt-0.5 text-[11px] text-neutral-400">
+                      <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
                       </div>
                     </div>
@@ -1102,7 +1102,7 @@ export default function MobileFocusedJob(props: {
 
                 {/* controls */}
                 <div className={`${panel} px-4 py-4`}>
-                  <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-neutral-400">Operational actions</div>
+                  <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Operational actions</div>
                   <div className="grid gap-2 md:grid-cols-3">
                   {mode === "tech" ? (
                     <>
@@ -1202,7 +1202,7 @@ export default function MobileFocusedJob(props: {
                 {/* parts used */}
                 {(stagedPhotos.length > 0 || offlineMutations.length > 0) && (
                   <div className={`${panel} px-4 py-4`}>
-                    <div className="mb-2 text-sm font-medium text-neutral-100">Offline sync queue</div>
+                    <div className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">Offline sync queue</div>
                     {stagedPhotos.map((photo) => (
                       <div
                         key={photo.clientMutationId}
@@ -1222,7 +1222,7 @@ export default function MobileFocusedJob(props: {
                           className="mobile-tech-subpanel rounded-lg px-2 py-2"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-neutral-100">{mutation.actionType.replaceAll("_", " ")}</span>
+                            <span className="truncate text-[color:var(--theme-text-primary)]">{mutation.actionType.replaceAll("_", " ")}</span>
                             <span
                               className={
                                 mutation.status === "conflicted"
@@ -1231,7 +1231,7 @@ export default function MobileFocusedJob(props: {
                                     ? "text-amber-200"
                                     : mutation.status === "syncing"
                                       ? "text-sky-200"
-                                      : "text-neutral-300"
+                                      : "text-[color:var(--theme-text-secondary)]"
                               }
                             >
                               {mutation.status}
@@ -1249,34 +1249,34 @@ export default function MobileFocusedJob(props: {
 
                 {/* parts used */}
                 <div className={`${panel} px-4 py-4`}>
-                  <div className="mb-2 text-sm font-medium text-neutral-100">
+                  <div className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">
                     Parts used
                   </div>
 
                   {allocsLoading ? (
-                    <div className="text-sm text-neutral-300">Loading…</div>
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
                   ) : (allocs.length + requiredParts.length) === 0 ? (
-                    <div className="text-sm text-neutral-300">No parts used yet.</div>
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">No parts used yet.</div>
                   ) : (
                     <div className="mobile-tech-subpanel overflow-hidden">
-                      <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
+                      <div className="grid grid-cols-12 bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                         <div className="col-span-7">Part</div>
                         <div className="col-span-3">Location</div>
                         <div className="col-span-2 text-right">Qty</div>
                       </div>
-                      <ul className="max-h-56 overflow-auto divide-y divide-white/5">
+                      <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
                         {requiredParts.map((p) => (
                           <li
                             key={`required-${p.id}`}
                             className="grid grid-cols-12 items-center px-3 py-2 text-sm"
                           >
-                            <div className="col-span-7 truncate text-neutral-100">
+                            <div className="col-span-7 truncate text-[color:var(--theme-text-primary)]">
                               {getCanonicalPartDescription(p) ?? "—"}
                             </div>
-                            <div className="col-span-3 truncate text-neutral-400">
+                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
                               {[getCanonicalPartNumber(p), getCanonicalPartManufacturer(p), p.lifecycle_status ?? "requested"].filter(Boolean).join(" • ") || "—"}
                             </div>
-                            <div className="col-span-2 text-right font-semibold text-neutral-100">
+                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
                               {getCanonicalPartQuantity(p)}
                             </div>
                           </li>
@@ -1286,15 +1286,15 @@ export default function MobileFocusedJob(props: {
                             key={a.id}
                             className="grid grid-cols-12 items-center px-3 py-2 text-sm"
                           >
-                            <div className="col-span-7 truncate text-neutral-100">
+                            <div className="col-span-7 truncate text-[color:var(--theme-text-primary)]">
                               {a.parts?.name ?? "Part"}
                             </div>
-                            <div className="col-span-3 truncate text-neutral-400">
+                            <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
                               {a.location_id
                                 ? `loc ${String(a.location_id).slice(0, 6)}…`
                                 : "—"}
                             </div>
-                            <div className="col-span-2 text-right font-semibold text-neutral-100">
+                            <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
                               {a.qty}
                             </div>
                           </li>
@@ -1306,7 +1306,7 @@ export default function MobileFocusedJob(props: {
 
                 {/* tech notes */}
                 <div className={`${panel} px-4 py-4`}>
-                  <label className="mb-1 block text-sm font-medium text-neutral-100">
+                  <label className="mb-1 block text-sm font-medium text-[color:var(--theme-text-primary)]">
                     Tech Notes
                   </label>
                   <textarea
@@ -1318,11 +1318,11 @@ export default function MobileFocusedJob(props: {
                     }}
                     onBlur={saveNotes}
                     disabled={savingNotes}
-                    className="mobile-tech-input px-3 py-2 text-sm text-white"
+                    className="mobile-tech-input px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
                     placeholder="Add notes for this job…"
                   />
                   {notesDirty && (
-                    <div className="mt-2 text-[11px] text-neutral-400">
+                    <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                       Unsaved changes (tap away to save)
                     </div>
                   )}
@@ -1330,7 +1330,7 @@ export default function MobileFocusedJob(props: {
 
                 {/* AI suggestions */}
                 <div className={`${panel} px-4 py-4`}>
-                  <h3 className="mb-2 text-sm font-medium text-neutral-100">
+                  <h3 className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">
                     AI Suggested Repairs
                   </h3>
                   {line && workOrder ? (
@@ -1344,13 +1344,13 @@ export default function MobileFocusedJob(props: {
                       }}
                     />
                   ) : (
-                    <div className="text-sm text-neutral-300">
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">
                       Vehicle/work order details required.
                     </div>
                   )}
                 </div>
 
-                <div className="pb-16 text-[11px] text-neutral-400">
+                <div className="pb-16 text-[11px] text-[color:var(--theme-text-secondary)]">
                   Job ID: {line.id}
                   {typeof line.labor_time === "number"
                     ? ` • Labor: ${line.labor_time.toFixed(1)}h`

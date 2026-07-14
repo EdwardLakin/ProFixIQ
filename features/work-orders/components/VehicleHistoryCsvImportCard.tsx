@@ -358,7 +358,7 @@ export function VehicleHistoryCsvImportCard({
           </p>
           <p>
             Supported columns include{" "}
-            <span className="text-neutral-100">{RECOMMENDED_COLUMNS}</span>.
+            <span className="text-[color:var(--theme-text-primary)]">{RECOMMENDED_COLUMNS}</span>.
             Rows link to existing customers and vehicles by customer_id,
             vehicle_id, VIN, name, email, or phone where available. Imported
             rows remain historical records only and do not create active work
@@ -386,14 +386,14 @@ export function VehicleHistoryCsvImportCard({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+            className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
           >
             Choose CSV file
           </button>
           <button
             type="button"
             onClick={downloadSample}
-            className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08]"
+            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
           >
             Download template
           </button>
@@ -412,12 +412,12 @@ export function VehicleHistoryCsvImportCard({
       />
       {previewRows.length ? (
         <div className="mt-4 overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
-          <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-400">
+          <div className="border-b border-[color:var(--desktop-border)] px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
             Preview
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="text-xs uppercase tracking-[0.12em] text-neutral-500">
+              <thead className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 <tr>
                   <th className="px-3 py-2">Date</th>
                   <th className="px-3 py-2">Customer / Vehicle</th>
@@ -426,12 +426,12 @@ export function VehicleHistoryCsvImportCard({
                   <th className="px-3 py-2">Total</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10 text-neutral-200">
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)]">
                 {previewRows.map((row, index) => (
                   <tr
                     key={`${row.repair_order_number ?? row.invoice_number ?? row.service_date}-${index}`}
                   >
-                    <td className="px-3 py-2 font-medium text-white">
+                    <td className="px-3 py-2 font-medium text-[color:var(--theme-text-primary)]">
                       {row.service_date ?? "—"}
                     </td>
                     <td className="px-3 py-2">
@@ -439,13 +439,13 @@ export function VehicleHistoryCsvImportCard({
                         row.customer_name ??
                         row.customer_email ??
                         "—"}
-                      <div className="text-xs text-neutral-500">
+                      <div className="text-xs text-[color:var(--theme-text-muted)]">
                         {row.vehicle_id ?? row.vin ?? "Vehicle match optional"}
                       </div>
                     </td>
                     <td className="px-3 py-2">
                       {row.repair_order_number ?? "—"}
-                      <div className="text-xs text-neutral-500">
+                      <div className="text-xs text-[color:var(--theme-text-muted)]">
                         {row.invoice_number ?? "—"}
                       </div>
                     </td>

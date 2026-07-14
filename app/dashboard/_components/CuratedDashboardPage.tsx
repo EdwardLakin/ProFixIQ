@@ -229,19 +229,19 @@ export default function CuratedDashboardPage({ view }: Props) {
       <section
         className="rounded-2xl border px-5 py-4 backdrop-blur-xl xl:px-6 xl:py-5"
         style={{
-          borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 72%, transparent)",
+          borderColor: "color-mix(in srgb, var(--theme-card-border,var(--theme-border-soft)) 72%, transparent)",
           background: "var(--dashboard-hero-bg, var(--dashboard-shell-bg))",
         }}
       >
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.24em] text-neutral-400">
+            <div className="text-[10px] uppercase tracking-[0.24em] text-[color:var(--theme-text-secondary)]">
               {DASHBOARD_VIEW_LABEL[view]}
             </div>
-            <h1 className="mt-1.5 text-3xl font-semibold text-white xl:text-4xl">
+            <h1 className="mt-1.5 text-3xl font-semibold text-[color:var(--theme-text-primary)] xl:text-4xl">
               Welcome back, {displayName} 👋
             </h1>
-            <p className="mt-1.5 max-w-3xl text-sm text-neutral-300 xl:text-[15px]">
+            <p className="mt-1.5 max-w-3xl text-sm text-[color:var(--theme-text-secondary)] xl:text-[15px]">
               {VIEW_DESCRIPTION[view]}
             </p>
           </div>
@@ -250,13 +250,13 @@ export default function CuratedDashboardPage({ view }: Props) {
             <DashboardViewSwitcher currentView={view} />
             <Link
               href="/work-orders/create"
-              className="rounded-full border border-[var(--accent-copper-soft)]/70 bg-[var(--accent-copper)]/15 px-4 py-2 text-sm font-medium text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)] hover:text-black"
+              className="rounded-full border border-[var(--accent-copper-soft)]/70 bg-[var(--accent-copper)]/15 px-4 py-2 text-sm font-medium text-[var(--accent-copper-light)] transition hover:bg-[var(--accent-copper)] hover:text-[color:var(--theme-text-on-accent)]"
             >
               Create work order
             </Link>
             <Link
               href="/dashboard/owner/reports"
-              className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-sm font-medium text-neutral-200 transition hover:bg-black/40"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-sm font-medium text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
             >
               Full reports
             </Link>
@@ -270,9 +270,9 @@ export default function CuratedDashboardPage({ view }: Props) {
         <div
           className="rounded-3xl border p-6"
           style={{
-            borderColor: "var(--theme-card-border,#334155)",
-            background: "var(--theme-card-bg,#111827)",
-            color: "var(--theme-text-secondary,#94A3B8)",
+            borderColor: "var(--theme-card-border,var(--theme-border-soft))",
+            background: "var(--theme-card-bg,var(--theme-surface-page))",
+            color: "var(--theme-text-secondary,var(--theme-text-muted))",
           }}
         >
           Loading dashboard…

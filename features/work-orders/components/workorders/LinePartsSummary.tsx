@@ -82,10 +82,10 @@ export default function LinePartsSummary({ workOrderLineId }: Props) {
 
   const pill = (k: "req" | "app" | "res" | "rcv") =>
     ({
-      req: "rounded-full border border-white/10 bg-black/50 px-3 py-1 text-xs text-neutral-200",
-      app: "rounded-full border border-white/10 bg-black/50 px-3 py-1 text-xs text-neutral-200",
-      res: "rounded-full border border-white/10 bg-black/50 px-3 py-1 text-xs text-neutral-200",
-      rcv: "rounded-full border border-white/10 bg-black/50 px-3 py-1 text-xs text-neutral-200",
+      req: "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)]",
+      app: "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)]",
+      res: "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)]",
+      rcv: "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)]",
     })[k];
 
   const isReady =

@@ -29,22 +29,22 @@ type CandidateRow = {
 };
 
 const T = {
-  border: "border-[color:var(--metal-border-soft,#1f2937)]",
-  borderStrong: "border-[color:var(--metal-border,#111827)]",
+  border: "border-[color:var(--metal-border-soft,var(--theme-border-soft))]",
+  borderStrong: "border-[color:var(--metal-border,var(--theme-surface-page))]",
   glass:
-    "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-black/35 backdrop-blur-md",
+    "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-[color:var(--theme-surface-inset)] backdrop-blur-md",
   glassStrong:
-    "bg-[radial-gradient(900px_520px_at_18%_0%,rgba(56,189,248,0.08),transparent_55%),linear-gradient(180deg,rgba(2,6,23,0.92),rgba(2,6,23,0.72))] backdrop-blur-md",
-  shadow: "shadow-[0_18px_40px_rgba(0,0,0,0.85)]",
+    "bg-[var(--theme-gradient-panel)] backdrop-blur-md",
+  shadow: "shadow-[var(--theme-shadow-medium)]",
   panel: "rounded-2xl border",
-  label: "block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400",
+  label: "block text-[0.7rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]",
   input:
-    "w-full rounded-md border bg-slate-950/70 px-3 py-2 text-sm text-neutral-100 outline-none transition " +
-    "placeholder:text-neutral-500 focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#e7a36c)] " +
+    "w-full rounded-md border bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none transition " +
+    "placeholder:text-[color:var(--theme-text-muted)] focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#e7a36c)] " +
     "focus:border-[color:var(--accent-copper,#c56a2f)]",
   chip:
     "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] " +
-    "border-[color:var(--metal-border-soft,#1f2937)] bg-black/35 text-neutral-200",
+    "border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]",
 };
 
 function safeMsg(e: unknown, fallback: string): string {
@@ -199,7 +199,7 @@ export default function InviteCandidatesList(): JSX.Element {
 
       {/* List */}
       <div className={[T.panel, T.border, T.glassStrong, T.shadow].join(" ")}>
-        <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[0.7rem] uppercase tracking-[0.14em] text-neutral-400">
+        <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
           <div className="col-span-3">Candidate</div>
           <div className="col-span-3">Email</div>
           <div className="col-span-2">Username</div>
@@ -207,7 +207,7 @@ export default function InviteCandidatesList(): JSX.Element {
           <div className="col-span-2 text-right">Actions</div>
         </div>
 
-        <ul className="divide-y divide-[color:var(--metal-border-soft,#1f2937)]">
+        <ul className="divide-y divide-[color:var(--metal-border-soft,var(--theme-border-soft))]">
           {rows.map((c) => {
             const busy = actionBusyId === c.id;
             const canCreate = c.status === "pending";
@@ -216,11 +216,11 @@ export default function InviteCandidatesList(): JSX.Element {
             return (
               <li
                 key={c.id}
-                className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm text-neutral-200"
+                className="grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]"
               >
                 <div className="col-span-3 truncate">
-                  <div className="font-semibold text-neutral-100">{c.full_name ?? "—"}</div>
-                  <div className="mt-1 text-xs text-neutral-500 font-mono">
+                  <div className="font-semibold text-[color:var(--theme-text-primary)]">{c.full_name ?? "—"}</div>
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-muted)] font-mono">
                     {c.id.slice(0, 8)} • <span className={T.chip}>{c.status}</span>
                   </div>
                   {c.error && (
@@ -228,9 +228,9 @@ export default function InviteCandidatesList(): JSX.Element {
                   )}
                 </div>
 
-                <div className="col-span-3 truncate text-neutral-300">{c.email ?? "—"}</div>
+                <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">{c.email ?? "—"}</div>
 
-                <div className="col-span-2 truncate text-neutral-300">
+                <div className="col-span-2 truncate text-[color:var(--theme-text-secondary)]">
                   {c.username ? <span className="font-mono">@{c.username}</span> : "—"}
                 </div>
 
@@ -281,11 +281,11 @@ export default function InviteCandidatesList(): JSX.Element {
           })}
 
           {!loading && rows.length === 0 && (
-            <li className="px-4 py-8 text-sm text-neutral-400">No candidates found.</li>
+            <li className="px-4 py-8 text-sm text-[color:var(--theme-text-secondary)]">No candidates found.</li>
           )}
 
           {loading && (
-            <li className="px-4 py-8 text-sm text-neutral-400">Loading…</li>
+            <li className="px-4 py-8 text-sm text-[color:var(--theme-text-secondary)]">Loading…</li>
           )}
         </ul>
       </div>

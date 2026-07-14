@@ -26,22 +26,22 @@ export default function LearnedSuggestionCard(props: {
     <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] px-3 py-2.5">
       <div className="flex flex-wrap items-start justify-between gap-2.5">
         <div className="min-w-0">
-          <div className="text-[11px] font-medium text-neutral-200">
+          <div className="text-[11px] font-medium text-[color:var(--theme-text-primary)]">
             Suggested from prior similar jobs
             {suggestion.sourceCount > 0 ? ` • ${suggestion.sourceCount} similar` : ""}
             {suggestion.laborHours != null ? ` • ${suggestion.laborHours}h labor` : ""}
           </div>
 
-          <div className="mt-1 truncate text-sm font-semibold text-white">{suggestion.title}</div>
+          <div className="mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{suggestion.title}</div>
           {suggestion.summary ? (
-            <details className="mt-1 text-[11px] text-neutral-300/90">
-              <summary className="cursor-pointer text-neutral-400 hover:text-neutral-200">
+            <details className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+              <summary className="cursor-pointer text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">
                 Details
               </summary>
               <div className="mt-1">{suggestion.summary}</div>
             </details>
           ) : null}
-          <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-neutral-400">
+          <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-[color:var(--theme-text-secondary)]">
             {suggestion.parts.length > 0 ? <span>Parts: {partsLabel(suggestion.parts)}</span> : null}
             {suggestion.confidence != null ? (
               <span>
@@ -68,7 +68,7 @@ export default function LearnedSuggestionCard(props: {
           <button
             type="button"
             onClick={onAddAsJob}
-            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-xs font-semibold text-white hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)]"
+            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))]"
           >
             Add as line
           </button>
@@ -76,7 +76,7 @@ export default function LearnedSuggestionCard(props: {
           <button
             type="button"
             onClick={onDismiss}
-            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-xs text-neutral-300 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
+            className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-xs text-[color:var(--theme-text-secondary)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
           >
             Dismiss
           </button>

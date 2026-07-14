@@ -367,7 +367,7 @@ export default function QuotePageClient(): JSX.Element {
 
   if (loading || !workOrder) {
     return (
-      <div className="min-h-screen px-4 py-10 flex items-center justify-center text-neutral-300">
+      <div className="min-h-screen px-4 py-10 flex items-center justify-center text-[color:var(--theme-text-secondary)]">
         Loading quote...
       </div>
     );
@@ -400,30 +400,30 @@ export default function QuotePageClient(): JSX.Element {
       className="
         min-h-screen px-4 text-foreground
         bg-background
-        bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.1),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_78%)]
+        bg-[var(--theme-gradient-panel)]
       "
     >
       <div className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center py-10">
         <div
           className="
             w-full rounded-3xl border
-            border-[color:var(--metal-border-soft,#1f2937)]
-            bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.98),#020617_82%)]
-            shadow-[0_32px_80px_rgba(0,0,0,0.95)]
+            border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+            bg-[var(--theme-gradient-panel)]
+            shadow-[var(--theme-shadow-medium)]
             px-6 py-7 sm:px-8 sm:py-9
           "
         >
           <div className="mb-5 flex items-center justify-between gap-3">
             <Link
               href="/portal"
-              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-neutral-200 hover:bg-black/70 hover:text-white"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]"
             >
               <span aria-hidden className="text-base leading-none">←</span>
               Back
             </Link>
 
             <div
-              className="inline-flex items-center gap-1 rounded-full border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-neutral-300"
+              className="inline-flex items-center gap-1 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]"
               style={{ color: COPPER }}
             >
               Quote
@@ -432,83 +432,83 @@ export default function QuotePageClient(): JSX.Element {
 
           <div className="mb-6 space-y-1">
             <h1
-              className="text-2xl sm:text-3xl font-semibold text-white"
+              className="text-2xl sm:text-3xl font-semibold text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops), system-ui" }}
             >
               {titleLabel}
             </h1>
-            <p className="text-xs text-neutral-400 sm:text-sm">
+            <p className="text-xs text-[color:var(--theme-text-secondary)] sm:text-sm">
               Review sent recommendations and choose what you want the shop to perform. Only approved items become authorized work.
             </p>
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Pending authorization</div>
-              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(pendingSubtotal)}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">{pendingLines.length} item(s)</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Pending authorization</div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(pendingSubtotal)}</div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{pendingLines.length} item(s)</div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Approved</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Approved</div>
               <div className="mt-1 text-lg font-semibold text-emerald-100">{formatCurrency(approvedSubtotal)}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">{approvedLines.length} item(s)</div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{approvedLines.length} item(s)</div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Declined / Deferred</div>
-              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(declinedDeferredSubtotal)}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">{declinedDeferredLines.length} item(s)</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Declined / Deferred</div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(declinedDeferredSubtotal)}</div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{declinedDeferredLines.length} item(s)</div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Visible quote total</div>
-              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(grandTotal)}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Visible quote total</div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(grandTotal)}</div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
                 Tax: {formatCurrency(taxAmount)} {provinceCode ? `(${provinceCode})` : ""}
               </div>
             </div>
           </div>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Labor total</div>
-              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(laborSubtotal)}</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Labor total</div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(laborSubtotal)}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Parts total</div>
-              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(partsSubtotal)}</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Parts total</div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(partsSubtotal)}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">Shop supplies</div>
-              <div className="mt-1 text-lg font-semibold text-white">{formatCurrency(shopSupplies.amount)}</div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">{shopSuppliesSummaryText(shopSupplies)}</div>
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Shop supplies</div>
+              <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(shopSupplies.amount)}</div>
+              <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{shopSuppliesSummaryText(shopSupplies)}</div>
             </div>
           </div>
 
           <div className="space-y-4">
             {lines.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-6 text-sm text-neutral-400">
+              <div className="rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]">
                 No customer-visible quote lines are available yet.
               </div>
             ) : (
               lines.map((line) => (
-                <div key={line.id} className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4">
+                <div key={line.id} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">Recommendation</div>
-                      <div className="text-sm font-semibold text-white">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Recommendation</div>
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {line.lineNo ? `#${line.lineNo} • ` : ""}{line.title}
                       </div>
                       {line.complaint ? (
-                        <div className="mt-1 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-xs text-neutral-300">
-                          <span className="text-neutral-500">Issue observed:</span> {line.complaint}
+                        <div className="mt-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1.5 text-xs text-[color:var(--theme-text-secondary)]">
+                          <span className="text-[color:var(--theme-text-muted)]">Issue observed:</span> {line.complaint}
                         </div>
                       ) : null}
                     </div>
 
                     <div className="text-right">
-                      <div className="text-sm font-semibold text-white">{formatCurrency(line.totalAmount)}</div>
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{formatCurrency(line.totalAmount)}</div>
                       <div className="mt-1 flex justify-end">
                         <StatusBadge
                           variant={
@@ -531,27 +531,27 @@ export default function QuotePageClient(): JSX.Element {
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     {line.cause ? (
-                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Cause</div>
-                        <div className="mt-1 text-xs text-neutral-300">{line.cause}</div>
+                      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Cause</div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.cause}</div>
                       </div>
                     ) : null}
                     {line.correction ? (
-                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Correction</div>
-                        <div className="mt-1 text-xs text-neutral-300">{line.correction}</div>
+                      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Correction</div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.correction}</div>
                       </div>
                     ) : null}
                     {line.notes ? (
-                      <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 sm:col-span-2">
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Advisor / technician notes</div>
-                        <div className="mt-1 text-xs text-neutral-300">{line.notes}</div>
+                      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 sm:col-span-2">
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Advisor / technician notes</div>
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.notes}</div>
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="mt-4 rounded-xl border border-white/10 bg-slate-950/50 p-3">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Evidence photo</div>
+                  <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Evidence photo</div>
                     {line.evidencePhotos.length > 0 ? (
                       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {line.evidencePhotos.map((photo, idx) => (
@@ -560,7 +560,7 @@ export default function QuotePageClient(): JSX.Element {
                             href={photo}
                             target="_blank"
                             rel="noreferrer"
-                            className="overflow-hidden rounded-lg border border-white/10 bg-black/30"
+                            className="overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -572,55 +572,55 @@ export default function QuotePageClient(): JSX.Element {
                         ))}
                       </div>
                     ) : (
-                      <div className="mt-2 text-xs text-neutral-400">No photo evidence attached.</div>
+                      <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">No photo evidence attached.</div>
                     )}
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Labor</div>
-                      <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.laborAmount)}</div>
-                      <div className="mt-1 text-xs text-neutral-400">{line.laborHours.toFixed(1)} hr</div>
+                    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Labor</div>
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(line.laborAmount)}</div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.laborHours.toFixed(1)} hr</div>
                     </div>
 
-                    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Parts</div>
-                      <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.partsAmount)}</div>
-                      <div className="mt-1 text-xs text-neutral-400">{line.parts.length} item(s)</div>
+                    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Parts</div>
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(line.partsAmount)}</div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{line.parts.length} item(s)</div>
                     </div>
 
-                    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Tax</div>
-                      <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.taxAmount)}</div>
+                    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Tax</div>
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(line.taxAmount)}</div>
                     </div>
 
-                    <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Decision total</div>
-                      <div className="mt-1 text-sm font-medium text-white">{formatCurrency(line.totalAmount)}</div>
+                    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Decision total</div>
+                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(line.totalAmount)}</div>
                     </div>
                   </div>
 
                   {line.parts.length > 0 ? (
                     <div className="mt-4 space-y-2">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">Parts breakdown</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Parts breakdown</div>
                       {line.parts.map((part, idx) => (
-                        <div key={`${line.id}-${idx}`} className="rounded-xl border border-white/10 bg-black/30 px-3 py-3">
+                        <div key={`${line.id}-${idx}`} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <div className="text-sm font-medium text-white">{part.name}</div>
-                              {part.meta ? <div className="mt-1 text-xs text-neutral-400">{part.meta}</div> : null}
-                              <div className="mt-1 text-xs text-neutral-500">
+                              <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{part.name}</div>
+                              {part.meta ? <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{part.meta}</div> : null}
+                              <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                                 Qty {part.qty} × {formatCurrency(part.unitCost)}
                               </div>
                             </div>
-                            <div className="text-sm font-medium text-white">{formatCurrency(part.total)}</div>
+                            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(part.total)}</div>
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : null}
 
-                  <div className="mt-4 grid gap-2 text-[11px] text-neutral-500 sm:grid-cols-3">
+                  <div className="mt-4 grid gap-2 text-[11px] text-[color:var(--theme-text-muted)] sm:grid-cols-3">
                     <div>Status: {line.status || "—"}</div>
                     <div>Stage: {line.stage || "—"}</div>
                     <div>Sent: {formatDate(line.sentAt)}</div>

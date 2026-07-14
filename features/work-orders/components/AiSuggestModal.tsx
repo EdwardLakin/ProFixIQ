@@ -210,7 +210,7 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
               setStep("input");
               setSuggestions([]);
             }}
-            className="text-xs text-neutral-400 hover:text-neutral-200"
+            className="text-xs text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
           >
             Start over
           </button>
@@ -218,33 +218,33 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
       }
     >
       <div className="space-y-3">
-        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
             AI quick build
           </div>
-          <div className="mt-1 text-xs text-neutral-400">
+          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Turn the concern into suggested jobs, then add the ones you want into the work order.
           </div>
         </div>
 
         <div>
-          <p className="text-xs text-neutral-400">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
             Describe the concern. We’ll suggest jobs and add them as{" "}
-            <span className="font-semibold text-neutral-200">
+            <span className="font-semibold text-[color:var(--theme-text-primary)]">
               quote lines (awaiting approval)
             </span>
             .
           </p>
           {vehicleLabel && (
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               Using context for:{" "}
-              <span className="font-mono text-neutral-100">{vehicleLabel}</span>
+              <span className="font-mono text-[color:var(--theme-text-primary)]">{vehicleLabel}</span>
             </p>
           )}
         </div>
 
         <div>
-          <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+          <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
             Customer concern
           </label>
           <textarea
@@ -252,14 +252,14 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
             value={complaint}
             onChange={(e) => setComplaint(e.target.value)}
             placeholder="Example: Customer reports vibration at highway speeds, no dash lights on. Recently replaced front tires."
-            className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
           />
         </div>
 
         {step === "results" && (
-          <div className="max-h-56 space-y-2 overflow-y-auto rounded border border-neutral-800 bg-neutral-950 p-2">
+          <div className="max-h-56 space-y-2 overflow-y-auto rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-2">
             {suggestions.length === 0 ? (
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-[color:var(--theme-text-muted)]">
                 No suggestions yet. Try adjusting the complaint text.
               </p>
             ) : (
@@ -271,29 +271,29 @@ export function AiSuggestModal(props: AiSuggestModalProps) {
                   className={`flex w-full items-start gap-2 rounded px-2 py-1.5 text-left text-xs ${
                     s.selected
                       ? "border border-orange-500/80 bg-orange-500/10"
-                      : "border border-neutral-800 bg-neutral-950"
+                      : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]"
                   }`}
                 >
                   <input
                     type="checkbox"
                     checked={s.selected}
                     onChange={() => handleToggle(s.id)}
-                    className="mt-0.5 h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-900"
+                    className="mt-0.5 h-3.5 w-3.5 rounded border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
                   />
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className="font-medium text-neutral-100">
+                      <span className="font-medium text-[color:var(--theme-text-primary)]">
                         {s.name}
                       </span>
-                      <span className="rounded-full border border-neutral-600 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                         {normalizeJobType(s.jobType).replace("-", " ")}
                       </span>
-                      <span className="text-[10px] text-neutral-400">
+                      <span className="text-[10px] text-[color:var(--theme-text-secondary)]">
                         ~{s.laborHours}h
                       </span>
                     </div>
                     {s.notes && (
-                      <p className="mt-0.5 text-[11px] text-neutral-400">
+                      <p className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {s.notes}
                       </p>
                     )}

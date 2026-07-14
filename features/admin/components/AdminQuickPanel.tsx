@@ -325,13 +325,13 @@ export default function AdminQuickPanel() {
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
-            className="rounded-xl border border-neutral-800 bg-neutral-900 p-4 animate-pulse"
+            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 animate-pulse"
           >
-            <div className="h-5 w-40 bg-neutral-800 rounded mb-3" />
+            <div className="h-5 w-40 bg-[color:var(--theme-surface-panel-strong)] rounded mb-3" />
             <div className="space-y-2">
-              <div className="h-4 w-full bg-neutral-800 rounded" />
-              <div className="h-4 w-5/6 bg-neutral-800 rounded" />
-              <div className="h-4 w-4/6 bg-neutral-800 rounded" />
+              <div className="h-4 w-full bg-[color:var(--theme-surface-panel-strong)] rounded" />
+              <div className="h-4 w-5/6 bg-[color:var(--theme-surface-panel-strong)] rounded" />
+              <div className="h-4 w-4/6 bg-[color:var(--theme-surface-panel-strong)] rounded" />
             </div>
           </div>
         ))}
@@ -344,9 +344,9 @@ export default function AdminQuickPanel() {
   // Recent activity
   if (activity?.length) {
     cards.push(
-      <div key="activity" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="activity" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Recent Activity</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Recent Activity</h3>
           <Link href="/dashboard/admin/audit" className="text-xs text-orange-400 underline">
             View all
           </Link>
@@ -356,8 +356,8 @@ export default function AdminQuickPanel() {
             <li key={a.id} className="flex items-start gap-2">
               <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-orange-500" />
               <div>
-                <div className="text-white">{a.event ?? "Activity"}</div>
-                <div className="text-xs text-neutral-400">{fmtDate(a.created_at)}</div>
+                <div className="text-[color:var(--theme-text-primary)]">{a.event ?? "Activity"}</div>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">{fmtDate(a.created_at)}</div>
               </div>
             </li>
           ))}
@@ -369,9 +369,9 @@ export default function AdminQuickPanel() {
   // Cert expirations
   if (expiringCerts?.length) {
     cards.push(
-      <div key="certs" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="certs" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">
             Certifications Expiring (30 days)
           </h3>
           <Link href="/dashboard/admin/employee-docs" className="text-xs text-orange-400 underline">
@@ -381,7 +381,7 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {expiringCerts.map((c) => (
             <li key={c.id} className="flex items-center justify-between gap-2">
-              <div className="text-white">{c.name ?? "Certification"}</div>
+              <div className="text-[color:var(--theme-text-primary)]">{c.name ?? "Certification"}</div>
               <div className="text-xs text-red-400">{fmtDate(c.expires_at)}</div>
             </li>
           ))}
@@ -393,9 +393,9 @@ export default function AdminQuickPanel() {
   // Users needing role
   if (profilesNeedingRole?.length) {
     cards.push(
-      <div key="roles" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="roles" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Users Need Role Assignment</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Users Need Role Assignment</h3>
           <Link href="/dashboard/admin/roles" className="text-xs text-orange-400 underline">
             Assign
           </Link>
@@ -403,8 +403,8 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {profilesNeedingRole.map((p) => (
             <li key={p.id} className="flex items-center justify-between gap-2">
-              <div className="text-white">{p.full_name || p.id.slice(0, 8)}</div>
-              <div className="text-xs text-neutral-400">{fmtDate(p.created_at)}</div>
+              <div className="text-[color:var(--theme-text-primary)]">{p.full_name || p.id.slice(0, 8)}</div>
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">{fmtDate(p.created_at)}</div>
             </li>
           ))}
         </ul>
@@ -415,9 +415,9 @@ export default function AdminQuickPanel() {
   // On-hold > 24h
   if (openHolds24h?.length) {
     cards.push(
-      <div key="holds" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="holds" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Jobs on Hold &gt; 24h</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Jobs on Hold &gt; 24h</h3>
           <Link href="/work-orders/queue" className="text-xs text-orange-400 underline">
             Queue
           </Link>
@@ -425,8 +425,8 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {openHolds24h.map((j) => (
             <li key={j.id} className="flex items-center justify-between gap-2">
-              <span className="text-white">#{j.work_order_id?.slice(0, 8) ?? "—"}</span>
-              <span className="text-xs text-neutral-400">{j.hold_reason || "On hold"}</span>
+              <span className="text-[color:var(--theme-text-primary)]">#{j.work_order_id?.slice(0, 8) ?? "—"}</span>
+              <span className="text-xs text-[color:var(--theme-text-secondary)]">{j.hold_reason || "On hold"}</span>
             </li>
           ))}
         </ul>
@@ -437,9 +437,9 @@ export default function AdminQuickPanel() {
   // Unassigned jobs
   if (unassignedJobs?.length) {
     cards.push(
-      <div key="unassigned" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="unassigned" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Unassigned Jobs</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Unassigned Jobs</h3>
           <Link href="/dashboard/manager" className="text-xs text-orange-400 underline">
             Assign
           </Link>
@@ -447,8 +447,8 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {unassignedJobs.map((j) => (
             <li key={j.id} className="flex items-center justify-between gap-2">
-              <span className="text-white">#{j.work_order_id?.slice(0, 8) ?? "—"}</span>
-              <span className="text-xs text-neutral-400">{j.job_type || "job"}</span>
+              <span className="text-[color:var(--theme-text-primary)]">#{j.work_order_id?.slice(0, 8) ?? "—"}</span>
+              <span className="text-xs text-[color:var(--theme-text-secondary)]">{j.job_type || "job"}</span>
             </li>
           ))}
         </ul>
@@ -459,9 +459,9 @@ export default function AdminQuickPanel() {
   // Punch anomalies > 8h
   if (punchAnomalies?.length) {
     cards.push(
-      <div key="punch" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="punch" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Punched In &gt; 8h (Check)</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Punched In &gt; 8h (Check)</h3>
           <Link href="/tech/queue" className="text-xs text-orange-400 underline">
             View
           </Link>
@@ -469,8 +469,8 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {punchAnomalies.map((j) => (
             <li key={j.id} className="flex items-center justify-between gap-2">
-              <span className="text-white">#{j.work_order_id?.slice(0, 8) ?? "—"}</span>
-              <span className="text-xs text-neutral-400">{j.job_type || "job"}</span>
+              <span className="text-[color:var(--theme-text-primary)]">#{j.work_order_id?.slice(0, 8) ?? "—"}</span>
+              <span className="text-xs text-[color:var(--theme-text-secondary)]">{j.job_type || "job"}</span>
             </li>
           ))}
         </ul>
@@ -481,9 +481,9 @@ export default function AdminQuickPanel() {
   // Pending quotes
   if (pendingQuotes?.length) {
     cards.push(
-      <div key="quotes" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="quotes" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Quotes To Generate</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Quotes To Generate</h3>
           <Link href="/work-orders/queue" className="text-xs text-orange-400 underline">
             Queue
           </Link>
@@ -491,8 +491,8 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {pendingQuotes.map((w) => (
             <li key={w.id} className="flex items-center justify-between gap-2">
-              <span className="text-white">WO #{w.id.slice(0, 8)}</span>
-              <span className="text-xs text-neutral-400">{fmtDate(w.created_at)}</span>
+              <span className="text-[color:var(--theme-text-primary)]">WO #{w.id.slice(0, 8)}</span>
+              <span className="text-xs text-[color:var(--theme-text-secondary)]">{fmtDate(w.created_at)}</span>
             </li>
           ))}
         </ul>
@@ -503,9 +503,9 @@ export default function AdminQuickPanel() {
   // Parts requests
   if (openPartsRequests?.length) {
     cards.push(
-      <div key="parts" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="parts" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Open Parts Requests</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Open Parts Requests</h3>
           <Link href="/parts" className="text-xs text-orange-400 underline">
             Parts
           </Link>
@@ -513,8 +513,8 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {openPartsRequests.map((pr) => (
             <li key={pr.id} className="flex items-center justify-between gap-2">
-              <span className="text-white">WO #{pr.work_order_id?.slice(0, 8) ?? "—"}</span>
-              <span className="text-xs text-neutral-400">{pr.status || "open"}</span>
+              <span className="text-[color:var(--theme-text-primary)]">WO #{pr.work_order_id?.slice(0, 8) ?? "—"}</span>
+              <span className="text-xs text-[color:var(--theme-text-secondary)]">{pr.status || "open"}</span>
             </li>
           ))}
         </ul>
@@ -525,9 +525,9 @@ export default function AdminQuickPanel() {
   // Email failures
   if (emailFailures?.length) {
     cards.push(
-      <div key="email" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="email" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Email Delivery Issues</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Email Delivery Issues</h3>
           <Link href="/dashboard/admin/audit" className="text-xs text-orange-400 underline">
             Logs
           </Link>
@@ -535,7 +535,7 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {emailFailures.slice(0, 5).map((e) => (
             <li key={e.id} className="flex items-center justify-between gap-2">
-              <span className="text-white">{e.recipient || "recipient"}</span>
+              <span className="text-[color:var(--theme-text-primary)]">{e.recipient || "recipient"}</span>
               <span className="text-xs text-red-400">{fmtDate(e.created_at)}</span>
             </li>
           ))}
@@ -551,9 +551,9 @@ export default function AdminQuickPanel() {
     const pct = cap ? Math.min(100, Math.round((used / cap) * 100)) : 0;
 
     cards.push(
-      <div key="shop" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="shop" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">
             {shopUtil.name || "Shop"} Utilization
           </h3>
         </div>
@@ -577,9 +577,9 @@ export default function AdminQuickPanel() {
   // Vehicles missing VIN
   if (vehiclesMissingVin?.length) {
     cards.push(
-      <div key="vin" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="vin" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Vehicles Missing VIN</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Vehicles Missing VIN</h3>
           <Link href="/portal/vehicles" className="text-xs text-orange-400 underline">
             Fix
           </Link>
@@ -587,10 +587,10 @@ export default function AdminQuickPanel() {
         <ul className="space-y-2 text-sm">
           {vehiclesMissingVin.map((v) => (
             <li key={v.id} className="flex items-center justify-between gap-2">
-              <span className="text-white">
+              <span className="text-[color:var(--theme-text-primary)]">
                 {[v.year, v.make, v.model].filter(Boolean).join(" ") || v.id.slice(0, 8)}
               </span>
-              <span className="text-xs text-neutral-400">No VIN</span>
+              <span className="text-xs text-[color:var(--theme-text-secondary)]">No VIN</span>
             </li>
           ))}
         </ul>
@@ -601,14 +601,14 @@ export default function AdminQuickPanel() {
   // Unreviewed vehicle photos
   if (unreviewedPhotos?.length) {
     cards.push(
-      <div key="photos" className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+      <div key="photos" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-300">Unreviewed Vehicle Photos</h3>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Unreviewed Vehicle Photos</h3>
           <Link href="/parts" className="text-xs text-orange-400 underline">
             Gallery
           </Link>
         </div>
-        <div className="text-sm text-neutral-300">
+        <div className="text-sm text-[color:var(--theme-text-secondary)]">
           {unreviewedPhotos.length} photo{unreviewedPhotos.length === 1 ? "" : "s"} need review
         </div>
       </div>
@@ -617,7 +617,7 @@ export default function AdminQuickPanel() {
 
   if (!cards.length) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-6 text-sm text-neutral-400">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
         Nothing to review right now.
       </div>
     );

@@ -21,10 +21,10 @@ export default async function QuickBooksSettingsPage({
   const error = pickFirst(params.error);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-6 py-8 text-white">
+    <div className="mx-auto max-w-5xl space-y-6 px-6 py-8 text-[color:var(--theme-text-primary)]">
       <div>
         <h1 className="text-2xl font-semibold">QuickBooks Integration</h1>
-        <p className="mt-2 text-sm text-neutral-300">
+        <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
           Connect QuickBooks Online for this shop, then push finalized invoices into accounting.
         </p>
       </div>
@@ -43,9 +43,9 @@ export default async function QuickBooksSettingsPage({
 
       <QuickBooksConnectCard />
 
-      <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
+      <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6">
         <h2 className="text-lg font-semibold">Launch scope</h2>
-        <div className="mt-3 space-y-2 text-sm text-neutral-300">
+        <div className="mt-3 space-y-2 text-sm text-[color:var(--theme-text-secondary)]">
           <p>• Connect one QuickBooks company per shop</p>
           <p>• Auto-create or match customers during invoice sync</p>
           <p>• Push invoices from ProFixIQ into QuickBooks</p>

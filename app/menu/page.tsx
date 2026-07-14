@@ -144,7 +144,6 @@ export default function MenuItemsPage() {
   const COPPER = "rgba(224,174,130,0.92)";
   const COPPER_SOFT = "rgba(224,174,130,0.58)";
   const COPPER_RING = "rgba(224,174,130,0.46)";
-  const COPPER_WASH_A = "rgba(59,130,246,0.10)";
 
   // ---------------------------
   // SHOP DEFAULTS (use shops table)
@@ -554,7 +553,7 @@ export default function MenuItemsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[200px] items-center justify-center text-sm text-neutral-300">
+      <div className="flex min-h-[200px] items-center justify-center text-sm text-[color:var(--theme-text-secondary)]">
         Loading…
       </div>
     );
@@ -563,28 +562,28 @@ export default function MenuItemsPage() {
   const flatMaster = masterServicesList.flatMap((cat) => cat.items.map((i) => i.item));
 
   const inputBase =
-    "w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm " +
-    "text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] placeholder:text-neutral-500 backdrop-blur-md " +
+    "w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm " +
+    "text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] placeholder:text-[color:var(--theme-text-muted)] backdrop-blur-md " +
     `focus:outline-none focus:ring-2 focus:ring-[${COPPER_RING}]`;
 
   const pill =
-    "rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] text-neutral-400";
+    "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)]";
 
   const btnGhost =
-    "rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-100 " +
-    `hover:border-[${COPPER_SOFT}] hover:bg-neutral-900`;
+    "rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] " +
+    `hover:border-[${COPPER_SOFT}] hover:bg-[color:var(--theme-surface-panel)]`;
 
   const btnOutline =
-    "inline-flex items-center justify-center rounded-full border bg-black/70 px-4 py-2 text-xs font-semibold " +
-    "text-neutral-100 disabled:cursor-not-allowed disabled:opacity-50 " +
+    "inline-flex items-center justify-center rounded-full border bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-xs font-semibold " +
+    "text-[color:var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-50 " +
     `border-[${COPPER_SOFT}] hover:bg-[rgba(59,130,246,0.12)]`;
 
   const btnPrimary =
-    "inline-flex items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold text-neutral-50 " +
-    "shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-md transition " +
+    "inline-flex items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] " +
+    "shadow-[var(--theme-shadow-medium)] backdrop-blur-md transition " +
     `border-[${COPPER_SOFT}] hover:border-[rgba(224,174,130,0.78)] ` +
-    "bg-[linear-gradient(to_right,rgba(0,0,0,0.80),rgba(59,130,246,0.10),rgba(0,0,0,0.80))] " +
-    "hover:bg-[linear-gradient(to_right,rgba(0,0,0,0.80),rgba(59,130,246,0.12),rgba(0,0,0,0.80))] " +
+    "bg-[var(--theme-gradient-panel)] " +
+    "hover:bg-[var(--theme-gradient-panel)] " +
     "disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
@@ -594,14 +593,14 @@ export default function MenuItemsPage() {
         aria-hidden
         className={`
           pointer-events-none absolute inset-0 -z-10
-          bg-[radial-gradient(circle_at_top,${COPPER_WASH_A},transparent_55%),radial-gradient(circle_at_bottom,rgba(15,23,42,0.95),#020617_70%)]
+          bg-[var(--theme-gradient-panel)]
         `}
       />
 
       <GuidedPageStepPanel />
 
       {/* Header */}
-      <section className="metal-card mb-2 flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+      <section className="var(--theme-gradient-panel)">
         <div>
           <h1
             className={`text-2xl font-semibold text-[${COPPER}]`}
@@ -609,15 +608,15 @@ export default function MenuItemsPage() {
           >
             Service Menu
           </h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             Build reusable service packages with linked inspections, labor, and parts.
           </p>
         </div>
 
-        <div className="hidden items-center gap-2 text-[11px] text-neutral-400 md:flex">
+        <div className="hidden items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)] md:flex">
           <span className={pill}>
             Labor rate:{" "}
-            <span className="text-neutral-200">
+            <span className="text-[color:var(--theme-text-primary)]">
               {laborRate > 0 ? `${laborRate.toFixed(0)}/${currency}/hr` : "—"}
             </span>
           </span>
@@ -625,12 +624,12 @@ export default function MenuItemsPage() {
       </section>
 
       {/* Create */}
-      <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/65 p-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl md:p-6">
+      <section className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl md:p-6">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-400">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">
             Create menu item
           </h2>
-          <div className={`rounded-full border bg-black/70 px-3 py-1 text-[11px] text-neutral-300 border-[${COPPER_SOFT}]`}>
+          <div className={`rounded-full border bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)] border-[${COPPER_SOFT}]`}>
             Parts + labor + inspection template
           </div>
         </div>
@@ -638,7 +637,7 @@ export default function MenuItemsPage() {
         <div className="mb-8 grid max-w-3xl gap-4">
           {/* name */}
           <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Service name
             </label>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -650,7 +649,7 @@ export default function MenuItemsPage() {
                     source: e.target.value === "manual" ? "manual" : "master",
                   }))
                 }
-                className="w-full rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm text-neutral-100 shadow-[0_10px_24px_rgba(0,0,0,0.9)] backdrop-blur-md sm:w-44 focus:outline-none"
+                className="w-full rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md sm:w-44 focus:outline-none"
               >
                 <option value="master">From master list</option>
                 <option value="manual">Manual</option>
@@ -678,7 +677,7 @@ export default function MenuItemsPage() {
 
           {/* template */}
           <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Inspection template (optional)
             </label>
             <select
@@ -698,7 +697,7 @@ export default function MenuItemsPage() {
 
           {/* description */}
           <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Description
             </label>
             <textarea
@@ -711,7 +710,7 @@ export default function MenuItemsPage() {
 
           {/* labor */}
           <div className="grid gap-2">
-            <label className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <label className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Labor time (hrs)
             </label>
             <input
@@ -728,44 +727,44 @@ export default function MenuItemsPage() {
               className={inputBase}
             />
 
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-neutral-400">
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[color:var(--theme-text-secondary)]">
               <span className={pill}>
                 Labor rate:{" "}
-                <span className="text-neutral-200">
+                <span className="text-[color:var(--theme-text-primary)]">
                   {laborRate > 0 ? `${laborRate.toFixed(0)}/${currency}/hr` : "—"}
                 </span>
               </span>
               <span className={pill}>
-                Labor total: <span className="text-neutral-200">{money(currency, laborTotal)}</span>
+                Labor total: <span className="text-[color:var(--theme-text-primary)]">{money(currency, laborTotal)}</span>
               </span>
               <span className={pill}>
-                Parts total: <span className="text-neutral-200">{money(currency, partsTotal)}</span>
+                Parts total: <span className="text-[color:var(--theme-text-primary)]">{money(currency, partsTotal)}</span>
               </span>
             </div>
           </div>
 
           {/* parts */}
-          <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-            <div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-black/80 via-slate-950/80 to-black/80 px-4 py-2.5">
-              <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-2.5">
+              <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Parts
               </h3>
-              <span className="text-[11px] text-neutral-500">Linked to parts catalog</span>
+              <span className="text-[11px] text-[color:var(--theme-text-muted)]">Linked to parts catalog</span>
             </div>
 
             <div className="space-y-3 p-4">
               {parts.map((p, idx) => (
                 <div
                   key={idx}
-                  className="grid grid-cols-1 items-center gap-2 rounded-xl border border-white/5 bg-black/60 p-3 text-sm shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md md:grid-cols-[2fr_0.8fr_0.8fr_auto_auto]"
+                  className="grid grid-cols-1 items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 text-sm shadow-[var(--theme-shadow-medium)] backdrop-blur-md md:grid-cols-[2fr_0.8fr_0.8fr_auto_auto]"
                 >
                   <input
                     placeholder="Part name (or pick)"
                     value={p.name}
                     onChange={(e) => setPartField(idx, "name", e.target.value)}
                     className={`
-                      w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent
-                      px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none
+                      w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent
+                      px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none
                       focus:ring-2 focus:ring-[${COPPER_RING}]
                     `}
                   />
@@ -775,8 +774,8 @@ export default function MenuItemsPage() {
                     value={p.quantityStr}
                     onChange={(e) => setPartField(idx, "quantityStr", e.target.value)}
                     className={`
-                      w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent
-                      px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none
+                      w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent
+                      px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none
                       focus:ring-2 focus:ring-[${COPPER_RING}]
                     `}
                   />
@@ -786,8 +785,8 @@ export default function MenuItemsPage() {
                     value={p.unitCostStr}
                     onChange={(e) => setPartField(idx, "unitCostStr", e.target.value)}
                     className={`
-                      w-full rounded-lg border border-[color:var(--metal-border-soft,#1f2937)] bg-transparent
-                      px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none
+                      w-full rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-transparent
+                      px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none
                       focus:ring-2 focus:ring-[${COPPER_RING}]
                     `}
                   />
@@ -796,7 +795,7 @@ export default function MenuItemsPage() {
                     type="button"
                     onClick={() => setPickerOpenForRow(idx)}
                     className={`
-                      rounded-lg border px-3 py-2 text-xs font-medium text-neutral-100
+                      rounded-lg border px-3 py-2 text-xs font-medium text-[color:var(--theme-text-primary)]
                       border-[${COPPER_SOFT}] hover:bg-[rgba(59,130,246,0.12)]
                     `}
                   >
@@ -822,25 +821,25 @@ export default function MenuItemsPage() {
               </button>
 
               {/* Manual parts request */}
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/55 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md">
+              <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-md">
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                       Manual parts request
                     </div>
-                    <div className="mt-1 text-[11px] text-neutral-500">
+                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                       Internal (UI flag only). Creates a parts request from the current parts rows.
                     </div>
                   </div>
 
                   <span className={pill}>
                     Items:{" "}
-                    <span className="text-neutral-200">{requestItemsPreview.length}</span>
+                    <span className="text-[color:var(--theme-text-primary)]">{requestItemsPreview.length}</span>
                   </span>
                 </div>
 
                 <div className="mt-3 grid gap-2">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
+                  <label className="text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Work order ID (required)
                   </label>
                   <input
@@ -850,7 +849,7 @@ export default function MenuItemsPage() {
                     className={inputBase}
                   />
 
-                  <div className="flex items-center gap-2 pt-1 text-[11px] text-neutral-400">
+                  <div className="flex items-center gap-2 pt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                     <input
                       id="unlinked-only"
                       type="checkbox"
@@ -863,7 +862,7 @@ export default function MenuItemsPage() {
                     </label>
                   </div>
 
-                  <label className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400">
+                  <label className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Notes (optional)
                   </label>
                   <textarea
@@ -874,11 +873,11 @@ export default function MenuItemsPage() {
                   />
 
                   <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div className="text-[11px] text-neutral-500">
+                    <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                       {requestItemsPreview.length ? (
                         <span>
                           Preview:{" "}
-                          <span className="text-neutral-300">
+                          <span className="text-[color:var(--theme-text-secondary)]">
                             {requestItemsPreview
                               .slice(0, 3)
                               .map((r) => `${r.desc} ×${r.qty}`)
@@ -909,13 +908,13 @@ export default function MenuItemsPage() {
           {/* totals + save */}
           <div className="flex flex-col items-end gap-3 pt-2 text-sm md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-4 text-xs md:text-sm">
-              <div className="text-neutral-300">
-                Parts: <span className="text-white">{money(currency, partsTotal)}</span>
+              <div className="text-[color:var(--theme-text-secondary)]">
+                Parts: <span className="text-[color:var(--theme-text-primary)]">{money(currency, partsTotal)}</span>
               </div>
-              <div className="text-neutral-300">
-                Labor: <span className="text-white">{money(currency, laborTotal)}</span>
+              <div className="text-[color:var(--theme-text-secondary)]">
+                Labor: <span className="text-[color:var(--theme-text-primary)]">{money(currency, laborTotal)}</span>
               </div>
-              <div className="text-neutral-300">
+              <div className="text-[color:var(--theme-text-secondary)]">
                 Total:{" "}
                 <span className={`font-semibold text-[${COPPER}]`}>
                   {money(currency, subtotal)}
@@ -934,12 +933,12 @@ export default function MenuItemsPage() {
       <section className="space-y-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">
+            <h2 className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Saved menu items
             </h2>
-            <div className="mt-1 text-[11px] text-neutral-500">
-              Showing <span className="text-neutral-200">{filteredMenuItems.length}</span> of{" "}
-              <span className="text-neutral-200">{menuItems.length}</span>
+            <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+              Showing <span className="text-[color:var(--theme-text-primary)]">{filteredMenuItems.length}</span> of{" "}
+              <span className="text-[color:var(--theme-text-primary)]">{menuItems.length}</span>
             </div>
           </div>
 
@@ -955,16 +954,16 @@ export default function MenuItemsPage() {
 
         <details
           open
-          className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-xl"
+          className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
         >
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-neutral-100">
-            Active <span className="text-neutral-500">• {activeMenuItems.length}</span>
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            Active <span className="text-[color:var(--theme-text-muted)]">• {activeMenuItems.length}</span>
           </summary>
           <div className="space-y-2 p-3 pt-0">
             {activeMenuItems.map((mi) => (
               <div
                 key={mi.id}
-                className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-3 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-xl"
+                className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
               >
                 <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
                   <div className="min-w-0">
@@ -979,12 +978,12 @@ export default function MenuItemsPage() {
                     ) : null}
 
                     {mi.description ? (
-                      <span className="block line-clamp-2 text-xs text-neutral-400">
+                      <span className="block line-clamp-2 text-xs text-[color:var(--theme-text-secondary)]">
                         {mi.description}
                       </span>
                     ) : null}
 
-                    <div className="mt-1 text-[11px] text-neutral-500">
+                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                       {mi.is_active ? "Active" : "Inactive"}
                       {mi.labor_time != null ? ` • ${mi.labor_time}h` : ""}
                       {mi.part_cost != null ? ` • parts ${money(currency, mi.part_cost)}` : ""}
@@ -992,11 +991,11 @@ export default function MenuItemsPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <div className="text-xs text-neutral-300 md:text-sm">
+                    <div className="text-xs text-[color:var(--theme-text-secondary)] md:text-sm">
                       {typeof mi.total_price === "number" ? (
                         <span>
                           Total{" "}
-                          <span className="font-semibold text-neutral-50">
+                          <span className="font-semibold text-[color:var(--theme-text-primary)]">
                             {money(currency, mi.total_price)}
                           </span>
                         </span>
@@ -1016,20 +1015,20 @@ export default function MenuItemsPage() {
             ))}
 
             {activeMenuItems.length === 0 && (
-              <div className="text-sm text-neutral-400">No active items match your search.</div>
+              <div className="text-sm text-[color:var(--theme-text-secondary)]">No active items match your search.</div>
             )}
           </div>
         </details>
 
-        <details className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-xl">
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-neutral-100">
-            Inactive <span className="text-neutral-500">• {inactiveMenuItems.length}</span>
+        <details className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            Inactive <span className="text-[color:var(--theme-text-muted)]">• {inactiveMenuItems.length}</span>
           </summary>
           <div className="space-y-2 p-3 pt-0">
             {inactiveMenuItems.map((mi) => (
               <div
                 key={mi.id}
-                className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-3 shadow-[0_16px_36px_rgba(0,0,0,0.95)] backdrop-blur-xl"
+                className="metal-card rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
               >
                 <div className="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
                   <div className="min-w-0">
@@ -1044,12 +1043,12 @@ export default function MenuItemsPage() {
                     ) : null}
 
                     {mi.description ? (
-                      <span className="block line-clamp-2 text-xs text-neutral-400">
+                      <span className="block line-clamp-2 text-xs text-[color:var(--theme-text-secondary)]">
                         {mi.description}
                       </span>
                     ) : null}
 
-                    <div className="mt-1 text-[11px] text-neutral-500">
+                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                       {mi.is_active ? "Active" : "Inactive"}
                       {mi.labor_time != null ? ` • ${mi.labor_time}h` : ""}
                       {mi.part_cost != null ? ` • parts ${money(currency, mi.part_cost)}` : ""}
@@ -1057,11 +1056,11 @@ export default function MenuItemsPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <div className="text-xs text-neutral-300 md:text-sm">
+                    <div className="text-xs text-[color:var(--theme-text-secondary)] md:text-sm">
                       {typeof mi.total_price === "number" ? (
                         <span>
                           Total{" "}
-                          <span className="font-semibold text-neutral-50">
+                          <span className="font-semibold text-[color:var(--theme-text-primary)]">
                             {money(currency, mi.total_price)}
                           </span>
                         </span>
@@ -1081,13 +1080,13 @@ export default function MenuItemsPage() {
             ))}
 
             {inactiveMenuItems.length === 0 && (
-              <div className="text-sm text-neutral-400">No inactive items match your search.</div>
+              <div className="text-sm text-[color:var(--theme-text-secondary)]">No inactive items match your search.</div>
             )}
           </div>
         </details>
 
         {menuItems.length === 0 && (
-          <div className="text-sm text-neutral-400">No menu items yet. Create your first service above.</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">No menu items yet. Create your first service above.</div>
         )}
       </section>
 

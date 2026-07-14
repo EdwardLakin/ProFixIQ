@@ -58,8 +58,8 @@ const TONE_STYLES: Record<
     label: "At risk",
   },
   neutral: {
-    pill: "border-white/10 bg-black/25 text-neutral-200",
-    dot: "bg-neutral-400",
+    pill: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]",
+    dot: "bg-[color:var(--theme-surface-subtle)]",
     label: "No snapshot yet",
   },
 };
@@ -167,11 +167,11 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
   );
 
   return (
-    <section className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/80 via-slate-950/90 to-black/80 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+    <section className="var(--theme-gradient-panel)">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Shop Health Snapshot
             </p>
 
@@ -189,23 +189,23 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
             </span>
 
             {intakeStatus ? (
-              <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-semibold text-neutral-200">
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
                 Intake: {intakeStatus}
               </span>
             ) : null}
           </div>
 
-          <p className="mt-2 text-sm text-neutral-300">
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
             {latest?.narrative_summary
               ? clampOneLine(latest.narrative_summary)
               : "Use your history to auto-build menus, inspections, and setup recommendations."}
           </p>
 
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-neutral-500">
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[color:var(--theme-text-muted)]">
             {createdAt ? (
               <span>
                 Last analyzed:{" "}
-                <span className="text-neutral-300">{formatDate(createdAt)}</span>
+                <span className="text-[color:var(--theme-text-secondary)]">{formatDate(createdAt)}</span>
               </span>
             ) : (
               <span>No snapshot created yet.</span>
@@ -214,11 +214,11 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
             {latestIntake ? (
               <span>
                 Files:{" "}
-                <span className="text-neutral-300">
+                <span className="text-[color:var(--theme-text-secondary)]">
                   {String(latestIntake.import_file_count ?? 0)}
                 </span>{" "}
                 • Rows:{" "}
-                <span className="text-neutral-300">
+                <span className="text-[color:var(--theme-text-secondary)]">
                   {String(latestIntake.import_row_count ?? 0)}
                 </span>
               </span>
@@ -230,16 +230,16 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
               {metrics.map((m) => (
                 <div
                   key={m.label}
-                  className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2"
                 >
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                     {m.label}
                   </div>
-                  <div className="mt-1 text-sm font-semibold text-white">
+                  <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     {m.value}
                   </div>
                   {m.hint ? (
-                    <div className="mt-0.5 text-[10px] text-neutral-500">
+                    <div className="mt-0.5 text-[10px] text-[color:var(--theme-text-muted)]">
                       {m.hint}
                     </div>
                   ) : null}
@@ -255,7 +255,7 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
           ) : null}
 
           {loading ? (
-            <div className="mt-3 text-xs text-neutral-500">
+            <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
               Loading shop snapshot…
             </div>
           ) : null}
@@ -264,14 +264,14 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
         <div className="flex flex-wrap gap-2 md:flex-col md:items-stretch">
           <Link
             href="/dashboard/owner/reports"
-            className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-xs font-semibold text-neutral-200 transition hover:bg-neutral-900/40"
+            className="inline-flex items-center justify-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-panel)]"
           >
             Owner reports
           </Link>
 
           <Link
             href="/demo/instant-shop-analysis"
-            className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-xs font-semibold text-black transition hover:opacity-95"
+            className="inline-flex items-center justify-center rounded-xl px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-on-accent)] transition hover:opacity-95"
             style={{ background: "var(--pfq-copper)" }}
           >
             Run analysis
@@ -279,7 +279,7 @@ export default function ShopBoostWidget({ shopId, canViewShopHealth }: Props) {
 
           <Link
             href="/dashboard/owner/reports"
-            className="inline-flex items-center justify-center rounded-xl border border-[color:var(--accent-copper)]/55 bg-black/25 px-4 py-2 text-xs font-semibold text-[color:var(--accent-copper-light)] transition hover:bg-neutral-900/40"
+            className="inline-flex items-center justify-center rounded-xl border border-[color:var(--accent-copper)]/55 bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-[color:var(--accent-copper-light)] transition hover:bg-[color:var(--theme-surface-panel)]"
           >
             View details →
           </Link>

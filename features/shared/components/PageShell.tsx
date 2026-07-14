@@ -27,7 +27,7 @@ export default function PageShell({
             {eyebrow ? (
               <p
                 className="text-[10px] font-semibold uppercase tracking-[0.2em]"
-                style={{ color: "var(--theme-text-muted,#64748B)" }}
+                style={{ color: "var(--theme-text-muted,var(--theme-text-muted))" }}
               >
                 {eyebrow}
               </p>
@@ -40,7 +40,7 @@ export default function PageShell({
             {description ? (
               <p
                 className="mt-1 max-w-2xl text-sm"
-                style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+                style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
               >
                 {description}
               </p>

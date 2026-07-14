@@ -110,9 +110,9 @@ function priorityChip(priority: number | null | undefined): string {
     return "border-sky-500/50 bg-sky-500/15 text-sky-100";
   }
   if (priority === 4) {
-    return "border-slate-500/40 bg-slate-500/10 text-slate-300";
+    return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]";
   }
-  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-neutral-300";
+  return "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]";
 }
 
 function formatMoney(value: number | null | undefined): string {
@@ -456,43 +456,43 @@ export default function BillingPage(): JSX.Element {
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 text-foreground">
       <GuidedPageStepPanel />
 
-      <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[0_0_50px_rgba(2,6,23,0.55)]">
-        <div className="border-b border-[color:var(--desktop-border)] bg-[linear-gradient(180deg,rgba(56,189,248,0.12),rgba(15,23,42,0.03))] px-5 py-5 sm:px-6">
+      <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)]">
+        <div className="border-b border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] px-5 py-5 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
                 Operations
               </div>
               <h1
-                className="mt-2 text-3xl text-white"
+                className="mt-2 text-3xl text-[color:var(--theme-text-primary)]"
                 style={{ fontFamily: "var(--font-blackops)" }}
               >
                 Billing
               </h1>
-              <p className="mt-2 max-w-2xl text-sm text-neutral-300">
+              <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
                 Review completed work, move it to ready to invoice, and send
                 invoices without leaving the operations flow.
               </p>
 
               {!loading && !err ? (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-neutral-200">
-                    Total: <span className="text-white">{total}</span>
+                  <div className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                    Total: <span className="text-[color:var(--theme-text-primary)]">{total}</span>
                   </div>
                   <div className="rounded-full border border-sky-500/20 bg-sky-500/5 px-3 py-1 text-[11px] font-semibold text-sky-100">
                     Completed:{" "}
-                    <span className="text-white">{completedCount}</span>
+                    <span className="text-[color:var(--theme-text-primary)]">{completedCount}</span>
                   </div>
                   <div className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-[11px] font-semibold text-sky-100">
-                    Ready: <span className="text-white">{readyCount}</span>
+                    Ready: <span className="text-[color:var(--theme-text-primary)]">{readyCount}</span>
                   </div>
                   <div className="rounded-full border border-emerald-500/20 bg-emerald-500/5 px-3 py-1 text-[11px] font-semibold text-emerald-100">
                     Invoiced:{" "}
-                    <span className="text-white">{invoicedCount}</span>
+                    <span className="text-[color:var(--theme-text-primary)]">{invoicedCount}</span>
                   </div>
                   <div className="rounded-full border border-amber-500/20 bg-amber-500/5 px-3 py-1 text-[11px] font-semibold text-amber-100">
                     Imported historical:{" "}
-                    <span className="text-white">{historicalCount}</span>
+                    <span className="text-[color:var(--theme-text-primary)]">{historicalCount}</span>
                   </div>
                 </div>
               ) : null}
@@ -501,7 +501,7 @@ export default function BillingPage(): JSX.Element {
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/work-orders/view"
-                className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
+                className="inline-flex items-center justify-center rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
               >
                 Open work orders
               </Link>
@@ -548,7 +548,7 @@ export default function BillingPage(): JSX.Element {
               <button
                 type="button"
                 onClick={() => void load()}
-                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10"
+                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10"
               >
                 Refresh
               </button>
@@ -578,7 +578,7 @@ export default function BillingPage(): JSX.Element {
           ))}
         </div>
       ) : rows.length === 0 && historicalInvoices.length === 0 ? (
-        <div className="rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-neutral-400">
+        <div className="rounded-[24px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
           No live billing work orders or imported historical invoices match your
           current filters.
         </div>
@@ -625,7 +625,7 @@ export default function BillingPage(): JSX.Element {
               <div
                 key={r.id}
                 className={[
-                  "overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-[0_20px_44px_rgba(2,6,23,0.58)]",
+                  "overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-[var(--theme-shadow-medium)]",
                   accent.border,
                 ].join(" ")}
               >
@@ -635,7 +635,7 @@ export default function BillingPage(): JSX.Element {
                       <div className="flex flex-wrap items-center gap-2">
                         <Link
                           href={href}
-                          className="text-2xl font-semibold text-white hover:text-[var(--accent-copper-light)]"
+                          className="text-2xl font-semibold text-[color:var(--theme-text-primary)] hover:text-[var(--accent-copper-light)]"
                         >
                           {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                         </Link>
@@ -657,19 +657,19 @@ export default function BillingPage(): JSX.Element {
                         ) : null}
                       </div>
 
-                      <div className="mt-3 text-base font-semibold text-white">
+                      <div className="mt-3 text-base font-semibold text-[color:var(--theme-text-primary)]">
                         {customerName}
                       </div>
-                      <div className="mt-1 text-sm text-neutral-300">
+                      <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                         {vehicleText} {plateText}
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                         Updated
                       </div>
-                      <div className="mt-1 text-sm font-semibold text-white">
+                      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {r.updated_at
                           ? format(new Date(r.updated_at), "PP")
                           : "—"}
@@ -679,11 +679,11 @@ export default function BillingPage(): JSX.Element {
                 </div>
 
                 <div className="px-4 py-4">
-                  <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                  <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                     <span>Billing progress</span>
                     <span>{progressValue}%</span>
                   </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
                     <div
                       className={`h-full rounded-full ${accent.progress}`}
                       style={{ width: `${progressValue}%` }}
@@ -692,25 +692,25 @@ export default function BillingPage(): JSX.Element {
 
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                         Labor
                       </div>
-                      <div className="mt-1 text-sm font-semibold text-white">
+                      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {formatMoney(laborTotal)}
                       </div>
                     </div>
 
                     <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                         Parts
                       </div>
-                      <div className="mt-1 text-sm font-semibold text-white">
+                      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {formatMoney(partsTotal)}
                       </div>
                     </div>
 
                     <div className="col-span-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
-                      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                         Invoice total
                       </div>
                       <div className="mt-1 text-lg font-semibold text-[var(--accent-copper-light)]">
@@ -722,7 +722,7 @@ export default function BillingPage(): JSX.Element {
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-[color:var(--desktop-border)] pt-3">
                     <Link
                       href={href}
-                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm font-semibold text-neutral-100 transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]"
+                      className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-sky-400/60 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]"
                     >
                       Open WO
                     </Link>
@@ -767,17 +767,17 @@ export default function BillingPage(): JSX.Element {
       )}
 
       {!loading && historicalInvoices.length > 0 ? (
-        <section className="overflow-hidden rounded-[24px] border border-amber-500/25 bg-[linear-gradient(180deg,rgba(245,158,11,0.08),rgba(15,23,42,0.35))] shadow-[0_20px_44px_rgba(2,6,23,0.45)]">
+        <section className="overflow-hidden rounded-[24px] border border-amber-500/25 bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
           <div className="border-b border-amber-500/20 px-5 py-4 sm:px-6">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200/80">
                   Imported / Historical
                 </div>
-                <h2 className="mt-1 text-xl font-semibold text-white">
+                <h2 className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">
                   Historical invoice records
                 </h2>
-                <p className="mt-1 text-sm text-neutral-300">
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                   Read-only invoices imported from legacy data. They are not
                   active work orders and cannot be invoiced from this page.
                 </p>
@@ -790,7 +790,7 @@ export default function BillingPage(): JSX.Element {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[920px] text-left text-sm">
-              <thead className="border-b border-amber-500/15 text-xs uppercase tracking-[0.14em] text-neutral-500">
+              <thead className="border-b border-amber-500/15 text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
                 <tr>
                   <th className="px-5 py-3">Invoice</th>
                   <th className="px-5 py-3">Customer</th>
@@ -800,7 +800,7 @@ export default function BillingPage(): JSX.Element {
                   <th className="px-5 py-3">Issued</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/10">
+              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                 {visibleHistoricalInvoices.map((invoice) => {
                   const metadata = invoice.metadata as InvoiceMetadata | null;
                   const rawRow = metadata?.raw_row ?? {};
@@ -827,7 +827,7 @@ export default function BillingPage(): JSX.Element {
                   return (
                     <Fragment key={invoice.id}>
                       <tr
-                        className="cursor-pointer text-neutral-200 transition hover:bg-white/[0.04]"
+                        className="cursor-pointer text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
                         onClick={() =>
                           setExpandedHistoricalInvoiceId((current) =>
                             current === invoice.id ? null : invoice.id,
@@ -835,7 +835,7 @@ export default function BillingPage(): JSX.Element {
                         }
                       >
                         <td className="px-5 py-4">
-                          <div className="font-semibold text-white">
+                          <div className="font-semibold text-[color:var(--theme-text-primary)]">
                             {invoice.invoice_number ??
                               `#${invoice.id.slice(0, 8)}`}
                           </div>
@@ -846,14 +846,14 @@ export default function BillingPage(): JSX.Element {
                         <td className="px-5 py-4">
                           <div>{customerName}</div>
                           {invoice.customers?.email ? (
-                            <div className="text-xs text-neutral-500">
+                            <div className="text-xs text-[color:var(--theme-text-muted)]">
                               {invoice.customers.email}
                             </div>
                           ) : null}
                         </td>
                         <td className="px-5 py-4">
                           <div>{workOrderText}</div>
-                          <div className="text-xs text-neutral-500">
+                          <div className="text-xs text-[color:var(--theme-text-muted)]">
                             VIN {vinText}
                           </div>
                         </td>
@@ -865,7 +865,7 @@ export default function BillingPage(): JSX.Element {
                         <td className="px-5 py-4 text-right font-semibold text-[var(--accent-copper-light)]">
                           {formatMoney(invoice.total)}
                         </td>
-                        <td className="px-5 py-4 text-neutral-300">
+                        <td className="px-5 py-4 text-[color:var(--theme-text-secondary)]">
                           {invoice.issued_at
                             ? format(new Date(invoice.issued_at), "PP")
                             : "—"}
@@ -877,14 +877,14 @@ export default function BillingPage(): JSX.Element {
                         </td>
                       </tr>
                       {expandedHistoricalInvoiceId === invoice.id ? (
-                        <tr className="bg-black/20 text-neutral-300">
+                        <tr className="bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]">
                           <td colSpan={6} className="px-5 py-4">
-                            <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-3">
+                            <div className="grid gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4 md:grid-cols-3">
                               <div>
-                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                                   Legacy customer id
                                 </div>
-                                <div className="mt-1 text-sm text-white">
+                                <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                                   {String(
                                     rawRow.customer_id ??
                                       metadata?.legacy_customer_id ??
@@ -893,20 +893,20 @@ export default function BillingPage(): JSX.Element {
                                 </div>
                               </div>
                               <div>
-                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                                   Customer match diagnostics
                                 </div>
-                                <div className="mt-1 text-sm text-white">
+                                <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                                   {metadata?.customer_match_source ??
                                     metadata?.customer_match_failed_reason ??
                                     "—"}
                                 </div>
                               </div>
                               <div>
-                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                                   Legacy vehicle id
                                 </div>
-                                <div className="mt-1 text-sm text-white">
+                                <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                                   {String(
                                     rawRow.vehicle_id ??
                                       metadata?.legacy_vehicle_id ??
@@ -915,10 +915,10 @@ export default function BillingPage(): JSX.Element {
                                 </div>
                               </div>
                               <div>
-                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                                   Source
                                 </div>
-                                <div className="mt-1 text-sm text-white">
+                                <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                                   {metadata?.source_system ??
                                     String(
                                       rawRow.source_system ?? "CSV import",
@@ -926,10 +926,10 @@ export default function BillingPage(): JSX.Element {
                                 </div>
                               </div>
                               <div className="md:col-span-3">
-                                <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                                   Notes
                                 </div>
-                                <div className="mt-1 whitespace-pre-wrap text-sm text-neutral-200">
+                                <div className="mt-1 whitespace-pre-wrap text-sm text-[color:var(--theme-text-primary)]">
                                   {invoice.notes ||
                                     String(
                                       rawRow.description ??

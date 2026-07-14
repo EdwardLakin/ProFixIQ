@@ -204,11 +204,11 @@ export default function MobileNewMessagePage() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[0.7rem] text-neutral-300 hover:bg-black/80"
+            className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)]"
           >
             ← Back
           </button>
-          <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-neutral-200">
+          <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
             New chat
           </h1>
           <div className="w-[60px]" />{/* spacer */}
@@ -224,12 +224,12 @@ export default function MobileNewMessagePage() {
         <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] px-3 py-3 space-y-3">
           {/* Selected pills */}
           <div className="space-y-1">
-            <div className="text-[0.7rem] font-medium text-neutral-400">
+            <div className="text-[0.7rem] font-medium text-[color:var(--theme-text-secondary)]">
               Recipients
             </div>
             <div className="flex flex-wrap gap-2">
               {selectedIds.length === 0 ? (
-                <span className="text-[0.7rem] text-neutral-500">
+                <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                   No recipients selected.
                 </span>
               ) : (
@@ -238,13 +238,13 @@ export default function MobileNewMessagePage() {
                   .map((u) => (
                     <span
                       key={u.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[0.7rem] text-neutral-100 border border-[var(--metal-border-soft)]"
+                      className="inline-flex items-center gap-1 rounded-full bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)] border border-[var(--metal-border-soft)]"
                     >
                       {u.full_name ?? "(no name)"}
                       <button
                         type="button"
                         onClick={() => toggleSelected(u.id)}
-                        className="ml-1 text-[0.75rem] text-neutral-500 hover:text-red-400"
+                        className="ml-1 text-[0.75rem] text-[color:var(--theme-text-muted)] hover:text-red-400"
                       >
                         ✕
                       </button>
@@ -259,7 +259,7 @@ export default function MobileNewMessagePage() {
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="h-9 rounded border border-[var(--metal-border-soft)] bg-black/70 px-2 text-[0.75rem] text-neutral-100 focus:border-[var(--accent-copper-soft)] focus:outline-none"
+              className="h-9 rounded border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 text-[0.75rem] text-[color:var(--theme-text-primary)] focus:border-[var(--accent-copper-soft)] focus:outline-none"
             >
               {ROLE_OPTIONS.map((r) => (
                 <option key={r.value} value={r.value}>
@@ -271,22 +271,22 @@ export default function MobileNewMessagePage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name, role, email…"
-              className="flex-1 h-9 rounded border border-[var(--metal-border-soft)] bg-black/70 px-2 text-[0.75rem] text-neutral-100 placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)] focus:outline-none"
+              className="flex-1 h-9 rounded border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 text-[0.75rem] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:outline-none"
             />
           </div>
 
           {/* User list */}
-          <div className="mt-2 max-h-64 overflow-y-auto rounded border border-[var(--metal-border-soft)] bg-black/60">
+          <div className="mt-2 max-h-64 overflow-y-auto rounded border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)]">
             {loadingUsers ? (
-              <div className="px-3 py-3 text-[0.75rem] text-neutral-400">
+              <div className="px-3 py-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                 Loading users…
               </div>
             ) : filteredUsers.length === 0 ? (
-              <div className="px-3 py-3 text-[0.75rem] text-neutral-400">
+              <div className="px-3 py-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                 No users match this filter.
               </div>
             ) : (
-              <ul className="divide-y divide-neutral-800">
+              <ul className="divide-y divide-[color:var(--theme-border-soft)]">
                 {filteredUsers.map((u) => {
                   const checked = selectedIds.includes(u.id);
                   return (
@@ -297,23 +297,23 @@ export default function MobileNewMessagePage() {
                         className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[0.75rem] ${
                           checked
                             ? "bg-[var(--accent-copper-soft)]/10"
-                            : "hover:bg-black/60"
+                            : "hover:bg-[color:var(--theme-surface-overlay)]"
                         }`}
                       >
                         <div
                           className={`flex h-4 w-4 items-center justify-center rounded border text-[0.6rem] ${
                             checked
-                              ? "border-[var(--accent-copper-soft)] bg-[var(--accent-copper-soft)] text-black"
-                              : "border-[var(--metal-border-soft)] text-neutral-500"
+                              ? "border-[var(--accent-copper-soft)] bg-[var(--accent-copper-soft)] text-[color:var(--theme-text-on-accent)]"
+                              : "border-[var(--metal-border-soft)] text-[color:var(--theme-text-muted)]"
                           }`}
                         >
                           {checked ? "✓" : ""}
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate text-neutral-100">
+                          <div className="truncate text-[color:var(--theme-text-primary)]">
                             {u.full_name ?? "(no name)"}
                           </div>
-                          <div className="truncate text-[0.65rem] text-neutral-400">
+                          <div className="truncate text-[0.65rem] text-[color:var(--theme-text-secondary)]">
                             {u.role ?? "—"}
                             {u.email ? ` • ${u.email}` : ""}
                           </div>
@@ -329,7 +329,7 @@ export default function MobileNewMessagePage() {
 
         {/* First message composer */}
         <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] px-3 py-3 space-y-3">
-          <div className="text-[0.7rem] font-medium text-neutral-400">
+          <div className="text-[0.7rem] font-medium text-[color:var(--theme-text-secondary)]">
             First message
           </div>
           <textarea
@@ -337,7 +337,7 @@ export default function MobileNewMessagePage() {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Type your message…"
-            className="w-full resize-none rounded border border-[var(--metal-border-soft)] bg-black/70 px-3 py-2 text-sm text-neutral-50 placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)] focus:outline-none"
+            className="w-full resize-none rounded border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:outline-none"
           />
           <button
             type="button"
@@ -347,10 +347,10 @@ export default function MobileNewMessagePage() {
             }
             className="
               w-full rounded-full border border-[var(--accent-copper-soft)]
-              bg-black/80 px-4 py-2 text-sm font-semibold
+              bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-sm font-semibold
               text-[var(--accent-copper-soft)]
-              shadow-[0_10px_24px_rgba(0,0,0,0.85)]
-              hover:bg-black/95 disabled:opacity-50
+              shadow-[var(--theme-shadow-medium)]
+              hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50
             "
           >
             {sending ? "Starting…" : "Start chat"}

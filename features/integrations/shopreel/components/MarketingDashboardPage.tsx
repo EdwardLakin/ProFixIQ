@@ -30,7 +30,7 @@ export default async function MarketingDashboardPage() {
   if (!data.authorized) {
     return (
       <PageShell title="Marketing">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">{data.reason}</div>
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">{data.reason}</div>
       </PageShell>
     );
   }
@@ -40,11 +40,11 @@ export default async function MarketingDashboardPage() {
   return (
     <PageShell title="Marketing">
       <div className="space-y-6">
-        <section className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+        <section className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-semibold">ShopReel Command Center</h1>
-              <p className="mt-2 text-sm text-white/70">
+              <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                 Operational visibility across ingest, content pipeline, publishing, and delivery reliability.
               </p>
             </div>
@@ -52,7 +52,7 @@ export default async function MarketingDashboardPage() {
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/dashboard/owner/marketing"
-                className="rounded-md border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/5"
+                className="rounded-md border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
               >
                 Manage settings
               </Link>
@@ -60,7 +60,7 @@ export default async function MarketingDashboardPage() {
                 href={integration.shopreelBaseUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black"
+                className="rounded-md bg-[color:var(--theme-surface-panel-strong)] px-4 py-2 text-sm font-medium text-[color:var(--theme-text-on-accent)]"
               >
                 Open ShopReel
               </a>
@@ -69,8 +69,8 @@ export default async function MarketingDashboardPage() {
         </section>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white xl:col-span-2">
-            <div className="text-sm text-white/60">Integration status</div>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-[color:var(--theme-text-primary)] xl:col-span-2">
+            <div className="text-sm text-[color:var(--theme-text-muted)]">Integration status</div>
             <div className="mt-2 flex items-center gap-2 text-lg font-semibold">
               {integration.enabled ? "Enabled" : "Disabled"}
               {integration.enabled ? (
@@ -83,39 +83,39 @@ export default async function MarketingDashboardPage() {
                 </span>
               )}
             </div>
-            <div className="mt-3 text-xs text-white/60">Remote shop: {integration.remoteShopId ?? "Not configured"}</div>
+            <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">Remote shop: {integration.remoteShopId ?? "Not configured"}</div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
-            <div className="text-sm text-white/60">Story sources</div>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-[color:var(--theme-text-primary)]">
+            <div className="text-sm text-[color:var(--theme-text-muted)]">Story sources</div>
             <div className="mt-2 text-2xl font-semibold">{lifecycle.sourceCount}</div>
-            <div className="mt-1 text-xs text-white/60">Ingested canonical source records</div>
+            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Ingested canonical source records</div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
-            <div className="text-sm text-white/60">New opportunities</div>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-[color:var(--theme-text-primary)]">
+            <div className="text-sm text-[color:var(--theme-text-muted)]">New opportunities</div>
             <div className="mt-2 text-2xl font-semibold">{lifecycle.newOpportunities}</div>
-            <div className="mt-1 text-xs text-white/60">Awaiting queue action</div>
+            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Awaiting queue action</div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
-            <div className="text-sm text-white/60">Dismissed / accepted</div>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-[color:var(--theme-text-primary)]">
+            <div className="text-sm text-[color:var(--theme-text-muted)]">Dismissed / accepted</div>
             <div className="mt-2 text-2xl font-semibold">{lifecycle.dismissedOpportunities} / {lifecycle.acceptedOpportunities}</div>
-            <div className="mt-1 text-xs text-white/60">Opportunity decisions</div>
+            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Opportunity decisions</div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-white">
-            <div className="text-sm text-white/60">Drafts awaiting review</div>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-[color:var(--theme-text-primary)]">
+            <div className="text-sm text-[color:var(--theme-text-muted)]">Drafts awaiting review</div>
             <div className="mt-2 text-2xl font-semibold">{lifecycle.draftsAwaitingReview}</div>
-            <div className="mt-1 text-xs text-white/60">{lifecycle.approvedItems} approved</div>
+            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{lifecycle.approvedItems} approved</div>
           </div>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-3">
-          <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white xl:col-span-2">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)] xl:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Needs attention</h2>
-              <Link href="/dashboard/owner/marketing" className="text-xs text-white/70 hover:text-white">
+              <Link href="/dashboard/owner/marketing" className="text-xs text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">
                 Resolve in settings
               </Link>
             </div>
@@ -135,21 +135,21 @@ export default async function MarketingDashboardPage() {
             )}
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
             <h2 className="text-lg font-semibold">Primary actions</h2>
             <div className="mt-3 space-y-2 text-sm">
-              <Link href="/dashboard/owner/marketing" className="block rounded-md border border-white/10 px-3 py-2 hover:bg-white/5">
+              <Link href="/dashboard/owner/marketing" className="block rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2 hover:bg-[color:var(--theme-surface-subtle)]">
                 Configure integration and event types
               </Link>
-              <div className="rounded-md border border-white/10 px-3 py-2">
-                <div className="text-white/90">Operational signal ingest endpoint</div>
-                <div className="mt-1 text-xs text-white/60">POST /api/shopreel/operational-signals (owner-authenticated) to push live operational opportunities.</div>
+              <div className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2">
+                <div className="text-[color:var(--theme-text-primary)]">Operational signal ingest endpoint</div>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">POST /api/shopreel/operational-signals (owner-authenticated) to push live operational opportunities.</div>
               </div>
               <a
                 href={integration.shopreelBaseUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="block rounded-md border border-white/10 px-3 py-2 hover:bg-white/5"
+                className="block rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2 hover:bg-[color:var(--theme-surface-subtle)]"
               >
                 Open ShopReel workspace
               </a>
@@ -161,18 +161,18 @@ export default async function MarketingDashboardPage() {
 
         <ShopReelLifecycleQueue opportunities={lifecycle.opportunities} drafts={lifecycle.drafts} />
         <section className="grid gap-4 xl:grid-cols-2">
-          <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
             <h2 className="text-lg font-semibold">Source ingest health</h2>
-            <p className="mt-1 text-sm text-white/60">Signals below are transport diagnostics from delivery logs grouped by ShopReel event type.</p>
+            <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">Signals below are transport diagnostics from delivery logs grouped by ShopReel event type.</p>
 
             <div className="mt-4 space-y-2">
               {sourceHealth.map((eventHealth) => (
-                <div key={eventHealth.eventType} className="rounded-md border border-white/10 px-3 py-2">
+                <div key={eventHealth.eventType} className="rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-medium">{eventHealth.eventType}</div>
-                    {eventHealth.lastStatus ? statusBadge(eventHealth.lastStatus) : <span className="text-xs text-white/40">No signal yet</span>}
+                    {eventHealth.lastStatus ? statusBadge(eventHealth.lastStatus) : <span className="text-xs text-[color:var(--theme-text-muted)]">No signal yet</span>}
                   </div>
-                  <div className="mt-1 text-xs text-white/60">
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                     {eventHealth.successes} success / {eventHealth.failures} failed / {eventHealth.attempts} attempts · last seen {formatDate(eventHealth.lastSeenAt)}
                   </div>
                 </div>
@@ -180,26 +180,26 @@ export default async function MarketingDashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
             <h2 className="text-lg font-semibold">Content and publish pipeline</h2>
             <div className="mt-4 grid gap-2 text-sm">
-              <div className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2">
                 <span>Publications queued / scheduled / publishing</span>
                 <span>{pipeline.publicationsQueued} / {pipeline.publicationsScheduled} / {pipeline.publicationsPublishing}</span>
               </div>
-              <div className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2">
                 <span>Publish jobs queued / running / failed</span>
                 <span>{pipeline.publishJobsQueued} / {pipeline.publishJobsRunning} / {pipeline.publishJobsFailed}</span>
               </div>
-              <div className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2">
                 <span>Manual assets (total / draft)</span>
                 <span>{pipeline.manualAssetsTotal} / {pipeline.manualAssetsDraft}</span>
               </div>
-              <div className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2">
                 <span>Active social connections</span>
                 <span>{pipeline.activeConnections}</span>
               </div>
-              <div className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2">
                 <span>Tokens expiring soon ({"<"}72h)</span>
                 <span>{pipeline.tokenExpiringSoon}</span>
               </div>
@@ -207,14 +207,14 @@ export default async function MarketingDashboardPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+        <section className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
           <h2 className="text-lg font-semibold">Recent delivery activity</h2>
-          <p className="mt-1 text-sm text-white/60">Latest delivery attempts from ProFixIQ into ShopReel.</p>
+          <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">Latest delivery attempts from ProFixIQ into ShopReel.</p>
 
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
-              <thead className="text-white/60">
-                <tr className="border-b border-white/10">
+              <thead className="text-[color:var(--theme-text-muted)]">
+                <tr className="border-b border-[color:var(--theme-border-soft)]">
                   <th className="py-3 pr-4">Event</th>
                   <th className="py-3 pr-4">Status</th>
                   <th className="py-3 pr-4">HTTP</th>
@@ -227,28 +227,28 @@ export default async function MarketingDashboardPage() {
               <tbody>
                 {deliveries.length ? (
                   deliveries.map((delivery) => (
-                    <tr key={delivery.id} className="border-b border-white/5 align-top">
+                    <tr key={delivery.id} className="border-b border-[color:var(--theme-border-soft)] align-top">
                       <td className="py-3 pr-4">
-                        <div className="font-medium text-white">{delivery.eventType}</div>
-                        <div className="text-xs text-white/50">{delivery.eventKey}</div>
+                        <div className="font-medium text-[color:var(--theme-text-primary)]">{delivery.eventType}</div>
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">{delivery.eventKey}</div>
                       </td>
                       <td className="py-3 pr-4">{statusBadge(delivery.status)}</td>
                       <td className="py-3 pr-4">{delivery.httpStatus ?? "—"}</td>
                       <td className="py-3 pr-4">{formatDate(delivery.createdAt)}</td>
                       <td className="py-3 pr-4">{formatDate(delivery.deliveredAt)}</td>
-                      <td className="py-3 pr-4 text-xs text-white/60">{delivery.errorMessage ?? "—"}</td>
+                      <td className="py-3 pr-4 text-xs text-[color:var(--theme-text-muted)]">{delivery.errorMessage ?? "—"}</td>
                       <td className="py-3 pr-4">
                         {delivery.status === "failed" ? (
                           <RetryDeliveryButton deliveryId={delivery.id} />
                         ) : (
-                          <span className="text-xs text-white/40">—</span>
+                          <span className="text-xs text-[color:var(--theme-text-muted)]">—</span>
                         )}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="py-6 text-center text-white/50">
+                    <td colSpan={7} className="py-6 text-center text-[color:var(--theme-text-muted)]">
                       No ShopReel delivery attempts yet. Start by enabling integration settings, then complete an inspection or work order event.
                     </td>
                   </tr>
@@ -258,9 +258,9 @@ export default async function MarketingDashboardPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-white/10 bg-black/20 p-5 text-white">
+        <section className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
           <h2 className="text-lg font-semibold">Integration diagnostics</h2>
-          <div className="mt-3 grid gap-2 text-sm text-white/70">
+          <div className="mt-3 grid gap-2 text-sm text-[color:var(--theme-text-secondary)]">
             <div>Base URL: {integration.shopreelBaseUrl}</div>
             <div>Remote Shop ID: {integration.remoteShopId ?? "Not set"}</div>
             <div>Enabled event types: {integration.enabledEventTypes.length ? integration.enabledEventTypes.join(", ") : "None selected"}</div>

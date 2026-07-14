@@ -76,7 +76,7 @@ export default async function PortalPropertyRequestIntakePage({
   if (!profile?.shop_id) {
     return (
       <section className="metal-card rounded-3xl p-5">
-        <h1 className="text-xl text-neutral-100">Property request intake preview</h1>
+        <h1 className="text-xl text-[color:var(--theme-text-primary)]">Property request intake preview</h1>
         <p className="mt-2 text-sm text-amber-300">Your profile is missing shop context.</p>
       </section>
     );
@@ -85,11 +85,11 @@ export default async function PortalPropertyRequestIntakePage({
   if (!(properties ?? []).length) {
     return (
       <section className="metal-card rounded-3xl p-5">
-        <h1 className="text-xl text-neutral-100">Property request intake preview</h1>
-        <p className="mt-2 text-sm text-neutral-300">
+        <h1 className="text-xl text-[color:var(--theme-text-primary)]">Property request intake preview</h1>
+        <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
           Tenant request intake preview — full tenant portal access is not wired yet.
         </p>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
           No properties are visible yet. Contact your property manager for setup assistance.
         </p>
       </section>
@@ -98,14 +98,14 @@ export default async function PortalPropertyRequestIntakePage({
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
         Property maintenance request intake
       </p>
-      <h1 className="mt-2 text-2xl text-neutral-100">Tenant request intake preview</h1>
-      <p className="mt-2 text-sm text-neutral-300">
+      <h1 className="mt-2 text-2xl text-[color:var(--theme-text-primary)]">Tenant request intake preview</h1>
+      <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
         Tenant request intake preview — full tenant portal access is not wired yet.
       </p>
-      <p className="mt-2 text-sm text-neutral-400">
+      <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
         Read receipts and two-party request timeline will be added in a later phase.
       </p>
 
@@ -122,7 +122,7 @@ export default async function PortalPropertyRequestIntakePage({
       ) : null}
 
       <form action={createTenantPreviewRequest} className="mt-5 grid gap-3 md:grid-cols-2">
-        <select name="property_id" required className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm md:col-span-2">
+        <select name="property_id" required className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm md:col-span-2">
           <option value="">Select property</option>
           {(properties ?? []).map((property) => (
             <option key={property.id} value={property.id}>
@@ -131,7 +131,7 @@ export default async function PortalPropertyRequestIntakePage({
           ))}
         </select>
 
-        <select name="unit_id" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm">
+        <select name="unit_id" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm">
           <option value="">No unit</option>
           {(units ?? []).map((unit) => (
             <option key={unit.id} value={unit.id}>
@@ -140,7 +140,7 @@ export default async function PortalPropertyRequestIntakePage({
           ))}
         </select>
 
-        <select name="asset_id" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm">
+        <select name="asset_id" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm">
           <option value="">No asset</option>
           {(assets ?? []).map((asset) => (
             <option key={asset.id} value={asset.id}>
@@ -149,15 +149,15 @@ export default async function PortalPropertyRequestIntakePage({
           ))}
         </select>
 
-        <input name="requester_name" placeholder="Requester name (optional)" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm" />
-        <input name="requester_email" placeholder="Requester email (optional)" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm" />
-        <input name="requester_phone" placeholder="Requester phone (optional)" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm md:col-span-2" />
+        <input name="requester_name" placeholder="Requester name (optional)" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm" />
+        <input name="requester_email" placeholder="Requester email (optional)" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm" />
+        <input name="requester_phone" placeholder="Requester phone (optional)" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm md:col-span-2" />
 
-        <input name="title" required placeholder="Request title" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm md:col-span-2" />
-        <textarea name="summary" required rows={4} placeholder="Describe the issue" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm md:col-span-2" />
+        <input name="title" required placeholder="Request title" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm md:col-span-2" />
+        <textarea name="summary" required rows={4} placeholder="Describe the issue" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm md:col-span-2" />
 
-        <input name="category" placeholder="Category (optional)" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm" />
-        <select name="severity" defaultValue="routine" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm">
+        <input name="category" placeholder="Category (optional)" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm" />
+        <select name="severity" defaultValue="routine" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm">
           {ALLOWED_SEVERITIES.map((level) => (
             <option key={level} value={level}>
               {level}
@@ -165,14 +165,14 @@ export default async function PortalPropertyRequestIntakePage({
           ))}
         </select>
 
-        <input name="access_notes" placeholder="Access notes (optional)" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm" />
-        <input name="preferred_window" placeholder="Preferred window (optional)" className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm" />
+        <input name="access_notes" placeholder="Access notes (optional)" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm" />
+        <input name="preferred_window" placeholder="Preferred window (optional)" className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm" />
 
         <textarea
           name="photo_notes"
           rows={3}
           placeholder="Describe any photos/videos you would attach. File upload comes later."
-          className="rounded-lg border border-neutral-700 bg-black/40 p-2 text-sm md:col-span-2"
+          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm md:col-span-2"
         />
 
         <button

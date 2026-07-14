@@ -55,7 +55,7 @@ function statusPill(status?: string | null) {
 function bookingCardStyle(status?: string | null) {
   const s = (status || "pending").toLowerCase();
   if (s === "cancelled") {
-    return "border-white/10 bg-black/35 text-neutral-300 hover:bg-black/40";
+    return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-inset)]";
   }
   if (s === "confirmed") {
     return "border-emerald-400/25 bg-emerald-500/10 hover:bg-emerald-500/15";
@@ -114,7 +114,7 @@ export default function WeeklyCalendar({
         return (
           <div
             key={k}
-            className="flex min-h-[160px] flex-col gap-2 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs text-neutral-100 shadow-card backdrop-blur-md overflow-hidden"
+            className="flex min-h-[160px] flex-col gap-2 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-card backdrop-blur-md overflow-hidden"
           >
             {/* Day header */}
             <div className="flex items-center gap-2">
@@ -140,7 +140,7 @@ export default function WeeklyCalendar({
                     </span>
                   ) : null}
 
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.65rem] text-neutral-200">
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.65rem] text-[color:var(--theme-text-primary)]">
                     {activeCount}
                   </span>
                 </span>
@@ -151,11 +151,11 @@ export default function WeeklyCalendar({
             <div className="flex-1 space-y-1.5">
               {loading && dayBookings.length === 0 ? (
                 <div className="space-y-2">
-                  <div className="h-9 w-full animate-pulse rounded-xl border border-white/10 bg-white/5" />
-                  <div className="h-9 w-full animate-pulse rounded-xl border border-white/10 bg-white/5" />
+                  <div className="h-9 w-full animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]" />
+                  <div className="h-9 w-full animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]" />
                 </div>
               ) : dayBookings.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-[0.65rem] text-neutral-500">
+                <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-[0.65rem] text-[color:var(--theme-text-muted)]">
                   No appointments
                 </div>
               ) : (
@@ -176,7 +176,7 @@ export default function WeeklyCalendar({
                       }
                     >
                       <div className="flex w-full items-center justify-between gap-2">
-                        <div className={"truncate font-semibold " + (isCancelled ? "text-neutral-200/80 line-through" : "text-white")}>
+                        <div className={"truncate font-semibold " + (isCancelled ? "text-[color:var(--theme-text-secondary)] line-through" : "text-[color:var(--theme-text-primary)]")}>
                           {displayCustomerName(b)}
                         </div>
 
@@ -190,14 +190,14 @@ export default function WeeklyCalendar({
                             {b.status || "pending"}
                           </span>
 
-                          <span className={"whitespace-nowrap text-[0.6rem] " + (isCancelled ? "text-neutral-400" : "text-neutral-200")}>
+                          <span className={"whitespace-nowrap text-[0.6rem] " + (isCancelled ? "text-[color:var(--theme-text-secondary)]" : "text-[color:var(--theme-text-primary)]")}>
                             {timeLabel(b.starts_at, b.ends_at)}
                           </span>
                         </div>
                       </div>
 
                       {b.notes ? (
-                        <div className="line-clamp-2 text-[0.62rem] text-neutral-200/80">
+                        <div className="line-clamp-2 text-[0.62rem] text-[color:var(--theme-text-secondary)]">
                           {b.notes}
                         </div>
                       ) : null}

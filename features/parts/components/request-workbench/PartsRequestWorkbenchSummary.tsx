@@ -48,9 +48,9 @@ export function PartsRequestWorkbenchSummary({
   return (
     <div className="grid gap-3 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 sm:grid-cols-2 lg:grid-cols-6">
       {stats.map(([label, value]) => (
-        <div key={label} className="border-b border-white/5 pb-2 lg:border-b-0 lg:border-r lg:pr-3 last:border-r-0">
-          <div className="text-xs text-neutral-400">{label}</div>
-          <div className="mt-1 text-xl font-semibold text-white">{value}</div>
+        <div key={label} className="border-b border-[color:var(--theme-border-soft)] pb-2 lg:border-b-0 lg:border-r lg:pr-3 last:border-r-0">
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">{label}</div>
+          <div className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
         </div>
       ))}
     </div>

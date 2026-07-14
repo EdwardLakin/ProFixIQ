@@ -35,12 +35,12 @@ function fmtPct(n: number) {
 
 const T = {
   card:
-    "rounded-2xl border bg-black/40 backdrop-blur-md shadow-[0_18px_40px_rgba(0,0,0,0.8)] border-[color:var(--metal-border-soft,#1f2937)]",
-  label: "text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400",
-  value: "mt-1 text-xl font-semibold text-neutral-100",
+    "rounded-2xl border bg-[color:var(--theme-surface-inset)] backdrop-blur-md shadow-[var(--theme-shadow-medium)] border-[color:var(--metal-border-soft,var(--theme-border-soft))]",
+  label: "text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]",
+  value: "mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]",
   copper: "text-[color:var(--accent-copper-soft,#e7a36c)]",
   link:
-    "group block transition hover:border-[color:var(--accent-copper-soft,#e7a36c)]/60 hover:bg-black/55",
+    "group block transition hover:border-[color:var(--accent-copper-soft,#e7a36c)]/60 hover:bg-[color:var(--theme-surface-inset)]",
 };
 
 export default function TechPerformanceTiles({
@@ -145,7 +145,7 @@ export default function TechPerformanceTiles({
       <Link href="/tech/performance" className={`${T.card} ${T.link} px-4 py-3`}>
         <div className={T.label}>Hours worked</div>
         <div className={`${T.value} ${T.copper}`}>{loading ? "…" : fmtHours(clocked)}</div>
-        <div className="mt-1 text-[0.75rem] text-neutral-500">
+        <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
           Based on clocked hours ({range})
         </div>
       </Link>
@@ -153,7 +153,7 @@ export default function TechPerformanceTiles({
       <Link href="/tech/performance" className={`${T.card} ${T.link} px-4 py-3`}>
         <div className={T.label}>Billed hours</div>
         <div className={`${T.value} ${T.copper}`}>{loading ? "…" : fmtHours(billed)}</div>
-        <div className="mt-1 text-[0.75rem] text-neutral-500">
+        <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
           From invoiced labor ({range})
         </div>
       </Link>
@@ -161,7 +161,7 @@ export default function TechPerformanceTiles({
       <Link href="/tech/performance" className={`${T.card} ${T.link} px-4 py-3`}>
         <div className={T.label}>Efficiency</div>
         <div className={`${T.value} ${T.copper}`}>{loading ? "…" : fmtPct(eff)}</div>
-        <div className="mt-1 text-[0.75rem] text-neutral-500">
+        <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
           Billed ÷ worked
         </div>
       </Link>

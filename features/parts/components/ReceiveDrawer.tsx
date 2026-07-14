@@ -215,23 +215,23 @@ export default function ReceiveDrawer(props: {
 
   if (!open) return null;
 
-  const backdrop = "fixed inset-0 z-[60] bg-black/60 backdrop-blur-[2px]";
+  const backdrop = "fixed inset-0 z-[60] bg-[color:var(--theme-surface-overlay)] backdrop-blur-[2px]";
   const panel =
-    "fixed right-0 top-0 z-[61] h-full w-full max-w-xl border-l border-white/10 bg-neutral-950/70 backdrop-blur-xl shadow-[-20px_0_60px_rgba(0,0,0,0.75)]";
-  const header = "border-b border-white/10 bg-gradient-to-b from-white/5 to-transparent px-5 py-4";
+    "fixed right-0 top-0 z-[61] h-full w-full max-w-xl border-l border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] backdrop-blur-xl shadow-[var(--theme-shadow-medium)]";
+  const header = "border-b border-[color:var(--theme-border-soft)] bg-gradient-to-b via-[color:var(--theme-surface-subtle)] to-transparent px-5 py-4";
   const body = "px-5 py-4 space-y-4";
   const footer =
-    "absolute bottom-0 left-0 right-0 border-t border-white/10 bg-neutral-950/70 px-5 py-4";
+    "absolute bottom-0 left-0 right-0 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-5 py-4";
 
   const input =
-    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/35";
+    "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-500/35";
   const select =
-    "w-full rounded-xl border border-white/10 bg-neutral-950/40 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500/35";
+    "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-sky-500/35";
 
   const btnBase =
     "inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:opacity-60";
-  const btnGhost = `${btnBase} border-white/10 bg-neutral-950/20 hover:bg-white/5`;
-  const btnPrimary = `${btnBase} border-sky-500/35 text-sky-200 bg-neutral-950/20 hover:bg-sky-900/20`;
+  const btnGhost = `${btnBase} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] hover:bg-[color:var(--theme-surface-subtle)]`;
+  const btnPrimary = `${btnBase} border-sky-500/35 text-sky-200 bg-[color:var(--theme-surface-page)] hover:bg-sky-900/20`;
 
   return (
     <>
@@ -241,9 +241,9 @@ export default function ReceiveDrawer(props: {
         <div className={header}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">Parts</div>
-              <div className="mt-1 truncate text-xl font-semibold text-white">{title}</div>
-              <div className="mt-2 text-sm text-neutral-400">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">Parts</div>
+              <div className="mt-1 truncate text-xl font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+              <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                 Receive inventory against a specific request item (supports partial receive).
               </div>
             </div>
@@ -256,41 +256,41 @@ export default function ReceiveDrawer(props: {
 
         <div className={body}>
           {item ? (
-            <div className="rounded-2xl border border-white/10 bg-neutral-950/35 p-4">
-              <div className="text-sm font-semibold text-white">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 {item.part_name?.trim() ? item.part_name : item.description}
               </div>
 
-              <div className="mt-2 grid gap-2 text-xs text-neutral-400">
+              <div className="mt-2 grid gap-2 text-xs text-[color:var(--theme-text-secondary)]">
                 <div>
-                  <span className="text-neutral-500">Item:</span>{" "}
-                  <span className="text-neutral-200">{item.id.slice(0, 8)}</span>
+                  <span className="text-[color:var(--theme-text-muted)]">Item:</span>{" "}
+                  <span className="text-[color:var(--theme-text-primary)]">{item.id.slice(0, 8)}</span>
                   {item.request_id ? (
                     <>
                       {" "}
-                      <span className="text-neutral-600">·</span>{" "}
-                      <span className="text-neutral-500">Request:</span>{" "}
-                      <span className="text-neutral-200">{String(item.request_id).slice(0, 8)}</span>
+                      <span className="text-[color:var(--theme-text-muted)]">·</span>{" "}
+                      <span className="text-[color:var(--theme-text-muted)]">Request:</span>{" "}
+                      <span className="text-[color:var(--theme-text-primary)]">{String(item.request_id).slice(0, 8)}</span>
                     </>
                   ) : null}
                 </div>
 
                 <div className="flex flex-wrap gap-3">
                   <div>
-                    <span className="text-neutral-500">Approved:</span>{" "}
-                    <span className="text-neutral-200">{n(item.qty_approved)}</span>
+                    <span className="text-[color:var(--theme-text-muted)]">Approved:</span>{" "}
+                    <span className="text-[color:var(--theme-text-primary)]">{n(item.qty_approved)}</span>
                   </div>
                   <div>
-                    <span className="text-neutral-500">Received:</span>{" "}
-                    <span className="text-neutral-200">{n(item.qty_received)}</span>
+                    <span className="text-[color:var(--theme-text-muted)]">Received:</span>{" "}
+                    <span className="text-[color:var(--theme-text-primary)]">{n(item.qty_received)}</span>
                   </div>
                   <div>
-                    <span className="text-neutral-500">Remaining:</span>{" "}
-                    <span className="text-neutral-200">{remaining}</span>
+                    <span className="text-[color:var(--theme-text-muted)]">Remaining:</span>{" "}
+                    <span className="text-[color:var(--theme-text-primary)]">{remaining}</span>
                   </div>
                   <div>
-                    <span className="text-neutral-500">Status:</span>{" "}
-                    <span className="text-neutral-200">
+                    <span className="text-[color:var(--theme-text-muted)]">Status:</span>{" "}
+                    <span className="text-[color:var(--theme-text-primary)]">
                       {itemFlowLabel(toItemFlowDisplay({ rawStatus: item.status, qtyApproved: item.qty_approved, qtyReceived: item.qty_received }))}
                     </span>
                   </div>
@@ -305,7 +305,7 @@ export default function ReceiveDrawer(props: {
               </div>
             </div>
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-neutral-950/35 p-4 text-sm text-neutral-400">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
               No item selected.
             </div>
           )}
@@ -318,7 +318,7 @@ export default function ReceiveDrawer(props: {
 
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <div className="mb-1 text-xs text-neutral-400">Location</div>
+              <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Location</div>
               <select
                 className={select}
                 value={locationId}
@@ -338,7 +338,7 @@ export default function ReceiveDrawer(props: {
             </div>
 
             <div>
-              <div className="mb-1 text-xs text-neutral-400">PO (optional)</div>
+              <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">PO (optional)</div>
               <select
                 className={select}
                 value={poId}
@@ -352,14 +352,14 @@ export default function ReceiveDrawer(props: {
                   </option>
                 ))}
               </select>
-              <div className="mt-1 text-[11px] text-neutral-500">
+              <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                 If selected, receiving is attributed to that PO via the RPC.
               </div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-neutral-950/20 p-4">
-            <div className="mb-1 text-xs text-neutral-400">Receive Qty</div>
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4">
+            <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">Receive Qty</div>
             <div className="flex flex-wrap items-center gap-2">
               <input
                 className={`${input} w-48`}
@@ -397,11 +397,11 @@ export default function ReceiveDrawer(props: {
             </div>
 
             {remaining > 0 ? (
-              <div className="mt-2 text-[11px] text-neutral-500">
-                Recommended max: <span className="text-neutral-200">{remaining}</span>
+              <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
+                Recommended max: <span className="text-[color:var(--theme-text-primary)]">{remaining}</span>
               </div>
             ) : (
-              <div className="mt-2 text-[11px] text-neutral-500">
+              <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
                 Remaining unknown or 0 (check approved/received values).
               </div>
             )}

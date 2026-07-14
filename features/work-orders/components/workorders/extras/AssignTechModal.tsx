@@ -118,7 +118,7 @@ export default function AssignTechModal({
           Choose primary tech
         </span>
         <select
-          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground dark:border-[color:var(--theme-border-soft)] dark:bg-[color:var(--theme-surface-panel)] dark:text-[color:var(--theme-text-primary)]"
           value={techId}
           onChange={(e) => setTechId(e.target.value)}
         >

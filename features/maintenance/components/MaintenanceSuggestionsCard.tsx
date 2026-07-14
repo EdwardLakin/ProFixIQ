@@ -295,16 +295,16 @@ export default function MaintenanceSuggestionsCard({
   return (
     <section
       className={[
-        "rounded-2xl border border-white/10 bg-black/30 p-4 text-white shadow-card backdrop-blur-md",
+        "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-[color:var(--theme-text-primary)] shadow-card backdrop-blur-md",
         className ?? "",
       ].join(" ")}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-neutral-200">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
             Maintenance Upsell
           </h2>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             History-aware maintenance due now for this vehicle.
           </p>
         </div>
@@ -315,15 +315,15 @@ export default function MaintenanceSuggestionsCard({
           size="sm"
           onClick={() => void loadSuggestions()}
           disabled={loading || !resolvedWorkOrderId}
-          className="border-white/15 bg-white/5 text-xs text-neutral-200 hover:bg-white/10"
+          className="border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
         >
           {loading ? "Refreshing..." : "Refresh"}
         </Button>
       </div>
 
       {!resolvedWorkOrderId ? (
-        <div className="rounded-xl border border-dashed border-white/10 bg-white/5 px-3 py-4 text-xs text-neutral-400">
-          Save the work order first, or load this page with a <span className="font-semibold text-neutral-200">workOrderId</span>,
+        <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-4 text-xs text-[color:var(--theme-text-secondary)]">
+          Save the work order first, or load this page with a <span className="font-semibold text-[color:var(--theme-text-primary)]">workOrderId</span>,
           then maintenance suggestions will appear here.
         </div>
       ) : null}
@@ -335,7 +335,7 @@ export default function MaintenanceSuggestionsCard({
       ) : null}
 
       {resolvedWorkOrderId && !loading && !error && suggestions.length === 0 ? (
-        <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-4 text-xs text-neutral-400">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-4 text-xs text-[color:var(--theme-text-secondary)]">
           No due maintenance suggestions right now.
         </div>
       ) : null}
@@ -350,17 +350,17 @@ export default function MaintenanceSuggestionsCard({
             .filter((group) => group.items.length > 0)
             .map((group) => (
               <div key={group.bucket} className="space-y-3">
-                <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                         {group.bucket === "bundle"
                           ? bundleTitle(group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
                           : bucketTitle(group.bucket)}
                       </div>
 
                       {group.bucket === "bundle" ? (
-                        <div className="mt-1 text-xs text-neutral-400">
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                           {group.items.length} items • {sumLaborHours(group.items).toFixed(1)} labor hrs • ${sumEffectivePrice(group.items).toLocaleString()}
                         </div>
                       ) : null}
@@ -383,7 +383,7 @@ export default function MaintenanceSuggestionsCard({
                             addingBundleKey ===
                             (group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
                           }
-                          className="border-white/15 bg-white/5 text-xs text-neutral-200 hover:bg-white/10"
+                          className="border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
                         >
                           {addingBundleKey ===
                           (group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
@@ -405,7 +405,7 @@ export default function MaintenanceSuggestionsCard({
                             addingBundleKey ===
                             (group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
                           }
-                          className="bg-orange-500 text-black hover:bg-orange-400"
+                          className="bg-orange-500 text-[color:var(--theme-text-on-accent)] hover:bg-orange-400"
                         >
                           {addingBundleKey ===
                           (group.items.find((item) => item.bundleKey)?.bundleKey ?? null)
@@ -434,21 +434,21 @@ export default function MaintenanceSuggestionsCard({
                       <div className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-200">
                         Selected bundle summary
                       </div>
-                      <div className="mt-2 grid gap-2 text-xs text-neutral-300 md:grid-cols-2">
+                      <div className="mt-2 grid gap-2 text-xs text-[color:var(--theme-text-secondary)] md:grid-cols-2">
                         <div>
-                          <span className="text-neutral-500">Selected items:</span>{" "}
+                          <span className="text-[color:var(--theme-text-muted)]">Selected items:</span>{" "}
                           {selectedItems.length}
                         </div>
                         <div>
-                          <span className="text-neutral-500">Mapped items:</span>{" "}
+                          <span className="text-[color:var(--theme-text-muted)]">Mapped items:</span>{" "}
                           {countMapped(selectedItems)}
                         </div>
                         <div>
-                          <span className="text-neutral-500">Labor:</span>{" "}
+                          <span className="text-[color:var(--theme-text-muted)]">Labor:</span>{" "}
                           {sumLaborHours(selectedItems).toFixed(1)} hrs
                         </div>
                         <div>
-                          <span className="text-neutral-500">Total:</span>{" "}
+                          <span className="text-[color:var(--theme-text-muted)]">Total:</span>{" "}
                           ${sumEffectivePrice(selectedItems).toLocaleString()}
                         </div>
                       </div>
@@ -462,12 +462,12 @@ export default function MaintenanceSuggestionsCard({
                   return (
                     <div
                       key={item.serviceCode}
-                      className="rounded-xl border border-white/10 bg-white/5 p-3"
+                      className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3"
                     >
                       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                         <div className="min-w-0 flex-1">
                           {group.bucket === "bundle" ? (
-                            <label className="mb-2 flex items-center gap-2 text-xs text-neutral-300">
+                            <label className="mb-2 flex items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
                               <input
                                 type="checkbox"
                                 checked={Boolean(selectedCodes[item.serviceCode])}
@@ -482,7 +482,7 @@ export default function MaintenanceSuggestionsCard({
                             </label>
                           ) : null}
                           <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-sm font-semibold text-neutral-100">
+                            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                               {item.label}
                             </div>
 
@@ -495,7 +495,7 @@ export default function MaintenanceSuggestionsCard({
                               {item.isCritical ? "Critical" : item.overdue ? "Overdue" : "Due"}
                             </span>
 
-                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
+                            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                               {item.serviceCode}
                             </span>
 
@@ -505,35 +505,35 @@ export default function MaintenanceSuggestionsCard({
                               </span>
                             ) : null}
 
-                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-400">
+                            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                               priority {item.advisorPriority}
                             </span>
                           </div>
 
-                          <div className="mt-2 grid gap-2 text-xs text-neutral-400 md:grid-cols-2">
+                          <div className="mt-2 grid gap-2 text-xs text-[color:var(--theme-text-secondary)] md:grid-cols-2">
                             <div>
-                              <span className="text-neutral-500">Last completed:</span>{" "}
-                              <span className="text-neutral-300">{formatDate(item.lastCompletedAt)}</span>
+                              <span className="text-[color:var(--theme-text-muted)]">Last completed:</span>{" "}
+                              <span className="text-[color:var(--theme-text-secondary)]">{formatDate(item.lastCompletedAt)}</span>
                             </div>
                             <div>
-                              <span className="text-neutral-500">Last mileage:</span>{" "}
-                              <span className="text-neutral-300">{formatKm(item.lastCompletedMileageKm)}</span>
+                              <span className="text-[color:var(--theme-text-muted)]">Last mileage:</span>{" "}
+                              <span className="text-[color:var(--theme-text-secondary)]">{formatKm(item.lastCompletedMileageKm)}</span>
                             </div>
                             <div>
-                              <span className="text-neutral-500">Current mileage:</span>{" "}
-                              <span className="text-neutral-300">{formatKm(item.currentMileageKm)}</span>
+                              <span className="text-[color:var(--theme-text-muted)]">Current mileage:</span>{" "}
+                              <span className="text-[color:var(--theme-text-secondary)]">{formatKm(item.currentMileageKm)}</span>
                             </div>
                             <div>
-                              <span className="text-neutral-500">Trigger mileage:</span>{" "}
-                              <span className="text-neutral-300">{formatKm(item.triggerMileageKm)}</span>
+                              <span className="text-[color:var(--theme-text-muted)]">Trigger mileage:</span>{" "}
+                              <span className="text-[color:var(--theme-text-secondary)]">{formatKm(item.triggerMileageKm)}</span>
                             </div>
                             <div>
-                              <span className="text-neutral-500">Sell order:</span>{" "}
-                              <span className="text-neutral-300">{item.sellOrder}</span>
+                              <span className="text-[color:var(--theme-text-muted)]">Sell order:</span>{" "}
+                              <span className="text-[color:var(--theme-text-secondary)]">{item.sellOrder}</span>
                             </div>
                             <div>
-                              <span className="text-neutral-500">Price:</span>{" "}
-                              <span className="text-neutral-300">
+                              <span className="text-[color:var(--theme-text-muted)]">Price:</span>{" "}
+                              <span className="text-[color:var(--theme-text-secondary)]">
                                 {item.effectivePrice != null
                                   ? `$${item.effectivePrice.toLocaleString()}`
                                   : "—"}
@@ -552,7 +552,7 @@ export default function MaintenanceSuggestionsCard({
                           ) : null}
 
                           {item.notes ? (
-                            <p className="mt-2 text-xs text-neutral-300">{item.notes}</p>
+                            <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">{item.notes}</p>
                           ) : null}
                         </div>
 
@@ -562,7 +562,7 @@ export default function MaintenanceSuggestionsCard({
                             size="sm"
                             onClick={() => void handleAdd(item.serviceCode)}
                             disabled={isAdding}
-                            className="bg-orange-500 text-black hover:bg-orange-400"
+                            className="bg-orange-500 text-[color:var(--theme-text-on-accent)] hover:bg-orange-400"
                           >
                             {isAdding ? "Adding..." : "Add to work order"}
                           </Button>

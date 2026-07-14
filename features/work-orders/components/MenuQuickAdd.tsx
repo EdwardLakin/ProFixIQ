@@ -605,20 +605,20 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const panelClass =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
   const chipClass =
-    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[10px] text-neutral-300";
+    "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[10px] text-[color:var(--theme-text-secondary)]";
   const itemCardClass =
-    "flex flex-col rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-left text-sm hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,black)] disabled:opacity-60";
+    "flex flex-col rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-left text-sm hover:border-sky-400/45 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))] disabled:opacity-60";
   const softActionClass =
-    "rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs sm:text-sm text-neutral-100 hover:border-sky-400/55 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]";
+    "rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs sm:text-sm text-[color:var(--theme-text-primary)] hover:border-sky-400/55 hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]";
 
   return (
-    <div className="space-y-5 text-white">
+    <div className="space-y-5 text-[color:var(--theme-text-primary)]">
       {/* header */}
       <div className={`${panelClass} px-3 py-3 sm:px-4 sm:py-3`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-neutral-100">Quick Add Lines</h3>
+              <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Quick Add Lines</h3>
               <span className={`${chipClass} font-mono`}>
                 WO {workOrderId.slice(0, 8)}…
               </span>
@@ -630,13 +630,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             </div>
 
             {vehicleLabel ? (
-              <p className="text-[11px] text-neutral-400">
-                Vehicle:&nbsp;<span className="font-medium text-neutral-200">{vehicleLabel}</span>
+              <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                Vehicle:&nbsp;<span className="font-medium text-[color:var(--theme-text-primary)]">{vehicleLabel}</span>
               </p>
             ) : (
-              <p className="text-[11px] text-neutral-500">Add lines now — you can update vehicle details later.</p>
+              <p className="text-[11px] text-[color:var(--theme-text-muted)]">Add lines now — you can update vehicle details later.</p>
             )}
-            <p className="text-[10px] uppercase tracking-wide text-neutral-500">
+            <p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
               Menu items and inspection templates are separate from manual-entry smart suggestions.
             </p>
           </div>
@@ -653,7 +653,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             <button
               type="button"
               onClick={() => setAiOpen(true)}
-              className="rounded-md border border-blue-600 bg-neutral-950 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
+              className="rounded-md border border-blue-600 bg-[color:var(--theme-surface-page)] px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
               title="Describe work and let AI suggest service lines"
             >
               AI Suggest
@@ -665,12 +665,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       {/* templates */}
       <div className={`${panelClass} p-3 sm:p-4`}>
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Inspection Templates</h4>
-          <p className="text-[10px] text-neutral-500">Reusable inspection templates you can attach as jobs.</p>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Inspection Templates</h4>
+          <p className="text-[10px] text-[color:var(--theme-text-muted)]">Reusable inspection templates you can attach as jobs.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {templatesLoading ? (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">Loading templates…</div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-[color:var(--theme-text-secondary)]">Loading templates…</div>
           ) : templates.length ? (
             templates.slice(0, 9).map((t) => (
               <button
@@ -681,14 +681,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 className={itemCardClass}
                 title={t.description ?? undefined}
               >
-                <span className="font-medium text-neutral-50">{t.template_name ?? "Inspection"}</span>
-                <div className="mt-1 text-xs text-neutral-400">
+                <span className="font-medium text-[color:var(--theme-text-primary)]">{t.template_name ?? "Inspection"}</span>
+                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                   inspection • {typeof t.labor_hours === "number" ? `${t.labor_hours.toFixed(1)}h` : "Labor TBD"}
                 </div>
               </button>
             ))
           ) : (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">No templates yet.</div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-[color:var(--theme-text-secondary)]">No templates yet.</div>
           )}
         </div>
       </div>
@@ -697,8 +697,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       <div className={`${panelClass} p-3 sm:p-4`}>
         <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">Menu Items</h4>
-            <p className="text-[10px] text-neutral-500">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Menu Items</h4>
+            <p className="text-[10px] text-[color:var(--theme-text-muted)]">
               Reusable catalog entries from <span className="font-mono">menu_items</span>. Matches for this vehicle are shown first.
             </p>
           </div>
@@ -708,9 +708,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               value={menuQuery}
               onChange={(e) => setMenuQuery(e.target.value)}
               placeholder="Search menu items (e.g. brakes, alignment, oil)…"
-              className="w-full sm:w-[320px] rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs sm:text-sm text-white placeholder:text-neutral-500 focus:border-sky-400/70 focus:outline-none"
+              className="w-full sm:w-[320px] rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs sm:text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-400/70 focus:outline-none"
             />
-            <label className="flex items-center gap-2 text-[11px] text-neutral-300">
+            <label className="flex items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
               <input
                 type="checkbox"
                 checked={includeGlobal}
@@ -724,7 +724,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {menuLoading ? (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">Loading menu items…</div>
+            <div className="col-span-full w-full py-2 text-center text-sm text-[color:var(--theme-text-secondary)]">Loading menu items…</div>
           ) : menuItemsDisplay.length ? (
             menuItemsDisplay.slice(0, 12).map((mi) => {
               const p = calcMenuTotals({ mi, shop: shopDefaults });
@@ -744,14 +744,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   className={itemCardClass}
                   title={mi.description ?? undefined}
                 >
-                  <span className="font-medium text-neutral-50">{mi.name}</span>
-                  <div className="mt-1 text-[10px] uppercase tracking-wide text-neutral-500">
+                  <span className="font-medium text-[color:var(--theme-text-primary)]">{mi.name}</span>
+                  <div className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
                     Source: menu_items
                   </div>
 
-                  <div className="mt-1 text-xs text-neutral-400">
-                    {laborLabel} • {partsLabel} • <span className="text-neutral-100">{totalLabel}</span>
-                    {taxLabel ? <span className="ml-1 text-neutral-500">• {taxLabel}</span> : null}
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                    {laborLabel} • {partsLabel} • <span className="text-[color:var(--theme-text-primary)]">{totalLabel}</span>
+                    {taxLabel ? <span className="ml-1 text-[color:var(--theme-text-muted)]">• {taxLabel}</span> : null}
 
                     {isGlobalMenuItem(mi) ? (
                       <span className={`ml-2 ${chipClass}`}>
@@ -765,13 +765,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   </div>
 
                   {mi.service_key ? (
-                    <div className="mt-1 font-mono text-[10px] text-neutral-500">{mi.service_key}</div>
+                    <div className="mt-1 font-mono text-[10px] text-[color:var(--theme-text-muted)]">{mi.service_key}</div>
                   ) : null}
                 </button>
               );
             })
           ) : (
-            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+            <div className="col-span-full w-full py-2 text-center text-sm text-[color:var(--theme-text-secondary)]">
               No menu items match this filter.
             </div>
           )}

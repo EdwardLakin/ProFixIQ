@@ -67,10 +67,10 @@ export default function StatusButtons(_props: any) {
     " " +
     "select-none " +
     "font-semibold uppercase tracking-[0.16em] " +
-    "border border-white/15 bg-black/30 text-neutral-200 " +
+    "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] " +
     "backdrop-blur-sm transition-colors duration-150 " +
     "focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.55)] " + // copper focus ring
-    "focus:ring-offset-2 focus:ring-offset-black";
+    "focus:ring-offset-2 focus:ring-offset-[color:var(--theme-surface-page)]";
 
   const cls = (key: InspectionItemStatus) => {
     const isSel = selected === key;

@@ -92,11 +92,11 @@ type ActivationReadinessSummary = {
 };
 
 const cardBase =
-  "rounded-2xl border border-white/10 bg-black/35 shadow-[0_18px_45px_rgba(0,0,0,0.85)] backdrop-blur";
+  "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] backdrop-blur";
 const cardInner =
-  "rounded-xl border border-white/10 bg-black/30 shadow-[0_10px_28px_rgba(0,0,0,0.55)] backdrop-blur";
-const subtleText = "text-neutral-400";
-const titleText = "text-white";
+  "rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] backdrop-blur";
+const subtleText = "text-[color:var(--theme-text-secondary)]";
+const titleText = "text-[color:var(--theme-text-primary)]";
 
 const copperBorder = "border-[var(--accent-copper-light)]/50";
 const copperBg = "bg-[var(--accent-copper)]/12";
@@ -416,7 +416,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
         ? "border-amber-500/50 bg-amber-500/10 text-amber-100"
         : snapshotStatus === "risk"
           ? "border-rose-500/50 bg-rose-500/10 text-rose-100"
-          : "border-white/10 bg-black/25 text-neutral-300";
+          : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]";
 
   const activationReadiness = useMemo<ActivationReadinessSummary>(() => {
     const canonicalReady = Boolean(latestReadiness?.canonical_ready);
@@ -615,7 +615,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
   return (
     <div className="space-y-6">
       {loading ? (
-        <div className={`${cardInner} px-4 py-6 text-sm text-neutral-300`}>Loading Shop Health…</div>
+        <div className={`${cardInner} px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]`}>Loading Shop Health…</div>
       ) : null}
 
       {err ? (
@@ -650,7 +650,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                       ? "border-amber-500/50 bg-amber-500/10 text-amber-100"
                       : activationReadiness.tone === "risk"
                         ? "border-rose-500/50 bg-rose-500/10 text-rose-100"
-                        : "border-white/10 bg-black/25 text-neutral-300"
+                        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]"
                 }`}>
                   {activationReadiness.statusLabel}
                 </span>
@@ -680,18 +680,18 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
             {canonicalStats ? (
               <div className={`mt-3 ${cardInner} p-3`}>
-                <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-500">Activation truth (promoted)</div>
-                <div className="mt-2 grid gap-2 text-xs text-neutral-200 md:grid-cols-5">
-                  <div>Customers: <span className="text-neutral-100">{canonicalStats.customers}</span></div>
-                  <div className={canonicalStats.vehicles === 0 ? "font-semibold text-amber-200" : ""}>Vehicles materialized: <span className="text-neutral-100">{canonicalStats.vehicles}</span></div>
-                  <div className={canonicalStats.workOrders === 0 ? "font-semibold text-amber-200" : ""}>Work orders materialized: <span className="text-neutral-100">{canonicalStats.workOrders}</span></div>
+                <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Activation truth (promoted)</div>
+                <div className="mt-2 grid gap-2 text-xs text-[color:var(--theme-text-primary)] md:grid-cols-5">
+                  <div>Customers: <span className="text-[color:var(--theme-text-primary)]">{canonicalStats.customers}</span></div>
+                  <div className={canonicalStats.vehicles === 0 ? "font-semibold text-amber-200" : ""}>Vehicles materialized: <span className="text-[color:var(--theme-text-primary)]">{canonicalStats.vehicles}</span></div>
+                  <div className={canonicalStats.workOrders === 0 ? "font-semibold text-amber-200" : ""}>Work orders materialized: <span className="text-[color:var(--theme-text-primary)]">{canonicalStats.workOrders}</span></div>
                   <div>Import: <span className={activationReadiness.importComplete ? "text-emerald-200" : "text-amber-200"}>{activationReadiness.importComplete ? "complete" : "pending"}</span></div>
                   <div>Canonical: <span className={activationReadiness.canonicalReady ? "text-emerald-200" : "text-amber-200"}>{activationReadiness.canonicalReady ? "ready" : "not ready"}</span></div>
                 </div>
-                <div className="mt-2 grid gap-1 text-[11px] text-neutral-300 md:grid-cols-3">
+                <div className="mt-2 grid gap-1 text-[11px] text-[color:var(--theme-text-secondary)] md:grid-cols-3">
                   <div>Eligible: <span className={activationReadiness.activationEligible ? "text-emerald-200" : "text-amber-200"}>{activationReadiness.activationEligible ? "yes" : "no"}</span></div>
                   <div>Activated: <span className={activationReadiness.activated ? "text-emerald-200" : "text-amber-200"}>{activationReadiness.activated ? "yes" : "no"}</span></div>
-                  <div>Staff suggestions/candidates: <span className="text-neutral-100">{canonicalStats.staffSuggestions}/{canonicalStats.staffCandidates}</span></div>
+                  <div>Staff suggestions/candidates: <span className="text-[color:var(--theme-text-primary)]">{canonicalStats.staffSuggestions}/{canonicalStats.staffCandidates}</span></div>
                 </div>
                 {(canonicalStats.vehicles === 0 || canonicalStats.workOrders === 0) ? (
                   <div className="mt-2 text-[11px] text-amber-200">
@@ -755,15 +755,15 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
               <MetaCard label="Source" value={overview?.intake_source ? String(overview.intake_source) : "—"} />
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
-              <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1">
                 Intake status: {intakeStatus ?? "unknown"}
               </span>
               {hasIntakeReport ? (
                 <button
                   type="button"
                   onClick={() => window.open(`/api/shop-boost/intakes/${overview?.intake_id}/report`, "_blank", "noopener,noreferrer")}
-                  className="rounded-full border border-white/15 bg-black/25 px-2.5 py-1 transition hover:bg-black/40"
+                  className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 transition hover:bg-[color:var(--theme-surface-inset)]"
                 >
                   Open latest intake report JSON
                 </button>
@@ -781,8 +781,8 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                   );
                 })() : null}
             {latestReadiness ? (
-                  <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-neutral-200">
-                    <div className="font-medium text-neutral-100">Activation truth states</div>
+                  <div className="mt-3 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-[11px] text-[color:var(--theme-text-primary)]">
+                    <div className="font-medium text-[color:var(--theme-text-primary)]">Activation truth states</div>
                     <div className="mt-1 grid gap-1 md:grid-cols-5">
                       <div>Snapshot: <span className={latestReadiness.snapshot_complete ? "text-emerald-200" : "text-amber-200"}>{latestReadiness.snapshot_complete ? "complete" : "pending"}</span></div>
                       <div>Import: <span className={latestReadiness.import_complete ? "text-emerald-200" : "text-amber-200"}>{latestReadiness.import_complete ? "complete" : "pending"}</span></div>
@@ -850,7 +850,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 />
               </div>
 
-              <div className="mt-3 text-[11px] text-neutral-400">
+              <div className="mt-3 text-[11px] text-[color:var(--theme-text-secondary)]">
                 Recommendation: use Shop Health and legacy guided review for diagnostics and follow-up checks.
               </div>
             </div>
@@ -869,9 +869,9 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
 
             <div className={`mt-3 ${cardInner} p-4`}>
               {narrative ? (
-                <p className="whitespace-pre-wrap text-sm text-neutral-100">{narrative}</p>
+                <p className="whitespace-pre-wrap text-sm text-[color:var(--theme-text-primary)]">{narrative}</p>
               ) : (
-                <p className="text-sm text-neutral-400">No narrative summary yet. Upload history and run a snapshot.</p>
+                <p className="text-sm text-[color:var(--theme-text-secondary)]">No narrative summary yet. Upload history and run a snapshot.</p>
               )}
             </div>
           </section>
@@ -892,7 +892,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
                 </p>
               </div>
 
-              <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[11px] text-neutral-200">
+              <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
                 {suggestions.length} item(s)
               </div>
             </div>
@@ -928,7 +928,7 @@ export default function ReportsShopHealthPanel({ shopId }: Props) {
             </div>
 
             {suggestions.length === 0 ? (
-              <div className={`mt-4 ${cardInner} px-4 py-3 text-sm text-neutral-400`}>
+              <div className={`mt-4 ${cardInner} px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]`}>
                 No suggestions yet. Once your pipeline writes to the suggestion tables, they’ll show here.
               </div>
             ) : null}
@@ -1035,14 +1035,14 @@ function barClass(tone: ReturnType<typeof scoreTone> | ReturnType<typeof invertT
   if (tone === "good") return "bg-emerald-500/80";
   if (tone === "watch") return "bg-amber-500/80";
   if (tone === "risk") return "bg-rose-500/80";
-  return "bg-white/10";
+  return "bg-[color:var(--theme-surface-subtle)]";
 }
 
 function labelClass(tone: ReturnType<typeof scoreTone> | ReturnType<typeof invertTone>): string {
   if (tone === "good") return "text-emerald-200";
   if (tone === "watch") return "text-amber-200";
   if (tone === "risk") return "text-rose-200";
-  return "text-neutral-400";
+  return "text-[color:var(--theme-text-secondary)]";
 }
 
 function groupSuggestions(items: ShopBoostSuggestionRow[]) {
@@ -1070,18 +1070,18 @@ function HealthKpiCard({
   return (
     <div className={`${cardInner} p-4`}>
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">{title}</div>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">{title}</div>
         <div className={`text-[11px] font-semibold ${labelClass(tone)}`}>
           {value === null ? "—" : `${value}/100`}
         </div>
       </div>
 
-      <div className="mt-3 h-2 overflow-hidden rounded-full border border-white/10 bg-black/25">
+      <div className="mt-3 h-2 overflow-hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
         <div className={`h-full ${barClass(tone)}`} style={{ width: `${value ?? 0}%` }} />
       </div>
 
-      <div className="mt-2 text-[11px] text-neutral-400">{hint}</div>
-      {invert ? <div className="mt-1 text-[10px] text-neutral-500">Lower is better</div> : null}
+      <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">{hint}</div>
+      {invert ? <div className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">Lower is better</div> : null}
     </div>
   );
 }
@@ -1104,10 +1104,10 @@ function ScoreBar({
   return (
     <div className={`${cardInner} px-4 py-3`}>
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[11px] font-semibold text-neutral-200">{label}</div>
+        <div className="text-[11px] font-semibold text-[color:var(--theme-text-primary)]">{label}</div>
         <div className={`text-[11px] font-semibold ${labelClass(tone)}`}>{shown === null ? "—" : `${shown}%`}</div>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/10 bg-black/25">
+      <div className="mt-2 h-2 overflow-hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
         <div className={`h-full ${barClass(tone)}`} style={{ width: `${width}%` }} />
       </div>
     </div>
@@ -1117,8 +1117,8 @@ function ScoreBar({
 function MetaCard({ label, value }: { label: string; value: string }) {
   return (
     <div className={`${cardInner} px-4 py-3`}>
-      <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-neutral-100">{value}</div>
+      <div className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
     </div>
   );
 }
@@ -1130,7 +1130,7 @@ function QuickLinkButton({ label, onClick }: { label: string; onClick: () => voi
       onClick={onClick}
       className={[
         "rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition",
-        "border-white/10 bg-black/25 text-neutral-200 hover:bg-black/40 hover:text-white",
+        "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)] hover:text-[color:var(--theme-text-primary)]",
       ].join(" ")}
     >
       {label}
@@ -1162,9 +1162,9 @@ function StepCard({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge}`}>Step {step}</span>
-            <div className="text-sm font-semibold text-white">{title}</div>
+            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
           </div>
-          <div className="mt-2 text-[11px] text-neutral-400">{body}</div>
+          <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">{body}</div>
         </div>
       </div>
     </div>
@@ -1192,10 +1192,10 @@ function SuggestionColumn({
     <div className={`${cardBase} p-4`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-white">{title}</div>
-          <div className="mt-1 text-[11px] text-neutral-400">{subtitle}</div>
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+          <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">{subtitle}</div>
         </div>
-        <div className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] text-neutral-200">
+        <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] text-[color:var(--theme-text-primary)]">
           {items.length}
         </div>
       </div>
@@ -1212,7 +1212,7 @@ function SuggestionColumn({
           {primaryActionLabel}
         </button>
 
-        <div className="text-[10px] text-neutral-500">Tip: Start with highest confidence.</div>
+        <div className="text-[10px] text-[color:var(--theme-text-muted)]">Tip: Start with highest confidence.</div>
       </div>
 
       <div className="mt-3 space-y-2">
@@ -1224,10 +1224,10 @@ function SuggestionColumn({
             <div key={s.id} className={`${cardInner} px-3 py-3`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="truncate text-[12px] font-semibold text-neutral-100">
+                  <div className="truncate text-[12px] font-semibold text-[color:var(--theme-text-primary)]">
                     {s.name ?? "Untitled"}
                   </div>
-                  {s.category ? <div className="mt-0.5 text-[10px] text-neutral-400">{s.category}</div> : null}
+                  {s.category ? <div className="mt-0.5 text-[10px] text-[color:var(--theme-text-secondary)]">{s.category}</div> : null}
                 </div>
 
                 {conf !== null ? (
@@ -1247,21 +1247,21 @@ function SuggestionColumn({
               </div>
 
               {s.price_suggestion !== null || s.labor_hours_suggestion !== null ? (
-                <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-neutral-200">
+                <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-[color:var(--theme-text-primary)]">
                   {s.price_suggestion !== null ? (
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5">
+                    <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
                       ${Number(s.price_suggestion).toFixed(0)}
                     </span>
                   ) : null}
                   {s.labor_hours_suggestion !== null ? (
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5">
+                    <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
                       {Number(s.labor_hours_suggestion).toFixed(1)} hr
                     </span>
                   ) : null}
                 </div>
               ) : null}
 
-              {s.reason ? <div className="mt-2 line-clamp-2 text-[10px] text-neutral-400">{s.reason}</div> : null}
+              {s.reason ? <div className="mt-2 line-clamp-2 text-[10px] text-[color:var(--theme-text-secondary)]">{s.reason}</div> : null}
 
               <div className="mt-3 flex items-center justify-end gap-2">
                 <button
@@ -1270,7 +1270,7 @@ function SuggestionColumn({
                   disabled={creatingId === s.id}
                   className={[
                     "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
-                    "border-white/10 bg-black/25 text-neutral-200 hover:bg-black/40 disabled:opacity-60",
+                    "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)] disabled:opacity-60",
                   ].join(" ")}
                   title="Optional: one-click create (requires API)"
                 >
@@ -1281,10 +1281,10 @@ function SuggestionColumn({
           );
         })}
 
-        {items.length > 10 ? <div className="text-[11px] text-neutral-400">+{items.length - 10} more…</div> : null}
+        {items.length > 10 ? <div className="text-[11px] text-[color:var(--theme-text-secondary)]">+{items.length - 10} more…</div> : null}
 
         {items.length === 0 ? (
-          <div className={`${cardInner} px-3 py-3 text-[11px] text-neutral-400`}>No suggestions yet.</div>
+          <div className={`${cardInner} px-3 py-3 text-[11px] text-[color:var(--theme-text-secondary)]`}>No suggestions yet.</div>
         ) : null}
       </div>
     </div>

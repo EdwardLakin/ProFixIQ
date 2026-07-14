@@ -87,7 +87,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
   return (
     <div className="mt-6 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Approvals
         </div>
         {pendingLines.length > 0 ? (
@@ -104,7 +104,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
               type="button"
               onClick={() => void runDecision(pendingLines.map((line) => line.id), "decline")}
               disabled={!!loadingKey}
-              className="inline-flex items-center justify-center rounded-full border border-white/20 bg-black/45 px-4 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-black/65 disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50"
             >
               {loadingKey === "decline-bulk" ? "Saving..." : `Decline all (${pendingLines.length})`}
             </button>
@@ -112,14 +112,14 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
               type="button"
               onClick={() => void runDecision(pendingLines.map((line) => line.id), "defer")}
               disabled={!!loadingKey}
-              className="inline-flex items-center justify-center rounded-full border border-white/15 bg-transparent px-4 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-white/5 disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-transparent px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-50"
             >
               {loadingKey === "defer-bulk" ? "Saving..." : `Defer all (${pendingLines.length})`}
             </button>
           </div>
         ) : null}
       </div>
-      <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-neutral-400">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
         Approving a quote item authorizes the shop to perform that work. Declined or deferred items stay on the quote and do not become punchable work.
       </div>
 
@@ -135,12 +135,12 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
           return (
             <div
               key={l.id}
-              className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3"
+              className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="truncate text-sm font-semibold text-neutral-100">
+                    <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {l.description?.trim() || "Quote item"}
                     </div>
 
@@ -167,7 +167,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
                         className={
                           isPrimaryApprove
                             ? "inline-flex items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/15 px-4 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50"
-                            : "inline-flex items-center justify-center rounded-full border border-white/20 bg-black/45 px-4 py-1.5 text-xs font-semibold text-neutral-100 transition hover:bg-black/65 disabled:opacity-50"
+                            : "inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50"
                         }
                       >
                         {isBusy ? "Saving..." : ap === approvalStateForDecision(decision) ? completedDecisionLabel(decision) : decisionLabel(decision)}

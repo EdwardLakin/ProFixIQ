@@ -17,7 +17,7 @@ export function DashboardModuleShell({
   return (
     <section
       className={cn(
-        "h-full min-h-0 rounded-2xl border border-white/10 bg-[color:color-mix(in_srgb,var(--theme-card-bg,#111827)_90%,black)] text-white",
+        "h-full min-h-0 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:color-mix(in_srgb,var(--theme-card-bg,var(--theme-surface-page))_90%,_var(--theme-surface-page))] text-[color:var(--theme-text-primary)]",
         mode === "signal" ? "p-3.5" : mode === "feature" ? "p-5" : "p-4",
         className,
       )}
@@ -40,9 +40,9 @@ export function DashboardModuleHeader({
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         {eyebrow ? (
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">{eyebrow}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">{eyebrow}</div>
         ) : null}
-        <h3 className="mt-1 truncate text-base font-semibold tracking-tight text-white">{title}</h3>
+        <h3 className="mt-1 truncate text-base font-semibold tracking-tight text-[color:var(--theme-text-primary)]">{title}</h3>
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
@@ -55,11 +55,11 @@ export function DashboardMetric({ label, value, tone = "default" }: { label: str
       ? "text-[color:var(--brand-accent)]"
       : tone === "primary"
         ? "text-[color:var(--brand-primary)]"
-        : "text-white";
+        : "text-[color:var(--theme-text-primary)]";
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">{label}</div>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">{label}</div>
       <div className={cn("mt-1 text-2xl font-semibold leading-none", toneClass)}>{value}</div>
     </div>
   );
@@ -73,10 +73,10 @@ export function DashboardSignalList({ items }: { items: Array<{ label: string; v
   return (
     <div className="space-y-1.5">
       {items.map((item) => (
-        <div key={`${item.label}-${item.value ?? ""}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs">
-          <span className="text-neutral-300">{item.label}</span>
+        <div key={`${item.label}-${item.value ?? ""}`} className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-xs">
+          <span className="text-[color:var(--theme-text-secondary)]">{item.label}</span>
           {item.value ? (
-            <span className={cn("font-semibold", item.tone === "accent" ? "text-[color:var(--brand-accent)]" : "text-white")}>{item.value}</span>
+            <span className={cn("font-semibold", item.tone === "accent" ? "text-[color:var(--brand-accent)]" : "text-[color:var(--theme-text-primary)]")}>{item.value}</span>
           ) : null}
         </div>
       ))}
@@ -85,5 +85,5 @@ export function DashboardSignalList({ items }: { items: Array<{ label: string; v
 }
 
 export function DashboardActionBar({ children }: { children: ReactNode }) {
-  return <div className="mt-auto flex items-center justify-between gap-2 border-t border-white/10 pt-2">{children}</div>;
+  return <div className="mt-auto flex items-center justify-between gap-2 border-t border-[color:var(--theme-border-soft)] pt-2">{children}</div>;
 }

@@ -58,7 +58,7 @@ export default function FleetSummaryCards({
       {/* Out of service */}
       <div className="metal-card rounded-2xl p-4">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Out of service
           </p>
           <span className="h-2 w-2 rounded-full bg-red-500 shadow-[0_0_14px_rgba(239,68,68,0.9)]" />
@@ -66,20 +66,20 @@ export default function FleetSummaryCards({
         <div className="mt-3 text-3xl font-bold text-red-400">
           {oosCount}
         </div>
-        <p className="mt-1 text-xs text-neutral-400">
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
           Units not available for dispatch.
         </p>
       </div>
 
       {/* Limited use */}
       <div className="metal-card rounded-2xl p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Limited use
         </p>
         <div className="mt-3 text-3xl font-bold text-amber-300">
           {limitedCount}
         </div>
-        <p className="mt-1 text-xs text-neutral-400">
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
           Units with restrictions or minor issues.
         </p>
       </div>
@@ -94,20 +94,20 @@ export default function FleetSummaryCards({
           ${inspectionWindowActive ? "ring-2 ring-sky-400/60" : ""}
         `}
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Inspections in window
         </p>
         <div className="mt-3 text-3xl font-bold text-sky-300">
           {upcomingInspections}
         </div>
-        <p className="mt-1 text-xs text-neutral-400">
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
           Units with CVIP / safety due in the next 30 days.
         </p>
       </button>
 
       {/* Safety & pre-trip */}
       <div className="metal-card rounded-2xl p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Safety & pre-trip
         </p>
 
@@ -116,7 +116,7 @@ export default function FleetSummaryCards({
             <div className="text-xl font-semibold text-red-300">
               {safetyIssues}
             </div>
-            <div className="text-[11px] text-neutral-400">
+            <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
               Open safety items
             </div>
           </div>
@@ -124,14 +124,14 @@ export default function FleetSummaryCards({
             <div className="text-xl font-semibold text-amber-200">
               {complianceIssues}
             </div>
-            <div className="text-[11px] text-neutral-400">
+            <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
               Compliance reminders
             </div>
           </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          <p className="text-[11px] text-neutral-400">
+          <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
             Drivers with a pre-trip due:
           </p>
           <span className="accent-chip px-2 py-1 text-[10px] font-semibold">

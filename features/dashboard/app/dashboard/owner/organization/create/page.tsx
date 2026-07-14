@@ -67,19 +67,19 @@ export default function CreateOrganizationPage() {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5 p-5 text-foreground lg:p-6">
-      <section className="space-y-3 rounded-2xl border border-white/10 bg-black/25 p-5 shadow-[0_8px_30px_rgba(0,0,0,0.18)]">
+      <section className="space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 shadow-[var(--theme-shadow-medium)]">
         <div>
-          <h1 className="text-xl font-semibold text-neutral-50">
+          <h1 className="text-xl font-semibold text-[color:var(--theme-text-primary)]">
             Create organization
           </h1>
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             Link this shop to a new organization so you can manage multiple
             locations under one account.
           </p>
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+          <label className="text-xs font-medium uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
             Organization name
           </label>
           <Input

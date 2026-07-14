@@ -128,32 +128,32 @@ export default function CustomerVehicleFormPage() {
   };
 
   const pageShell =
-    "mx-auto w-full max-w-5xl rounded-2xl border border-[var(--metal-border-soft,#334155)] " +
-    "bg-[linear-gradient(180deg,rgba(6,10,18,0.94),rgba(2,6,14,0.98))] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] md:p-6";
+    "mx-auto w-full max-w-5xl rounded-2xl border border-[var(--metal-border-soft,var(--theme-border-soft))] " +
+    "bg-[var(--theme-gradient-panel)] p-4 shadow-[var(--theme-shadow-medium)] md:p-6";
   const panel =
-    "rounded-2xl border border-[var(--metal-border-soft,#334155)] " +
-    "bg-[linear-gradient(180deg,rgba(8,14,24,0.88),rgba(2,6,12,0.95))] p-4";
+    "rounded-2xl border border-[var(--metal-border-soft,var(--theme-border-soft))] " +
+    "bg-[var(--theme-gradient-panel)] p-4";
   const inputBase =
-    "w-full rounded-xl border border-[var(--metal-border-soft,#334155)] bg-slate-950/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 " +
-    "focus:outline-none focus:ring-2 focus:ring-slate-500/40";
+    "w-full rounded-xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] " +
+    "focus:outline-none focus:ring-2 focus:ring-[color:var(--theme-border-strong)]";
   const selectBase =
-    "w-full rounded-xl border border-[var(--metal-border-soft,#334155)] bg-slate-950/80 px-3 py-2 text-sm text-slate-100 " +
-    "focus:outline-none focus:ring-2 focus:ring-slate-500/40";
+    "w-full rounded-xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] " +
+    "focus:outline-none focus:ring-2 focus:ring-[color:var(--theme-border-strong)]";
 
   return (
-    <div className="px-4 py-6 text-slate-100">
+    <div className="px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.09),transparent_48%),radial-gradient(circle_at_bottom,rgba(3,7,18,0.96),#020617_80%)]"
+        className="pointer-events-none fixed inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
       />
 
       <div className={pageShell}>
-        <header className="mb-5 rounded-2xl border border-[var(--metal-border-soft,#334155)] bg-slate-950/60 px-4 py-4">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Inspection Intake</p>
-          <h1 className="mt-1 text-xl font-semibold text-slate-100 sm:text-2xl">
+        <header className="mb-5 rounded-2xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-4 py-4">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Inspection Intake</p>
+          <h1 className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)] sm:text-2xl">
             Customer &amp; Vehicle Information
           </h1>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
             Fill required fields to start the inspection flow.
           </p>
         </header>
@@ -161,8 +161,8 @@ export default function CustomerVehicleFormPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           <section className={panel}>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-300">Customer</h2>
-              <span className="rounded-full border border-slate-700/70 bg-slate-900/80 px-2 py-0.5 text-[11px] text-slate-400">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Customer</h2>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                 Required: name
               </span>
             </div>
@@ -176,8 +176,8 @@ export default function CustomerVehicleFormPage() {
 
           <section className={panel}>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-300">Vehicle</h2>
-              <span className="rounded-full border border-slate-700/70 bg-slate-900/80 px-2 py-0.5 text-[11px] text-slate-400">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Vehicle</h2>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                 Required: make + model
               </span>
             </div>
@@ -221,14 +221,14 @@ export default function CustomerVehicleFormPage() {
           </section>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--metal-border-soft,#334155)] bg-slate-950/60 px-4 py-3">
-          <p className="text-xs text-slate-400">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-4 py-3">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
             {requiredMissing ? `Missing required field: ${requiredMissing}` : "All required fields complete."}
           </p>
           <button
             type="button"
             onClick={handleStart}
-            className="rounded-full bg-[linear-gradient(to_right,rgba(194,136,96,0.88),rgba(173,111,72,0.88))] px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_18px_rgba(181,120,82,0.22)] hover:brightness-110"
+            className="rounded-full bg-[linear-gradient(to_right,rgba(194,136,96,0.88),rgba(173,111,72,0.88))] px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(181,120,82,0.22)] hover:brightness-110"
           >
             Start Inspection
           </button>

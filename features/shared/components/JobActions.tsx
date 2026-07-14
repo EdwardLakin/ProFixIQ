@@ -26,24 +26,24 @@ export const JobActions: React.FC<JobActionsProps> = ({
   return (
     <div className="flex gap-2 mt-2">
       {status === "not_started" && (
-        <Button onClick={onStart} className="bg-blue-600 text-white">
+        <Button onClick={onStart} className="bg-blue-600 text-[color:var(--theme-text-primary)]">
           Start Job
         </Button>
       )}
 
       {status === "in_progress" && (
         <>
-          <Button onClick={onPause} className="bg-yellow-500 text-black">
+          <Button onClick={onPause} className="bg-yellow-500 text-[color:var(--theme-text-on-accent)]">
             Pause
           </Button>
-          <Button onClick={onComplete} className="bg-green-600 text-white">
+          <Button onClick={onComplete} className="bg-green-600 text-[color:var(--theme-text-primary)]">
             Complete
           </Button>
         </>
       )}
 
       {isOnHold && status === "on_hold" && (
-        <Button onClick={onResume} className="bg-blue-500 text-white">
+        <Button onClick={onResume} className="bg-blue-500 text-[color:var(--theme-text-primary)]">
           Resume
         </Button>
       )}

@@ -95,20 +95,20 @@ export default function ForcePasswordChangeModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[color:var(--theme-surface-overlay)] px-4">
       <div
         className={clsx(
-          "w-full max-w-md rounded-2xl border border-white/12",
-          "bg-[radial-gradient(900px_520px_at_18%_0%,rgba(197,106,47,0.14),transparent_55%),linear-gradient(180deg,rgba(0,0,0,0.70),rgba(0,0,0,0.42))]",
-          "backdrop-blur-md shadow-[0_24px_70px_rgba(0,0,0,0.90)]",
+          "w-full max-w-md rounded-2xl border border-[color:var(--theme-border-soft)]",
+          "bg-[var(--theme-gradient-panel)]",
+          "backdrop-blur-md shadow-[var(--theme-shadow-medium)]",
           "p-4 sm:p-6",
         )}
       >
-        <div className="text-[0.7rem] uppercase tracking-[0.14em] text-neutral-400">
+        <div className="text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
           Security required
         </div>
-        <h2 className="mt-1 text-lg font-semibold text-white">{title}</h2>
-        <p className="mt-1 text-sm text-neutral-400">{subtitle}</p>
+        <h2 className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{title}</h2>
+        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{subtitle}</p>
 
         {(error || okMsg) && (
           <div className="mt-3 space-y-2">
@@ -127,11 +127,11 @@ export default function ForcePasswordChangeModal({
 
         <div className="mt-4 space-y-3">
           <div className="space-y-1">
-            <label className="block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+            <label className="block text-[0.7rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
               New password
             </label>
             <input
-              className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -141,11 +141,11 @@ export default function ForcePasswordChangeModal({
           </div>
 
           <div className="space-y-1">
-            <label className="block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+            <label className="block text-[0.7rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
               Confirm password
             </label>
             <input
-              className="w-full rounded-lg border border-white/12 bg-black/60 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)] focus:border-[var(--accent-copper-soft)]"
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
@@ -157,12 +157,12 @@ export default function ForcePasswordChangeModal({
             type="button"
             onClick={() => void submit()}
             disabled={busy}
-            className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.18em] text-black shadow-[0_0_26px_rgba(197,122,74,0.85)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_26px_rgba(197,122,74,0.85)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? "Updating…" : "Update password"}
           </button>
 
-          <p className="text-[11px] text-neutral-500">
+          <p className="text-[11px] text-[color:var(--theme-text-muted)]">
             You won’t be able to use the app until your password is updated.
           </p>
         </div>

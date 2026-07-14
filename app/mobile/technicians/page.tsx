@@ -116,10 +116,10 @@ export default function MobileTechniciansPage() {
 
   if (!hasAccess && role) {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 pb-8 pt-6">
           <h1 className="text-lg font-semibold">Technicians</h1>
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             Mobile technician stats are available for owners, admins, and
             managers.
           </p>
@@ -129,28 +129,28 @@ export default function MobileTechniciansPage() {
   }
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-6">
         {/* Header */}
         <header className="space-y-1">
-          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
             ProFixIQ • Mobile
           </div>
           <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-orange-400">
             Tech Leaderboard
           </h1>
-          <p className="text-[0.8rem] text-neutral-400">
+          <p className="text-[0.8rem] text-[color:var(--theme-text-secondary)]">
             Per-tech revenue, hours and efficiency in your pocket.
           </p>
         </header>
 
         {/* Range selector */}
-        <section className="space-y-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-3 shadow-card">
+        <section className="space-y-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-card">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+            <span className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Time range
             </span>
-            <span className="text-[0.7rem] text-neutral-300">
+            <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
               {dateRangeLabel}
             </span>
           </div>
@@ -166,8 +166,8 @@ export default function MobileTechniciansPage() {
                     variant={active ? "default" : "outline"}
                     className={
                       active
-                        ? "border-orange-500 bg-orange-500 text-black text-[0.7rem] px-3 py-1"
-                        : "border-white/15 bg-transparent text-[0.7rem] px-3 py-1"
+                        ? "border-orange-500 bg-orange-500 text-[color:var(--theme-text-on-accent)] text-[0.7rem] px-3 py-1"
+                        : "border-[color:var(--theme-border-soft)] bg-transparent text-[0.7rem] px-3 py-1"
                     }
                     onClick={() => setRange(r)}
                   >
@@ -187,14 +187,14 @@ export default function MobileTechniciansPage() {
         )}
 
         {loading && (
-          <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-4 text-[0.8rem] text-neutral-400">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-[0.8rem] text-[color:var(--theme-text-secondary)]">
             Loading technician stats…
           </div>
         )}
 
         {/* No data */}
         {!loading && !error && !hasData && (
-          <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-4 text-[0.8rem] text-neutral-400">
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-[0.8rem] text-[color:var(--theme-text-secondary)]">
             No technician data found for this range.
           </div>
         )}
@@ -212,18 +212,18 @@ export default function MobileTechniciansPage() {
               return (
                 <article
                   key={row.techId}
-                  className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 shadow-card"
+                  className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 shadow-card"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-500">
+                      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                         #{index + 1} Technician
                       </div>
-                      <div className="text-sm font-semibold text-white">
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {row.name}
                       </div>
                       {row.role && (
-                        <div className="text-[0.7rem] text-neutral-400">
+                        <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                           {row.role}
                         </div>
                       )}
@@ -238,7 +238,7 @@ export default function MobileTechniciansPage() {
                     )}
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-[0.75rem] text-neutral-200">
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-[0.75rem] text-[color:var(--theme-text-primary)]">
                     <TechStat label="Jobs" value={row.jobs} />
                     <TechStat
                       label="Revenue"
@@ -271,7 +271,7 @@ export default function MobileTechniciansPage() {
                   </div>
 
                   {row.clockedHours > 0 && (
-                    <div className="mt-2 text-[0.7rem] text-neutral-400">
+                    <div className="mt-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                       Billed vs clocked:{" "}
                       <span className="font-semibold text-orange-300">
                         {billedVsClockedPct.toFixed(0)}%
@@ -311,7 +311,7 @@ function efficiencyBadge(
   if (efficiencyPct >= 130) {
     return {
       label: "Silver",
-      className: "bg-slate-200/10 border-slate-200 text-slate-100",
+      className: "bg-[color:var(--theme-surface-subtle)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)]",
       emoji: "🥈",
     };
   }
@@ -334,10 +334,10 @@ function TechStat({
 }) {
   return (
     <div>
-      <div className="text-[0.6rem] uppercase tracking-[0.16em] text-neutral-500">
+      <div className="text-[0.6rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
         {label}
       </div>
-      <div className="mt-0.5 text-[0.8rem] font-semibold text-neutral-100">
+      <div className="mt-0.5 text-[0.8rem] font-semibold text-[color:var(--theme-text-primary)]">
         {value}
       </div>
     </div>

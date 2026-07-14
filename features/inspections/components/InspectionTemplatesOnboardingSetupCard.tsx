@@ -92,12 +92,12 @@ export function InspectionTemplatesOnboardingSetupCard({ guidedQuery, onFocusTem
       title="Inspection templates setup/import"
       description="Guided onboarding brought you here because reusable inspection templates are created and imported on this templates page."
     >
-      <section className="rounded-2xl border border-[color:var(--desktop-border)] bg-[radial-gradient(circle_at_top_left,rgba(197,122,74,0.16),rgba(15,23,42,0.92)_38%,rgba(2,6,23,0.96))] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)]">
+      <section className="rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] p-4 shadow-[var(--theme-shadow-medium)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-3xl">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200/85">Guided onboarding · Inspection templates</div>
-            <h2 className="mt-2 text-xl font-semibold text-white">Set up or import inspection templates</h2>
-            <div className="mt-3 space-y-2 text-sm text-neutral-300">
+            <h2 className="mt-2 text-xl font-semibold text-[color:var(--theme-text-primary)]">Set up or import inspection templates</h2>
+            <div className="mt-3 space-y-2 text-sm text-[color:var(--theme-text-secondary)]">
               <p>Inspection templates are reusable checklists for PMs, CVIP-style inspections, customer inspections, and shop-specific forms.</p>
               <p>You can create templates manually or import an existing form and review it before using it.</p>
             </div>
@@ -126,7 +126,7 @@ export function InspectionTemplatesOnboardingSetupCard({ guidedQuery, onFocusTem
               type="button"
               onClick={() => void postStepAction("skip")}
               disabled={disabled}
-              className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-55"
+              className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-55"
             >
               {busyAction === "skip" ? "Skipping…" : "Skip for now"}
             </button>

@@ -161,7 +161,7 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
   }
 
   return (
-    <div className="bg-black/30 text-white rounded-lg p-6 shadow-xl backdrop-blur-lg border border-white/10">
+    <div className="bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] rounded-lg p-6 shadow-xl backdrop-blur-lg border border-[color:var(--theme-border-soft)]">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-bold text-orange-400">Inspection Summary</h2>
         <button onClick={handleExportPDF} className="bg-blue-600 px-3 py-1 rounded text-sm">
@@ -169,11 +169,11 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
         </button>
       </div>
 
-      <pre className="whitespace-pre-wrap text-white/80 mb-6">{summary}</pre>
+      <pre className="whitespace-pre-wrap text-[color:var(--theme-text-secondary)] mb-6">{summary}</pre>
 
       {Object.entries(grouped).map(([group, items]) => (
         <div key={group} className="mb-6">
-          <h3 className="text-xl font-semibold capitalize text-white mb-2">
+          <h3 className="text-xl font-semibold capitalize text-[color:var(--theme-text-primary)] mb-2">
             {group} Items
           </h3>
 
@@ -187,17 +187,17 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
                   : 0;
 
             return (
-              <div key={item.id} className="border border-white/10 bg-white/5 p-4 rounded-md space-y-2">
+              <div key={item.id} className="border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4 rounded-md space-y-2">
                 <div className="flex flex-col md:flex-row md:items-center gap-4">
                   <input
-                    className="bg-black/20 text-white p-1 rounded w-full md:w-1/3"
+                    className="bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] p-1 rounded w-full md:w-1/3"
                     value={item.description ?? ""}
                     onChange={(e) => handleChange(idx, "description", e.target.value)}
                     placeholder="Description"
                   />
                   <input
                     type="text"
-                    className="bg-black/20 text-white p-1 rounded w-full md:w-1/4"
+                    className="bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] p-1 rounded w-full md:w-1/4"
                     value={item.partName ?? item.part?.name ?? ""}
                     onChange={(e) => handleChange(idx, "partName", e.target.value)}
                     onBlur={() =>
@@ -207,14 +207,14 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
                   />
                   <input
                     type="number"
-                    className="bg-black/20 text-white p-1 rounded w-full md:w-1/6"
+                    className="bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] p-1 rounded w-full md:w-1/6"
                     value={item.partPrice ?? item.part?.price ?? 0}
                     onChange={(e) => handleChange(idx, "partPrice", e.target.value)}
                     placeholder="Part cost"
                   />
                   <input
                     type="number"
-                    className="bg-black/20 text-white p-1 rounded w-full md:w-1/6"
+                    className="bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] p-1 rounded w-full md:w-1/6"
                     value={item.price ?? 0}
                     onChange={(e) => handleChange(idx, "price", parseFloat(e.target.value))}
                     placeholder="Labor price"
@@ -222,17 +222,17 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
                 </div>
 
                 <textarea
-                  className="bg-black/20 text-white p-1 rounded w-full"
+                  className="bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] p-1 rounded w-full"
                   value={item.notes ?? ""}
                   onChange={(e) => handleChange(idx, "notes", e.target.value)}
                   placeholder="Notes"
                 />
 
-                <p className="text-sm text-white/70">
+                <p className="text-sm text-[color:var(--theme-text-secondary)]">
                   Labor: ${labor.toFixed(2)} | Part: ${partPrice.toFixed(2)}
                 </p>
 
-                <div className="text-sm text-white/70 mt-2">
+                <div className="text-sm text-[color:var(--theme-text-secondary)] mt-2">
                   Suggested Parts:{" "}
                   {lookupResults[idx]?.length
                     ? lookupResults[idx].slice(0, 3).join(", ")
@@ -251,7 +251,7 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
                     <img
                       key={i}
                       src={url}
-                      className="max-h-24 border border-white/20 rounded"
+                      className="max-h-24 border border-[color:var(--theme-border-soft)] rounded"
                       alt="Quote Attachment"
                     />
                   ))}
@@ -271,7 +271,7 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
         </div>
       ))}
 
-      <div className="border-t border-white/10 pt-4 text-right text-white font-semibold text-lg">
+      <div className="border-t border-[color:var(--theme-border-soft)] pt-4 text-right text-[color:var(--theme-text-primary)] font-semibold text-lg">
         Quote Total: $
         {quoteState
           .reduce((sum, i) => sum + (i.price || 0) + (i.part?.price || 0), 0)

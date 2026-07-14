@@ -18,13 +18,13 @@ interface LinkButtonProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> 
 
 const variantClasses: Record<Variant, string> = {
   default:
-    "text-white border border-white/10 bg-black/30 hover:bg-white/5",
+    "text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] hover:bg-[color:var(--theme-surface-subtle)]",
   secondary:
-    "text-neutral-200 border border-white/15 bg-black/20 hover:bg-white/5",
+    "text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] hover:bg-[color:var(--theme-surface-subtle)]",
   destructive:
-    "text-white border border-red-500/50 bg-red-700/60 hover:bg-red-600/70",
+    "text-[color:var(--theme-text-primary)] border border-red-500/50 bg-red-700/60 hover:bg-red-600/70",
   ghost:
-    "text-neutral-200 border border-white/10 bg-transparent hover:bg-white/5",
+    "text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] bg-transparent hover:bg-[color:var(--theme-surface-subtle)]",
   outline:
     "text-[color:var(--accent-copper-light,#fdba74)] border border-[color:var(--accent-copper-soft,#fdba74)] bg-transparent hover:bg-[color:var(--accent-copper,#f97316)]/10",
 };
@@ -50,7 +50,7 @@ function LinkButton({
       href={href}
       className={clsx(
         "inline-flex items-center justify-center rounded-md font-semibold transition duration-150 ease-in-out",
-        "backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.45)] focus:ring-offset-2 focus:ring-offset-black",
+        "backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.45)] focus:ring-offset-2 focus:ring-offset-[color:var(--theme-surface-page)]",
         variantClasses[variant],
         sizeClasses[size],
         className,

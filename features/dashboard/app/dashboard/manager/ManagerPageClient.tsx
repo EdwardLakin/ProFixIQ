@@ -28,7 +28,7 @@ export default async function ManagerDashboardPage() {
   }
 
   return (
-    <Suspense fallback={<div className="p-4 text-sm text-neutral-400">Loading…</div>}>
+    <Suspense fallback={<div className="p-4 text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>}>
       <ManagerJobDashboard />
     </Suspense>
   );

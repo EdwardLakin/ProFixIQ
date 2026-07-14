@@ -231,9 +231,9 @@ export default function MobileShiftTracker({ userId }: Props) {
     "rounded-xl px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] transition-colors disabled:opacity-60 disabled:cursor-not-allowed";
 
   return (
-    <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[rgba(5,9,16,0.9)] px-3 py-3 text-[0.75rem] text-neutral-100 shadow-[0_14px_32px_rgba(0,0,0,0.9)] backdrop-blur-md space-y-2">
+    <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[var(--theme-surface-inset)] px-3 py-3 text-[0.75rem] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-neutral-400">
+        <span className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">
           Shift tracker
         </span>
         <span className="text-[0.7rem] text-[var(--accent-copper-light)]">
@@ -257,14 +257,14 @@ export default function MobileShiftTracker({ userId }: Props) {
       )}
 
       {mode !== "none" && startTime && mode !== "ended" && (
-        <div className="space-y-1 text-[0.65rem] text-neutral-400">
+        <div className="space-y-1 text-[0.65rem] text-[color:var(--theme-text-secondary)]">
           <p>
-            Started <span className="font-mono text-neutral-100">{new Date(startTime).toLocaleTimeString()}</span>
+            Started <span className="font-mono text-[color:var(--theme-text-primary)]">{new Date(startTime).toLocaleTimeString()}</span>
           </p>
           <p>
-            Elapsed <span className="font-mono text-neutral-100">{formatDistanceToNow(new Date(startTime), { includeSeconds: true })}</span>
+            Elapsed <span className="font-mono text-[color:var(--theme-text-primary)]">{formatDistanceToNow(new Date(startTime), { includeSeconds: true })}</span>
           </p>
-          <p>Activity <span className="text-neutral-100">{niceStatus}</span></p>
+          <p>Activity <span className="text-[color:var(--theme-text-primary)]">{niceStatus}</span></p>
         </div>
       )}
 
@@ -276,8 +276,8 @@ export default function MobileShiftTracker({ userId }: Props) {
           className={
             btnBase +
             " w-full border border-[var(--accent-copper-soft)] " +
-            "bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.35),rgba(5,9,16,0.95))] " +
-            "text-white shadow-[0_0_22px_rgba(248,113,22,0.55)] hover:bg-[rgba(248,113,22,0.25)]"
+            "bg-[var(--theme-gradient-panel)] " +
+            "text-[color:var(--theme-text-primary)] shadow-[0_0_22px_rgba(248,113,22,0.55)] hover:bg-[rgba(248,113,22,0.25)]"
           }
         >
           {busy ? "Starting…" : "Start shift"}
@@ -296,7 +296,7 @@ export default function MobileShiftTracker({ userId }: Props) {
                 " flex-1 border border-[var(--accent-copper-soft)]/70 " +
                 (mode === "break"
                   ? "bg-[var(--accent-copper-soft)]/25 text-[var(--accent-copper-light)]"
-                  : "bg-black/40 text-neutral-100 hover:bg-[var(--accent-copper-soft)]/15")
+                  : "bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[var(--accent-copper-soft)]/15")
               }
             >
               {mode === "break" ? "End break" : "Break"}
@@ -311,7 +311,7 @@ export default function MobileShiftTracker({ userId }: Props) {
                 " flex-1 border border-[var(--accent-copper-soft)]/70 " +
                 (mode === "lunch"
                   ? "bg-[var(--accent-copper-soft)]/25 text-[var(--accent-copper-light)]"
-                  : "bg-black/40 text-neutral-100 hover:bg-[var(--accent-copper-soft)]/15")
+                  : "bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[var(--accent-copper-soft)]/15")
               }
             >
               {mode === "lunch" ? "End lunch" : "Lunch"}
@@ -334,7 +334,7 @@ export default function MobileShiftTracker({ userId }: Props) {
 
       {mode === "ended" && (
         <div className="mt-1 space-y-2">
-          <p className="text-[0.65rem] text-neutral-400">
+          <p className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">
             Shift closed. Start a new shift when you&apos;re back on the bench.
           </p>
           <button
@@ -343,7 +343,7 @@ export default function MobileShiftTracker({ userId }: Props) {
             disabled={busy}
             className={
               btnBase +
-              " w-full border border-[var(--accent-copper-soft)] bg-black/60 text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]/20"
+              " w-full border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-overlay)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]/20"
             }
           >
             {busy ? "Starting…" : "Start new shift"}

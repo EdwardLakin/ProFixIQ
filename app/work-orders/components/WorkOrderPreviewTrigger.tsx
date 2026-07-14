@@ -36,10 +36,10 @@ export function WorkOrderPreviewTrigger({ open, onOpenChange, children }: Props)
     <dialog
       ref={dialogRef}
       onClose={() => onOpenChange?.(false)}
-      className="backdrop:bg-black/60 rounded-lg border shadow-xl"
+      className="backdrop:bg-[color:var(--theme-surface-overlay)] rounded-lg border shadow-xl"
       style={{
         borderColor: "var(--accent-copper, #f97316)",
-        backgroundColor: "var(--theme-card-bg, #0a0a0a)",
+        backgroundColor: "var(--theme-card-bg, var(--theme-surface-page))",
         maxWidth: "48rem",
         width: "calc(100% - 2rem)",
         margin: "auto",

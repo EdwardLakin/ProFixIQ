@@ -112,18 +112,18 @@ export default function OwnerMarketingSettingsCard({
   }
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 p-5 space-y-5">
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 space-y-5">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-white">ShopReel Marketing Sync</h2>
-        <p className="text-sm text-white/70">
+        <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">ShopReel Marketing Sync</h2>
+        <p className="text-sm text-[color:var(--theme-text-secondary)]">
           Owner-only controls for automated ProFixIQ → ShopReel story syncing.
         </p>
       </div>
 
-      <label className="flex items-center justify-between rounded-lg border border-white/10 px-4 py-3">
+      <label className="flex items-center justify-between rounded-lg border border-[color:var(--theme-border-soft)] px-4 py-3">
         <div>
-          <div className="font-medium text-white">Enable marketing automation</div>
-          <div className="text-sm text-white/60">
+          <div className="font-medium text-[color:var(--theme-text-primary)]">Enable marketing automation</div>
+          <div className="text-sm text-[color:var(--theme-text-muted)]">
             Allow ProFixIQ to send sanitized story events to ShopReel.
           </div>
         </div>
@@ -140,9 +140,9 @@ export default function OwnerMarketingSettingsCard({
       </label>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-white">ShopReel base URL</label>
+        <label className="block text-sm font-medium text-[color:var(--theme-text-primary)]">ShopReel base URL</label>
         <input
-          className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+          className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
           value={state.shopreelBaseUrl}
           onChange={(event) =>
             setState((current) => ({
@@ -154,9 +154,9 @@ export default function OwnerMarketingSettingsCard({
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-white">Remote ShopReel shop ID</label>
+        <label className="block text-sm font-medium text-[color:var(--theme-text-primary)]">Remote ShopReel shop ID</label>
         <input
-          className="w-full rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+          className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
           placeholder="Optional until ShopReel mapping is wired"
           value={state.remoteShopId ?? ""}
           onChange={(event) =>
@@ -169,12 +169,12 @@ export default function OwnerMarketingSettingsCard({
       </div>
 
       <div className="space-y-2">
-        <div className="text-sm font-medium text-white">Enabled event types</div>
+        <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">Enabled event types</div>
         <div className="grid gap-2">
           {DEFAULT_EVENT_TYPES.map((eventType) => (
             <label
               key={eventType}
-              className="flex items-center justify-between rounded-md border border-white/10 px-3 py-2 text-sm text-white"
+              className="flex items-center justify-between rounded-md border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
             >
               <span>{eventType}</span>
               <input
@@ -187,7 +187,7 @@ export default function OwnerMarketingSettingsCard({
         </div>
       </div>
 
-      <div className="grid gap-2 text-sm text-white/70">
+      <div className="grid gap-2 text-sm text-[color:var(--theme-text-secondary)]">
         <div>Last tested: {state.lastTestedAt ?? "Never"}</div>
         <div>Last success: {state.lastSuccessAt ?? "Never"}</div>
         <div>Last error: {state.lastErrorAt ?? "None"}</div>
@@ -195,7 +195,7 @@ export default function OwnerMarketingSettingsCard({
       </div>
 
       {message ? (
-        <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80">
+        <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)]">
           {message}
         </div>
       ) : null}

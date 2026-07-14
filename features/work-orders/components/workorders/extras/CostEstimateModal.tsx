@@ -60,7 +60,7 @@ export default function CostEstimateModal({
             min="0"
             value={labor}
             onChange={(e) => setLabor(e.target.value)}
-            className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+            className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-[color:var(--theme-border-soft)] dark:bg-[color:var(--theme-surface-panel)] dark:text-[color:var(--theme-text-primary)]"
             placeholder="e.g. 1.5"
           />
         </label>
@@ -74,7 +74,7 @@ export default function CostEstimateModal({
             min="0"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+            className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-[color:var(--theme-border-soft)] dark:bg-[color:var(--theme-surface-panel)] dark:text-[color:var(--theme-text-primary)]"
             placeholder="e.g. 250"
           />
         </label>

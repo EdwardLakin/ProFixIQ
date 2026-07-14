@@ -98,7 +98,7 @@ export default function ConversationList({
 
   return (
     <div className="w-full">
-      <h2 className="text-sm font-bold text-gray-400 px-3 mb-2">Chats</h2>
+      <h2 className="text-sm font-bold text-[color:var(--theme-text-secondary)] px-3 mb-2">Chats</h2>
       {conversations.map((item) => {
         const conv = item.conversation;
         const latest = item.latest_message;
@@ -113,8 +113,8 @@ export default function ConversationList({
             className={clsx(
               "group flex items-center gap-2 px-3 py-2 rounded",
               conv.id === activeConversationId
-                ? "bg-neutral-800 font-bold"
-                : "hover:bg-neutral-900",
+                ? "bg-[color:var(--theme-surface-panel-strong)] font-bold"
+                : "hover:bg-[color:var(--theme-surface-panel)]",
             )}
           >
             <div
@@ -124,12 +124,12 @@ export default function ConversationList({
               <div className="flex items-center gap-2">
                 <div className="text-sm truncate">{label}</div>
                 {item.unread_count > 0 && (
-                  <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-orange-500 text-[color:var(--theme-text-primary)] text-xs font-bold px-2 py-0.5 rounded-full">
                     {item.unread_count}
                   </span>
                 )}
               </div>
-              <div className="text-xs text-gray-400 truncate max-w-[180px]">
+              <div className="text-xs text-[color:var(--theme-text-secondary)] truncate max-w-[180px]">
                 {latest?.content || "No messages yet"}
               </div>
             </div>
@@ -137,7 +137,7 @@ export default function ConversationList({
             <button
               type="button"
               onClick={() => void handleDelete(conv.id)}
-              className="opacity-0 group-hover:opacity-100 text-xs text-neutral-500 hover:text-red-500 transition"
+              className="opacity-0 group-hover:opacity-100 text-xs text-[color:var(--theme-text-muted)] hover:text-red-500 transition"
               aria-label="Delete conversation"
             >
               ✕

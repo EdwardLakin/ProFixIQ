@@ -40,7 +40,7 @@ export function SupplierForm({ shopId }: { shopId: string }) {
           <input className="border rounded w-full px-3 py-2" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </label>
       </div>
-      <button disabled={pending} className="px-3 py-2 rounded-xl bg-neutral-900 text-white">
+      <button disabled={pending} className="px-3 py-2 rounded-xl bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]">
         {pending ? "Saving…" : "Create Supplier"}
       </button>
     </form>

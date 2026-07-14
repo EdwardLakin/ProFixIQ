@@ -81,7 +81,7 @@ export default function CreatedTemplatesPage() {
   }
 
   return (
-    <div className="p-6 text-white">
+    <div className="p-6 text-[color:var(--theme-text-primary)]">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Inspection Templates</h1>
 
@@ -102,7 +102,7 @@ export default function CreatedTemplatesPage() {
           {scope === "mine" && (
             <Link
               href="/inspections/custom-inspection"
-              className="rounded-md bg-orange-500 px-4 py-2 font-semibold text-black transition hover:bg-orange-600"
+              className="rounded-md bg-orange-500 px-4 py-2 font-semibold text-[color:var(--theme-text-on-accent)] transition hover:bg-orange-600"
             >
               + Create New
             </Link>
@@ -115,27 +115,27 @@ export default function CreatedTemplatesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by template name, tags, description, vehicle type…"
-          className="text-black"
+          className="text-[color:var(--theme-text-on-accent)]"
         />
       </div>
 
       {loading ? (
         <p>Loading…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-white/80">No templates found.</p>
+        <p className="text-[color:var(--theme-text-secondary)]">No templates found.</p>
       ) : (
         <ul className="space-y-3">
           {filtered.map((t) => (
-            <li key={t.id} className="rounded-lg border border-neutral-700 bg-neutral-900 p-4">
+            <li key={t.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-orange-400">
                     {t.template_name}
                   </h2>
                   {t.description ? (
-                    <p className="text-sm text-neutral-300">{t.description}</p>
+                    <p className="text-sm text-[color:var(--theme-text-secondary)]">{t.description}</p>
                   ) : null}
-                  <p className="mt-1 text-xs text-neutral-500">
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                     Vehicle: {t.vehicle_type || "N/A"}
                     {Array.isArray(t.tags) && t.tags.length > 0 ? (
                       <> | Tags: {t.tags.join(", ")}</>
@@ -154,7 +154,7 @@ export default function CreatedTemplatesPage() {
                   {/* FIXED: go through the run loader to render the template */}
                   <Link
                     href={`/inspections/run?templateId=${t.id}`}
-                    className="rounded border border-neutral-600 px-3 py-2 text-sm hover:bg-neutral-700"
+                    className="rounded border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm hover:bg-[color:var(--theme-surface-hover)]"
                   >
                     Use Template
                   </Link>
@@ -163,7 +163,7 @@ export default function CreatedTemplatesPage() {
                     <>
                       <Link
                         href={`/inspections/custom-inspection?id=${t.id}&edit=true`}
-                        className="rounded border border-neutral-600 px-3 py-2 text-sm hover:bg-neutral-700"
+                        className="rounded border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm hover:bg-[color:var(--theme-surface-hover)]"
                       >
                         Edit
                       </Link>

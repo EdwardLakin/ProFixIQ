@@ -28,12 +28,12 @@ const LEVEL_META: Record<
   warning: {
     label: "Needs attention",
     badgeClass:
-      "border-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_20%,transparent)] text-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_90%,white)]",
+      "border-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_62%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_20%,transparent)] text-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_90%,var(--theme-text-inverse))]",
   },
   info: {
     label: "Informational",
     badgeClass:
-      "border-[color:color-mix(in_srgb,var(--brand-primary,#C1663B)_55%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary,#C1663B)_16%,transparent)] text-neutral-100",
+      "border-[color:color-mix(in_srgb,var(--brand-primary,#C1663B)_55%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-primary,#C1663B)_16%,transparent)] text-[color:var(--theme-text-primary)]",
   },
 };
 
@@ -109,7 +109,7 @@ export default function DashboardAlertStrip() {
 
   if (loading && priorityAlerts.length === 0) {
     return (
-      <section className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-neutral-300 backdrop-blur-xl">
+      <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)] backdrop-blur-xl">
         Scanning AI alerts…
       </section>
     );
@@ -117,7 +117,7 @@ export default function DashboardAlertStrip() {
 
   if (error) {
     return (
-      <section className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-neutral-400 backdrop-blur-xl">
+      <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)] backdrop-blur-xl">
         AI alert feed unavailable right now.
       </section>
     );
@@ -131,9 +131,9 @@ export default function DashboardAlertStrip() {
     <section
       className="rounded-2xl border px-4 py-3 backdrop-blur-xl"
       style={{
-        borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 78%, transparent)",
+        borderColor: "color-mix(in srgb, var(--theme-card-border,var(--theme-border-soft)) 78%, transparent)",
         background:
-          "linear-gradient(180deg, color-mix(in srgb, var(--theme-card-bg,#111827) 92%, black), color-mix(in srgb, var(--brand-secondary,#0F172A) 58%, black))",
+          "var(--theme-gradient-panel)",
       }}
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -141,10 +141,10 @@ export default function DashboardAlertStrip() {
           <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--brand-accent,#E39A6E)]">
             AI Operations Alerts
           </div>
-          <div className="mt-1 text-sm text-neutral-200">
+          <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
             Focus first on alerts that block throughput or stall active repair flow.
           </div>
-          <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-neutral-200">
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
             {urgentCount > 0 ? (
               <span className="rounded-full border border-red-400/45 bg-red-500/15 px-2 py-0.5 text-red-100">
                 {urgentCount} urgent now
@@ -155,7 +155,7 @@ export default function DashboardAlertStrip() {
                 {needsAttentionCount} needs attention
               </span>
             ) : null}
-            <span className="rounded-full border border-white/15 bg-black/25 px-2 py-0.5">
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
               Showing top {priorityAlerts.length}
             </span>
           </div>
@@ -172,7 +172,7 @@ export default function DashboardAlertStrip() {
             <Link
               key={alert.id}
               href={alert.href ?? "/dashboard"}
-              className={`group rounded-xl border px-3 py-3 transition hover:bg-white/5 ${toneClasses(alert.level)} ${
+              className={`group rounded-xl border px-3 py-3 transition hover:bg-[color:var(--theme-surface-subtle)] ${toneClasses(alert.level)} ${
                 isTopPriority
                   ? "ring-1 ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_50%,transparent)]"
                   : ""
@@ -180,10 +180,10 @@ export default function DashboardAlertStrip() {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-[0.16em] text-neutral-300">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                     {copy?.shortLabel ?? alert.code.replaceAll("_", " ")}
                   </div>
-                  <div className="mt-1 line-clamp-2 text-sm font-semibold text-white">{alert.title}</div>
+                  <div className="mt-1 line-clamp-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">{alert.title}</div>
                 </div>
                 <span
                   className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${levelMeta.badgeClass}`}
@@ -192,11 +192,11 @@ export default function DashboardAlertStrip() {
                 </span>
               </div>
 
-              <div className="mt-1.5 line-clamp-2 text-xs text-neutral-300">{alert.message}</div>
+              <div className="mt-1.5 line-clamp-2 text-xs text-[color:var(--theme-text-secondary)]">{alert.message}</div>
 
               <div className="mt-2.5 flex items-center justify-between gap-2">
-                <div className="line-clamp-1 text-[11px] text-neutral-400">{copy?.thresholdCue ?? "Threshold alert triggered."}</div>
-                <div className="shrink-0 rounded-full border border-white/20 bg-black/30 px-2.5 py-1 text-[11px] font-semibold text-neutral-100 transition group-hover:bg-black/45">
+                <div className="line-clamp-1 text-[11px] text-[color:var(--theme-text-secondary)]">{copy?.thresholdCue ?? "Threshold alert triggered."}</div>
+                <div className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)] transition group-hover:bg-[color:var(--theme-surface-inset)]">
                   {copy?.cta ?? "Take action"}
                 </div>
               </div>

@@ -275,51 +275,51 @@ export default function FleetFormReviewPage() {
   };
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-6 text-white">
+    <main className="mx-auto max-w-6xl px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10"
         style={{
           background:
-            "var(--app-shell-bg, radial-gradient(circle at top, rgba(59,130,246,0.12), transparent 55%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 78%))",
+            "var(--theme-gradient-panel)",
         }}
       />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
+          <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
             Fleet Form Review
           </div>
-          <h1 className="mt-1 text-xl font-blackops text-neutral-50 md:text-2xl">
+          <h1 className="mt-1 text-xl font-blackops text-[color:var(--theme-text-primary)] md:text-2xl">
             Map fleet form into a ProFixIQ template
           </h1>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em]">
-          <span className="rounded-full border border-neutral-600 bg-black/60 px-2 py-1 text-neutral-300">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-[color:var(--theme-text-secondary)]">
             Status:{" "}
-            <span className="font-semibold text-neutral-100">{statusChip}</span>
+            <span className="font-semibold text-[color:var(--theme-text-primary)]">{statusChip}</span>
           </span>
           {uploads.length > 1 && (
-            <span className="rounded-full border border-neutral-600 bg-black/60 px-2 py-1 text-neutral-300">
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-[color:var(--theme-text-secondary)]">
               Pages:{" "}
-              <span className="font-semibold text-neutral-100">
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">
                 {uploads.length}
               </span>
             </span>
           )}
           {vehicleTypeParam && (
-            <span className="rounded-full border border-neutral-600 bg-black/60 px-2 py-1 text-neutral-300">
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-[color:var(--theme-text-secondary)]">
               Vehicle:{" "}
-              <span className="font-semibold text-neutral-100">
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">
                 {vehicleTypeParam}
               </span>
             </span>
           )}
           {dutyClass && (
-            <span className="rounded-full border border-neutral-600 bg-black/60 px-2 py-1 text-neutral-300">
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-[color:var(--theme-text-secondary)]">
               Duty:{" "}
-              <span className="font-semibold text-neutral-100">
+              <span className="font-semibold text-[color:var(--theme-text-primary)]">
                 {dutyClass}
               </span>
             </span>
@@ -334,31 +334,31 @@ export default function FleetFormReviewPage() {
       )}
 
       {loading ? (
-        <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-6 text-sm text-neutral-300 shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
+        <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-6 text-sm text-[color:var(--theme-text-secondary)] shadow-[var(--theme-shadow-medium)]">
           Loading fleet form…
         </div>
       ) : uploads.length === 0 ? (
-        <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-6 text-sm text-neutral-300 shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
+        <div className="rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-6 text-sm text-[color:var(--theme-text-secondary)] shadow-[var(--theme-shadow-medium)]">
           No fleet form found for that id.
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr),minmax(0,1.4fr)]">
-          <section className="relative rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl">
+          <section className="relative rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div>
-                <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-neutral-400">
+                <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   OCR Snapshot
                 </div>
-                <p className="mt-1 text-xs text-neutral-300">
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                   Full text detected from the fleet’s inspection form.
                 </p>
               </div>
-              <span className="rounded-full border border-neutral-700 bg-black/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Read-only
               </span>
             </div>
 
-            <div className="h-[320px] overflow-auto rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/70 p-3 text-xs text-neutral-200">
+            <div className="h-[320px] overflow-auto rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 text-xs text-[color:var(--theme-text-primary)]">
               {combinedExtractedText.trim() ? (
                 combinedExtractedText.split("\n").map((line, idx) => (
                   <p key={idx} className="whitespace-pre-wrap">
@@ -366,35 +366,35 @@ export default function FleetFormReviewPage() {
                   </p>
                 ))
               ) : (
-                <p className="text-neutral-500">
+                <p className="text-[color:var(--theme-text-muted)]">
                   No OCR text stored for this form.
                 </p>
               )}
             </div>
 
-            <p className="mt-2 text-[10px] text-neutral-500">
+            <p className="mt-2 text-[10px] text-[color:var(--theme-text-muted)]">
               Use this as a reference if any sections or items look off on the
               right-hand side.
             </p>
           </section>
 
-          <section className="relative rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl">
+          <section className="relative rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
             <div className="mb-3">
               <div className="mb-1 flex items-center justify-between gap-2">
-                <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-neutral-400">
+                <div className="text-[11px] font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Map to Template
                 </div>
-                <span className="rounded-full border border-neutral-700 bg-black/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                   Editable
                 </span>
               </div>
 
-              <label className="flex flex-col gap-1 text-xs text-neutral-300">
+              <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Template title
                 <input
                   value={templateTitle}
                   onChange={(e) => setTemplateTitle(e.target.value)}
-                  className="rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/75 px-3 py-2 text-xs text-white placeholder:text-neutral-500"
+                  className="rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                   placeholder="ABC Logistics – Daily Truck Inspection"
                 />
               </label>
@@ -402,7 +402,7 @@ export default function FleetFormReviewPage() {
 
             <div className="h-[360px] space-y-3 overflow-auto pr-1">
               {sections.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[color:var(--metal-border-soft,#374151)] bg-black/50 px-3 py-4 text-xs text-neutral-400">
+                <div className="rounded-xl border border-dashed border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-xs text-[color:var(--theme-text-secondary)]">
                   No sections were parsed from this form. You can still build a
                   template by adding sections and items manually.
                 </div>
@@ -410,21 +410,21 @@ export default function FleetFormReviewPage() {
                 sections.map((sec, i) => (
                   <div
                     key={`${sec.title}-${i}`}
-                    className="rounded-xl border border-[color:var(--metal-border-soft,#374151)] bg-black/75 px-3 py-3"
+                    className="rounded-xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-3"
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <label className="flex flex-1 flex-col gap-1 text-[11px] text-neutral-300">
+                      <label className="flex flex-1 flex-col gap-1 text-[11px] text-[color:var(--theme-text-secondary)]">
                         Section {i + 1} title
                         <input
                           value={sec.title}
                           onChange={(e) =>
                             handleSectionTitleChange(i, e.target.value)
                           }
-                          className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/75 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500"
+                          className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                           placeholder="Section title"
                         />
                       </label>
-                      <span className="whitespace-nowrap text-[10px] text-neutral-500">
+                      <span className="whitespace-nowrap text-[10px] text-[color:var(--theme-text-muted)]">
                         {sec.items.length} items
                       </span>
                     </div>
@@ -440,7 +440,7 @@ export default function FleetFormReviewPage() {
                             onChange={(e) =>
                               handleItemChange(i, j, "item", e.target.value)
                             }
-                            className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/80 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500"
+                            className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                             placeholder="Item label"
                           />
                           <input
@@ -448,7 +448,7 @@ export default function FleetFormReviewPage() {
                             onChange={(e) =>
                               handleItemChange(i, j, "unit", e.target.value)
                             }
-                            className="rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/80 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500"
+                            className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]"
                             placeholder="Unit"
                           />
                         </div>
@@ -459,7 +459,7 @@ export default function FleetFormReviewPage() {
                       <button
                         type="button"
                         onClick={() => handleAddItem(i)}
-                        className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-black/80"
+                        className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
                       >
                         + Add item
                       </button>
@@ -469,11 +469,11 @@ export default function FleetFormReviewPage() {
               )}
             </div>
 
-            <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/5 pt-3">
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-[color:var(--theme-border-soft)] pt-3">
               <button
                 type="button"
                 onClick={handleAddSection}
-                className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-black/80"
+                className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
               >
                 + Add Section
               </button>
@@ -481,7 +481,7 @@ export default function FleetFormReviewPage() {
               <Button
                 type="button"
                 onClick={handleUseInDraft}
-                className="rounded-full border border-[color:var(--metal-border-soft,#374151)] bg-black/70 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:bg-black/80 hover:border-neutral-500"
+                className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] hover:border-[color:var(--theme-border-soft)]"
               >
                 Use in Custom Draft
               </Button>

@@ -16,21 +16,21 @@ function MetricCard({
     <div
       className="rounded-2xl border px-4 py-4"
       style={{
-        borderColor: "color-mix(in srgb, var(--theme-card-border,#334155) 78%, transparent)",
+        borderColor: "color-mix(in srgb, var(--theme-card-border,var(--theme-border-soft)) 78%, transparent)",
         background:
-          "color-mix(in srgb, var(--theme-card-bg,#111827) 84%, black)",
+          "color-mix(in srgb, var(--theme-card-bg,var(--theme-surface-page)) 84%, var(--theme-surface-page))",
       }}
     >
       <div
         className="text-[10px] uppercase tracking-[0.18em]"
-        style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+        style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
       >
         {label}
       </div>
       <div className={`mt-2 text-2xl font-semibold ${tone}`}>{value}</div>
       <div
         className="mt-1 text-xs"
-        style={{ color: "var(--theme-text-secondary,#94A3B8)" }}
+        style={{ color: "var(--theme-text-secondary,var(--theme-text-muted))" }}
       >
         {hint}
       </div>
@@ -76,7 +76,7 @@ function StatsOverviewWidget({ context }: { context: DashboardRenderContext }) {
         label="My role"
         value={(context.role ?? "Unknown").toUpperCase()}
         hint="Role-aware dashboard context"
-        tone="text-[color:var(--theme-text-primary,#ffffff)]"
+        tone="text-[color:var(--theme-text-primary,var(--theme-text-inverse))]"
       />
     </div>
   );

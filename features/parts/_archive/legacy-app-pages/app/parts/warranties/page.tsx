@@ -58,7 +58,7 @@ type PartLite = {
 /* ----------------------------- UI Helpers ----------------------------- */
 const outlineBtn =
   "font-header rounded border px-3 py-2 text-sm transition-colors";
-const outlineNeutral = `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
+const outlineNeutral = `${outlineBtn} border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]`;
 const outlineInfo = `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-900/20`;
 
 type Tab = "active" | "expiring" | "expired" | "all";
@@ -126,15 +126,15 @@ function PartPickerDialog({
 
   return (
     <div className="fixed inset-0 z-[340] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative z-[350] w-full max-w-2xl rounded border border-orange-400 bg-neutral-950 p-4 text-white"
+        className="relative z-[350] w-full max-w-2xl rounded border border-orange-400 bg-[color:var(--theme-surface-page)] p-4 text-[color:var(--theme-text-primary)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
           <div className="text-lg font-semibold">Pick a Part</div>
           <button
-            className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+            className="rounded border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm hover:bg-[color:var(--theme-surface-panel-strong)]"
             onClick={onClose}
           >
             ✕
@@ -146,28 +146,28 @@ function PartPickerDialog({
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search name / SKU / category…"
-            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+            className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2"
           />
         </div>
 
-        <div className="rounded border border-neutral-800 max-h-80 overflow-auto">
+        <div className="rounded border border-[color:var(--theme-border-soft)] max-h-80 overflow-auto">
           {loading ? (
-            <div className="p-3 text-neutral-300 text-sm">Searching…</div>
+            <div className="p-3 text-[color:var(--theme-text-secondary)] text-sm">Searching…</div>
           ) : rows.length === 0 ? (
-            <div className="p-3 text-neutral-400 text-sm">No parts found.</div>
+            <div className="p-3 text-[color:var(--theme-text-secondary)] text-sm">No parts found.</div>
           ) : (
-            <ul className="divide-y divide-neutral-800">
+            <ul className="divide-y divide-[color:var(--theme-border-soft)]">
               {rows.map((p) => (
                 <li key={p.id}>
                   <button
-                    className="block w-full px-3 py-2 text-left hover:bg-neutral-900/60"
+                    className="block w-full px-3 py-2 text-left hover:bg-[color:var(--theme-surface-panel)]"
                     onClick={() => {
                       onPick(p);
                       onClose();
                     }}
                   >
                     <div className="font-medium truncate">{p.name ?? "Part"}</div>
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-[color:var(--theme-text-secondary)]">
                       {p.sku ?? "—"} • {p.category ?? "Uncategorized"}
                     </div>
                   </button>
@@ -447,12 +447,12 @@ export default function WarrantiesPage(): JSX.Element {
   };
 
   if (!ready) {
-    return <div className="p-6 text-white">Loading…</div>;
+    return <div className="p-6 text-[color:var(--theme-text-primary)]">Loading…</div>;
   }
 
   if (!hasTables.warranties) {
     return (
-      <div className="p-6 text-white">
+      <div className="p-6 text-[color:var(--theme-text-primary)]">
         <h1 className="text-2xl font-semibold">Warranties</h1>
         <div className="mt-3 rounded border border-amber-600 bg-amber-900/20 p-4 text-amber-200">
           <div className="font-semibold mb-1">Setup required</div>
@@ -466,7 +466,7 @@ export default function WarrantiesPage(): JSX.Element {
   }
 
   return (
-    <div className="p-6 text-white">
+    <div className="p-6 text-[color:var(--theme-text-primary)]">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Warranties</h1>
         <div className="flex items-center gap-2">
@@ -474,7 +474,7 @@ export default function WarrantiesPage(): JSX.Element {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search parts / WO / notes…"
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
+            className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-sm"
           />
           <button className={outlineInfo} onClick={() => setOpenReg(true)}>Register Warranty</button>
         </div>
@@ -485,7 +485,7 @@ export default function WarrantiesPage(): JSX.Element {
           <button
             key={t}
             className={`rounded px-2 py-1 text-sm border ${
-              tab === t ? "border-orange-500 text-orange-300" : "border-neutral-700 text-neutral-300"
+              tab === t ? "border-orange-500 text-orange-300" : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)]"
             }`}
             onClick={() => setTab(t)}
           >
@@ -495,13 +495,13 @@ export default function WarrantiesPage(): JSX.Element {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-neutral-300">
+        <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3 text-[color:var(--theme-text-secondary)]">
           No warranties found.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded border border-neutral-800">
+        <div className="overflow-x-auto rounded border border-[color:var(--theme-border-soft)]">
           <table className="min-w-[900px] w-full text-sm">
-            <thead className="bg-neutral-950 text-neutral-400">
+            <thead className="bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-secondary)]">
               <tr>
                 <th className="px-3 py-2 text-left">Part</th>
                 <th className="px-3 py-2 text-left">Supplier</th>
@@ -538,10 +538,10 @@ export default function WarrantiesPage(): JSX.Element {
                     : "bg-green-900/20 border-green-600 text-green-300";
 
                 return (
-                  <tr key={w.id} className="border-t border-neutral-800">
+                  <tr key={w.id} className="border-t border-[color:var(--theme-border-soft)]">
                     <td className="px-3 py-2">
                       <div className="font-medium">{p?.name ?? "Part"}</div>
-                      <div className="text-xs text-neutral-400">{p?.sku ?? "—"}</div>
+                      <div className="text-xs text-[color:var(--theme-text-secondary)]">{p?.sku ?? "—"}</div>
                     </td>
                     <td className="px-3 py-2">{s?.name ?? "—"}</td>
                     <td className="px-3 py-2">{format(new Date(w.installed_at), "PP")}</td>
@@ -573,7 +573,7 @@ export default function WarrantiesPage(): JSX.Element {
                     </td>
                     <td className="px-3 py-2">
                       {claims.length === 0 ? (
-                        <span className="text-neutral-400">—</span>
+                        <span className="text-[color:var(--theme-text-secondary)]">—</span>
                       ) : (
                         <div className="flex flex-col gap-1">
                           {claims.map((cl) => (
@@ -587,7 +587,7 @@ export default function WarrantiesPage(): JSX.Element {
                                   (st) => (
                                     <button
                                       key={st}
-                                      className="rounded border border-neutral-700 px-1.5 py-0.5 text-[11px] hover:bg-neutral-800"
+                                      className="rounded border border-[color:var(--theme-border-soft)] px-1.5 py-0.5 text-[11px] hover:bg-[color:var(--theme-surface-panel-strong)]"
                                       onClick={() => updateClaimStatus(cl.id, st)}
                                       title={`Set ${st}`}
                                     >
@@ -619,15 +619,15 @@ export default function WarrantiesPage(): JSX.Element {
       {/* Register modal */}
       {openReg && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpenReg(false)} />
+          <div className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" onClick={() => setOpenReg(false)} />
           <div
-            className="relative z-[310] w-full max-w-xl rounded border border-orange-400 bg-neutral-950 p-4 text-white"
+            className="relative z-[310] w-full max-w-xl rounded border border-orange-400 bg-[color:var(--theme-surface-page)] p-4 text-[color:var(--theme-text-primary)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between">
               <div className="text-lg font-semibold">Register Warranty</div>
               <button
-                className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+                className="rounded border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm hover:bg-[color:var(--theme-surface-panel-strong)]"
                 onClick={() => setOpenReg(false)}
               >
                 ✕
@@ -637,13 +637,13 @@ export default function WarrantiesPage(): JSX.Element {
             <div className="grid gap-3 sm:grid-cols-2">
               {/* Part field with picker */}
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm text-neutral-300">Part</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Part</label>
                 <div className="flex items-center gap-2">
                   <input
                     value={partId}
                     onChange={(e) => setPartId(e.target.value)}
                     placeholder="Part UUID (or use picker)"
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                    className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                   />
                   <button
                     type="button"
@@ -656,90 +656,90 @@ export default function WarrantiesPage(): JSX.Element {
                   </button>
                 </div>
                 {partId && lookups.parts[partId] ? (
-                  <div className="mt-1 text-xs text-neutral-400">
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                     {lookups.parts[partId]?.name} ({lookups.parts[partId]?.sku})
                   </div>
                 ) : null}
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Supplier (optional)</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Supplier (optional)</label>
                 <input
                   value={supplierId}
                   onChange={(e) => setSupplierId(e.target.value)}
                   placeholder="Supplier UUID"
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Installed Date</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Installed Date</label>
                 <input
                   type="date"
                   value={installedAt}
                   onChange={(e) => setInstalledAt(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Warranty Months</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Warranty Months</label>
                 <input
                   type="number"
                   min={1}
                   value={months}
                   onChange={(e) => setMonths(Math.max(1, Number(e.target.value || 1)))}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Work Order (optional)</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Work Order (optional)</label>
                 <input
                   value={woId}
                   onChange={(e) => setWoId(e.target.value)}
                   placeholder="Work order UUID"
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">WO Line (optional)</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">WO Line (optional)</label>
                 <input
                   value={woLineId}
                   onChange={(e) => setWoLineId(e.target.value)}
                   placeholder="Work order line UUID"
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Vehicle (optional)</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Vehicle (optional)</label>
                 <input
                   value={vehicleId}
                   onChange={(e) => setVehicleId(e.target.value)}
                   placeholder="Vehicle UUID"
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Customer (optional)</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Customer (optional)</label>
                 <input
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
                   placeholder="Customer UUID"
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                 />
               </div>
 
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm text-neutral-300">Notes</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Notes</label>
                 <textarea
                   rows={3}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                   placeholder="Terms, conditions, etc."
                 />
               </div>
@@ -760,15 +760,15 @@ export default function WarrantiesPage(): JSX.Element {
       {/* Claim modal */}
       {openClaim && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpenClaim(null)} />
+          <div className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" onClick={() => setOpenClaim(null)} />
           <div
-            className="relative z-[310] w/full max-w-lg rounded border border-orange-400 bg-neutral-950 p-4 text-white"
+            className="relative z-[310] w/full max-w-lg rounded border border-orange-400 bg-[color:var(--theme-surface-page)] p-4 text-[color:var(--theme-text-primary)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between">
               <div className="text-lg font-semibold">Open Warranty Claim</div>
               <button
-                className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+                className="rounded border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm hover:bg-[color:var(--theme-surface-panel-strong)]"
                 onClick={() => setOpenClaim(null)}
               >
                 ✕
@@ -777,7 +777,7 @@ export default function WarrantiesPage(): JSX.Element {
 
             <div className="grid gap-3">
               <div>
-                <div className="text-sm text-neutral-400">For warranty</div>
+                <div className="text-sm text-[color:var(--theme-text-secondary)]">For warranty</div>
                 <div className="text-sm">
                   {lookups.parts[openClaim.warranty.part_id]?.name ?? "Part"} •{" "}
                   {format(new Date(openClaim.warranty.installed_at), "PP")} →{" "}
@@ -786,11 +786,11 @@ export default function WarrantiesPage(): JSX.Element {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Status</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Status</label>
                 <select
                   value={claimStatus}
                   onChange={(e) => setClaimStatus(e.target.value as WarrantyClaimStatus)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                 >
                   {(["open", "approved", "replaced", "closed", "denied"] as WarrantyClaimStatus[]).map((s) => (
                     <option key={s} value={s}>
@@ -801,22 +801,22 @@ export default function WarrantiesPage(): JSX.Element {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Supplier RMA (optional)</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Supplier RMA (optional)</label>
                 <input
                   value={claimRma}
                   onChange={(e) => setClaimRma(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                   placeholder="RMA #"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm text-neutral-300">Notes</label>
+                <label className="mb-1 block text-sm text-[color:var(--theme-text-secondary)]">Notes</label>
                 <textarea
                   rows={3}
                   value={claimNotes}
                   onChange={(e) => setClaimNotes(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
                   placeholder="Describe failure, diagnostics, photos link, etc."
                 />
               </div>

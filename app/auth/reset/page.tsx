@@ -118,10 +118,10 @@ export default function AuthResetPage() {
   }, [router, searchParams, supabase]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-6 py-10 text-white">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-neutral-950/80 p-6 shadow-2xl">
-        <h1 className="text-xl font-semibold text-white">Password reset</h1>
-        <p className="mt-3 text-sm text-neutral-300">{message}</p>
+    <main className="flex min-h-screen items-center justify-center bg-[color:var(--theme-surface-page)] px-6 py-10 text-[color:var(--theme-text-primary)]">
+      <div className="w-full max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-6 shadow-2xl">
+        <h1 className="text-xl font-semibold text-[color:var(--theme-text-primary)]">Password reset</h1>
+        <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">{message}</p>
         {details ? <p className="mt-2 text-xs text-red-300">{details}</p> : null}
       </div>
     </main>

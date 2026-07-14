@@ -134,13 +134,13 @@ export default function OwnerPinModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-md rounded-xl border border-white/10 bg-neutral-950 p-5 shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4">
+      <div className="w-full max-w-md rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-5 shadow-2xl">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-white">
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
             {mode === "verify" ? "Owner PIN Required" : "Set Owner PIN"}
           </h2>
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             {mode === "verify"
               ? "Unlock protected owner settings."
               : "Create a 4 to 8 digit PIN for owner-protected actions."}
@@ -149,7 +149,7 @@ export default function OwnerPinModal({
 
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs text-neutral-400">
+            <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
               {mode === "verify" ? "Enter PIN" : "New PIN"}
             </label>
             <Input
@@ -164,7 +164,7 @@ export default function OwnerPinModal({
 
           {mode === "set" && (
             <div>
-              <label className="mb-1 block text-xs text-neutral-400">
+              <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
                 Confirm PIN
               </label>
               <Input

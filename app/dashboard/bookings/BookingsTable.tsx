@@ -44,7 +44,7 @@ function statusClass(status: BookingRow["status"]) {
     case "completed":
       return "border-sky-500/20 bg-sky-950/20 text-sky-100";
     default:
-      return "border-white/10 bg-black/30 text-neutral-200";
+      return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]";
   }
 }
 
@@ -139,8 +139,8 @@ export default function BookingsTable({
     <div className="space-y-4 rounded-xl border border-border bg-card p-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-50">Bookings</h2>
-          <p className="text-xs text-neutral-400">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Bookings</h2>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
             Manage pending, confirmed, cancelled, and completed appointments.
           </p>
         </div>
@@ -155,7 +155,7 @@ export default function BookingsTable({
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as "all" | BookingRow["status"])}
-            className="rounded-md border border-border bg-neutral-950/60 px-3 py-2 text-sm text-neutral-100"
+            className="rounded-md border border-border bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
           >
             <option value="all">All statuses</option>
             <option value="pending">Pending</option>
@@ -166,9 +166,9 @@ export default function BookingsTable({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-white/10">
+      <div className="overflow-x-auto rounded-lg border border-[color:var(--theme-border-soft)]">
         <table className="min-w-full text-sm">
-          <thead className="bg-black/30 text-left text-xs uppercase tracking-[0.12em] text-neutral-400">
+          <thead className="bg-[color:var(--theme-surface-inset)] text-left text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
             <tr>
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Customer</th>
@@ -183,25 +183,25 @@ export default function BookingsTable({
               <tr>
                 <td
                   colSpan={canEdit ? 6 : 5}
-                  className="px-4 py-8 text-center text-sm text-neutral-500"
+                  className="px-4 py-8 text-center text-sm text-[color:var(--theme-text-muted)]"
                 >
                   No bookings found.
                 </td>
               </tr>
             ) : (
               filtered.map((row) => (
-                <tr key={row.id} className="border-t border-white/10">
-                  <td className="px-4 py-3 text-neutral-200">
+                <tr key={row.id} className="border-t border-[color:var(--theme-border-soft)]">
+                  <td className="px-4 py-3 text-[color:var(--theme-text-primary)]">
                     <div>{fmtDateTime(row.starts_at)}</div>
-                    <div className="text-xs text-neutral-500">{fmtDateTime(row.ends_at)}</div>
+                    <div className="text-xs text-[color:var(--theme-text-muted)]">{fmtDateTime(row.ends_at)}</div>
                   </td>
-                  <td className="px-4 py-3 text-neutral-200">
+                  <td className="px-4 py-3 text-[color:var(--theme-text-primary)]">
                     {row.customer_name || row.customer_id || "—"}
                   </td>
-                  <td className="px-4 py-3 text-neutral-200">
+                  <td className="px-4 py-3 text-[color:var(--theme-text-primary)]">
                     {row.vehicle_label || row.vehicle_id || "—"}
                   </td>
-                  <td className="px-4 py-3 text-neutral-300">
+                  <td className="px-4 py-3 text-[color:var(--theme-text-secondary)]">
                     {row.notes?.trim() || "—"}
                   </td>
                   <td className="px-4 py-3">
@@ -266,7 +266,7 @@ export default function BookingsTable({
         </table>
       </div>
 
-      <div className="text-xs text-neutral-500">
+      <div className="text-xs text-[color:var(--theme-text-muted)]">
         Showing {filtered.length} of {rows.length} bookings
       </div>
     </div>

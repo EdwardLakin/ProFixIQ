@@ -85,31 +85,31 @@ export default function Calendar({
   return (
     <div
       className={clsx(
-        "rounded-2xl border border-white/10 bg-black/30 text-foreground backdrop-blur-md",
+        "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-foreground backdrop-blur-md",
         className,
       )}
     >
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+      <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] px-3 py-2">
         <button
           type="button"
           onClick={() => onMonthChange(addMonths(month, -1))}
-          className="h-8 w-8 rounded-md border border-white/10 bg-black/20 text-sm text-neutral-200 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/35"
+          className="h-8 w-8 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-sm text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-inset)]"
         >
           ‹
         </button>
-        <div className="text-xs font-medium text-neutral-300">
+        <div className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
           {monthFmt.format(month)}
         </div>
         <button
           type="button"
           onClick={() => onMonthChange(addMonths(month, 1))}
-          className="h-8 w-8 rounded-md border border-white/10 bg-black/20 text-sm text-neutral-200 transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/35"
+          className="h-8 w-8 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-sm text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-inset)]"
         >
           ›
         </button>
       </div>
 
-      <div className="grid grid-cols-7 px-3 pt-3 text-[0.6rem] uppercase tracking-wide text-neutral-500">
+      <div className="grid grid-cols-7 px-3 pt-3 text-[0.6rem] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
           <div key={d} className="py-1 text-center">
             {d}
@@ -131,13 +131,13 @@ export default function Calendar({
               onClick={() => onChange?.(date)}
               className={clsx(
                 "aspect-square rounded-lg border text-sm transition",
-                inMonth ? "text-foreground" : "text-neutral-500/50",
+                inMonth ? "text-foreground" : "text-[color:var(--theme-text-secondary)]",
                 isDisabled
                   ? "cursor-not-allowed border-transparent opacity-40"
-                  : "border-transparent hover:bg-white/5",
+                  : "border-transparent hover:bg-[color:var(--theme-surface-subtle)]",
                 selected &&
-                  "border-[color:var(--accent-copper-soft,#fdba74)] bg-[color:var(--accent-copper,#f97316)]/12 text-white",
-                !selected && today && "border-white/10 bg-white/[0.03]",
+                  "border-[color:var(--accent-copper-soft,#fdba74)] bg-[color:var(--accent-copper,#f97316)]/12 text-[color:var(--theme-text-primary)]",
+                !selected && today && "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]",
               )}
             >
               {date.getDate()}

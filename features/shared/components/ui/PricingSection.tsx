@@ -174,16 +174,16 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
           >
             <Timer size={14} />
             <span>14-day free trial</span>
-            <span className="mx-1 text-neutral-500">•</span>
+            <span className="mx-1 text-[color:var(--theme-text-muted)]">•</span>
             <Sparkles size={14} />
             <span>Founding Shop offer (6 months discounted)</span>
           </div>
 
-          <p className="text-sm text-neutral-200/90">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             Every Complete plan includes the full ProFixIQ platform. Pricing scales by shop size, not by feature access.
           </p>
 
-          <p className="text-xs text-neutral-400">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
             One complete product. No feature tax. Repair operations, workforce scheduling, attendance, documents, certifications, readiness, customer/fleet portals, and Payroll Connect foundation are included.
           </p>
 
@@ -191,7 +191,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
             type="button"
             onClick={onStartFree}
             className={[
-              "mt-1 inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-extrabold text-black",
+              "mt-1 inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-extrabold text-[color:var(--theme-text-on-accent)]",
               "shadow-[0_0_24px_rgba(212,118,49,0.35)] transition",
               "hover:brightness-110 active:scale-[0.99]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-copper)]/60",
@@ -208,12 +208,12 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
 
       {/* Plans */}
       <div
-        className="mt-5 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-xs text-neutral-300"
+        className="mt-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-xs text-[color:var(--theme-text-secondary)]"
       >
         SMS, payment processing, heavy AI usage, storage overages, and custom integrations may be billed separately.
       </div>
 
-      <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-xs text-neutral-300">
+      <div className="mt-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-xs text-[color:var(--theme-text-secondary)]">
         Payroll Connect supports operational payroll review and export readiness. Payroll processing, tax filing/remittance, benefits administration, and legal compliance services remain handled by your payroll/HR providers.
       </div>
 
@@ -229,9 +229,9 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
               disabled={Boolean(busyKey) || !p.checkoutEnabled}
               className={[
                 "group relative text-left",
-                "rounded-3xl border bg-black/35 p-6 backdrop-blur-xl transition",
-                "shadow-[0_24px_90px_rgba(0,0,0,0.70)]",
-                "hover:bg-black/45 hover:-translate-y-[2px]",
+                "rounded-3xl border bg-[color:var(--theme-surface-inset)] p-6 backdrop-blur-xl transition",
+                "shadow-[var(--theme-shadow-medium)]",
+                "hover:bg-[color:var(--theme-surface-inset)] hover:-translate-y-[2px]",
                 "active:translate-y-0 active:brightness-95",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-copper)]/60",
                 "disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0",
@@ -262,7 +262,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
                 <div>
                   <div className="flex items-center gap-2">
                     <h3
-                      className="text-2xl text-white"
+                      className="text-2xl text-[color:var(--theme-text-primary)]"
                       style={{ fontFamily: "var(--font-blackops)" }}
                     >
                       {p.title}
@@ -282,11 +282,11 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
                     ) : null}
                   </div>
 
-                  <div className="mt-1 text-xs font-semibold uppercase tracking-[0.22em] text-neutral-400">
+                  <div className="mt-1 text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                     {p.subLabel}
                   </div>
 
-                  <p className="mt-3 text-sm text-neutral-300">{p.desc}</p>
+                  <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">{p.desc}</p>
                 </div>
               </div>
 
@@ -301,18 +301,18 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
                 >
                   {p.priceLabel}
                 </div>
-                <div className="mt-2 text-xs text-neutral-400">
-                  Includes <span className="text-neutral-200">full platform access</span> •
+                <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
+                  Includes <span className="text-[color:var(--theme-text-primary)]">full platform access</span> •
                   Founding discount at checkout
                 </div>
               </div>
 
               {/* Features */}
-              <ul className="relative mt-6 space-y-2.5 text-sm text-neutral-200">
+              <ul className="relative mt-6 space-y-2.5 text-sm text-[color:var(--theme-text-primary)]">
                 {p.features.map((f) => (
                   <li key={f} className="flex items-start gap-2">
                     <Check size={16} className="mt-0.5" style={{ color: COPPER }} />
-                    <span className="text-neutral-200">{f}</span>
+                    <span className="text-[color:var(--theme-text-primary)]">{f}</span>
                   </li>
                 ))}
               </ul>
@@ -321,7 +321,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
               <div className="relative mt-7">
                 <div
                   className={[
-                    "w-full rounded-xl px-4 py-3 text-center text-sm font-extrabold text-black",
+                    "w-full rounded-xl px-4 py-3 text-center text-sm font-extrabold text-[color:var(--theme-text-on-accent)]",
                     "shadow-[0_0_24px_rgba(212,118,49,0.35)] transition",
                     "group-hover:brightness-110",
                     "disabled:opacity-60",
@@ -335,7 +335,7 @@ const PricingSection: FC<PricingSectionProps> = ({ onCheckout, onStartFree }) =>
                   {isBusy ? "Starting…" : p.cta}
                 </div>
 
-                <div className="mt-3 text-[11px] text-neutral-400">
+                <div className="mt-3 text-[11px] text-[color:var(--theme-text-secondary)]">
                   Cancel anytime • Secure checkout by Stripe
                 </div>
               </div>

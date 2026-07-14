@@ -258,23 +258,23 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
   // ---- Theme (glass + neutral accent styling) ----
   const ACCENT_BORDER = "border-[color:var(--desktop-border-strong)]";
-  const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
+  const ACCENT_TEXT = "text-[var(--theme-text-primary,var(--theme-text-primary))]";
   const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_12%,transparent)]";
   const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_35%,transparent)]";
 
-  const pageWrap = "space-y-4 p-4 text-white";
+  const pageWrap = "space-y-4 p-4 text-[color:var(--theme-text-primary)]";
   const glassCard =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
   const glassHeader =
-    "bg-[linear-gradient(180deg,rgba(148,163,184,0.08),rgba(15,23,42,0))] border-b border-[color:var(--desktop-border)]";
-  const inputBase = `rounded-lg border bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
-  const selectBase = `rounded-lg border bg-[color:var(--desktop-item-bg)] px-2 py-2 text-xs text-white border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
+    "bg-[var(--theme-gradient-panel)] border-b border-[color:var(--desktop-border)]";
+  const inputBase = `rounded-lg border bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
+  const selectBase = `rounded-lg border bg-[color:var(--desktop-item-bg)] px-2 py-2 text-xs text-[color:var(--theme-text-primary)] border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm transition disabled:opacity-60";
-  const btnGhost = `${btnBase} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,black)]`;
-  const btnCopper = `${btnBase} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-neutral-950/20 ${ACCENT_HOVER_BG}`;
-  const btnDanger = `${btnBase} border-red-900/60 bg-neutral-950/20 text-red-200 hover:bg-red-900/20`;
+  const btnGhost = `${btnBase} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]`;
+  const btnCopper = `${btnBase} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-[color:var(--theme-surface-page)] ${ACCENT_HOVER_BG}`;
+  const btnDanger = `${btnBase} border-red-900/60 bg-[color:var(--theme-surface-page)] text-red-200 hover:bg-red-900/20`;
 
   const pillBase =
     "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium";
@@ -1839,16 +1839,16 @@ if (!lineId || !isUuid(lineId)) {
           ← Back
         </button>
         {woDisplay ? (
-          <div className="text-xs uppercase tracking-[0.16em] text-neutral-400">
-            Work order <span className="text-neutral-200">{woDisplay}</span>
+          <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+            Work order <span className="text-[color:var(--theme-text-primary)]">{woDisplay}</span>
           </div>
         ) : null}
       </div>
 
       {loading ? (
-        <div className={`${glassCard} p-4 text-neutral-300`}>Loading…</div>
+        <div className={`${glassCard} p-4 text-[color:var(--theme-text-secondary)]`}>Loading…</div>
       ) : !wo ? (
-        <div className={`${glassCard} p-4 text-neutral-300`}>
+        <div className={`${glassCard} p-4 text-[color:var(--theme-text-secondary)]`}>
           Work order not found / not visible.
         </div>
       ) : (
@@ -1874,7 +1874,7 @@ if (!lineId || !isUuid(lineId)) {
           />
 
           {requests.length === 0 ? (
-            <div className={`${glassCard} p-4 text-neutral-400`}>
+            <div className={`${glassCard} p-4 text-[color:var(--theme-text-secondary)]`}>
               No parts requests for this work order yet.
             </div>
           ) : (
@@ -2140,25 +2140,25 @@ if (!lineId || !isUuid(lineId)) {
                             </span>
                           </div>
 
-                          <div className="mt-1 text-xs text-neutral-400">
+                          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                             Created{" "}
                             {r.req.created_at
                               ? new Date(r.req.created_at).toLocaleString()
                               : "—"}
-                            <span className="mx-2 text-neutral-600">·</span>
+                            <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
                             Line: {hasValidLineId && lineId ? String(lineId).slice(0, 8) : "Not linked"}
                             {hasQuoteLineOrigin ? (
                               <>
-                                <span className="mx-2 text-neutral-600">·</span>
+                                <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
                                 Quote line: {quoteLineId ? String(quoteLineId).slice(0, 8) : "—"}
                               </>
                             ) : null}
                           </div>
 
                           {jobText ? (
-                            <div className="mt-1 text-xs text-neutral-500">
+                            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                               Job:{" "}
-                              <span className="text-neutral-300">{jobText}</span>
+                              <span className="text-[color:var(--theme-text-secondary)]">{jobText}</span>
                               {isFallbackLinked ? (
                                 <span className="ml-2 text-[rgba(242,210,187,0.94)]">
                                   (using only work order line)
@@ -2203,27 +2203,27 @@ if (!lineId || !isUuid(lineId)) {
                     </div>
 
                     <div className="space-y-3 p-3">
-                      <div className="grid gap-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-neutral-400 md:grid-cols-3">
+                      <div className="grid gap-2 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] md:grid-cols-3">
                         <div>
                           Request state:{" "}
-                          <span className="font-semibold text-neutral-200">
+                          <span className="font-semibold text-[color:var(--theme-text-primary)]">
                             {requestFlowLabel(requestState)}
                           </span>
                         </div>
                         <div>
                           Items:{" "}
-                          <span className="font-semibold text-neutral-200">{r.items.length}</span>
+                          <span className="font-semibold text-[color:var(--theme-text-primary)]">{r.items.length}</span>
                         </div>
                         <div>
                           Linked line:{" "}
-                          <span className="font-semibold text-neutral-200">
+                          <span className="font-semibold text-[color:var(--theme-text-primary)]">
                             {hasValidLineId ? lineId?.slice(0, 8) : "Not linked"}
                           </span>
                         </div>
                       </div>
                       <RequestItemsTable>
                         <table className="w-full text-sm">
-                          <thead className="bg-[color:var(--desktop-item-bg)] text-neutral-400">
+                          <thead className="bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]">
                             <tr>
                               <th className="px-3 py-2 text-left">Requested part / catalog</th>
                               <th className="px-3 py-2 text-right">Qty</th>
@@ -2238,7 +2238,7 @@ if (!lineId || !isUuid(lineId)) {
                             {r.items.length === 0 ? (
                               <tr className="border-t border-[color:var(--desktop-border)]">
                                 <td
-                                  className="p-4 text-sm text-neutral-500"
+                                  className="p-4 text-sm text-[color:var(--theme-text-muted)]"
                                   colSpan={6}
                                 >
                                   No items yet. Click “Add part row”.
@@ -2330,7 +2330,7 @@ if (!lineId || !isUuid(lineId)) {
                                         />
 
                                         <div className="grid gap-2 sm:grid-cols-2">
-                                          <label className="grid gap-1 text-[11px] text-neutral-500">
+                                          <label className="grid gap-1 text-[11px] text-[color:var(--theme-text-muted)]">
                                             Part #
                                             <input
                                               className={`${inputBase} w-full py-1.5 text-xs`}
@@ -2352,7 +2352,7 @@ if (!lineId || !isUuid(lineId)) {
                                               disabled={rowBusy}
                                             />
                                           </label>
-                                          <label className="grid gap-1 text-[11px] text-neutral-500">
+                                          <label className="grid gap-1 text-[11px] text-[color:var(--theme-text-muted)]">
                                             Manufacturer
                                             <input
                                               className={`${inputBase} w-full py-1.5 text-xs`}
@@ -2401,22 +2401,22 @@ if (!lineId || !isUuid(lineId)) {
 
 
 
-                                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-neutral-400">
+                                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                                           {showSuggestion && topSuggestion ? (
                                             <details className="group inline-flex rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1">
-                                              <summary className="cursor-pointer list-none text-neutral-300">
-                                                AI match: <span className="text-neutral-100">{topSuggestion.name}</span>
+                                              <summary className="cursor-pointer list-none text-[color:var(--theme-text-secondary)]">
+                                                AI match: <span className="text-[color:var(--theme-text-primary)]">{topSuggestion.name}</span>
                                                 <span className={topSuggestion.qty_available > 0 ? "ml-1 text-emerald-300" : "ml-1 text-amber-300"}>
                                                   {topSuggestion.qty_available > 0 ? `${topSuggestion.qty_available} available` : "no stock — order"}
                                                 </span>
                                               </summary>
-                                              <div className="mt-2 max-w-md rounded-lg border border-[color:var(--desktop-border)] bg-neutral-950/80 p-2 text-neutral-400 shadow-xl">
-                                                <div className="font-medium text-neutral-100">{suggestionDisplay?.headline ?? "Inventory match"}</div>
+                                              <div className="mt-2 max-w-md rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-page)] p-2 text-[color:var(--theme-text-secondary)] shadow-xl">
+                                                <div className="font-medium text-[color:var(--theme-text-primary)]">{suggestionDisplay?.headline ?? "Inventory match"}</div>
                                                 {topSuggestion.sku_or_part_number ? <div>Part/SKU: {topSuggestion.sku_or_part_number}</div> : null}
                                                 <div>{suggestionDisplay?.technicalReasons.slice(0, 3).join(" · ")}</div>
                                                 <button
                                                   type="button"
-                                                  className="mt-2 underline decoration-dotted underline-offset-2 hover:text-white"
+                                                  className="mt-2 underline decoration-dotted underline-offset-2 hover:text-[color:var(--theme-text-primary)]"
                                                   onClick={() => applyInventoryPartToItem(r.req.id, it, topSuggestion.part_id)}
                                                   disabled={rowBusy || topSuggestion.part_id === it.ui_part_id}
                                                 >
@@ -2426,14 +2426,14 @@ if (!lineId || !isUuid(lineId)) {
                                             </details>
                                           ) : null}
                                           {hasAttachedPart && topSuggestion ? (
-                                            <span className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-neutral-500">
+                                            <span className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-[color:var(--theme-text-muted)]">
                                               Alternative match available
                                             </span>
                                           ) : null}
                                           {canCreateInventory ? (
                                             <button
                                               type="button"
-                                              className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-neutral-300 hover:text-white"
+                                              className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
                                               onClick={() => openCreateInventoryModal(r.req.id, it)}
                                               disabled={rowBusy}
                                             >
@@ -2442,59 +2442,59 @@ if (!lineId || !isUuid(lineId)) {
                                           ) : null}
                                           {supplierSuggestion ? (
                                             <details className="group inline-flex rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1">
-                                              <summary className="cursor-pointer list-none text-neutral-300">
-                                                Supplier: <span className="text-neutral-100">{supplierSuggestion.supplier_name ?? "review"}</span>
-                                                <span className="ml-1 text-neutral-500">{supplierSuggestion.open_po_id ? "open PO" : "order"}</span>
+                                              <summary className="cursor-pointer list-none text-[color:var(--theme-text-secondary)]">
+                                                Supplier: <span className="text-[color:var(--theme-text-primary)]">{supplierSuggestion.supplier_name ?? "review"}</span>
+                                                <span className="ml-1 text-[color:var(--theme-text-muted)]">{supplierSuggestion.open_po_id ? "open PO" : "order"}</span>
                                               </summary>
-                                              <div className="mt-2 max-w-md rounded-lg border border-[color:var(--desktop-border)] bg-neutral-950/80 p-2 text-neutral-400 shadow-xl">
+                                              <div className="mt-2 max-w-md rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-page)] p-2 text-[color:var(--theme-text-secondary)] shadow-xl">
                                                 {supplierSuggestion.open_po_number ? <div>Open PO: {supplierSuggestion.open_po_number}</div> : null}
                                                 {supplierSuggestion.suggested_unit_cost != null ? <div>Last cost: ${supplierSuggestion.suggested_unit_cost.toFixed(2)}</div> : null}
                                                 <div>{supplierSuggestion.reasons.slice(0, 3).join(" · ")}</div>
                                                 {supplierSuggestion.supplier_id ? (
                                                   <button
                                                     type="button"
-                                                    className="mt-2 underline decoration-dotted underline-offset-2 hover:text-white"
+                                                    className="mt-2 underline decoration-dotted underline-offset-2 hover:text-[color:var(--theme-text-primary)]"
                                                     onClick={() => applySupplierSuggestionSelection(r.req.id, String(it.id), supplierSuggestion)}
                                                     disabled={rowBusy || (it.ui_supplier_id === supplierSuggestion.supplier_id && (!supplierSuggestion.open_po_id || it.ui_po_id === supplierSuggestion.open_po_id))}
                                                   >
                                                     Apply supplier/PO suggestion
                                                   </button>
                                                 ) : null}
-                                                {supplierSuggestionApplied ? <div className="mt-1 text-neutral-500">Suggested supplier selected — confirm with Create/Re-use PO.</div> : null}
+                                                {supplierSuggestionApplied ? <div className="mt-1 text-[color:var(--theme-text-muted)]">Suggested supplier selected — confirm with Create/Re-use PO.</div> : null}
                                               </div>
                                             </details>
                                           ) : null}
                                         </div>
                                         {approved > 0 || isQuoteOnlyPreApprovalItem ? (
-                                          <div className="text-[11px] text-neutral-500">
+                                          <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                                             State{" "}
-                                            <span className="text-neutral-200">
+                                            <span className="text-[color:var(--theme-text-primary)]">
                                               {isQuoteOnlyPreApprovalItem && String(it.status ?? "").toLowerCase() === "quoted"
                                                 ? "Quoted"
                                                 : itemFlowLabel(itemState)}
                                             </span>
                                             {isQuoteOnlyPreApprovalItem ? (
                                               <>
-                                                <span className="text-neutral-600"> · </span>
+                                                <span className="text-[color:var(--theme-text-muted)]"> · </span>
                                                 <span className="text-[rgba(242,210,187,0.94)]">
                                                   Waiting for customer approval before allocation
                                                 </span>
                                               </>
                                             ) : (
                                               <>
-                                                <span className="text-neutral-600"> · </span>
+                                                <span className="text-[color:var(--theme-text-muted)]"> · </span>
                                                 Approved{" "}
-                                                <span className="text-neutral-200">
+                                                <span className="text-[color:var(--theme-text-primary)]">
                                                   {approved}
                                                 </span>{" "}
-                                                <span className="text-neutral-600">·</span>{" "}
+                                                <span className="text-[color:var(--theme-text-muted)]">·</span>{" "}
                                                 Received{" "}
-                                                <span className="text-neutral-200">
+                                                <span className="text-[color:var(--theme-text-primary)]">
                                                   {received}
                                                 </span>{" "}
-                                                <span className="text-neutral-600">·</span>{" "}
+                                                <span className="text-[color:var(--theme-text-muted)]">·</span>{" "}
                                                 Remaining{" "}
-                                                <span className="text-neutral-200">
+                                                <span className="text-[color:var(--theme-text-primary)]">
                                                   {remaining}
                                                 </span>
                                               </>
@@ -2638,12 +2638,12 @@ if (!lineId || !isUuid(lineId)) {
                                         </select>
 
                                         <details className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                                          <summary className="cursor-pointer select-none text-xs text-neutral-300">
+                                          <summary className="cursor-pointer select-none text-xs text-[color:var(--theme-text-secondary)]">
                                             Create PO for supplier
                                           </summary>
 
                                           <div className="mt-2 grid gap-2">
-                                            <div className="text-[11px] text-neutral-500">
+                                            <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                                               Rule: one PO per supplier. If one exists
                                               (not received), we reuse it.
                                             </div>
@@ -2726,9 +2726,9 @@ if (!lineId || !isUuid(lineId)) {
                                             </button>
 
                                             {poLabel ? (
-                                              <div className="text-[11px] text-neutral-500">
+                                              <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                                                 Currently assigned:{" "}
-                                                <span className="text-neutral-200">
+                                                <span className="text-[color:var(--theme-text-primary)]">
                                                   {poLabel}
                                                 </span>
                                               </div>
@@ -2824,7 +2824,7 @@ if (!lineId || !isUuid(lineId)) {
                       </div>
 
                       {locations.length === 0 && (
-                        <div className="mt-3 text-xs text-neutral-500">
+                        <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
                           No stock locations exist for this shop, so inventory
                           allocation is skipped. Parts will still be saved to the
                           request item.
@@ -2841,12 +2841,12 @@ if (!lineId || !isUuid(lineId)) {
 
 
       {createInventoryDraft ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4 backdrop-blur-sm">
           <div className={`${glassCard} w-full max-w-2xl overflow-hidden`}>
             <div className={`${glassHeader} flex items-center justify-between px-4 py-3`}>
               <div>
-                <div className="text-sm font-semibold text-white">Create inventory item</div>
-                <div className="text-xs text-neutral-400">Attach it to this parts request item immediately.</div>
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Create inventory item</div>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Attach it to this parts request item immediately.</div>
               </div>
               <button className={btnGhost} type="button" onClick={() => setCreateInventoryDraft(null)}>
                 Close
@@ -2862,7 +2862,7 @@ if (!lineId || !isUuid(lineId)) {
                 ["Price", "price", "12.99"],
                 ["Default supplier", "supplier", "Ford / Motorcraft"],
               ].map(([label, key, placeholder]) => (
-                <label key={key} className="grid gap-1 text-xs text-neutral-400">
+                <label key={key} className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
                   {label}
                   <input
                     className={`${inputBase} w-full`}

@@ -188,38 +188,38 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
   const domains = intake.progress?.domainSummaries ?? {};
 
   return (
-    <section className="mb-2.5 rounded-xl border border-cyan-400/25 bg-[linear-gradient(140deg,rgba(5,16,30,0.86),rgba(7,12,25,0.94))] p-3">
+    <section className="mb-2.5 rounded-xl border border-cyan-400/25 bg-[var(--theme-gradient-panel)] p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">Shop Boost Operational Status</p>
-          <h3 className="text-sm font-semibold text-neutral-100">{visibility.headline}</h3>
-          <p className="mt-1 text-xs text-neutral-300">{visibility.explanation}</p>
-          <p className="mt-1 text-xs text-neutral-400">
-            Current stage: <span className="font-medium text-neutral-100">{fmtStep(intake.progress?.currentStep ?? intake.status)}</span>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{visibility.headline}</h3>
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{visibility.explanation}</p>
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+            Current stage: <span className="font-medium text-[color:var(--theme-text-primary)]">{fmtStep(intake.progress?.currentStep ?? intake.status)}</span>
           </p>
         </div>
-        <div className="rounded-md border border-white/15 bg-black/30 px-3 py-2 text-xs text-neutral-200">
+        <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)]">
           <div>State: <span className="font-semibold">{visibility.readinessLabel}</span></div>
-          <div className="text-neutral-400">Derived from canonical row outcomes for this intake.</div>
+          <div className="text-[color:var(--theme-text-secondary)]">Derived from canonical row outcomes for this intake.</div>
         </div>
       </div>
 
-      <div className="mt-3 h-2 rounded-full bg-white/10"><div className="h-full rounded-full bg-cyan-400 transition-all" style={{ width: `${percent}%` }} /></div>
+      <div className="mt-3 h-2 rounded-full bg-[color:var(--theme-surface-subtle)]"><div className="h-full rounded-full bg-cyan-400 transition-all" style={{ width: `${percent}%` }} /></div>
 
       <div className="mt-3 grid gap-2 md:grid-cols-3">
-        <div className="rounded-md border border-white/10 bg-black/25 p-2 text-xs text-neutral-300">
-          <div className="font-medium text-neutral-100">Materialized</div>
+        <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-xs text-[color:var(--theme-text-secondary)]">
+          <div className="font-medium text-[color:var(--theme-text-primary)]">Materialized</div>
           <div>
             Customers: {visibility.materialization.customers.toLocaleString()} • Vehicles: {visibility.materialization.vehicles.toLocaleString()} • Work orders: {" "}
             {visibility.materialization.workOrders.toLocaleString()}
           </div>
         </div>
-        <div className="rounded-md border border-white/10 bg-black/25 p-2 text-xs text-neutral-300">
-          <div className="font-medium text-neutral-100">Rows processed</div>
+        <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-xs text-[color:var(--theme-text-secondary)]">
+          <div className="font-medium text-[color:var(--theme-text-primary)]">Rows processed</div>
           <div>{visibility.rowCounts.total.toLocaleString()} total • {visibility.rowCounts.materialized.toLocaleString()} materialized • {visibility.rowCounts.linked.toLocaleString()} linked</div>
         </div>
-        <div className="rounded-md border border-white/10 bg-black/25 p-2 text-xs text-neutral-300">
-          <div className="font-medium text-neutral-100">Integrity truth</div>
+        <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-xs text-[color:var(--theme-text-secondary)]">
+          <div className="font-medium text-[color:var(--theme-text-primary)]">Integrity truth</div>
           <div>{visibility.rowCounts.unresolved.toLocaleString()} unresolved • {visibility.rowCounts.failed.toLocaleString()} failed • mismatch {visibility.rowCounts.mismatch.toLocaleString()}</div>
         </div>
       </div>
@@ -234,23 +234,23 @@ export default function ShopBoostActivationPanel({ eligible = false }: { eligibl
       {visibility.showDomains ? (
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           {Object.entries(domains).map(([name, summary]) => (
-            <div key={name} className="rounded-md border border-white/10 bg-black/25 p-2 text-xs text-neutral-300">
-              <div className="font-medium text-neutral-100">{fmtStep(name)}</div>
+            <div key={name} className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-xs text-[color:var(--theme-text-secondary)]">
+              <div className="font-medium text-[color:var(--theme-text-primary)]">{fmtStep(name)}</div>
               <div>Inserted: {summary.inserted} • Updated: {summary.updated} • Skipped: {summary.skipped} • Failed: {summary.failed}</div>
-              {summary.note ? <div className="text-neutral-400">{summary.note}</div> : null}
+              {summary.note ? <div className="text-[color:var(--theme-text-secondary)]">{summary.note}</div> : null}
             </div>
           ))}
         </div>
       ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <Link href="/dashboard/owner/reports" className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">
+        <Link href="/dashboard/owner/reports" className="rounded-md border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">
           Open Shop Health
         </Link>
-        <Link href="/dashboard/setup/review" className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">
+        <Link href="/dashboard/setup/review" className="rounded-md border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">
           Open legacy guided review
         </Link>
-        <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-white/25 px-2.5 py-1 text-neutral-100 hover:bg-white/5">
+        <Link href={`/api/shop-boost/intakes/${intake.id}/report?download=1`} className="rounded-md border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">
           Download migration report
         </Link>
       </div>

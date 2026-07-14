@@ -67,14 +67,14 @@ export default function EmployeeDocsClient() {
     supabase.storage.from("employee_docs").getPublicUrl(p).data.publicUrl;
 
   return (
-    <div className="p-6 text-white">
+    <div className="p-6 text-[color:var(--theme-text-primary)]">
       <h1 className="text-2xl font-bold mb-4">Employee Documents</h1>
 
       <form onSubmit={onUpload} className="mb-6 flex gap-2 items-center">
         <select
           value={docType}
           onChange={(e) => setDocType(e.target.value as DocType)}
-          className="border rounded px-2 py-1 bg-neutral-900"
+          className="border rounded px-2 py-1 bg-[color:var(--theme-surface-panel)]"
         >
           <option value="drivers_license">Driver&apos;s License</option>
           <option value="certification">Certification</option>
@@ -85,13 +85,13 @@ export default function EmployeeDocsClient() {
         <input
           type="file"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="border rounded px-2 py-1 bg-neutral-900"
+          className="border rounded px-2 py-1 bg-[color:var(--theme-surface-panel)]"
         />
 
         <button
           type="submit"
           disabled={busy || !file}
-          className="px-3 py-1 rounded bg-orange-600 text-white disabled:opacity-50"
+          className="px-3 py-1 rounded bg-orange-600 text-[color:var(--theme-text-primary)] disabled:opacity-50"
         >
           {busy ? "Uploading…" : "Upload"}
         </button>
@@ -99,16 +99,16 @@ export default function EmployeeDocsClient() {
 
       <div className="space-y-2">
         {docs.length === 0 ? (
-          <p className="text-sm text-neutral-400">No documents uploaded yet.</p>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">No documents uploaded yet.</p>
         ) : (
           docs.map((d) => (
             <div
               key={d.id}
-              className="border rounded p-3 flex items-center justify-between bg-neutral-900/40"
+              className="border rounded p-3 flex items-center justify-between bg-[color:var(--theme-surface-panel)]"
             >
               <div>
                 <div className="font-medium capitalize">{d.doc_type}</div>
-                <div className="text-xs text-neutral-400">
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">
                   {d.user_id} •{" "}
                   {d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}
                 </div>

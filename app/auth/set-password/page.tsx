@@ -162,17 +162,17 @@ export default function SetPasswordPage() {
       ? "text-red-300"
       : statusTone === "success"
       ? "text-emerald-300"
-      : "text-neutral-300";
+      : "text-[color:var(--theme-text-secondary)]";
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-black px-6 py-10 text-white">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-neutral-950/80 p-6 shadow-2xl">
-        <h1 className="text-2xl font-semibold text-white">Set new password</h1>
+    <main className="flex min-h-screen items-center justify-center bg-[color:var(--theme-surface-page)] px-6 py-10 text-[color:var(--theme-text-primary)]">
+      <div className="w-full max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-6 shadow-2xl">
+        <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">Set new password</h1>
         <p className={`mt-3 text-sm ${statusClass}`}>{statusMessage}</p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <label className="text-xs text-neutral-400">New password</label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">New password</label>
             <Input
               type="password"
               value={password}
@@ -183,7 +183,7 @@ export default function SetPasswordPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs text-neutral-400">Confirm password</label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">Confirm password</label>
             <Input
               type="password"
               value={confirmPassword}

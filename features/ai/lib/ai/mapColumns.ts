@@ -10,7 +10,7 @@ export async function mapCsvColumns(
   headers: string[],
 ): Promise<Record<string, string>> {
   const prompt = `
-You are a helpful assistant for mapping spreadsheet headers to structured database fields. 
+You are a helpful assistant for mapping spreadsheet headers to structured database fields.
 Match each header to the most appropriate database field from this list:
 
 ["customer_name", "email", "phone_number", "address", "city", "province", "postal_code", "vehicle_vin", "vehicle_year", "vehicle_make", "vehicle_model", "vehicle_plate", "vehicle_mileage"]

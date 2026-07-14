@@ -70,7 +70,7 @@ export default function ReceiveFromPOPage(): JSX.Element {
       return "border-indigo-500/40 bg-indigo-500/10 text-indigo-200";
     }
     if (normalized === "cancelled" || normalized === "canceled") return "border-rose-500/40 bg-rose-500/10 text-rose-200";
-    return "border-[color:var(--desktop-border)] bg-black/40 text-neutral-200";
+    return "border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]";
   };
 
   const toolbar = (
@@ -88,7 +88,7 @@ export default function ReceiveFromPOPage(): JSX.Element {
       description="PO lens into the shared receiving workflow."
       toolbar={toolbar}
     >
-      <div className="space-y-4 text-white">
+      <div className="space-y-4 text-[color:var(--theme-text-primary)]">
 
         {err ? <div className="desktop-panel-soft border-red-500/40 bg-red-900/20 p-3 text-sm text-red-200">{err}</div> : null}
 
@@ -99,14 +99,14 @@ export default function ReceiveFromPOPage(): JSX.Element {
         ) : (
           <div className={`${ui.panel} overflow-hidden`}>
             <div className="border-b border-[color:var(--desktop-border)] px-4 py-3">
-              <div className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">Purchase orders</div>
-              <div className="mt-1 text-[11px] text-neutral-500">Select a PO to open the receiving screen.</div>
+              <div className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Purchase orders</div>
+              <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">Select a PO to open the receiving screen.</div>
             </div>
 
             <div className="overflow-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-neutral-400">
+                  <tr className="text-left text-[color:var(--theme-text-secondary)]">
                     <th className="p-3">PO</th>
                     <th className="p-3">Status</th>
                     <th className="p-3">Created</th>
@@ -128,8 +128,8 @@ export default function ReceiveFromPOPage(): JSX.Element {
                     return (
                       <tr key={id} className="border-t border-[color:var(--desktop-border)]">
                         <td className="p-3">
-                          <div className="font-semibold text-neutral-100">{id ? id.slice(0, 8) : "—"}</div>
-                          <div className="text-[11px] text-neutral-500">{id ? id : ""}</div>
+                          <div className="font-semibold text-[color:var(--theme-text-primary)]">{id ? id.slice(0, 8) : "—"}</div>
+                          <div className="text-[11px] text-[color:var(--theme-text-muted)]">{id ? id : ""}</div>
                         </td>
 
                         <td className="p-3">
@@ -138,9 +138,9 @@ export default function ReceiveFromPOPage(): JSX.Element {
                           </span>
                         </td>
 
-                        <td className="p-3 text-neutral-300">{fmtDate(po.created_at ?? null)}</td>
+                        <td className="p-3 text-[color:var(--theme-text-secondary)]">{fmtDate(po.created_at ?? null)}</td>
 
-                        <td className="p-3 text-neutral-300">{vendor}</td>
+                        <td className="p-3 text-[color:var(--theme-text-secondary)]">{vendor}</td>
 
                         <td className="p-3">
                           <Link
@@ -157,7 +157,7 @@ export default function ReceiveFromPOPage(): JSX.Element {
               </table>
             </div>
 
-            <div className="border-t border-[color:var(--desktop-border)] px-4 py-3 text-[11px] text-neutral-500">
+            <div className="border-t border-[color:var(--desktop-border)] px-4 py-3 text-[11px] text-[color:var(--theme-text-muted)]">
               Tip: Shared receive language: {receiveProgressLabel("partial")} and {receiveProgressLabel("received")} apply across Inbox, PO, and Scan.
             </div>
           </div>

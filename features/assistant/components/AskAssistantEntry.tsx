@@ -185,13 +185,13 @@ export default function AskAssistantEntry({
           type="button"
           title={assistantLabel}
           onClick={() => setOpen(true)}
-          className="inline-flex h-8 items-center justify-center rounded-md border border-slate-400/20 bg-slate-950/70 px-2.5 text-xs font-medium text-slate-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-slate-900/80 hover:text-white"
+          className="inline-flex h-8 items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2.5 text-xs font-medium text-[color:var(--theme-text-primary)] shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-[color:var(--theme-surface-panel)] hover:text-[color:var(--theme-text-primary)]"
         >
           <span>Assistant</span>
         </button>
 
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="max-w-3xl border-[color:var(--metal-border-soft,#1f2937)] bg-neutral-950/95 text-white shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
+          <DialogContent className="max-w-3xl border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
             <DialogHeader>
               <DialogTitle
                 className="text-[color:var(--accent-copper,#c1663b)]"
@@ -209,11 +209,11 @@ export default function AskAssistantEntry({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={getDefaultPrompt(context) || "Ask anything about your shop..."}
-                className="min-h-[140px] w-full rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-copper-soft,#fdba74)]"
+                className="min-h-[140px] w-full rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-copper-soft,#fdba74)]"
               />
 
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs text-neutral-500">
+                <div className="text-xs text-[color:var(--theme-text-muted)]">
                   {context.pageTitle ? `Context: ${context.pageTitle}` : "General shop context"}
                 </div>
 
@@ -290,13 +290,13 @@ export default function AskAssistantEntry({
     <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
       <Link
         href={assistantHref}
-        className="rounded-full border border-orange-400/50 bg-black/85 px-5 py-3 text-sm font-semibold text-orange-300 shadow-[0_18px_45px_rgba(0,0,0,0.6)] backdrop-blur-md"
+        className="rounded-full border border-orange-400/50 bg-[color:var(--theme-surface-overlay)] px-5 py-3 text-sm font-semibold text-orange-300 shadow-[var(--theme-shadow-medium)] backdrop-blur-md"
       >
         {assistantLabel}
       </Link>
       <Link
         href={plannerHref}
-        className="rounded-full border border-white/10 bg-black/80 px-4 py-2 text-xs text-neutral-200 shadow-[0_12px_30px_rgba(0,0,0,0.45)] backdrop-blur-md"
+        className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md"
       >
         {plannerLabel}
       </Link>

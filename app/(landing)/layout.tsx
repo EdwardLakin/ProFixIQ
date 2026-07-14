@@ -18,7 +18,7 @@ export default function RootLayout({
       <head />
       <body
         id="root"
-        className="bg-gradient-to-br from-black via-neutral-900 to-[#1a1a1a] text-white font-header"
+        className="var(--theme-gradient-panel)"
       >
         <Providers initialSession={null}>
           <Toaster position="top-center" />

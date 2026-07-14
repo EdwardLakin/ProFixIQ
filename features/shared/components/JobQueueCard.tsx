@@ -36,9 +36,9 @@ const STATUS_STYLES: Record<string, string> = {
   in_progress: `${BADGE_BASE} bg-orange-500/10 text-orange-200 border border-orange-400/40`,
   on_hold: `${BADGE_BASE} bg-amber-500/10 text-amber-100 border border-amber-400/40`,
   queued: `${BADGE_BASE} bg-indigo-500/10 text-indigo-100 border border-indigo-400/40`,
-  awaiting: `${BADGE_BASE} bg-slate-500/10 text-slate-100 border border-slate-400/40`,
+  awaiting: `${BADGE_BASE} bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)]`,
   planned: `${BADGE_BASE} bg-purple-500/10 text-purple-100 border border-purple-400/40`,
-  new: `${BADGE_BASE} bg-neutral-500/10 text-neutral-100 border border-neutral-400/40`,
+  new: `${BADGE_BASE} bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)]`,
   completed: `${BADGE_BASE} bg-green-500/10 text-green-100 border border-green-400/40`,
 };
 
@@ -113,26 +113,26 @@ function JobQueueCard({
 
   return (
     <div
-      className={`rounded-xl border bg-neutral-950/90 p-3 shadow-sm transition hover:border-orange-500/70 hover:shadow-md ${
+      className={`rounded-xl border bg-[color:var(--theme-surface-page)] p-3 shadow-sm transition hover:border-orange-500/70 hover:shadow-md ${
         isActive
           ? "border-orange-400 ring-1 ring-orange-400/70"
-          : "border-neutral-800"
+          : "border-[color:var(--theme-border-soft)]"
       }`}
     >
       <div className="space-y-2">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-white">
+            <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
               {complaint || description || "No description"}
             </div>
-            <div className="mt-0.5 text-[11px] text-neutral-400">
+            <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
               Created:{" "}
               {created_at ? new Date(created_at).toLocaleString() : "—"}
             </div>
-            <div className="mt-1 text-[11px] text-neutral-400">
-              <span className="text-neutral-500">Assigned:</span>{" "}
-              <span className="font-medium text-neutral-200">
+            <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+              <span className="text-[color:var(--theme-text-muted)]">Assigned:</span>{" "}
+              <span className="font-medium text-[color:var(--theme-text-primary)]">
                 {assignedLabel}
               </span>
             </div>
@@ -165,7 +165,7 @@ function JobQueueCard({
               <select
                 value={selectedTech ?? ""}
                 onChange={handleAssign}
-                className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
                 <option value="">Unassigned</option>
                 {techOptions.map((t) => (
@@ -178,7 +178,7 @@ function JobQueueCard({
 
             {onView && (
               <button
-                className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 hover:border-orange-400 hover:bg-neutral-800"
+                className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] hover:border-orange-400 hover:bg-[color:var(--theme-surface-panel-strong)]"
                 onClick={onView}
               >
                 View work order
@@ -192,7 +192,7 @@ function JobQueueCard({
           <div className="flex flex-wrap gap-2 pt-1">
             {onPunchIn && !isActive && (
               <button
-                className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-500"
+                className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-blue-500"
                 onClick={() => void onPunchIn(job)}
               >
                 Punch in
@@ -200,7 +200,7 @@ function JobQueueCard({
             )}
             {onPunchOut && isActive && (
               <button
-                className="rounded bg-neutral-700 px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-600"
+                className="rounded bg-[color:var(--theme-surface-hover)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
                 onClick={() => void onPunchOut(job)}
               >
                 Punch out

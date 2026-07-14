@@ -39,7 +39,7 @@ function severityBadgeClass(severity: CloseoutGatePreviewItem["severity"]): stri
   if (severity === "critical") return "border-red-400/60 text-red-200";
   if (severity === "high") return "border-orange-400/60 text-orange-200";
   if (severity === "medium") return "border-amber-400/60 text-amber-200";
-  return "border-white/20 text-neutral-300";
+  return "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)]";
 }
 
 export default function WorkOrderCloseoutGatePreview({ workOrderId }: { workOrderId: string }) {
@@ -112,19 +112,19 @@ export default function WorkOrderCloseoutGatePreview({ workOrderId }: { workOrde
           <div className="mt-2 grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
             <div className={cn(PANEL_VARIANTS.passive, "p-2")}>
               <p className="uppercase tracking-[0.14em]">Closeout status</p>
-              <p className="mt-1 text-neutral-200">Not currently blocking closeout</p>
+              <p className="mt-1 text-[color:var(--theme-text-primary)]">Not currently blocking closeout</p>
             </div>
             <div className={cn(PANEL_VARIANTS.passive, "p-2")}>
               <p className="uppercase tracking-[0.14em]">Would block if enabled</p>
-              <p className="mt-1 text-neutral-200">{preview.blockingCandidateCount}</p>
+              <p className="mt-1 text-[color:var(--theme-text-primary)]">{preview.blockingCandidateCount}</p>
             </div>
             <div className={cn(PANEL_VARIANTS.passive, "p-2")}>
               <p className="uppercase tracking-[0.14em]">Advisory items</p>
-              <p className="mt-1 text-neutral-200">{preview.advisoryCount}</p>
+              <p className="mt-1 text-[color:var(--theme-text-primary)]">{preview.advisoryCount}</p>
             </div>
             <div className={cn(PANEL_VARIANTS.passive, "p-2")}>
               <p className="uppercase tracking-[0.14em]">Missing-data items</p>
-              <p className="mt-1 text-neutral-200">{preview.missingDataCount}</p>
+              <p className="mt-1 text-[color:var(--theme-text-primary)]">{preview.missingDataCount}</p>
             </div>
           </div>
 
@@ -154,7 +154,7 @@ export default function WorkOrderCloseoutGatePreview({ workOrderId }: { workOrde
                         Would block if enabled
                       </span>
                     ) : (
-                      <span className="rounded-full border border-white/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
+                      <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                         Advisory today
                       </span>
                     )}

@@ -39,22 +39,22 @@ export default function TimeAdjustModal(props: any) {
     >
       <div className="grid gap-3">
         <label className="block text-sm">
-          <span className="mb-1 block text-neutral-400">Punch In</span>
+          <span className="mb-1 block text-[color:var(--theme-text-secondary)]">Punch In</span>
           <input
             type="datetime-local"
             value={inAt}
             onChange={(e) => setInAt(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+            className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2 text-[color:var(--theme-text-primary)]"
           />
         </label>
 
         <label className="block text-sm">
-          <span className="mb-1 block text-neutral-400">Punch Out</span>
+          <span className="mb-1 block text-[color:var(--theme-text-secondary)]">Punch Out</span>
           <input
             type="datetime-local"
             value={outAt}
             onChange={(e) => setOutAt(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+            className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2 text-[color:var(--theme-text-primary)]"
           />
         </label>
       </div>

@@ -31,8 +31,8 @@ export function GuidedSetupCardShell({
 }: Props) {
   const cardClassName =
     variant === "workspace"
-      ? "rounded-2xl border border-sky-500/20 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.08),rgba(15,23,42,0.92)_38%,rgba(2,6,23,0.96))] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)]"
-      : "rounded-2xl border border-[color:var(--desktop-border)] bg-[radial-gradient(circle_at_top_left,rgba(197,122,74,0.13),rgba(15,23,42,0.92)_36%,rgba(2,6,23,0.96))] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.55)]";
+      ? "rounded-2xl border border-sky-500/20 bg-[var(--theme-gradient-panel)] p-4 shadow-[var(--theme-shadow-medium)]"
+      : "rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] p-4 shadow-[var(--theme-shadow-medium)]";
 
   const card = (
     <section data-testid={testId} className={cardClassName}>
@@ -41,8 +41,8 @@ export function GuidedSetupCardShell({
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200/85">
             {eyebrow}
           </div>
-          <h2 className="mt-2 text-xl font-semibold text-white">{title}</h2>
-          <div className="mt-3 space-y-2 text-sm text-neutral-300">
+          <h2 className="mt-2 text-xl font-semibold text-[color:var(--theme-text-primary)]">{title}</h2>
+          <div className="mt-3 space-y-2 text-sm text-[color:var(--theme-text-secondary)]">
             {description}
           </div>
         </div>

@@ -15,11 +15,11 @@ type SettingsInsert = Database["public"]["Tables"]["customer_settings"]["Insert"
 const COPPER = "var(--accent-copper)";
 
 function cardClass() {
-  return "rounded-3xl border border-white/10 bg-black/30 p-4 shadow-card backdrop-blur-xl";
+  return "rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl";
 }
 
 function inputWrapClass() {
-  return "w-full rounded-xl border border-white/10 bg-black/40 p-2 text-sm text-white outline-none";
+  return "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)] outline-none";
 }
 
 function copperButtonStyle(): React.CSSProperties {
@@ -205,7 +205,7 @@ export default function PortalSettingsPage() {
     return (
       <div className="mx-auto max-w-2xl">
         <Toaster position="top-center" />
-        <div className={cardClass() + " text-sm text-neutral-200"}>
+        <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
           Loading your settings…
         </div>
       </div>
@@ -214,7 +214,7 @@ export default function PortalSettingsPage() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-2xl space-y-4 text-white">
+      <div className="mx-auto max-w-2xl space-y-4 text-[color:var(--theme-text-primary)]">
         <Toaster position="top-center" />
         <header className="space-y-1">
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
@@ -233,14 +233,14 @@ export default function PortalSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 text-white">
+    <div className="mx-auto max-w-2xl space-y-6 text-[color:var(--theme-text-primary)]">
       <Toaster position="top-center" />
 
       <header className="space-y-1">
         <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
           Settings
         </h1>
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-[color:var(--theme-text-secondary)]">
           Choose how we contact you and how information is displayed.
         </p>
 
@@ -254,9 +254,9 @@ export default function PortalSettingsPage() {
       </header>
 
       <section className={cardClass() + " space-y-3 sm:p-5"}>
-        <h2 className="text-sm font-semibold text-neutral-50">Communication</h2>
+        <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Communication</h2>
 
-        <label className="flex items-center gap-3 text-sm text-neutral-100">
+        <label className="flex items-center gap-3 text-sm text-[color:var(--theme-text-primary)]">
           <input
             type="checkbox"
             className="h-4 w-4"
@@ -267,7 +267,7 @@ export default function PortalSettingsPage() {
           <span>Email notifications</span>
         </label>
 
-        <label className="flex items-center gap-3 text-sm text-neutral-100">
+        <label className="flex items-center gap-3 text-sm text-[color:var(--theme-text-primary)]">
           <input
             type="checkbox"
             className="h-4 w-4"
@@ -278,7 +278,7 @@ export default function PortalSettingsPage() {
           <span>SMS notifications</span>
         </label>
 
-        <label className="flex items-center gap-3 text-sm text-neutral-100">
+        <label className="flex items-center gap-3 text-sm text-[color:var(--theme-text-primary)]">
           <input
             type="checkbox"
             className="h-4 w-4"
@@ -291,7 +291,7 @@ export default function PortalSettingsPage() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-neutral-400">
+            <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
               Preferred contact
             </label>
             <select
@@ -313,11 +313,11 @@ export default function PortalSettingsPage() {
       </section>
 
       <section className={cardClass() + " space-y-3 sm:p-5"}>
-        <h2 className="text-sm font-semibold text-neutral-50">Display</h2>
+        <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Display</h2>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-neutral-400">Units</label>
+            <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">Units</label>
             <select
               className={inputWrapClass()}
               value={form.units ?? "imperial"}
@@ -329,7 +329,7 @@ export default function PortalSettingsPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-neutral-400">
+            <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
               Language
             </label>
             <select
@@ -342,7 +342,7 @@ export default function PortalSettingsPage() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="mb-1 block text-xs text-neutral-400">
+            <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
               Timezone
             </label>
             <select
@@ -370,7 +370,7 @@ export default function PortalSettingsPage() {
           {saving ? "Saving…" : "Save settings"}
         </button>
 
-        <span className="text-xs text-neutral-400">
+        <span className="text-xs text-[color:var(--theme-text-secondary)]">
           Last updated:{" "}
           {form.updated_at ? new Date(form.updated_at).toLocaleString() : "—"}
         </span>

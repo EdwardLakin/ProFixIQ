@@ -878,41 +878,41 @@ export default function CustomBuilderPage() {
   const FOCUS_RING = "rgba(125,211,252,0.38)";
 
   const headerCard =
-    "rounded-2xl border border-[color:var(--desktop-border,var(--metal-border-soft,#1f2937))] " +
-    "bg-[color:var(--desktop-panel-bg-soft,rgba(2,6,23,0.78))] shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] backdrop-blur-xl";
+    "rounded-2xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] " +
+    "bg-[color:var(--desktop-panel-bg-soft,var(--theme-surface-inset))] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 
   const sectionCard =
-    "rounded-2xl border border-[color:var(--desktop-border,var(--metal-border-soft,#1f2937))] " +
-    "bg-[color:var(--desktop-panel-bg-soft,rgba(2,6,23,0.74))] shadow-[var(--theme-shadow-soft,0_14px_32px_rgba(0,0,0,0.4))] backdrop-blur-xl";
+    "rounded-2xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] " +
+    "bg-[color:var(--desktop-panel-bg-soft,var(--theme-surface-inset))] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 
   const pillBase =
     "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border transition-colors";
 
   const pillActive =
-    "border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-slate-900/80 text-slate-100";
+    "border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]";
   const pillInactive =
-    "border-transparent bg-transparent text-neutral-400 hover:bg-slate-900/60";
+    "border-transparent bg-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]";
 
   const inputBase =
-    "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 " +
+    "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 " +
     `focus:ring-[${FOCUS_RING}]`;
 
   const selectBase =
-    "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 " +
+    "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 " +
     `focus:ring-[${FOCUS_RING}]`;
 
   const actionBtn =
-    "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] " +
-    "bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] " +
-    "text-neutral-200 hover:bg-slate-900/80";
+    "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] " +
+    "bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] " +
+    "text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]";
 
   const primaryBtn =
     "rounded-full bg-[linear-gradient(to_right,rgba(191,141,99,0.72),rgba(160,116,82,0.66))] " +
-    "px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black " +
+    "px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] " +
     `shadow-[0_0_14px_${COPPER_GLOW_16}] hover:shadow-[0_0_18px_${COPPER_GLOW_16}] disabled:opacity-60`;
 
   return (
-    <div className="px-4 py-6 text-white">
+    <div className="px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto w-full max-w-6xl space-y-5">
         {/* Header */}
         <div
@@ -922,16 +922,16 @@ export default function CustomBuilderPage() {
         >
           <div className="relative flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="text-center md:text-left">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Inspections
               </p>
               <h1
-                className="mt-1 text-2xl uppercase tracking-[0.2em] text-slate-100 md:text-3xl"
+                className="mt-1 text-2xl uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)] md:text-3xl"
                 style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
               >
                 Custom Inspection Builder
               </h1>
-              <p className="mt-1 text-sm text-neutral-400">
+              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                 Quick build, prompt build, or manual selection — all from your
                 master list.
               </p>
@@ -943,14 +943,14 @@ export default function CustomBuilderPage() {
                 <span
                   key={c.k}
                   className={cx(
-                    "inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-3 py-1 text-[11px]",
-                    "text-neutral-200",
+                    "inline-flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-1 text-[11px]",
+                    "text-[color:var(--theme-text-primary)]",
                   )}
                 >
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                     {c.k}
                   </span>
-                  <span className="font-semibold text-neutral-100">{c.v}</span>
+                  <span className="font-semibold text-[color:var(--theme-text-primary)]">{c.v}</span>
                 </span>
               ))}
             </div>
@@ -959,7 +959,7 @@ export default function CustomBuilderPage() {
           {/* Title + duty + hours */}
           <div className="relative mt-4 grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1">
-              <span className="text-sm text-neutral-300">Template title</span>
+              <span className="text-sm text-[color:var(--theme-text-secondary)]">Template title</span>
               <input
                 className={inputBase}
                 value={title}
@@ -969,7 +969,7 @@ export default function CustomBuilderPage() {
 
             <div className="grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1">
-                <span className="text-sm text-neutral-300">Duty Class</span>
+                <span className="text-sm text-[color:var(--theme-text-secondary)]">Duty Class</span>
                 <select
                   className={selectBase}
                   value={dutyClass}
@@ -979,14 +979,14 @@ export default function CustomBuilderPage() {
                   <option value="medium">Medium</option>
                   <option value="heavy">Heavy</option>
                 </select>
-                <span className="mt-1 text-[11px] text-neutral-500">
+                <span className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                   Influences defaults (vehicle/brake + corner grid). You can
                   override below.
                 </span>
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-sm text-neutral-300">Labor hours</span>
+                <span className="text-sm text-[color:var(--theme-text-secondary)]">Labor hours</span>
                 <input
                   inputMode="decimal"
                   className={inputBase}
@@ -994,7 +994,7 @@ export default function CustomBuilderPage() {
                   onChange={(e) => setLaborHours(e.target.value)}
                   placeholder="e.g. 2.5"
                 />
-                <span className="mt-1 text-[11px] text-neutral-500">
+                <span className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                   Optional. Stored in inspection params.
                 </span>
               </label>
@@ -1004,7 +1004,7 @@ export default function CustomBuilderPage() {
           {/* Toggles + corner grid (templates-style pill group) */}
           <div className="relative mt-5 space-y-3">
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))]">
+              <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))]">
                 <button
                   type="button"
                   onClick={() => setIncludeOil((v) => !v)}
@@ -1051,13 +1051,13 @@ export default function CustomBuilderPage() {
               </div>
 
               {includeOil && (
-                <div className="flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-3 py-1.5">
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                <div className="flex items-center gap-2 rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-1.5">
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                     Engine
                   </span>
                   <select
                     className={cx(
-                      "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] px-3 py-1 text-[12px] text-white focus:outline-none focus:ring-2",
+                      "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-1 text-[12px] text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2",
                       `focus:ring-[${FOCUS_RING}]`,
                     )}
                     value={oilEngineType}
@@ -1073,10 +1073,10 @@ export default function CustomBuilderPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+              <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                 Corner grid
               </span>
-              <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))]">
+              <div className="flex overflow-hidden rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))]">
                 {gridModeButtons.map((opt) => {
                   const active = gridMode === opt.value;
                   return (
@@ -1107,16 +1107,16 @@ export default function CustomBuilderPage() {
           }
         >
           <div className="relative">
-            <div className="mb-1 text-center text-sm font-semibold text-slate-100">
+            <div className="mb-1 text-center text-sm font-semibold text-[color:var(--theme-text-primary)]">
               Quick Build
             </div>
-            <p className="mb-4 text-center text-sm text-slate-400">
+            <p className="mb-4 text-center text-sm text-[color:var(--theme-text-secondary)]">
               Deterministic build from your master list (keeps CVIP/spec codes).
             </p>
 
             <div className="grid gap-3 md:grid-cols-4">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   Vehicle
                 </span>
                 <select
@@ -1135,7 +1135,7 @@ export default function CustomBuilderPage() {
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   Brake system
                 </span>
                 <select
@@ -1152,7 +1152,7 @@ export default function CustomBuilderPage() {
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                <span className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   Target count
                 </span>
                 <input
@@ -1169,9 +1169,9 @@ export default function CustomBuilderPage() {
               </label>
 
               <div className="flex flex-col justify-end gap-2">
-                <div className="text-[11px] text-neutral-500">
+                <div className="text-[11px] text-[color:var(--theme-text-muted)]">
                   CVIP group:{" "}
-                  <span className="font-semibold text-neutral-100">
+                  <span className="font-semibold text-[color:var(--theme-text-primary)]">
                     {cvipGroup ?? "—"}
                   </span>
                 </div>
@@ -1194,10 +1194,10 @@ export default function CustomBuilderPage() {
           }
         >
           <div className="relative">
-            <div className="mb-1 text-center text-sm font-semibold text-slate-100">
+            <div className="mb-1 text-center text-sm font-semibold text-[color:var(--theme-text-primary)]">
               Prompt Build
             </div>
-            <p className="mb-4 text-center text-sm text-slate-400">
+            <p className="mb-4 text-center text-sm text-[color:var(--theme-text-secondary)]">
               Triggers auto-apply while typing (air/hydraulic, tires, batteries,
               grease, oil, “60 point”, etc).
             </p>
@@ -1230,7 +1230,7 @@ export default function CustomBuilderPage() {
                     className={cx(
                       actionBtn,
                       "px-3 py-1",
-                      active && `border-[${COPPER_45}] text-slate-100`,
+                      active && `border-[${COPPER_45}] text-[color:var(--theme-text-primary)]`,
                     )}
                   >
                     {CVIP_PRESETS[key].label}
@@ -1241,7 +1241,7 @@ export default function CustomBuilderPage() {
 
             <textarea
               className={cx(
-                "mb-3 min-h-[90px] w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.72))] p-3 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2",
+                "mb-3 min-h-[90px] w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] p-3 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2",
                 `focus:ring-[${FOCUS_RING}]`,
               )}
               placeholder="e.g. brake inspection, hydraulic, include tires, 30 point"
@@ -1271,14 +1271,14 @@ export default function CustomBuilderPage() {
               ) : null}
             </div>
 
-            <div className="mt-3 text-center text-[11px] text-neutral-500">
-              Tip: include <span className="text-neutral-200">air brake</span>,{" "}
-              <span className="text-neutral-200">hydraulic</span>,{" "}
-              <span className="text-neutral-200">tire grid</span>,{" "}
-              <span className="text-neutral-200">battery grid</span>,{" "}
-              <span className="text-neutral-200">grease chassis</span>,{" "}
-              <span className="text-neutral-200">oil change diesel</span>,{" "}
-              <span className="text-neutral-200">60 point</span>.
+            <div className="mt-3 text-center text-[11px] text-[color:var(--theme-text-muted)]">
+              Tip: include <span className="text-[color:var(--theme-text-primary)]">air brake</span>,{" "}
+              <span className="text-[color:var(--theme-text-primary)]">hydraulic</span>,{" "}
+              <span className="text-[color:var(--theme-text-primary)]">tire grid</span>,{" "}
+              <span className="text-[color:var(--theme-text-primary)]">battery grid</span>,{" "}
+              <span className="text-[color:var(--theme-text-primary)]">grease chassis</span>,{" "}
+              <span className="text-[color:var(--theme-text-primary)]">oil change diesel</span>,{" "}
+              <span className="text-[color:var(--theme-text-primary)]">60 point</span>.
             </div>
           </div>
         </div>
@@ -1296,10 +1296,10 @@ export default function CustomBuilderPage() {
               >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-semibold text-neutral-100">
+                    <div className="font-semibold text-[color:var(--theme-text-primary)]">
                       {sec.title}
                     </div>
-                    <span className="rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-2 py-0.5 text-[11px] text-neutral-300">
+                    <span className="rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-2 py-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                       {selectedCount}/{sec.items.length} selected
                     </span>
                   </div>
@@ -1341,7 +1341,7 @@ export default function CustomBuilderPage() {
                         <label
                           key={label}
                           className={cx(
-                            "group flex min-h-10 items-center gap-3 rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,#334155))] bg-[color:var(--desktop-item-bg,rgba(2,6,23,0.66))] px-3 py-2 text-sm text-neutral-100 transition-colors hover:bg-slate-900/60",
+                            "group flex min-h-10 items-center gap-3 rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] transition-colors hover:bg-[color:var(--theme-surface-panel)]",
                             checked && `border-[${COPPER_45}]`,
                           )}
                         >
@@ -1351,7 +1351,7 @@ export default function CustomBuilderPage() {
                             onChange={() => toggle(sec.title, label)}
                             className="h-4 w-4 accent-[rgba(200,122,67,0.85)]"
                           />
-                          <span className="text-sm leading-snug text-neutral-200">
+                          <span className="text-sm leading-snug text-[color:var(--theme-text-primary)]">
                             {label}
                           </span>
                         </label>
@@ -1361,7 +1361,7 @@ export default function CustomBuilderPage() {
                 )}
 
                 {collapsed && (
-                  <p className="mt-1 text-[11px] text-neutral-500">
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
                     Collapsed. Expand to adjust individual checks.
                   </p>
                 )}

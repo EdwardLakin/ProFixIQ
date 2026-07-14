@@ -121,7 +121,7 @@ export default function FleetUnitsPage({
             </div>
 
             <div className="flex flex-col gap-2 md:items-end">
-              <label className="text-[10px] uppercase tracking-[0.16em] text-neutral-400">
+              <label className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Filter by fleet
               </label>
               <select
@@ -150,7 +150,7 @@ export default function FleetUnitsPage({
               />
             </div>
 
-            <div className="text-[11px] text-neutral-500 md:pl-3">
+            <div className="text-[11px] text-[color:var(--theme-text-muted)] md:pl-3">
               Units shown are linked from your fleet programs and vehicle list.
             </div>
           </div>
@@ -165,17 +165,17 @@ export default function FleetUnitsPage({
           )}
 
           {loading && !error && (
-            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-4 text-sm text-neutral-300">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
               Loading fleet units…
             </div>
           )}
 
           {!loading && !error && filteredUnits.length === 0 && (
-            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-6 text-center text-sm text-neutral-300">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-6 text-center text-sm text-[color:var(--theme-text-secondary)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                 No fleet units found
               </div>
-              <p className="mt-2 text-xs text-neutral-400">
+              <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                 Add vehicles to a fleet program to see them here.
               </p>
             </div>
@@ -184,7 +184,7 @@ export default function FleetUnitsPage({
           {!loading && !error && filteredUnits.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full border-separate border-spacing-y-1 text-xs">
-                <thead className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+                <thead className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                   <tr>
                     <th className="px-3 py-1 text-left">Unit</th>
                     <th className="px-3 py-1 text-left">Fleet</th>
@@ -199,27 +199,27 @@ export default function FleetUnitsPage({
                 <tbody>
                   {filteredUnits.map((u) => (
                     <tr key={u.id} className="align-middle">
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-100">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)]">
                         {u.label}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {u.fleetName ?? "—"}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {u.plate ?? "—"}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {u.vin ? u.vin.slice(0, 11) + "…" : "—"}
                       </td>
                       <td className="px-3 py-1.5">
                         <StatusPill status={u.status} />
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {u.nextInspectionDate
                           ? new Date(u.nextInspectionDate).toLocaleDateString()
                           : "—"}
                       </td>
-                      <td className="px-3 py-1.5 text-[11px] text-neutral-300">
+                      <td className="px-3 py-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                         {u.location ?? "—"}
                       </td>
                       <td className="px-3 py-1.5 text-right text-[11px]">
@@ -232,7 +232,7 @@ export default function FleetUnitsPage({
                         {uiContext.capabilities.canCreateFleetWorkOrders && (
                           <Link
                             href={`/work-orders/create?unitId=${encodeURIComponent(u.id)}`}
-                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-neutral-900"
+                            className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
                           >
                             New WO
                           </Link>

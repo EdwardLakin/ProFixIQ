@@ -22,11 +22,11 @@ export default function OwnerSettingsHeader({
   return (
     <div className={`${PANEL_VARIANTS.primary} flex flex-wrap items-center justify-between gap-4 p-5`}>
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted,#64748B)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted,var(--theme-text-muted))]">
           Owner control center
         </p>
         <h1 className="text-2xl font-blackops text-orange-400">Shop Settings</h1>
-        <p className="text-xs text-[color:var(--theme-text-secondary,#94A3B8)]">
+        <p className="text-xs text-[color:var(--theme-text-secondary,var(--theme-text-muted))]">
           Configure branding, operations, billing, and scheduling from one operational console.
         </p>
       </div>

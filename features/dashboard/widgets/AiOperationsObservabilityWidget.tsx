@@ -102,11 +102,11 @@ export default function AiOperationsObservabilityWidget() {
       }
     >
       {loading ? (
-        <div className="h-16 animate-pulse rounded-xl border border-white/10 bg-black/25" />
+        <div className="h-16 animate-pulse rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]" />
       ) : error ? (
         <div className="rounded-xl border border-[color:color-mix(in_srgb,var(--brand-accent)_45%,transparent)] bg-[color:color-mix(in_srgb,var(--brand-accent)_14%,transparent)] px-3 py-3 text-sm text-[color:var(--brand-accent)]">{error}</div>
       ) : !data ? (
-        <p className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-neutral-300">No AI observability data yet.</p>
+        <p className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]">No AI observability data yet.</p>
       ) : (
         <div className="space-y-3 text-xs">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -129,9 +129,9 @@ export default function AiOperationsObservabilityWidget() {
             ))}
           </div>
 
-          <div className="grid grid-cols-1 gap-2 text-[11px] text-neutral-400 sm:grid-cols-2">
-            <p>Last AI activity: <span className="text-neutral-200">{rel(data.events.lastEventAt)}</span></p>
-            <p>Last stale expiration: <span className="text-neutral-200">{rel(data.expiration.lastExpirationEventAt)}</span></p>
+          <div className="grid grid-cols-1 gap-2 text-[11px] text-[color:var(--theme-text-secondary)] sm:grid-cols-2">
+            <p>Last AI activity: <span className="text-[color:var(--theme-text-primary)]">{rel(data.events.lastEventAt)}</span></p>
+            <p>Last stale expiration: <span className="text-[color:var(--theme-text-primary)]">{rel(data.expiration.lastExpirationEventAt)}</span></p>
           </div>
         </div>
       )}
@@ -141,9 +141,9 @@ export default function AiOperationsObservabilityWidget() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/30 px-2.5 py-2">
-      <p className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-neutral-100">{value}</p>
+    <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">{value}</p>
     </div>
   );
 }
@@ -153,7 +153,7 @@ function Chip({ label, tone = "default" }: { label: string; tone?: "default" | "
     ? "border-amber-400/35 bg-amber-500/15 text-amber-100"
     : tone === "ok"
       ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-100"
-      : "border-white/15 bg-black/30 text-neutral-300";
+      : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]";
 
   return <span className={`rounded-full border px-2 py-0.5 text-[10px] ${toneClass}`}>{label}</span>;
 }

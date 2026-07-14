@@ -67,7 +67,7 @@ export function SaveInspectionButton({ session, workOrderLineId, disabled = fals
         Save Progress
       </Button>
       {(syncSummary.queued > 0 || syncSummary.syncing > 0 || syncSummary.failed > 0 || syncSummary.conflicted > 0) && (
-        <p className="text-[10px] text-neutral-400">
+        <p className="text-[10px] text-[color:var(--theme-text-secondary)]">
           Sync queue: pending {syncSummary.queued + syncSummary.syncing} • failed {syncSummary.failed} • conflicted {syncSummary.conflicted}
         </p>
       )}

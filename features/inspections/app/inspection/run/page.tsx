@@ -170,7 +170,7 @@ export default function RunInspectionPage() {
       title="Preparing inspection"
       description="Normalizing template sections and launching run mode."
     >
-      <Card className="mx-auto w-full max-w-3xl px-4 py-4 text-sm text-[var(--theme-text-secondary,#94A3B8)]">
+      <Card className="mx-auto w-full max-w-3xl px-4 py-4 text-sm text-[var(--theme-text-secondary,var(--theme-text-muted))]">
         Preparing inspection…
       </Card>
     </PageShell>

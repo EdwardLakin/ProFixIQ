@@ -54,7 +54,7 @@ export default function DTCCodeLookup() {
         <button
           onClick={handleSearch}
           disabled={!code || isLoading}
-          className="bg-accent text-white px-4 py-2 rounded disabled:opacity-50"
+          className="bg-accent text-[color:var(--theme-text-primary)] px-4 py-2 rounded disabled:opacity-50"
         >
           {isLoading ? "Searching..." : "Search"}
         </button>

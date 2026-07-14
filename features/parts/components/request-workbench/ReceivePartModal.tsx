@@ -30,7 +30,7 @@ export function ReceivePartModal({
       }
     >
       {hasPartId ? (
-        <p className="text-sm text-neutral-300">
+        <p className="text-sm text-[color:var(--theme-text-secondary)]">
           Receiving uses the existing ReceiveDrawer behavior so partial intake, PO context, stock movement, and quote-line sync stay preserved.
         </p>
       ) : (

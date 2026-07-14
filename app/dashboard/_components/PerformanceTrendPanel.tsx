@@ -43,11 +43,11 @@ export default function PerformanceTrendPanel({
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 4, right: 8, bottom: -4, left: -18 }}>
           <CartesianGrid stroke="rgba(148,163,184,0.12)" vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: "#94A3B8", fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "#94A3B8", fontSize: 10 }} axisLine={false} tickLine={false} width={36} />
+          <XAxis dataKey="label" tick={{ fill: "var(--theme-text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: "var(--theme-text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={36} />
           <Tooltip
             contentStyle={{
-              background: "#050b18",
+              background: "var(--theme-surface-inset)",
               border: "1px solid rgba(148, 163, 184, 0.25)",
               borderRadius: "10px",
             }}

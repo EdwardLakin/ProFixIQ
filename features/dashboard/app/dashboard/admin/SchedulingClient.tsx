@@ -95,26 +95,26 @@ type TabKey = "shifts" | "sessions";
 /* ---------------------------------------------------------------------- */
 
 const T = {
-  border: "border-[color:var(--metal-border-soft,#1f2937)]",
-  borderStrong: "border-[color:var(--metal-border,#111827)]",
+  border: "border-[color:var(--metal-border-soft,var(--theme-border-soft))]",
+  borderStrong: "border-[color:var(--metal-border,var(--theme-surface-page))]",
   glass:
-    "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-black/35 backdrop-blur-md",
+    "bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-[color:var(--theme-surface-inset)] backdrop-blur-md",
   glassStrong:
-    "bg-[radial-gradient(900px_520px_at_18%_0%,rgba(197,106,47,0.12),transparent_55%),linear-gradient(180deg,rgba(0,0,0,0.62),rgba(0,0,0,0.42))] backdrop-blur-md",
-  shadow: "shadow-[0_18px_40px_rgba(0,0,0,0.85)]",
+    "bg-[var(--theme-gradient-panel)] backdrop-blur-md",
+  shadow: "shadow-[var(--theme-shadow-medium)]",
   panel: "rounded-2xl border",
-  label: "block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400",
-  sublabel: "text-xs uppercase tracking-[0.12em] text-neutral-400",
+  label: "block text-[0.7rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]",
+  sublabel: "text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]",
   input:
-    "mt-1 rounded-md border bg-black/50 px-2 py-1 text-sm text-neutral-100 outline-none transition " +
+    "mt-1 rounded-md border bg-[color:var(--theme-surface-inset)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] outline-none transition " +
     "focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#e7a36c)] " +
     "focus:border-[color:var(--accent-copper,#c56a2f)]",
   select:
-    "mt-1 rounded-md border bg-black/50 px-2 py-1 text-sm text-neutral-100 outline-none transition " +
+    "mt-1 rounded-md border bg-[color:var(--theme-surface-inset)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] outline-none transition " +
     "focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#e7a36c)] " +
     "focus:border-[color:var(--accent-copper,#c56a2f)]",
   copperFill:
-    "border-[color:var(--accent-copper,#c56a2f)] bg-[color:var(--accent-copper,#c56a2f)] text-black shadow-[0_0_22px_rgba(197,106,47,0.35)]",
+    "border-[color:var(--accent-copper,#c56a2f)] bg-[color:var(--accent-copper,#c56a2f)] text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(197,106,47,0.35)]",
   copperSoftText: "text-[color:var(--accent-copper-soft,#e7a36c)]",
 };
 
@@ -1165,7 +1165,7 @@ export default function SchedulingClient(): JSX.Element {
                 className={
                   tab === "shifts"
                     ? T.copperFill
-                    : [T.border, "bg-black/25"].join(" ")
+                    : [T.border, "bg-[color:var(--theme-surface-inset)]"].join(" ")
                 }
                 onClick={() => setTab("shifts")}
               >
@@ -1178,7 +1178,7 @@ export default function SchedulingClient(): JSX.Element {
                 className={
                   tab === "sessions"
                     ? T.copperFill
-                    : [T.border, "bg-black/25"].join(" ")
+                    : [T.border, "bg-[color:var(--theme-surface-inset)]"].join(" ")
                 }
                 onClick={() => setTab("sessions")}
               >
@@ -1186,10 +1186,10 @@ export default function SchedulingClient(): JSX.Element {
               </Button>
             </div>
 
-            <div className="ml-auto flex items-center gap-2 text-xs text-neutral-400">
+            <div className="ml-auto flex items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
               <span className="uppercase tracking-[0.14em]">Access</span>
               <span
-                className={canEditAll ? "text-emerald-300" : "text-neutral-300"}
+                className={canEditAll ? "text-emerald-300" : "text-[color:var(--theme-text-secondary)]"}
               >
                 {canEditAll ? "Admin" : "Self"}
               </span>
@@ -1254,12 +1254,12 @@ export default function SchedulingClient(): JSX.Element {
               </select>
             </div>
 
-            <div className="ml-auto flex flex-wrap items-end gap-4 text-sm text-neutral-300">
+            <div className="ml-auto flex flex-wrap items-end gap-4 text-sm text-[color:var(--theme-text-secondary)]">
               {tab === "shifts" && (
                 <>
                   <div>
                     <span className={T.sublabel}>Worked (clocked)</span>
-                    <div className="font-semibold text-neutral-100">
+                    <div className="font-semibold text-[color:var(--theme-text-primary)]">
                       {hoursMinutesLabel(totalWorkedMinutes)}
                     </div>
                   </div>
@@ -1267,7 +1267,7 @@ export default function SchedulingClient(): JSX.Element {
                   {billableMinutes != null && (
                     <div>
                       <span className={T.sublabel}>Billed (labor)</span>
-                      <div className="font-semibold text-neutral-100">
+                      <div className="font-semibold text-[color:var(--theme-text-primary)]">
                         {hoursMinutesLabel(billableMinutes)}
                       </div>
                     </div>
@@ -1306,13 +1306,13 @@ export default function SchedulingClient(): JSX.Element {
         {tab === "shifts" && (
           <div className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(" ")}>
             <div>
-              <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+              <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Scheduling
               </div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">
+              <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Add missing worked shift
               </div>
-              <div className="mt-1 text-xs text-neutral-400">
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Actual worked-time corrections are audited and shop-scoped. Planned schedules belong in Workforce Scheduling templates/overrides.
               </div>
             </div>
@@ -1350,7 +1350,7 @@ export default function SchedulingClient(): JSX.Element {
                   className={[T.input, T.border].join(" ")}
                   disabled={!canEditAll}
                 />
-                <div className="mt-1 text-[0.7rem] text-neutral-500">Default 8:00 AM</div>
+                <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">Default 8:00 AM</div>
               </div>
 
               <div>
@@ -1376,7 +1376,7 @@ export default function SchedulingClient(): JSX.Element {
             </div>
 
             {!canEditAll && (
-              <div className="mt-3 text-xs text-neutral-500">
+              <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
                 You can view your own shifts here. Managers/Admins can add audited missing worked shifts. Planned schedules live in Workforce Scheduling.
               </div>
             )}
@@ -1387,13 +1387,13 @@ export default function SchedulingClient(): JSX.Element {
         {tab === "sessions" && (
           <div className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(" ")}>
             <div>
-              <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+              <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Job time
               </div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">
+              <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Create a job session
               </div>
-              <div className="mt-1 text-xs text-neutral-400">
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Use this to correct time on a work order (and optionally a work order line).
               </div>
             </div>
@@ -1436,7 +1436,7 @@ export default function SchedulingClient(): JSX.Element {
                     </option>
                   ))}
                 </select>
-                <div className="mt-1 text-[0.7rem] text-neutral-500">
+                <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">
                   Shows only work orders assigned to the selected employee.
                 </div>
               </div>
@@ -1500,7 +1500,7 @@ export default function SchedulingClient(): JSX.Element {
             </div>
 
             {!canEditAll && (
-              <div className="mt-3 text-xs text-neutral-500">
+              <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
                 Only managers/admins can create or edit sessions.
               </div>
             )}
@@ -1582,7 +1582,7 @@ function ShiftsView(props: {
 
   if (loading) {
     return (
-      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-300"].join(" ")}>
+      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]"].join(" ")}>
         Loading shifts…
       </div>
     );
@@ -1590,7 +1590,7 @@ function ShiftsView(props: {
 
   if (shifts.length === 0) {
     return (
-      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-400"].join(" ")}>
+      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]"].join(" ")}>
         No shifts in this range.
       </div>
     );
@@ -1607,13 +1607,13 @@ function ShiftsView(props: {
             {/* Shift header */}
             <div className="flex flex-wrap items-start gap-4">
               <div className="min-w-[220px]">
-                <div className="text-[0.65rem] uppercase tracking-[0.16em] text-neutral-400">
+                <div className="text-[0.65rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                   Employee
                 </div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {userName(s.user_id ?? null)}
                 </div>
-                <div className="mt-1 text-xs text-neutral-500">
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   Shift ID: <span className="font-mono">{s.id.slice(0, 8)}</span>
                 </div>
               </div>
@@ -1642,7 +1642,7 @@ function ShiftsView(props: {
 
               <div className="ml-auto text-right">
                 <div className={T.label}>Worked this shift</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {hoursMinutesLabel(minutes)}
                 </div>
 
@@ -1673,13 +1673,13 @@ function ShiftsView(props: {
             </div>
 
             {/* Punches */}
-            <div className={["mt-4 rounded-xl border p-3", T.borderStrong, "bg-black/25 backdrop-blur-md"].join(" ")}>
+            <div className={["mt-4 rounded-xl border p-3", T.borderStrong, "bg-[color:var(--theme-surface-inset)] backdrop-blur-md"].join(" ")}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-neutral-200">
+                  <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     Punch events
                   </div>
-                  <div className="mt-1 text-xs text-neutral-500">
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                     Add/edit punches to correct day totals (break/lunch subtracted).
                   </div>
                 </div>
@@ -1724,11 +1724,11 @@ function ShiftsView(props: {
               </div>
 
               {punches.length === 0 ? (
-                <div className="mt-3 text-xs text-neutral-400">
+                <div className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
                   No punches recorded for this shift.
                 </div>
               ) : (
-                <div className="mt-3 divide-y divide-[color:var(--metal-border-soft,#1f2937)]">
+                <div className="mt-3 divide-y divide-[color:var(--metal-border-soft,var(--theme-border-soft))]">
                   {punches.map((p) => (
                     <PunchRowEditor
                       key={p.id}
@@ -1779,7 +1779,7 @@ function SessionsView(props: {
 
   if (loading) {
     return (
-      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-300"].join(" ")}>
+      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]"].join(" ")}>
         Loading job sessions…
       </div>
     );
@@ -1787,7 +1787,7 @@ function SessionsView(props: {
 
   if (sessions.length === 0) {
     return (
-      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-neutral-400"].join(" ")}>
+      <div className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-6 text-sm text-[color:var(--theme-text-secondary)]"].join(" ")}>
         No job sessions in this range.
       </div>
     );
@@ -1806,20 +1806,20 @@ function SessionsView(props: {
           <div key={s.id} className={[T.panel, T.border, T.glass, T.shadow, "px-4 py-4"].join(" ")}>
             <div className="flex flex-wrap items-start gap-4">
               <div className="min-w-[220px]">
-                <div className="text-[0.65rem] uppercase tracking-[0.16em] text-neutral-400">
+                <div className="text-[0.65rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                   Employee
                 </div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {userName(s.user_id ?? null)}
                 </div>
-                <div className="mt-2 text-xs text-neutral-500">
+                <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
                   Session: <span className="font-mono">{s.id.slice(0, 8)}</span>
                 </div>
               </div>
 
               <div className="min-w-[320px]">
                 <div className={T.label}>Work order</div>
-                <div className="mt-1 rounded-md border border-[color:var(--metal-border-soft,#1f2937)] bg-black/25 px-2 py-2 text-xs text-neutral-200">
+                <div className="mt-1 rounded-md border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-2 py-2 text-xs text-[color:var(--theme-text-primary)]">
                   <div className="font-mono break-all">{woId || "—"}</div>
                 </div>
 
@@ -1865,7 +1865,7 @@ function SessionsView(props: {
 
               <div className="ml-auto text-right">
                 <div className={T.label}>Duration</div>
-                <div className="mt-1 text-sm font-semibold text-neutral-100">
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {hoursMinutesLabel(durationMins)}
                 </div>
                 <div className="mt-2">
@@ -1907,8 +1907,8 @@ function AddPunchInline(props: {
   const isWhenValid = useMemo(() => isValidLocalDateTimeInput(when), [when]);
 
   const control =
-    "rounded-md border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/50 px-2 py-1 text-xs text-neutral-100 outline-none transition " +
+    "rounded-md border border-[color:var(--metal-border-soft,var(--theme-border-soft))] " +
+    "bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] outline-none transition " +
     "focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#e7a36c)] " +
     "focus:border-[color:var(--accent-copper,#c56a2f)]";
 
@@ -1973,8 +1973,8 @@ function PunchRowEditor(props: {
   const isWhenValid = useMemo(() => isValidLocalDateTimeInput(when), [when]);
 
   const control =
-    "rounded-md border border-[color:var(--metal-border-soft,#1f2937)] " +
-    "bg-black/50 px-2 py-1 text-xs text-neutral-100 outline-none transition " +
+    "rounded-md border border-[color:var(--metal-border-soft,var(--theme-border-soft))] " +
+    "bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] outline-none transition " +
     "focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#e7a36c)] " +
     "focus:border-[color:var(--accent-copper,#c56a2f)]";
 

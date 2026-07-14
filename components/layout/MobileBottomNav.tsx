@@ -42,7 +42,7 @@ function NavSection({
 }) {
   return (
     <div className="mb-3">
-      <div className="px-2 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-neutral-500">
+      <div className="px-2 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
         {title}
       </div>
 
@@ -57,8 +57,8 @@ function NavSection({
               onClick={onClose}
               className={`metal-card block rounded-xl px-3 py-2 text-sm transition ${
                 active
-                  ? "border-[var(--accent-copper)] text-white"
-                  : "border-[var(--metal-border-soft)] text-neutral-200 hover:border-[var(--accent-copper-light)]"
+                  ? "border-[var(--accent-copper)] text-[color:var(--theme-text-primary)]"
+                  : "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-light)]"
               }`}
             >
               {item.label}
@@ -134,7 +134,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
       {/* Backdrop */}
       <div
         onClick={onClose}
-        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${
+        className={`fixed inset-0 z-40 bg-[color:var(--theme-surface-inset)] backdrop-blur-sm transition-opacity ${
           open
             ? "opacity-100 pointer-events-auto"
             : "opacity-0 pointer-events-none"
@@ -143,10 +143,10 @@ export function MobileBottomNav({ open, onClose }: Props) {
 
       {/* Side drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] transform shadow-[12px_0_35px_rgba(0,0,0,0.9)] transition-transform duration-200 border-r border-[var(--metal-border-soft)] ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] transform shadow-[var(--theme-shadow-medium)] transition-transform duration-200 border-r border-[var(--metal-border-soft)] ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
-        style={{ background: "var(--theme-app-bg, #050910)" }}
+        style={{ background: "var(--theme-app-bg, var(--theme-surface-page))" }}
       >
         {/* Header */}
         <div className="metal-bar flex items-center justify-between px-4 py-3 border-b border-[var(--metal-border-soft)]">
@@ -154,25 +154,25 @@ export function MobileBottomNav({ open, onClose }: Props) {
             <span className="font-blackops text-[0.65rem] tracking-[0.24em] text-[var(--accent-copper-light)]">
               PROFIXIQ
             </span>
-            <span className="text-[0.7rem] text-neutral-300">Mobile Bench</span>
+            <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Mobile Bench</span>
           </div>
 
           <button
             type="button"
             onClick={onClose}
             aria-label="Close menu"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-black/50 hover:bg-black/70 active:scale-95"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] hover:bg-[color:var(--theme-surface-overlay)] active:scale-95"
           >
             ✕
           </button>
         </div>
 
         {/* Shift tracker – copper / glass card */}
-        <div className="px-3 pt-3 pb-2 border-b border-[var(--metal-border-soft)] bg-black/40">
+        <div className="px-3 pt-3 pb-2 border-b border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)]">
           {userId ? (
             <MobileShiftTracker userId={userId} />
           ) : (
-            <div className="rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[0.7rem] text-neutral-300">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
               Sign in to start tracking your shift.
             </div>
           )}
@@ -189,9 +189,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-[var(--metal-border-soft)] px-4 py-2 text-[0.65rem] text-neutral-500">
+        <div className="border-t border-[var(--metal-border-soft)] px-4 py-2 text-[0.65rem] text-[color:var(--theme-text-muted)]">
           <div>Tech Mode</div>
-          <div className="text-[0.6rem] text-neutral-600">v0.1 • Early Build</div>
+          <div className="text-[0.6rem] text-[color:var(--theme-text-muted)]">v0.1 • Early Build</div>
         </div>
       </aside>
     </>

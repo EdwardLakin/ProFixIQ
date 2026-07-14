@@ -89,7 +89,7 @@ export function UsePartButton({
           e.stopPropagation();
           setOpen(true);
         }}
-        className="rounded-xl bg-neutral-900 px-3 py-2 text-white disabled:opacity-60"
+        className="rounded-xl bg-[color:var(--theme-surface-panel)] px-3 py-2 text-[color:var(--theme-text-primary)] disabled:opacity-60"
         disabled={pending}
         title="Use/consume a part on this job line"
         type="button"

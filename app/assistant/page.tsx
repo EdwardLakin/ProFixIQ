@@ -60,7 +60,7 @@ export default function AssistantPage() {
     >
       <div className={`${ui.panel} ${ui.panelPadding} space-y-4`}>
         <div className="desktop-panel-soft p-4">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Assistant scope
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -70,14 +70,14 @@ export default function AssistantPage() {
                 className={`desktop-pill px-3 py-1 text-xs ${
                   chip.active
                     ? "border-[color:var(--brand-accent,#E39A6E)]/55 bg-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_16%,transparent)] text-[color:var(--brand-accent,#E39A6E)]"
-                    : "text-neutral-400"
+                    : "text-[color:var(--theme-text-secondary)]"
                 }`}
               >
                 {chip.label}
               </span>
             ))}
           </div>
-          <p className="mt-3 text-xs text-neutral-400">
+          <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
             Ask across work orders, customers, vehicles, inspections, approvals,
             bookings, invoices, fleet, parts, and staff/shop activity. Current-page
             context is applied when available.
@@ -88,7 +88,7 @@ export default function AssistantPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Ask a shop question, request an explanation, or compare records..."
-          className="desktop-input min-h-[120px] w-full resize-y rounded-2xl px-3 py-2 text-white"
+          className="desktop-input min-h-[120px] w-full resize-y rounded-2xl px-3 py-2 text-[color:var(--theme-text-primary)]"
         />
 
         <div className="flex flex-wrap gap-2">
@@ -96,7 +96,7 @@ export default function AssistantPage() {
             <button
               key={example}
               type="button"
-              className="desktop-pill px-3 py-1 text-xs text-neutral-300 hover:border-[color:var(--brand-accent,#E39A6E)]/50 hover:text-[color:var(--brand-accent,#E39A6E)]"
+              className="desktop-pill px-3 py-1 text-xs text-[color:var(--theme-text-secondary)] hover:border-[color:var(--brand-accent,#E39A6E)]/50 hover:text-[color:var(--brand-accent,#E39A6E)]"
               onClick={() => setQuery(example)}
             >
               {example}

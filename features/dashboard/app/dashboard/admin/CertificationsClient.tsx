@@ -15,12 +15,12 @@ export default function CertificationsClient() {
   ];
 
   return (
-    <div className="p-6 text-white">
+    <div className="p-6 text-[color:var(--theme-text-primary)]">
       <h1 className="text-2xl font-bold mb-4">Certifications</h1>
 
-      <div className="overflow-auto rounded border border-neutral-800">
+      <div className="overflow-auto rounded border border-[color:var(--theme-border-soft)]">
         <table className="min-w-full text-sm">
-          <thead className="bg-neutral-900/50">
+          <thead className="bg-[color:var(--theme-surface-panel)]">
             <tr>
               <th className="px-3 py-2 text-left">Employee</th>
               <th className="px-3 py-2 text-left">Certification</th>
@@ -30,12 +30,12 @@ export default function CertificationsClient() {
           </thead>
           <tbody>
             {sample.map((r, i) => (
-              <tr key={i} className="border-t border-neutral-800">
+              <tr key={i} className="border-t border-[color:var(--theme-border-soft)]">
                 <td className="px-3 py-2">{r.employee}</td>
                 <td className="px-3 py-2">{r.type}</td>
                 <td className="px-3 py-2">{r.expires_at}</td>
                 <td className="px-3 py-2 text-right">
-                  <button className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700">
+                  <button className="px-2 py-1 rounded bg-[color:var(--theme-surface-panel-strong)] border border-[color:var(--theme-border-soft)]">
                     Renew
                   </button>
                 </td>
@@ -45,7 +45,7 @@ export default function CertificationsClient() {
         </table>
       </div>
 
-      <button className="mt-4 px-3 py-2 rounded bg-orange-600 text-black">
+      <button className="mt-4 px-3 py-2 rounded bg-orange-600 text-[color:var(--theme-text-on-accent)]">
         Add Certification
       </button>
     </div>

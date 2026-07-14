@@ -64,11 +64,11 @@ function Modal(props: {
 
   const shell =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl " +
-    "shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset] text-white";
+    "shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset] text-[color:var(--theme-text-primary)]";
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4"
       onClick={onClose}
     >
       <div
@@ -81,7 +81,7 @@ function Modal(props: {
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}
-            className={`rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-sm hover:bg-white/5 focus:outline-none ${ACCENT_FOCUS_RING}`}
+            className={`rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-1 text-sm hover:bg-[color:var(--theme-surface-subtle)] focus:outline-none ${ACCENT_FOCUS_RING}`}
             aria-label="Close"
           >
             ✕
@@ -107,9 +107,9 @@ function TextField(props: {
   const { label, value, placeholder, onChange } = props;
   return (
     <div>
-      <div className="mb-1 text-xs text-neutral-400">{label}</div>
+      <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">{label}</div>
       <input
-        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-500/30"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -128,10 +128,10 @@ function NumberField(props: {
   const { label, value, min = 0, step = 0.01, onChange } = props;
   return (
     <div>
-      <div className="mb-1 text-xs text-neutral-400">{label}</div>
+      <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">{label}</div>
       <input
         type="number"
-        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-sky-500/30"
         value={value === "" ? "" : value}
         min={min}
         step={step}
@@ -153,9 +153,9 @@ function SelectField(props: {
   const { label, value, options, onChange } = props;
   return (
     <div>
-      <div className="mb-1 text-xs text-neutral-400">{label}</div>
+      <div className="mb-1 text-xs text-[color:var(--theme-text-secondary)]">{label}</div>
       <select
-        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+        className="w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-sky-500/30"
         value={value}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -496,20 +496,20 @@ export default function InventoryPage(): JSX.Element {
   const [csvError, setCsvError] = useState<string | null>(null);
 
   // ---- Theme (glass + neutral accent styling) ----
-  const ACCENT_TEXT = "text-[var(--theme-text-primary,#E2E8F0)]";
+  const ACCENT_TEXT = "text-[var(--theme-text-primary,var(--theme-text-primary))]";
   const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_35%,transparent)]";
 
-  const pageWrap = "space-y-4 p-6 text-white";
+  const pageWrap = "space-y-4 p-6 text-[color:var(--theme-text-primary)]";
   const glassCard =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
-  const glassHeader = "bg-[linear-gradient(180deg,rgba(148,163,184,0.08),rgba(15,23,42,0))] border-b border-[color:var(--desktop-border)]";
+  const glassHeader = "bg-[var(--theme-gradient-panel)] border-b border-[color:var(--desktop-border)]";
 
   const inputBase =
-    `rounded-lg border bg-neutral-950/40 px-3 py-2 text-sm text-white placeholder:text-neutral-500 border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
+    `rounded-lg border bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] border-[color:var(--desktop-border)] focus:outline-none ${ACCENT_FOCUS_RING}`;
 
   const btnBase =
     "inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:opacity-60";
-  const btnGhost = `${btnBase} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-white/5`;
+  const btnGhost = `${btnBase} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-[color:var(--theme-surface-subtle)]`;
   const btnCopper = `${btnBase} border-[rgba(197,122,74,0.55)] ${ACCENT_TEXT} bg-[linear-gradient(135deg,rgba(197,122,74,0.22),rgba(197,122,74,0.12))] hover:bg-[linear-gradient(135deg,rgba(197,122,74,0.3),rgba(197,122,74,0.18))]`;
   const btnBlue = `${btnBase} border-sky-500/30 bg-sky-950/25 text-sky-100 hover:bg-sky-900/25`;
 
@@ -1023,13 +1023,13 @@ export default function InventoryPage(): JSX.Element {
         <div className={`${glassHeader} px-5 py-4`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.22em] text-neutral-400">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
                 Parts
               </div>
               <h1 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
                 Inventory
               </h1>
-              <div className="mt-1 text-sm text-neutral-400">
+              <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                 Create parts, quick receive, and import stock from CSV.
               </div>
             </div>
@@ -1078,7 +1078,7 @@ export default function InventoryPage(): JSX.Element {
                 Upload a CSV, review validation results, then confirm the import into the existing parts and stock movement records.
               </p>
               <p>
-                Supported columns: <span className="text-neutral-100">{PART_CSV_FIELDS.join(", ")}</span>.
+                Supported columns: <span className="text-[color:var(--theme-text-primary)]">{PART_CSV_FIELDS.join(", ")}</span>.
               </p>
             </>
           }
@@ -1104,7 +1104,7 @@ export default function InventoryPage(): JSX.Element {
               <button
                 type="button"
                 onClick={() => { setCsvResult(null); csvFileInputRef.current?.click(); }}
-                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-white hover:border-[var(--accent-copper-soft)]/65"
+                className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
                 disabled={!shopId || csvImporting || csvCompletingOnboarding}
               >
                 Choose CSV file
@@ -1113,28 +1113,28 @@ export default function InventoryPage(): JSX.Element {
           }
         >
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2">
-              <div className="text-lg font-semibold text-white">{csvRows.length}</div>
-              <div className="text-xs text-neutral-400">Parsed rows</div>
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-2">
+              <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">{csvRows.length}</div>
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">Parsed rows</div>
             </div>
             <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-2">
               <div className="text-lg font-semibold text-emerald-100">{csvImportableRows.length}</div>
-              <div className="text-xs text-neutral-400">Ready to import</div>
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">Ready to import</div>
             </div>
             <div className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-2">
               <div className="text-lg font-semibold text-amber-100">{csvReviewRows.length}</div>
-              <div className="text-xs text-neutral-400">Need review</div>
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">Need review</div>
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-neutral-300">
+          <div className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
             <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">Detected columns</div>
-                <div className="mt-1 text-neutral-200">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Detected columns</div>
+                <div className="mt-1 text-[color:var(--theme-text-primary)]">
                   {csvHeaders.length ? csvHeaders.join(", ") : "No CSV selected yet."}
                 </div>
-                <div className="mt-1 text-xs text-neutral-500">
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   Name is required. SKU or part_number is recommended so re-imports update deterministically.
                 </div>
               </div>
@@ -1158,7 +1158,7 @@ export default function InventoryPage(): JSX.Element {
           {csvPreview ? (
             <div className="mt-4 max-h-96 overflow-auto rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
               <table className="w-full min-w-[920px] text-sm">
-                <thead className="bg-white/5 text-left text-neutral-400">
+                <thead className="bg-[color:var(--theme-surface-subtle)] text-left text-[color:var(--theme-text-secondary)]">
                   <tr>
                     <th className="p-3">Row</th>
                     <th className="p-3">Name</th>
@@ -1172,9 +1172,9 @@ export default function InventoryPage(): JSX.Element {
                 <tbody>
                   {csvRows.slice(0, 50).map((row) => (
                     <tr key={row.rowNumber} className="border-t border-[color:var(--desktop-border)]">
-                      <td className="p-3 tabular-nums text-neutral-400">{row.rowNumber}</td>
+                      <td className="p-3 tabular-nums text-[color:var(--theme-text-secondary)]">{row.rowNumber}</td>
                       <td className="p-3">{row.name || "—"}</td>
-                      <td className="p-3 font-mono text-xs text-neutral-300">{row.sku ?? "—"} / {row.part_number ?? "—"}</td>
+                      <td className="p-3 font-mono text-xs text-[color:var(--theme-text-secondary)]">{row.sku ?? "—"} / {row.part_number ?? "—"}</td>
                       <td className="p-3">{row.vendor ?? row.brand ?? "—"}</td>
                       <td className="p-3 tabular-nums">{typeof row.cost_price === "number" ? `$${row.cost_price.toFixed(2)}` : "—"} / {typeof row.sell_price === "number" ? `$${row.sell_price.toFixed(2)}` : "—"}</td>
                       <td className="p-3 tabular-nums">{typeof row.quantity_on_hand === "number" ? row.quantity_on_hand : "—"} / {typeof row.min_stock === "number" ? row.min_stock : "—"}</td>
@@ -1185,7 +1185,7 @@ export default function InventoryPage(): JSX.Element {
                   ))}
                 </tbody>
               </table>
-              {csvRows.length > 50 ? <div className="border-t border-[color:var(--desktop-border)] p-3 text-xs text-neutral-500">Showing first 50 of {csvRows.length} rows.</div> : null}
+              {csvRows.length > 50 ? <div className="border-t border-[color:var(--desktop-border)] p-3 text-xs text-[color:var(--theme-text-muted)]">Showing first 50 of {csvRows.length} rows.</div> : null}
             </div>
           ) : null}
 
@@ -1235,16 +1235,16 @@ export default function InventoryPage(): JSX.Element {
       </div>
 
       {loading ? (
-        <div className={`${glassCard} p-4 text-sm text-neutral-300`}>Loading…</div>
+        <div className={`${glassCard} p-4 text-sm text-[color:var(--theme-text-secondary)]`}>Loading…</div>
       ) : visibleParts.length === 0 ? (
-        <div className={`${glassCard} p-4 text-sm text-neutral-300`}>
+        <div className={`${glassCard} p-4 text-sm text-[color:var(--theme-text-secondary)]`}>
           No inventory rows match this filter.
         </div>
       ) : (
         <div className={`${glassCard} overflow-hidden`}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-[color:var(--desktop-item-bg)] text-neutral-400">
+              <thead className="bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]">
                 <tr className="text-left">
                   <th className="p-3">Name</th>
                   <th className="w-40 p-3">SKU</th>
@@ -1265,19 +1265,19 @@ export default function InventoryPage(): JSX.Element {
                   return (
                     <tr key={p.id} className="border-t border-[color:var(--desktop-border)]">
                       <td className="p-3">
-                        <div className="font-medium text-white">{summary.name}</div>
+                        <div className="font-medium text-[color:var(--theme-text-primary)]">{summary.name}</div>
                         {/* Previously this subtitle rendered String(p.id).slice(0, 8), which exposed internal ids as unlabeled metadata. */}
-                        <div className="mt-0.5 text-xs text-neutral-500">Record ID in Edit modal</div>
+                        <div className="mt-0.5 text-xs text-[color:var(--theme-text-muted)]">Record ID in Edit modal</div>
                       </td>
-                      <td className="p-3 font-mono text-xs text-neutral-300">{summary.sku ?? "—"}</td>
-                      <td className="p-3 font-mono text-xs text-neutral-300">{summary.partNumber ?? "—"}</td>
+                      <td className="p-3 font-mono text-xs text-[color:var(--theme-text-secondary)]">{summary.sku ?? "—"}</td>
+                      <td className="p-3 font-mono text-xs text-[color:var(--theme-text-secondary)]">{summary.partNumber ?? "—"}</td>
                       <td className="p-3">{summary.category ?? "—"}</td>
                       <td className="p-3">
                         <div className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold ${trustBadgeTone(trust.level)}`}>
                           {trustLevelLabel(trust.level)}
                         </div>
                         {trust.reasons.length > 0 ? (
-                          <div className="mt-1 line-clamp-2 text-xs text-neutral-400">
+                          <div className="mt-1 line-clamp-2 text-xs text-[color:var(--theme-text-secondary)]">
                             {trust.reasons.slice(0, 2).join(" · ")}
                           </div>
                         ) : null}
@@ -1287,7 +1287,7 @@ export default function InventoryPage(): JSX.Element {
                       </td>
                       <td className="p-3">
                         <button
-                          className={`${onHandPill} hover:bg-white/5`}
+                          className={`${onHandPill} hover:bg-[color:var(--theme-surface-subtle)]`}
                           onClick={() => void openOnHandDetail(p)}
                           title="View per-location balance"
                         >
@@ -1311,7 +1311,7 @@ export default function InventoryPage(): JSX.Element {
             </table>
           </div>
 
-          <div className="border-t border-[color:var(--desktop-border)] px-5 py-3 text-xs text-neutral-500">
+          <div className="border-t border-[color:var(--desktop-border)] px-5 py-3 text-xs text-[color:var(--theme-text-muted)]">
             Tip: Click on-hand to see locations. {defaultListLimited ? `Showing ${displayedParts.length} of ${visibleParts.length} inventory rows by default. Search or filter to refine results. ` : null}{suspectCount} row(s) currently flagged for trust review.
           </div>
         </div>
@@ -1349,8 +1349,8 @@ export default function InventoryPage(): JSX.Element {
         </div>
 
         <div className="mt-4 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3">
-          <div className="mb-2 text-sm font-semibold text-white">
-            Initial Stock <span className="text-xs font-normal text-neutral-400">(optional)</span>
+          <div className="mb-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            Initial Stock <span className="text-xs font-normal text-[color:var(--theme-text-secondary)]">(optional)</span>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <SelectField
@@ -1400,7 +1400,7 @@ export default function InventoryPage(): JSX.Element {
           <TextField label="Part Number" value={editPartNumber} onChange={setEditPartNumber} />
           <TextField label="Category" value={editCategory} onChange={setEditCategory} />
           <NumberField label="Price" value={editPrice} onChange={(v) => setEditPrice(v === "" ? "" : v)} />
-          <div className="sm:col-span-2 text-xs text-neutral-500">
+          <div className="sm:col-span-2 text-xs text-[color:var(--theme-text-muted)]">
             {editPart?.id ? `Internal record id: ${editPart.id}` : ""}
           </div>
         </div>
@@ -1454,11 +1454,11 @@ export default function InventoryPage(): JSX.Element {
         widthClass="max-w-lg"
       >
         {ohLines.length === 0 ? (
-          <div className="text-sm text-neutral-300">No movement found for this part.</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">No movement found for this part.</div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
             <table className="w-full text-sm">
-              <thead className="bg-white/5 text-left text-neutral-400">
+              <thead className="bg-[color:var(--theme-surface-subtle)] text-left text-[color:var(--theme-text-secondary)]">
                 <tr>
                   <th className="p-3">Location</th>
                   <th className="p-3">Qty</th>

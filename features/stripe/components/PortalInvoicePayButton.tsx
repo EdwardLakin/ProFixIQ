@@ -68,16 +68,16 @@ export default function PortalInvoicePayButton({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/40 px-4 py-4">
+    <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Payment
           </div>
-          <div className="mt-1 text-sm text-neutral-200">
+          <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
             Pay your invoice with card • {labelCurrency}
           </div>
-          <div className="mt-0.5 text-[11px] text-neutral-500">
+          <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">
             You’ll be redirected to Stripe Checkout.
           </div>
         </div>
@@ -89,8 +89,8 @@ export default function PortalInvoicePayButton({
           className={
             "rounded-xl px-4 py-2 text-sm font-semibold border " +
             (busy || disabled
-              ? "border-white/10 bg-black/30 text-neutral-500"
-              : "border-white/20 bg-black/50 text-white hover:bg-black/60 active:scale-[0.99]")
+              ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-muted)]"
+              : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] active:scale-[0.99]")
           }
         >
           {busy ? "Starting…" : "Pay invoice"}

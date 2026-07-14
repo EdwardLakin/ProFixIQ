@@ -214,18 +214,18 @@ export default function TechSettingsPage() {
     }
   };
 
-  if (loading) return <div className="p-6 text-sm text-neutral-300">Loading settings…</div>;
+  if (loading) return <div className="p-6 text-sm text-[color:var(--theme-text-secondary)]">Loading settings…</div>;
 
   return (
-    <div className="space-y-6 p-6 text-white">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 p-4">
+    <div className="space-y-6 p-6 text-[color:var(--theme-text-primary)]">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
         <div>
           <h1 className="text-2xl font-blackops text-orange-400">Tech Settings</h1>
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
             Control your profile identity, workstation preferences, and signature tools.
           </p>
         </div>
-        <div className="rounded-full border border-white/10 bg-black/50 px-3 py-1 text-xs text-neutral-300">
+        <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs text-[color:var(--theme-text-secondary)]">
           {username ? `@${username}` : "Technician"}
           {shopId ? ` • Shop workspace` : ""}
         </div>
@@ -244,20 +244,20 @@ export default function TechSettingsPage() {
           title="Profile identity"
         />
 
-        <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+        <section className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-neutral-100">Work Preferences</h2>
-            <span className="text-[11px] text-neutral-500">Local workstation</span>
+            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Work Preferences</h2>
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">Local workstation</span>
           </div>
 
-          <label className="space-y-1 text-xs text-neutral-300">
+          <label className="space-y-1 text-xs text-[color:var(--theme-text-secondary)]">
             <span>Default queue status</span>
             <select
               value={prefs.defaultBucket}
               onChange={(e) =>
                 savePrefs({ ...prefs, defaultBucket: e.target.value as TechPrefs["defaultBucket"] })
               }
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"
             >
               <option value="awaiting">Awaiting</option>
               <option value="in_progress">In progress</option>
@@ -312,28 +312,28 @@ export default function TechSettingsPage() {
           subtitle="Used for technician identity and internal communication details."
         />
 
-        <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
+        <section className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-neutral-100">Saved Signature</h2>
-            <span className="text-[11px] text-neutral-500">Inspections</span>
+            <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Saved Signature</h2>
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">Inspections</span>
           </div>
-          <p className="text-xs text-neutral-400">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">
             Status: {sigPath ? "On file" : "Not set"}. Used automatically while signing inspections.
           </p>
           <button
             type="button"
             onClick={captureAndSaveSignature}
             disabled={sigBusy || !profileId}
-            className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+            className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] hover:bg-orange-600 disabled:opacity-60"
           >
             {sigBusy ? "Opening…" : sigPath ? "Update signature" : "Capture signature"}
           </button>
-          {sigPath ? <p className="text-[11px] text-neutral-500 break-all">{sigPath}</p> : null}
+          {sigPath ? <p className="text-[11px] text-[color:var(--theme-text-muted)] break-all">{sigPath}</p> : null}
         </section>
 
-        <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
-          <h2 className="text-sm font-semibold text-neutral-100">Notifications</h2>
-          <p className="text-xs text-neutral-400">Per-device queue behavior and prompt settings.</p>
+        <section className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Notifications</h2>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Per-device queue behavior and prompt settings.</p>
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -352,15 +352,15 @@ export default function TechSettingsPage() {
           </label>
         </section>
 
-        <section className="space-y-4 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur-xl">
-          <h2 className="text-sm font-semibold text-neutral-100">Account Metadata</h2>
-          <dl className="space-y-2 text-xs text-neutral-300">
+        <section className="space-y-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card backdrop-blur-xl">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Account Metadata</h2>
+          <dl className="space-y-2 text-xs text-[color:var(--theme-text-secondary)]">
             <div className="flex justify-between gap-3">
-              <dt className="text-neutral-500">Username</dt>
+              <dt className="text-[color:var(--theme-text-muted)]">Username</dt>
               <dd>{username || "—"}</dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-neutral-500">Shop</dt>
+              <dt className="text-[color:var(--theme-text-muted)]">Shop</dt>
               <dd>{shopId ? "Linked" : "Not linked"}</dd>
             </div>
           </dl>
@@ -371,7 +371,7 @@ export default function TechSettingsPage() {
         <button
           onClick={handleSaveProfile}
           disabled={saving}
-          className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+          className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)] hover:bg-orange-600 disabled:opacity-60"
         >
           {saving ? "Saving…" : "Save profile"}
         </button>

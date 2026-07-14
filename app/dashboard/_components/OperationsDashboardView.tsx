@@ -8,9 +8,9 @@ import { OperationalViewSwitcher } from "@/features/dashboard/components/Operati
 
 function EmbeddedEmptyState({ label, detail }: { label: string; detail: string }) {
   return (
-    <div className="rounded-lg border border-white/5 bg-black/15 px-3 py-2.5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">{label}</div>
-      <div className="mt-1 text-xs text-neutral-500">{detail}</div>
+    <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">{label}</div>
+      <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{detail}</div>
     </div>
   );
 }
@@ -57,16 +57,16 @@ export default async function OperationsDashboardView() {
       <DashboardPanel
         title="Immediate Attention"
         eyebrow="Right now"
-        action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
-        className="border-amber-300/25 bg-[linear-gradient(150deg,rgba(36,22,8,0.34),rgba(8,11,24,0.82))]"
+        action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">Open board <ArrowRight className="h-3 w-3" /></Link>}
+        className="border-amber-300/25 bg-[var(--theme-gradient-panel)]"
       >
         {payload.immediateAttention.length > 0 ? (
           <div data-testid="immediate-attention" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {payload.immediateAttention.map((item) => (
-              <Link key={item.label} href={item.href ?? "/work-orders/board"} className="group rounded-xl border border-white/10 bg-black/25 p-3 transition hover:border-[var(--brand-accent,#E39A6E)]/50 hover:bg-black/40">
+              <Link key={item.label} href={item.href ?? "/work-orders/board"} className="group rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 transition hover:border-[var(--brand-accent,#E39A6E)]/50 hover:bg-[color:var(--theme-surface-inset)]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-white">{item.label}</span>
-                  <ChevronRight className="h-4 w-4 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                  <span className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{item.label}</span>
+                  <ChevronRight className="h-4 w-4 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
                 </div>
                 <div className="mt-2 text-2xl font-bold text-[var(--brand-accent,#E39A6E)]">{item.value}</div>
               </Link>
@@ -80,7 +80,7 @@ export default async function OperationsDashboardView() {
       <DashboardPanel title="Quick Actions" eyebrow="Operational shortcuts">
         <div data-testid="operations-quick-actions" className="flex flex-wrap gap-2">
           {payload.quickActions.map((action) => (
-            <Link key={action.href} href={action.href} className={action.tone === "primary" ? "rounded-lg border border-[var(--brand-accent,#E39A6E)]/45 bg-[var(--brand-accent,#E39A6E)]/15 px-3 py-2 text-sm font-semibold text-white" : "rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm font-semibold text-neutral-200 hover:bg-black/40"}>
+            <Link key={action.href} href={action.href} className={action.tone === "primary" ? "rounded-lg border border-[var(--brand-accent,#E39A6E)]/45 bg-[var(--brand-accent,#E39A6E)]/15 px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)]" : "rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-inset)]"}>
               {action.label}
             </Link>
           ))}
@@ -100,7 +100,7 @@ export default async function OperationsDashboardView() {
                   <Link
                     key={warning}
                     href="/dashboard/operations"
-                    className="group flex items-start gap-2 rounded-md border border-amber-500/30 bg-black/25 px-2 py-1.5 transition hover:bg-black/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60"
+                    className="group flex items-start gap-2 rounded-md border border-amber-500/30 bg-[color:var(--theme-surface-inset)] px-2 py-1.5 transition hover:bg-[color:var(--theme-surface-inset)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60"
                   >
                     <AlertTriangle className="mt-0.5 h-3 w-3" />
                     <span className="flex-1">{warning}</span>
@@ -112,17 +112,17 @@ export default async function OperationsDashboardView() {
           ) : null}
 
           <div
-            className="space-y-1.5 rounded-[22px] border border-white/5 p-2.5 md:p-2.5"
+            className="space-y-1.5 rounded-[22px] border border-[color:var(--theme-border-soft)] p-2.5 md:p-2.5"
             style={{
-              background: "linear-gradient(158deg, rgba(4,8,20,0.92), rgba(8,14,30,0.78) 48%, rgba(4,10,24,0.86))",
-              boxShadow: "inset 0 1px 0 rgba(148,163,184,0.06), 0 16px 28px rgba(0,0,0,0.24)",
+              background: "var(--theme-gradient-panel)",
+              boxShadow: "var(--theme-shadow-medium)",
             }}
           >
             <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.56fr)_minmax(232px,0.88fr)] xl:grid-cols-[minmax(0,1.66fr)_minmax(256px,0.94fr)]">
             <DashboardPanel
               title={isTechnicianView ? "My active assigned jobs" : "Live Work Command Surface"}
-              className="min-h-[300px] border-white/5 bg-[linear-gradient(155deg,rgba(7,13,28,0.9),rgba(8,14,30,0.78))]"
-              action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white">Open board <ArrowRight className="h-3 w-3" /></Link>}
+              className="min-h-[300px] border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)]"
+              action={<Link href="/work-orders/board" className="inline-flex items-center gap-1 text-xs text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">Open board <ArrowRight className="h-3 w-3" /></Link>}
             >
               <div className="grid h-full gap-2 md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                 <div className="space-y-0.5">
@@ -131,15 +131,15 @@ export default async function OperationsDashboardView() {
                       <Link
                         key={item.id}
                         href={`/work-orders/${item.id}`}
-                        className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/25 px-2.5 py-[0.32rem] text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/60 hover:bg-black/45 hover:shadow-[0_0_0_1px_rgba(227,154,110,0.2),0_8px_20px_rgba(0,0,0,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                        className="group flex items-center justify-between rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-[0.32rem] text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/60 hover:bg-[color:var(--theme-surface-inset)] hover:shadow-[var(--theme-shadow-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                       >
                         <div>
-                          <div className="font-extrabold tracking-wide text-white/95">{item.label}</div>
-                          <div className="text-neutral-400">{item.stage}</div>
+                          <div className="font-extrabold tracking-wide text-[color:var(--theme-text-primary)]">{item.label}</div>
+                          <div className="text-[color:var(--theme-text-secondary)]">{item.stage}</div>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <div className="rounded-full border border-white/10 px-2 py-0.5 text-neutral-200">P{item.priority}</div>
-                          <ChevronRight className="h-3.5 w-3.5 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                          <div className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[color:var(--theme-text-primary)]">P{item.priority}</div>
+                          <ChevronRight className="h-3.5 w-3.5 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
                         </div>
                       </Link>
                     ))
@@ -156,13 +156,13 @@ export default async function OperationsDashboardView() {
                       <Link
                         key={row.label}
                         href={`/work-orders/board?stage=${encodeURIComponent(row.label.toLowerCase().replaceAll(" ", "_"))}`}
-                        className="group block rounded-lg border border-white/8 bg-black/20 p-2 transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                        className="group block rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 transition hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-[color:var(--theme-surface-inset)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                       >
                         <div className="flex items-center justify-between text-xs">
-                          <span className="text-neutral-300">{row.label}</span>
-                          <span className="font-semibold text-white">{row.value}</span>
+                          <span className="text-[color:var(--theme-text-secondary)]">{row.label}</span>
+                          <span className="font-semibold text-[color:var(--theme-text-primary)]">{row.value}</span>
                         </div>
-                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
                           <div
                             className="h-full rounded-full bg-gradient-to-r from-[var(--brand-primary,#C1663B)] to-[var(--brand-accent,#E39A6E)]"
                             style={{ width: `${Math.min(100, row.value * 12)}%` }}
@@ -180,15 +180,15 @@ export default async function OperationsDashboardView() {
               </div>
             </DashboardPanel>
 
-            <DashboardPanel title={isTechnicianView ? "My workload snapshot" : "Active Job Summary"} className="min-h-[300px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
+            <DashboardPanel title={isTechnicianView ? "My workload snapshot" : "Active Job Summary"} className="min-h-[300px] border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)]">
               <div className="space-y-2">
                 {payload.activeJobSummary.map((metric) => (
-                  <div key={metric.label} className="rounded-lg border border-white/5 bg-black/15 p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
+                  <div key={metric.label} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5 shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-400">{metric.label}</span>
-                      <span className="text-[13px] font-semibold text-neutral-100">{metric.value}</span>
+                      <span className="text-[color:var(--theme-text-secondary)]">{metric.label}</span>
+                      <span className="text-[13px] font-semibold text-[color:var(--theme-text-primary)]">{metric.value}</span>
                     </div>
-                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
                       <div
                         className="h-full rounded-full bg-[var(--brand-accent,#E39A6E)]"
                         style={{ width: `${metric.pct}%` }}
@@ -201,14 +201,14 @@ export default async function OperationsDashboardView() {
           </div>
 
             <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.56fr)_minmax(232px,0.88fr)] xl:grid-cols-[minmax(0,1.66fr)_minmax(256px,0.94fr)]">
-            <DashboardPanel title={isTechnicianView ? "My queue mix" : "Live Shop Load"} className="min-h-[236px] border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]">
+            <DashboardPanel title={isTechnicianView ? "My queue mix" : "Live Shop Load"} className="min-h-[236px] border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)]">
               <ShopLoadChart data={payload.liveShopLoad.map((item) => ({ label: item.label, count: item.count }))} />
             </DashboardPanel>
 
             <DashboardPanel
               title={isTechnicianView ? "My daily summary" : "Today's Operations"}
-              className="border-white/5 bg-[linear-gradient(155deg,rgba(7,12,25,0.84),rgba(8,14,29,0.74))]"
-              action={<Link href="/dashboard/bookings" className="text-xs text-neutral-300 hover:text-white">Open</Link>}
+              className="border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)]"
+              action={<Link href="/dashboard/bookings" className="text-xs text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">Open</Link>}
             >
               <div className="space-y-1.5">
                 {payload.dailySummary.map((item) => {
@@ -226,12 +226,12 @@ export default async function OperationsDashboardView() {
                     <Link
                       key={`${item.label}-${item.value}`}
                       href={href}
-                      className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                      className="group flex items-center justify-between rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-[color:var(--theme-surface-inset)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                     >
-                      <span className="text-neutral-300">{item.label}</span>
-                      <span className={item.tone === "accent" ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]" : "inline-flex items-center gap-1 font-semibold text-white"}>
+                      <span className="text-[color:var(--theme-text-secondary)]">{item.label}</span>
+                      <span className={item.tone === "accent" ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]" : "inline-flex items-center gap-1 font-semibold text-[color:var(--theme-text-primary)]"}>
                         {item.value}
-                        <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                        <ChevronRight className="h-3 w-3 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
                       </span>
                     </Link>
                   );
@@ -248,18 +248,18 @@ export default async function OperationsDashboardView() {
                   <Link
                     key={tech.id}
                     href="/work-orders/board"
-                    className="group grid grid-cols-[minmax(0,1fr)_76px_auto] items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 transition hover:border-white/20 hover:bg-black/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                    className="group grid grid-cols-[minmax(0,1fr)_76px_auto] items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                   >
                     <div className="min-w-0">
-                      <div className="truncate text-xs font-semibold text-white">{tech.name}</div>
-                      <div className="text-[11px] text-neutral-400">{tech.stage} · {tech.elapsed}</div>
-                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/10">
+                      <div className="truncate text-xs font-semibold text-[color:var(--theme-text-primary)]">{tech.name}</div>
+                      <div className="text-[11px] text-[color:var(--theme-text-secondary)]">{tech.stage} · {tech.elapsed}</div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
                         <div className="h-full bg-[var(--brand-accent,#E39A6E)]" style={{ width: `${tech.utilizationPct}%` }} />
                       </div>
                     </div>
-                    <div className="text-right text-xs text-neutral-300">{tech.activeLines} lines</div>
-                    <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-neutral-300">
-                      Open <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                    <div className="text-right text-xs text-[color:var(--theme-text-secondary)]">{tech.activeLines} lines</div>
+                    <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
+                      Open <ChevronRight className="h-3 w-3 text-[color:var(--theme-text-muted)] transition group-hover:text-[var(--brand-accent,#E39A6E)]" />
                     </div>
                   </Link>
                 ))}
@@ -269,9 +269,9 @@ export default async function OperationsDashboardView() {
           <DashboardPanel title="Recent Operational Activity" className="min-h-[180px]">
             <div className="space-y-1.5">
               {payload.recentOperationalActivity.length > 0 ? payload.recentOperationalActivity.map((event) => (
-                <Link key={`${event.label}-${event.value}`} href={event.href ?? "/work-orders/board"} className="group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs transition hover:border-white/20 hover:bg-black/35">
-                  <span className="text-neutral-200">{event.label}</span>
-                  <span className="inline-flex items-center gap-1 text-neutral-400">{event.value}<ChevronRight className="h-3 w-3" /></span>
+                <Link key={`${event.label}-${event.value}`} href={event.href ?? "/work-orders/board"} className="group flex items-center justify-between rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-xs transition hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)]">
+                  <span className="text-[color:var(--theme-text-primary)]">{event.label}</span>
+                  <span className="inline-flex items-center gap-1 text-[color:var(--theme-text-secondary)]">{event.value}<ChevronRight className="h-3 w-3" /></span>
                 </Link>
               )) : <EmbeddedEmptyState label="No operational events" detail="Recent events appear when canonical work activity updates." />}
             </div>
@@ -283,37 +283,37 @@ export default async function OperationsDashboardView() {
           <aside className="space-y-2 lg:sticky lg:top-2.5 lg:self-start">
             <DashboardPanel
               title="High Impact Alerts"
-              action={<Link href="/work-orders/board" className="text-xs text-neutral-300 hover:text-white">View all</Link>}
-              className="border-red-400/45 bg-[linear-gradient(150deg,rgba(32,10,10,0.64),rgba(12,9,16,0.86))] shadow-[0_0_0_1px_rgba(239,68,68,0.12)]"
+              action={<Link href="/work-orders/board" className="text-xs text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">View all</Link>}
+              className="border-red-400/45 bg-[linear-gradient(150deg,rgba(32,10,10,0.64),var(--theme-surface-inset))] shadow-[0_0_0_1px_rgba(239,68,68,0.12)]"
             >
               <div className="space-y-1.5">
                 {payload.alerts.map((alert) => (
                   <Link
                     key={alert.label}
                     href={alert.href}
-                    className="group block rounded-lg border p-2 transition hover:-translate-y-0.5 hover:brightness-[1.14] hover:shadow-[0_0_0_1px_rgba(248,113,113,0.26),0_12px_24px_rgba(0,0,0,0.36)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
+                    className="group block rounded-lg border p-2 transition hover:-translate-y-0.5 hover:brightness-[1.14] hover:shadow-[var(--theme-shadow-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60"
                     style={{
                       borderColor: alert.tone === "critical" ? "rgba(248,113,113,0.7)" : alert.tone === "warning" ? "rgba(251,191,36,0.48)" : "rgba(148,163,184,0.25)",
-                      background: alert.tone === "critical" ? "linear-gradient(120deg, rgba(127,29,29,0.48), rgba(69,10,10,0.24))" : alert.tone === "warning" ? "rgba(120,53,15,0.24)" : "rgba(15,23,42,0.5)",
+                      background: alert.tone === "critical" ? "linear-gradient(120deg, rgba(127,29,29,0.48), rgba(69,10,10,0.24))" : alert.tone === "warning" ? "rgba(120,53,15,0.24)" : "var(--theme-surface-inset)",
                       boxShadow: alert.tone === "critical" ? "0 0 0 1px rgba(239,68,68,0.2), inset 0 1px 0 rgba(254,202,202,0.18)" : undefined,
                     }}
                   >
-                    <div className="flex items-center justify-between gap-2 text-xs font-semibold text-white">
+                    <div className="flex items-center justify-between gap-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
                       <span className="inline-flex items-center gap-2">
                         {alert.tone === "critical" ? <TriangleAlert className="h-3.5 w-3.5 text-red-300" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-300" />}
                         {alert.label}
                       </span>
-                      <ChevronRight className="h-3.5 w-3.5 text-neutral-400 transition duration-200 group-hover:translate-x-1 group-hover:scale-110 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                      <ChevronRight className="h-3.5 w-3.5 text-[color:var(--theme-text-secondary)] transition duration-200 group-hover:translate-x-1 group-hover:scale-110 group-hover:text-[var(--brand-accent,#E39A6E)]" />
                     </div>
-                    <div className="mt-1 text-[11px] text-neutral-300">{alert.detail}</div>
+                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">{alert.detail}</div>
                   </Link>
                 ))}
               </div>
             </DashboardPanel>
 
-            <div className="h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <div className="h-px bg-gradient-to-r from-transparent via-[color:var(--theme-surface-subtle)] to-transparent" />
 
-            <DashboardPanel title="Action Rail" eyebrow="Urgency" className="border-amber-300/30 bg-[linear-gradient(150deg,rgba(36,22,8,0.42),rgba(8,11,24,0.84))]">
+            <DashboardPanel title="Action Rail" eyebrow="Urgency" className="border-amber-300/30 bg-[var(--theme-gradient-panel)]">
               <div className="space-y-1.5">
                 {payload.blockerStack.map((blocker) => (
                   (() => {
@@ -326,23 +326,23 @@ export default async function OperationsDashboardView() {
                           ? "inline-flex items-center gap-1 font-semibold text-amber-300"
                           : blocker.tone === "accent"
                             ? "inline-flex items-center gap-1 font-semibold text-[var(--brand-accent,#E39A6E)]"
-                            : "inline-flex items-center gap-1 font-semibold text-white";
+                            : "inline-flex items-center gap-1 font-semibold text-[color:var(--theme-text-primary)]";
                     const rowClass =
                       severity === "red"
                         ? "group flex items-center justify-between rounded-lg border border-red-400/35 bg-red-950/20 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-red-300/60 hover:bg-red-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/50"
                         : severity === "amber"
                           ? "group flex items-center justify-between rounded-lg border border-amber-300/30 bg-amber-950/10 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-amber-300/55 hover:bg-amber-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/45"
-                          : "group flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60";
+                          : "group flex items-center justify-between rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1.5 text-xs transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/45 hover:bg-[color:var(--theme-surface-inset)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent,#E39A6E)]/60";
                     return (
                       <Link
                         key={blocker.label}
                         href={blocker.href ?? "/work-orders/board"}
                         className={rowClass}
                       >
-                        <span className="text-neutral-300">{blocker.label}</span>
+                        <span className="text-[color:var(--theme-text-secondary)]">{blocker.label}</span>
                         <span className={valueClass}>
                           {blocker.value}
-                          <ChevronRight className="h-3 w-3 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
+                          <ChevronRight className="h-3 w-3 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-accent,#E39A6E)]" />
                         </span>
                       </Link>
                     );

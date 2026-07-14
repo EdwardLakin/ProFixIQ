@@ -61,23 +61,23 @@ export default function FleetAISummary({ shopId }: FleetAISummaryProps) {
   }, [shopId]);
 
   return (
-    <section className="mt-4 rounded-3xl bg-black/60 p-4 text-xs text-neutral-200">
+    <section className="mt-4 rounded-3xl bg-[color:var(--theme-surface-overlay)] p-4 text-xs text-[color:var(--theme-text-primary)]">
       <header className="mb-2 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-[color:var(--accent-copper)]" />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             AI fleet health summary
           </p>
         </div>
         {data?.lastUpdated && (
-          <span className="text-[10px] text-neutral-500">
+          <span className="text-[10px] text-[color:var(--theme-text-muted)]">
             Updated {new Date(data.lastUpdated).toLocaleString()}
           </span>
         )}
       </header>
 
       {loading && (
-        <p className="text-[11px] text-neutral-400">
+        <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
           Generating fleet summary…
         </p>
       )}
@@ -87,7 +87,7 @@ export default function FleetAISummary({ shopId }: FleetAISummaryProps) {
       )}
 
       {data?.summary && !loading && !error && (
-        <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-neutral-200">
+        <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-[color:var(--theme-text-primary)]">
           {data.summary}
         </p>
       )}

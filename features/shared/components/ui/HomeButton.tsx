@@ -17,9 +17,9 @@ export default function HomeButton({ className }: HomeButtonProps) {
       type="button"
       onClick={() => router.push("/")}
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1.5",
-        "font-semibold text-neutral-200 backdrop-blur-sm transition",
-        "hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/40",
+        "inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5",
+        "font-semibold text-[color:var(--theme-text-primary)] backdrop-blur-sm transition",
+        "hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-[color:var(--theme-surface-inset)]",
         className,
       )}
     >

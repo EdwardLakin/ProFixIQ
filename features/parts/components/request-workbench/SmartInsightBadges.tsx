@@ -8,7 +8,7 @@ const TONES: Record<string, string> = {
   possible_mismatch: "border-orange-400/35 bg-orange-950/30 text-orange-100",
   on_po: "border-sky-400/35 bg-sky-950/30 text-sky-100",
   partial: "border-violet-400/35 bg-violet-950/30 text-violet-100",
-  no_preferred_supplier: "border-neutral-500/35 bg-neutral-900/45 text-neutral-200",
+  no_preferred_supplier: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]",
 };
 
 export function SmartInsightBadges({
@@ -19,7 +19,7 @@ export function SmartInsightBadges({
   onOpenInsight?: (insight: SmartInsight) => void;
 }): JSX.Element {
   if (!insights?.length) {
-    return <span className="text-xs text-neutral-500">—</span>;
+    return <span className="text-xs text-[color:var(--theme-text-muted)]">—</span>;
   }
 
   return (

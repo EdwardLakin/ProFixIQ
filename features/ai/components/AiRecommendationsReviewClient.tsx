@@ -221,7 +221,7 @@ export default function AiRecommendationsReviewClient() {
         <SummaryCard label="Pending approvals" value={summary.pendingApprovals} />
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+      <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <SelectFilter label="Domain" value={domain} onChange={setDomain} options={["all", "work_orders", "shop_boost"]} />
           <SelectFilter label="Status" value={status} onChange={setStatus} options={["all", "open", "acknowledged", "resolved", "dismissed", "expired"]} />
@@ -229,40 +229,40 @@ export default function AiRecommendationsReviewClient() {
           <SelectFilter label="Missing data" value={missingData} onChange={setMissingData} options={["all", "true", "false"]} />
           <SelectFilter label="Has preview" value={hasPreview} onChange={setHasPreview} options={["all", "true", "false"]} />
           <SelectFilter label="Requires approval" value={requiresApproval} onChange={setRequiresApproval} options={["all", "true", "false"]} />
-          <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
             Recommendation type
             <input
               value={recommendationType}
               onChange={(event) => setRecommendationType(event.target.value)}
               placeholder="e.g. closeout_risk"
-              className="rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-sm text-white outline-none ring-0 placeholder:text-neutral-500"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 placeholder:text-[color:var(--theme-text-muted)]"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
             Subject type
             <input
               value={subjectType}
               onChange={(event) => setSubjectType(event.target.value)}
               placeholder="e.g. work_order"
-              className="rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-sm text-white outline-none ring-0 placeholder:text-neutral-500"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 placeholder:text-[color:var(--theme-text-muted)]"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-neutral-300">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
             Subject id
             <input
               value={subjectId}
               onChange={(event) => setSubjectId(event.target.value)}
               placeholder="WO-123"
-              className="rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-sm text-white outline-none ring-0 placeholder:text-neutral-500"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 placeholder:text-[color:var(--theme-text-muted)]"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-neutral-300 md:col-span-2">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)] md:col-span-2">
             Search
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search title or summary"
-              className="rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-sm text-white outline-none ring-0 placeholder:text-neutral-500"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 placeholder:text-[color:var(--theme-text-muted)]"
             />
           </label>
         </div>
@@ -271,7 +271,7 @@ export default function AiRecommendationsReviewClient() {
           <button
             type="button"
             onClick={() => void load(null)}
-            className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
           >
             Refresh
           </button>
@@ -284,16 +284,16 @@ export default function AiRecommendationsReviewClient() {
           <p className="mt-1 text-xs text-amber-200/90">
             This will {bulkAction} up to 100 open/acknowledged {bulkDomain === "work_orders" ? "work-order" : "Shop Boost"} AI recommendations matching the current filters.
           </p>
-          <p className="mt-1 text-xs text-neutral-300">No execution / no business records changed. This updates recommendation lifecycle state only.</p>
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">No execution / no business records changed. This updates recommendation lifecycle state only.</p>
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
             <SelectFilter label="Bulk action" value={bulkAction} onChange={(value) => setBulkAction(value as BulkAction)} options={["dismiss", "resolve"]} />
-            <label className="flex flex-col gap-1 text-xs text-neutral-300 md:col-span-2">
+            <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)] md:col-span-2">
               Type confirmation token to enable
               <input
                 value={confirm}
                 onChange={(event) => setConfirm(event.target.value)}
                 placeholder={requiredConfirm}
-                className="rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-sm text-white outline-none ring-0 placeholder:text-neutral-500"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 placeholder:text-[color:var(--theme-text-muted)]"
               />
             </label>
           </div>
@@ -309,36 +309,36 @@ export default function AiRecommendationsReviewClient() {
             >
               {bulkWorking ? "Applying…" : `Confirm ${bulkAction}`}
             </button>
-            <span className="text-xs text-neutral-400">Required token: {requiredConfirm}</span>
+            <span className="text-xs text-[color:var(--theme-text-secondary)]">Required token: {requiredConfirm}</span>
           </div>
         </div>
       ) : null}
 
-      {loading ? <p className="text-sm text-neutral-400">Loading AI recommendations…</p> : null}
+      {loading ? <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading AI recommendations…</p> : null}
       {error ? <p className="rounded-xl border border-red-400/30 bg-red-950/20 p-3 text-sm text-red-200">{error}</p> : null}
 
       {!loading && !error && items.length === 0 ? (
-        <p className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-neutral-300">
+        <p className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
           No recommendations matched your filters.
         </p>
       ) : null}
 
       <div className="space-y-3">
         {items.map((item) => (
-          <article key={item.id} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+          <article key={item.id} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
             <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase">
               <span className="rounded-full border border-cyan-400/35 px-2 py-0.5 text-cyan-200">
                 {item.domain === "shop_boost" ? "Shop Boost" : "Work order"}
               </span>
-              <span className="rounded-full border border-white/20 px-2 py-0.5 text-neutral-200">{item.status}</span>
-              <span className="rounded-full border border-white/20 px-2 py-0.5 text-neutral-200">{item.priority}</span>
-              <span className="rounded-full border border-white/20 px-2 py-0.5 text-neutral-200">{item.riskTier}</span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[color:var(--theme-text-primary)]">{item.status}</span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[color:var(--theme-text-primary)]">{item.priority}</span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[color:var(--theme-text-primary)]">{item.riskTier}</span>
             </div>
 
-            <h2 className="mt-2 text-base font-semibold text-white">{item.title}</h2>
-            <p className="mt-1 text-sm text-neutral-300">{item.summary ?? "No summary provided."}</p>
+            <h2 className="mt-2 text-base font-semibold text-[color:var(--theme-text-primary)]">{item.title}</h2>
+            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{item.summary ?? "No summary provided."}</p>
 
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-neutral-400 md:grid-cols-4">
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-[color:var(--theme-text-secondary)] md:grid-cols-4">
               <span>Confidence: {item.confidence == null ? "—" : `${Math.round(item.confidence * 100)}%`}</span>
               <span>Missing data: {item.missingDataCount}</span>
               <span>Pending approvals: {item.pendingApprovalCount}</span>
@@ -346,10 +346,10 @@ export default function AiRecommendationsReviewClient() {
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-              <span className="text-neutral-400">Updated: {new Date(item.updatedAt).toLocaleString()}</span>
-              <span className="text-neutral-400">Type: {item.recommendationType}</span>
-              <span className="text-neutral-400">Action: {item.recommendedActionType ?? "review_only"}</span>
-              {item.previewStatus ? <span className="text-neutral-400">Preview: {item.previewStatus}</span> : null}
+              <span className="text-[color:var(--theme-text-secondary)]">Updated: {new Date(item.updatedAt).toLocaleString()}</span>
+              <span className="text-[color:var(--theme-text-secondary)]">Type: {item.recommendationType}</span>
+              <span className="text-[color:var(--theme-text-secondary)]">Action: {item.recommendedActionType ?? "review_only"}</span>
+              {item.previewStatus ? <span className="text-[color:var(--theme-text-secondary)]">Preview: {item.previewStatus}</span> : null}
               {item.targetHref ? (
                 <Link href={item.targetHref} className="text-[var(--brand-primary)] hover:opacity-80">
                   View target →
@@ -364,7 +364,7 @@ export default function AiRecommendationsReviewClient() {
         <button
           type="button"
           onClick={() => void load(cursor)}
-          className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
         >
           Next page
         </button>
@@ -375,9 +375,9 @@ export default function AiRecommendationsReviewClient() {
 
 function SummaryCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-      <p className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-white">{value}</p>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+      <p className="text-[10px] uppercase tracking-[0.15em] text-[color:var(--theme-text-muted)]">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">{value}</p>
     </div>
   );
 }
@@ -394,12 +394,12 @@ function SelectFilter({
   options: string[];
 }) {
   return (
-    <label className="flex flex-col gap-1 text-xs text-neutral-300">
+    <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
       {label}
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-sm text-white"
+        className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)]"
       >
         {options.map((option) => (
           <option key={option} value={option}>

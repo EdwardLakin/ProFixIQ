@@ -31,13 +31,13 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
 
   const { data: memberships } = await supabase.from('property_members').select('id,user_id,shop_id').eq('user_id', user.id);
   if (!(memberships ?? []).length) {
-    return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-neutral-100">Request detail</h1><p className="mt-3 text-sm text-neutral-300">No property portal access is assigned to this account.</p></section>;
+    return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-[color:var(--theme-text-primary)]">Request detail</h1><p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No property portal access is assigned to this account.</p></section>;
   }
 
   const shopIds = Array.from(new Set((memberships ?? []).map((m) => m.shop_id)));
   const { data: requestRow } = await supabase.from('property_maintenance_requests').select('id,shop_id,property_id,unit_id,asset_id,title,summary,status,severity,category,created_at').eq('id', id).in('shop_id', shopIds).maybeSingle();
   if (!requestRow) {
-    return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-neutral-100">Request detail</h1><p className="mt-3 text-sm text-rose-300">Request is not visible to this account.</p></section>;
+    return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-[color:var(--theme-text-primary)]">Request detail</h1><p className="mt-3 text-sm text-rose-300">Request is not visible to this account.</p></section>;
   }
 
   const [{ data: events }, { data: attachments }, { data: property }, { data: unit }, { data: asset }] = await Promise.all([
@@ -56,11 +56,11 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
 
   return (
     <section className="metal-card rounded-3xl p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Property Portal</p><h1 className="text-2xl text-neutral-100">{requestRow.title}</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-white/15 px-3 py-2 text-sm text-neutral-200">Inspections</Link></div></div>
-      <p className="mt-2 text-sm text-neutral-300">{requestRow.summary}</p>
-      <p className="mt-2 text-sm text-neutral-400">Status: {requestRow.status} · Severity: {requestRow.severity} · Category: {requestRow.category ?? '—'}</p>
-      <p className="mt-1 text-sm text-neutral-400">Property: {property?.name ?? '—'} · Unit: {unit?.unit_label ?? '—'} · Asset: {asset?.name ?? '—'}</p>
-      <p className="mt-1 text-sm text-neutral-500">Created: {new Date(requestRow.created_at).toLocaleString()}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Property Portal</p><h1 className="text-2xl text-[color:var(--theme-text-primary)]">{requestRow.title}</h1></div><div className="flex flex-wrap gap-2"><Link href="/portal/property/member/requests" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">Requests</Link><Link href="/portal/property/member/inspections" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">Inspections</Link></div></div>
+      <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">{requestRow.summary}</p>
+      <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Status: {requestRow.status} · Severity: {requestRow.severity} · Category: {requestRow.category ?? '—'}</p>
+      <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Property: {property?.name ?? '—'} · Unit: {unit?.unit_label ?? '—'} · Asset: {asset?.name ?? '—'}</p>
+      <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">Created: {new Date(requestRow.created_at).toLocaleString()}</p>
 
       {status === "comment-added" ? <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">Comment added.</div> : null}
       {status === "attachment-uploaded" ? <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">Image uploaded.</div> : null}
@@ -69,27 +69,27 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
       {error ? <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div> : null}
 
       <div className="mt-6">
-        <h2 className="text-lg text-neutral-100">Messages & updates</h2><p className="mt-1 text-xs text-neutral-400">Updates shared for this request are listed in time order.</p>
+        <h2 className="text-lg text-[color:var(--theme-text-primary)]">Messages & updates</h2><p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Updates shared for this request are listed in time order.</p>
         <div className="mt-2 space-y-2">
           {(events ?? []).map((event) => (
-            <article key={event.id} className="rounded-lg border border-white/10 bg-black/20 p-3">
-              <p className="text-sm text-neutral-200">{event.body}</p>
-              <p className="mt-1 text-xs text-neutral-500">{new Date(event.created_at).toLocaleString()}</p>
+            <article key={event.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+              <p className="text-sm text-[color:var(--theme-text-primary)]">{event.body}</p>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{new Date(event.created_at).toLocaleString()}</p>
             </article>
           ))}
         </div>
       </div>
 
       <div className="mt-6">
-        <h2 className="text-lg text-neutral-100">Photos</h2><p className="mt-1 text-xs text-neutral-400">Photos linked to this maintenance request.</p>
+        <h2 className="text-lg text-[color:var(--theme-text-primary)]">Photos</h2><p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Photos linked to this maintenance request.</p>
         <div className="mt-2 space-y-2">
           {(attachments ?? []).map((attachment) => (
-            <article key={attachment.id} className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-neutral-300">
+            <article key={attachment.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
               <p>Filename: {attachment.original_filename ?? "—"}</p>
               <p>Caption: {attachment.caption ?? "—"}</p>
               <p>Size: {attachment.size_bytes ?? "—"} bytes</p>
               <p>Created: {new Date(attachment.created_at).toLocaleString()}</p>
-              {signedUrlByAttachmentId.get(attachment.id) ? <Image src={signedUrlByAttachmentId.get(attachment.id) ?? ""} alt={attachment.original_filename ?? "Attachment"} width={640} height={360} unoptimized className="mt-2 h-auto max-h-64 w-full rounded-lg border border-white/10 object-cover" /> : null}
+              {signedUrlByAttachmentId.get(attachment.id) ? <Image src={signedUrlByAttachmentId.get(attachment.id) ?? ""} alt={attachment.original_filename ?? "Attachment"} width={640} height={360} unoptimized className="mt-2 h-auto max-h-64 w-full rounded-lg border border-[color:var(--theme-border-soft)] object-cover" /> : null}
             </article>
           ))}
         </div>
@@ -97,18 +97,18 @@ export default async function PropertyMemberRequestDetailPage({ params, searchPa
 
       <form action={uploadMemberPropertyRequestAttachment} className="mt-6 space-y-2">
         <input type="hidden" name="request_id" value={requestRow.id} />
-        <label className="block text-sm text-neutral-300" htmlFor="file">Upload image</label>
-        <input id="file" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" required className="w-full rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <label className="block text-sm text-neutral-300" htmlFor="caption">Caption (optional)</label>
-        <input id="caption" name="caption" className="w-full rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
-        <p className="text-xs text-neutral-400">Images are private and visible only to authorized property users.</p>
+        <label className="block text-sm text-[color:var(--theme-text-secondary)]" htmlFor="file">Upload image</label>
+        <input id="file" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" required className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
+        <label className="block text-sm text-[color:var(--theme-text-secondary)]" htmlFor="caption">Caption (optional)</label>
+        <input id="caption" name="caption" className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
+        <p className="text-xs text-[color:var(--theme-text-secondary)]">Images are private and visible only to authorized property users.</p>
         <button type="submit" className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">Upload image</button>
       </form>
 
       <form action={addTenantVisibleComment} className="mt-6 space-y-2">
         <input type="hidden" name="request_id" value={requestRow.id} />
-        <label className="block text-sm text-neutral-300" htmlFor="body">Add message</label>
-        <textarea id="body" name="body" required className="min-h-[100px] w-full rounded-lg border border-neutral-700 bg-black/30 p-2 text-sm text-neutral-100" />
+        <label className="block text-sm text-[color:var(--theme-text-secondary)]" htmlFor="body">Add message</label>
+        <textarea id="body" name="body" required className="min-h-[100px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 text-sm text-[color:var(--theme-text-primary)]" />
         <button type="submit" className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200">Post message</button>
       </form>
     </section>

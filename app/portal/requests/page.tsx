@@ -19,8 +19,8 @@ type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"] & {
 type ItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
 
 const glass =
-  "rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card";
-const muted = "text-neutral-400";
+  "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card";
+const muted = "text-[color:var(--theme-text-secondary)]";
 
 export default function PortalPartsRequestsPage() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -86,7 +86,7 @@ export default function PortalPartsRequestsPage() {
     >
       <div className="space-y-4">
         <div>
-          <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">
+          <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
             Parts Requests
           </div>
           <h1 className="font-header text-3xl text-orange-400">
@@ -106,13 +106,13 @@ export default function PortalPartsRequestsPage() {
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 href="/portal/parts"
-                className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-xs font-semibold text-neutral-100 hover:bg-black/70"
+                className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
               >
                 Back to Parts
               </Link>
               <Link
                 href="/portal/history"
-                className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-xs font-semibold text-neutral-100 hover:bg-black/70"
+                className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
               >
                 View history
               </Link>
@@ -124,12 +124,12 @@ export default function PortalPartsRequestsPage() {
               <div key={r.id} className={glass}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-neutral-100">
+                    <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       Request #{r.id.slice(0, 8)}
                     </div>
                     <div className={`mt-0.5 text-xs ${muted}`}>
                       Status:{" "}
-                      <span className="capitalize text-neutral-200">
+                      <span className="capitalize text-[color:var(--theme-text-primary)]">
                         {String(r.status ?? "requested")}
                       </span>
                     </div>
@@ -137,7 +137,7 @@ export default function PortalPartsRequestsPage() {
 
                   <Link
                     href={`/portal/parts`}
-                    className="rounded-full border border-white/18 bg-black/40 px-3 py-1 text-xs font-semibold text-neutral-100 hover:bg-black/70"
+                    className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
                   >
                     Parts
                   </Link>
@@ -158,7 +158,7 @@ export default function PortalPartsRequestsPage() {
                   {/* If/when you add a portal detail page, change this link */}
                   <Link
                     href="/portal/history"
-                    className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-xs font-semibold text-neutral-100 hover:bg-black/70"
+                    className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
                   >
                     View history
                   </Link>

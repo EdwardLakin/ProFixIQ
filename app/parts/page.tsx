@@ -35,9 +35,9 @@ function Sparkline({ points, width = 120, height = 28 }: { points: number[]; wid
 function OverviewCard({ title, value, href, hint }: { title: string; value: React.ReactNode; href?: string; hint?: string }) {
   const content = (
     <div className={`${ui.itemCard} group px-4 py-4 transition hover:border-[color:var(--brand-accent,#E39A6E)]`}>
-      <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">{title}</p>
-      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-neutral-500">{hint}</div> : null}
+      <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">{title}</p>
+      <div className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
+      {hint ? <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{hint}</div> : null}
     </div>
   );
   return href ? <Link href={href} className="block">{content}</Link> : content;
@@ -47,7 +47,7 @@ function ActionButton({ href, children, emphasis }: { href: string; children: Re
   return (
     <Link
       href={href}
-      className={`inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium text-white transition ${
+      className={`inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium text-[color:var(--theme-text-primary)] transition ${
         emphasis
           ? ui.buttonPrimary
           : ui.buttonSecondary
@@ -61,7 +61,7 @@ function ActionButton({ href, children, emphasis }: { href: string; children: Re
 function moveTone(qty: number): string {
   if (qty > 0) return "text-emerald-200 bg-emerald-950/20 border-emerald-500/25";
   if (qty < 0) return "text-rose-200 bg-rose-950/20 border-rose-500/25";
-  return "text-neutral-300 bg-white/[0.03] border-white/10";
+  return "text-[color:var(--theme-text-secondary)] bg-[color:var(--theme-surface-subtle)] border-[color:var(--theme-border-soft)]";
 }
 
 function sourceLabel(kind: string | null, reason: string | null): string {
@@ -158,7 +158,7 @@ export default function PartsDashboardPage(): JSX.Element {
   const hasOpenRequests = (openRequestsCount ?? 0) > 0;
 
   return (
-    <div className="relative p-5 text-white fade-in md:p-6">
+    <div className="relative p-5 text-[color:var(--theme-text-primary)] fade-in md:p-6">
       <PageShell
         title="Parts Dashboard"
         eyebrow="Parts command center"
@@ -183,15 +183,15 @@ export default function PartsDashboardPage(): JSX.Element {
         <div className="desktop-panel-soft px-4 py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-300">Operational bottleneck</div>
-              <p className="text-sm text-neutral-200">{hasOpenRequests ? <>You have <span className="font-semibold">{openReqDisplay}</span> open parts request{openRequestsCount === 1 ? "" : "s"} pending fulfillment flow.</> : "No open parts request bottlenecks right now."}</p>
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Operational bottleneck</div>
+              <p className="text-sm text-[color:var(--theme-text-primary)]">{hasOpenRequests ? <>You have <span className="font-semibold">{openReqDisplay}</span> open parts request{openRequestsCount === 1 ? "" : "s"} pending fulfillment flow.</> : "No open parts request bottlenecks right now."}</p>
             </div>
             <ActionButton href="/parts/requests" emphasis>{hasOpenRequests ? "Resolve request queue" : "Review requests"}</ActionButton>
           </div>
         </div>
 
         <div className="desktop-panel-soft p-4">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-neutral-400">Primary actions</div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Primary actions</div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <ActionButton href="/parts/po" emphasis>Create PO</ActionButton>
             <ActionButton href="/parts/requests">Open requests</ActionButton>
@@ -207,17 +207,17 @@ export default function PartsDashboardPage(): JSX.Element {
         <div className="desktop-panel-soft px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">Operational insights</h2>
-              <p className="text-xs text-neutral-500">Live queues and catalog trust posture.</p>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Operational insights</h2>
+              <p className="text-xs text-[color:var(--theme-text-muted)]">Live queues and catalog trust posture.</p>
             </div>
             <Sparkline points={moves30Spark} />
           </div>
           <div className="mt-3 grid gap-2 text-sm">
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Receive queue</span><span className="font-semibold">{loading ? "…" : (receiveQueueCount ?? 0).toLocaleString()}</span></div>
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Open purchase orders</span><span className="font-semibold">{loading ? "…" : (openPoCount ?? 0).toLocaleString()}</span></div>
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Low-trust catalog records</span><span className="font-semibold text-rose-200">{loading ? "…" : trustSummary.lowTrust.toLocaleString()}</span></div>
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Review-needed imports</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.reviewStaging.toLocaleString()}</span></div>
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-neutral-300">Ambiguous match candidates</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.ambiguousCandidates.toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Receive queue</span><span className="font-semibold">{loading ? "…" : (receiveQueueCount ?? 0).toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Open purchase orders</span><span className="font-semibold">{loading ? "…" : (openPoCount ?? 0).toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Low-trust catalog records</span><span className="font-semibold text-rose-200">{loading ? "…" : trustSummary.lowTrust.toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Review-needed imports</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.reviewStaging.toLocaleString()}</span></div>
+            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Ambiguous match candidates</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.ambiguousCandidates.toLocaleString()}</span></div>
           </div>
         </div>
       </section>
@@ -226,25 +226,25 @@ export default function PartsDashboardPage(): JSX.Element {
         <div className="mb-2 flex items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Recent stock moves</h2>
-            <p className="text-xs text-neutral-400">Most recent inventory movement with source traceability.</p>
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">Most recent inventory movement with source traceability.</p>
           </div>
           <Link href="/parts/movements" className={ui.buttonSecondary}>View ledger</Link>
         </div>
 
         {loading ? (
-          <div className="text-sm text-neutral-400">Loading…</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
         ) : recentMoves.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-neutral-700 bg-black/20 px-3 py-4 text-sm text-neutral-400">No recent moves in the last 30 days.</div>
+          <div className="rounded-lg border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">No recent moves in the last 30 days.</div>
         ) : (
-          <ul className="divide-y divide-neutral-800 text-sm">
+          <ul className="divide-y divide-[color:var(--theme-border-soft)] text-sm">
             {recentMoves.map((m) => {
               const qty = Number(m.qty_change ?? 0);
               const part = partNameById[String(m.part_id)] ?? null;
               return (
                 <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
                   <div className="min-w-0">
-                    <div className="font-medium text-neutral-100">{part?.name ?? String(m.reason ?? "move").replaceAll("_", " ")}</div>
-                    <div className="text-xs text-neutral-500">{part?.sku ? `${part.sku} · ` : ""}{sourceLabel(m.reference_kind ?? null, m.reason ?? null)} · {new Date(String(m.created_at)).toLocaleString()}</div>
+                    <div className="font-medium text-[color:var(--theme-text-primary)]">{part?.name ?? String(m.reason ?? "move").replaceAll("_", " ")}</div>
+                    <div className="text-xs text-[color:var(--theme-text-muted)]">{part?.sku ? `${part.sku} · ` : ""}{sourceLabel(m.reference_kind ?? null, m.reason ?? null)} · {new Date(String(m.created_at)).toLocaleString()}</div>
                   </div>
                   <div className={`inline-flex min-w-[72px] items-center justify-center rounded-full border px-2 py-1 text-xs font-semibold ${moveTone(qty)}`}>{qty >= 0 ? "+" : ""}{qty}</div>
                 </li>

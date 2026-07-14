@@ -281,7 +281,7 @@ export default function PortalBookingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-6 text-white">
+    <div className="mx-auto max-w-6xl px-3 py-6 text-[color:var(--theme-text-primary)]">
       <Toaster position="top-center" />
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -292,13 +292,13 @@ export default function PortalBookingPage() {
           >
             Book service appointment
           </h1>
-          <p className="mt-1 text-xs text-neutral-400">
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Guided flow: Shop → Date → Time → Confirmation.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[rgba(197,122,74,0.22)] bg-[linear-gradient(145deg,rgba(197,122,74,0.12),rgba(7,10,20,0.65)_55%)] px-3 py-3 backdrop-blur-xl">
-          <label className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[rgba(197,122,74,0.22)] bg-[var(--theme-gradient-panel)] px-3 py-3 backdrop-blur-xl">
+          <label className="text-[0.7rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
             Shop
           </label>
           <select
@@ -309,7 +309,7 @@ export default function PortalBookingPage() {
               setSelectedDate(undefined);
               router.replace(`/portal/booking?shop=${encodeURIComponent(slug)}`);
             }}
-            className="min-w-[200px] rounded-md border border-white/10 bg-black/40 px-2 py-1 text-sm text-white outline-none"
+            className="min-w-[200px] rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] outline-none"
           >
             {shops.map((s) => (
               <option key={s.id} value={s.slug as string}>
@@ -324,9 +324,9 @@ export default function PortalBookingPage() {
         </div>
       </div>
 
-      <div className="mb-6 rounded-2xl border border-[rgba(197,122,74,0.22)] bg-[linear-gradient(145deg,rgba(197,122,74,0.12),rgba(7,10,20,0.70)_55%)] p-4 backdrop-blur-xl">
-        <h2 className="text-sm font-semibold text-white">Send me my portal link</h2>
-        <p className="mt-1 text-xs text-neutral-400">
+      <div className="mb-6 rounded-2xl border border-[rgba(197,122,74,0.22)] bg-[var(--theme-gradient-panel)] p-4 backdrop-blur-xl">
+        <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Send me my portal link</h2>
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
           Need to book or view service? Send yourself a secure portal link first.
         </p>
         <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={requestPortalAccess}>
@@ -336,26 +336,26 @@ export default function PortalBookingPage() {
             value={portalEmail}
             onChange={(e) => setPortalEmail(e.target.value)}
             placeholder="Email *"
-            className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+            className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
           />
           <input
             type="text"
             value={portalName}
             onChange={(e) => setPortalName(e.target.value)}
             placeholder="Name (optional)"
-            className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+            className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
           />
           <input
             type="tel"
             value={portalPhone}
             onChange={(e) => setPortalPhone(e.target.value)}
             placeholder="Phone (optional)"
-            className="rounded-md border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+            className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
           />
           <button
             type="submit"
             disabled={portalSubmitting || isShopSelectionUnavailable}
-            className="rounded-md border border-[rgba(193,102,59,0.38)] bg-black/35 px-3 py-2 text-sm font-medium text-white transition hover:border-[rgba(193,102,59,0.45)] hover:bg-[rgba(193,102,59,0.10)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-md border border-[rgba(193,102,59,0.38)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-medium text-[color:var(--theme-text-primary)] transition hover:border-[rgba(193,102,59,0.45)] hover:bg-[rgba(193,102,59,0.10)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {portalSubmitting ? "Sending..." : "Send portal link"}
           </button>
@@ -372,7 +372,7 @@ export default function PortalBookingPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.05fr_1fr]">
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-3 backdrop-blur-xl">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur-xl">
           <Calendar
             className="shadow-inner"
             month={month}
@@ -383,32 +383,32 @@ export default function PortalBookingPage() {
           />
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-xl">
-          <h2 className="mb-1 font-semibold text-white">Step 3 • Select time</h2>
-          <p className="mb-3 text-xs text-neutral-400">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl">
+          <h2 className="mb-1 font-semibold text-[color:var(--theme-text-primary)]">Step 3 • Select time</h2>
+          <p className="mb-3 text-xs text-[color:var(--theme-text-secondary)]">
             Times shown in <span className="font-medium">{tz}</span>.
             {closedLabel && (
-              <span className="mt-1 block text-[0.7rem] text-neutral-500">
+              <span className="mt-1 block text-[0.7rem] text-[color:var(--theme-text-muted)]">
                 Closed: {closedLabel}
               </span>
             )}
           </p>
 
           {!shopSlug ? (
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
               Select a shop in Step 1 to load availability.
             </p>
           ) : !selectedDate ? (
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
               Pick a date in Step 2 to see time slots.
             </p>
           ) : loading ? (
-            <p className="text-sm text-neutral-400">Loading available times…</p>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading available times…</p>
           ) : daySlots.length === 0 ? (
             isSelectedClosed ? (
-              <p className="text-sm text-neutral-400">Shop is closed on this day.</p>
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">Shop is closed on this day.</p>
             ) : (
-              <p className="text-sm text-neutral-400">
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">
                 No available slots on this date. Try another day.
               </p>
             )
@@ -418,7 +418,7 @@ export default function PortalBookingPage() {
                 <li key={i}>
                   <button
                     onClick={() => book(s.start, s.end)}
-                    className="w-full rounded-xl border border-[rgba(193,102,59,0.38)] bg-black/35 px-3 py-2 text-sm font-medium text-neutral-100 transition hover:border-[rgba(193,102,59,0.45)] hover:bg-[rgba(193,102,59,0.10)]"
+                    className="w-full rounded-xl border border-[rgba(193,102,59,0.38)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-medium text-[color:var(--theme-text-primary)] transition hover:border-[rgba(193,102,59,0.45)] hover:bg-[rgba(193,102,59,0.10)]"
                     aria-label="Book this time slot"
                     style={{
                       boxShadow: "inset 0 0 0 1px rgba(193,102,59,0.12)",
@@ -433,7 +433,7 @@ export default function PortalBookingPage() {
         </div>
       </div>
 
-      <p className="mt-6 text-xs text-neutral-500">
+      <p className="mt-6 text-xs text-[color:var(--theme-text-muted)]">
         * Your request is pending until confirmed by the shop.
       </p>
     </div>

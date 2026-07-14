@@ -177,24 +177,24 @@ export default function WorkforceSchedulingClient() {
       ) : null}
 
       <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <p className="text-xs text-neutral-400">Available / Working</p>
+        <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Available / Working</p>
           <p className="text-xl font-semibold text-emerald-200">{coverage.availableCount} / {coverage.activeCount}</p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <p className="text-xs text-neutral-400">Away Today</p>
+        <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Away Today</p>
           <p className="text-xl font-semibold text-amber-200">{coverage.awayToday}</p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <p className="text-xs text-neutral-400">Pending Time-Off</p>
+        <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Pending Time-Off</p>
           <p className="text-xl font-semibold text-orange-200">{pending.length}</p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <p className="text-xs text-neutral-400">Missing Templates</p>
+        <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Missing Templates</p>
           <p className="text-xl font-semibold text-rose-200">{coverage.missingTemplates}</p>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/30 p-3">
-          <p className="text-xs text-neutral-400">Overrides (Range)</p>
+        <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Overrides (Range)</p>
           <p className="text-xl font-semibold text-sky-200">{coverage.overrideCount}</p>
         </div>
       </section>
@@ -203,9 +203,9 @@ export default function WorkforceSchedulingClient() {
         <AdminPanel>
           <AdminPanelTitle title="Today Roster" description="Real-time posture for today's assigned workforce." />
           <div className="space-y-2 p-4 text-sm">
-            <p className="text-xs text-neutral-300">Available: {coverage.availableCount} · Away: {coverage.awayToday}</p>
-            {staff.length === 0 ? <p className="text-neutral-400">No staff in current range.</p> : staff.map((s) => (
-              <div key={`today-${s.id}`} className="flex items-center justify-between rounded border border-white/10 bg-black/20 px-3 py-2">
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">Available: {coverage.availableCount} · Away: {coverage.awayToday}</p>
+            {staff.length === 0 ? <p className="text-[color:var(--theme-text-secondary)]">No staff in current range.</p> : staff.map((s) => (
+              <div key={`today-${s.id}`} className="flex items-center justify-between rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
                 <span>{s.full_name ?? "Unnamed"}</span>
                 <span className={s.is_away_today ? "text-amber-300" : "text-emerald-300"}>{s.is_away_today ? "Away today" : "Available"}</span>
               </div>
@@ -215,7 +215,7 @@ export default function WorkforceSchedulingClient() {
 
         <AdminPanel>
           <AdminPanelTitle title="Tomorrow Roster" description="No explicit tomorrow-away signal is currently available from this API payload." />
-          <div className="p-4 text-sm text-neutral-300">
+          <div className="p-4 text-sm text-[color:var(--theme-text-secondary)]">
             <p>Use approved away blocks and staffing templates in the posture table below to plan tomorrow coverage.</p>
           </div>
         </AdminPanel>
@@ -224,10 +224,10 @@ export default function WorkforceSchedulingClient() {
       <AdminPanel className={focus === "time-off" && status === "pending" ? "ring-1 ring-orange-400/50" : ""}>
         <AdminPanelTitle title={`Time-Off Review Queue (${pending.length})`} description="Approve or decline requests. Existing review actions and semantics are unchanged." />
         <div className="space-y-2 p-4 text-sm">
-          {pending.length === 0 ? <p className="text-neutral-400">No pending requests.</p> : pending.map((r) => (
-            <div key={r.id} className="rounded-lg border border-white/10 bg-black/30 p-3">
+          {pending.length === 0 ? <p className="text-[color:var(--theme-text-secondary)]">No pending requests.</p> : pending.map((r) => (
+            <div key={r.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               <p className="font-medium">{r.request_type} • {new Date(r.starts_at).toLocaleString()} → {new Date(r.ends_at).toLocaleString()}</p>
-              <p className="text-xs text-neutral-400">{r.reason ?? "No note"}</p>
+              <p className="text-xs text-[color:var(--theme-text-secondary)]">{r.reason ?? "No note"}</p>
               <div className="mt-2 flex gap-2">
                 <button type="button" disabled={busy} onClick={() => void reviewRequest(r.id, "approved")} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200">Approve</button>
                 <button type="button" disabled={busy} onClick={() => void reviewRequest(r.id, "declined")} className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-200">Decline</button>
@@ -243,10 +243,10 @@ export default function WorkforceSchedulingClient() {
             <AdminPanelTitle title="Team Weekly Posture" description="Scan readiness, schedule gaps, override volume, and approved away blocks." />
             <div className="overflow-x-auto p-4">
               <table className="min-w-full text-sm">
-                <thead className="text-xs uppercase text-neutral-400"><tr><th className="text-left">Staff</th><th className="text-left">Role</th><th className="text-left">Recurring hrs/wk</th><th className="text-left">Template rows</th><th className="text-left">Overrides (7d)</th><th className="text-left">Away blocks (7d)</th><th className="text-left">Status</th></tr></thead>
-                <tbody className="divide-y divide-white/10">
+                <thead className="text-xs uppercase text-[color:var(--theme-text-secondary)]"><tr><th className="text-left">Staff</th><th className="text-left">Role</th><th className="text-left">Recurring hrs/wk</th><th className="text-left">Template rows</th><th className="text-left">Overrides (7d)</th><th className="text-left">Away blocks (7d)</th><th className="text-left">Status</th></tr></thead>
+                <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                   {staff.map((s) => (
-                    <tr key={s.id} onClick={() => setSelectedStaffId(s.id)} className={`cursor-pointer ${selectedStaffId === s.id ? "bg-white/10" : "hover:bg-white/5"} ${focus === "schedule-gaps" && s.recurring_template_rows === 0 ? "bg-amber-500/10 ring-1 ring-amber-400/40" : ""} ${focus === "away" && awayDate === "today" && s.is_away_today ? "ring-1 ring-amber-400/40" : ""} ${focus === "workload" && personId === s.id ? "ring-1 ring-orange-400/40" : ""}`}>
+                    <tr key={s.id} onClick={() => setSelectedStaffId(s.id)} className={`cursor-pointer ${selectedStaffId === s.id ? "bg-[color:var(--theme-surface-subtle)]" : "hover:bg-[color:var(--theme-surface-subtle)]"} ${focus === "schedule-gaps" && s.recurring_template_rows === 0 ? "bg-amber-500/10 ring-1 ring-amber-400/40" : ""} ${focus === "away" && awayDate === "today" && s.is_away_today ? "ring-1 ring-amber-400/40" : ""} ${focus === "workload" && personId === s.id ? "ring-1 ring-orange-400/40" : ""}`}>
                       <td className="py-2">{s.full_name ?? "Unnamed"}</td>
                       <td>{s.role ?? "staff"}</td>
                       <td>{minsToHours(s.weekly_recurring_minutes)}</td>
@@ -266,14 +266,14 @@ export default function WorkforceSchedulingClient() {
           <AdminPanel>
             <AdminPanelTitle title="Staff Schedule Editor" description="Selected staff summary, recurring weekly template, and one-off override creation." />
             <div className="space-y-4 p-4">
-              <div className="rounded border border-white/10 bg-black/20 p-3 text-sm">
-                <p className="text-xs text-neutral-400">Selected Staff</p>
+              <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm">
+                <p className="text-xs text-[color:var(--theme-text-secondary)]">Selected Staff</p>
                 <p className="font-medium">{selected?.full_name ?? "None"}</p>
-                <p className="text-xs text-neutral-400">{selected?.role ?? "staff"}</p>
+                <p className="text-xs text-[color:var(--theme-text-secondary)]">{selected?.role ?? "staff"}</p>
               </div>
 
               <div>
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-300">Weekly Template</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Weekly Template</p>
                 <div className="space-y-2">
                   {templates.sort((a, b) => a.day_of_week - b.day_of_week).map((row, i) => (
                     <div key={row.day_of_week} className="grid grid-cols-12 items-center gap-2 text-xs">
@@ -283,25 +283,25 @@ export default function WorkforceSchedulingClient() {
                         <input type="checkbox" checked={row.is_working_day} onChange={(e) => setTemplates((prev) => prev.map((x, idx) => idx === i ? { ...x, is_working_day: e.target.checked } : x))} />
                         <span>Work</span>
                       </label>
-                      <input aria-label={`${DAYS[row.day_of_week]} start time`} type="time" value={row.start_time ?? ""} onChange={(e) => setTemplates((prev) => prev.map((x, idx) => idx === i ? { ...x, start_time: e.target.value } : x))} className="col-span-3 rounded border border-white/10 bg-black/30 px-2 py-1" />
-                      <input aria-label={`${DAYS[row.day_of_week]} end time`} type="time" value={row.end_time ?? ""} onChange={(e) => setTemplates((prev) => prev.map((x, idx) => idx === i ? { ...x, end_time: e.target.value } : x))} className="col-span-3 rounded border border-white/10 bg-black/30 px-2 py-1" />
-                      <input aria-label={`${DAYS[row.day_of_week]} unpaid break minutes`} type="number" value={row.unpaid_break_minutes} onChange={(e) => setTemplates((prev) => prev.map((x, idx) => idx === i ? { ...x, unpaid_break_minutes: Number(e.target.value) } : x))} className="col-span-2 rounded border border-white/10 bg-black/30 px-2 py-1" />
+                      <input aria-label={`${DAYS[row.day_of_week]} start time`} type="time" value={row.start_time ?? ""} onChange={(e) => setTemplates((prev) => prev.map((x, idx) => idx === i ? { ...x, start_time: e.target.value } : x))} className="col-span-3 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1" />
+                      <input aria-label={`${DAYS[row.day_of_week]} end time`} type="time" value={row.end_time ?? ""} onChange={(e) => setTemplates((prev) => prev.map((x, idx) => idx === i ? { ...x, end_time: e.target.value } : x))} className="col-span-3 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1" />
+                      <input aria-label={`${DAYS[row.day_of_week]} unpaid break minutes`} type="number" value={row.unpaid_break_minutes} onChange={(e) => setTemplates((prev) => prev.map((x, idx) => idx === i ? { ...x, unpaid_break_minutes: Number(e.target.value) } : x))} className="col-span-2 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1" />
                     </div>
                   ))}
                 </div>
-                <button type="button" disabled={busy || !selectedStaffId} onClick={() => void saveTemplate()} className="mt-3 rounded border border-white/20 bg-white/10 px-3 py-2 text-xs">Save recurring template</button>
+                <button type="button" disabled={busy || !selectedStaffId} onClick={() => void saveTemplate()} className="mt-3 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs">Save recurring template</button>
               </div>
 
-              <div className="space-y-2 border-t border-white/10 pt-3 text-sm">
-                <p className="text-xs font-medium uppercase tracking-wide text-neutral-300">One-off Override</p>
-                <label className="text-xs text-neutral-400" htmlFor="override-date">Date</label>
-                <input id="override-date" type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="w-full rounded border border-white/10 bg-black/30 px-2 py-1" />
-                <label className="text-xs text-neutral-400" htmlFor="override-start">Start time</label>
-                <input id="override-start" type="time" value={overrideStart} onChange={(e) => setOverrideStart(e.target.value)} className="w-full rounded border border-white/10 bg-black/30 px-2 py-1" />
-                <label className="text-xs text-neutral-400" htmlFor="override-end">End time</label>
-                <input id="override-end" type="time" value={overrideEnd} onChange={(e) => setOverrideEnd(e.target.value)} className="w-full rounded border border-white/10 bg-black/30 px-2 py-1" />
-                <button type="button" disabled={busy || !selectedStaffId || !overrideDate} onClick={() => void addOverride()} className="rounded border border-white/20 bg-white/10 px-3 py-2 text-xs">Add override</button>
-                <div className="text-xs text-neutral-400">Cross links: <Link className="text-orange-300" href="/dashboard/admin/people">People</Link> · <Link className="text-orange-300" href="/dashboard/admin/payroll-time">Payroll Time</Link></div>
+              <div className="space-y-2 border-t border-[color:var(--theme-border-soft)] pt-3 text-sm">
+                <p className="text-xs font-medium uppercase tracking-wide text-[color:var(--theme-text-secondary)]">One-off Override</p>
+                <label className="text-xs text-[color:var(--theme-text-secondary)]" htmlFor="override-date">Date</label>
+                <input id="override-date" type="date" value={overrideDate} onChange={(e) => setOverrideDate(e.target.value)} className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1" />
+                <label className="text-xs text-[color:var(--theme-text-secondary)]" htmlFor="override-start">Start time</label>
+                <input id="override-start" type="time" value={overrideStart} onChange={(e) => setOverrideStart(e.target.value)} className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1" />
+                <label className="text-xs text-[color:var(--theme-text-secondary)]" htmlFor="override-end">End time</label>
+                <input id="override-end" type="time" value={overrideEnd} onChange={(e) => setOverrideEnd(e.target.value)} className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1" />
+                <button type="button" disabled={busy || !selectedStaffId || !overrideDate} onClick={() => void addOverride()} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs">Add override</button>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Cross links: <Link className="text-orange-300" href="/dashboard/admin/people">People</Link> · <Link className="text-orange-300" href="/dashboard/admin/payroll-time">Payroll Time</Link></div>
               </div>
             </div>
             {error ? <p className="px-4 pb-4 text-xs text-red-300">{error}</p> : null}

@@ -20,11 +20,11 @@ export default function TechAssistantPage() {
   const workOrderLineId: string | undefined = undefined;
 
   return (
-    <div className="mx-auto w-full max-w-5xl p-3 sm:p-4 md:p-6 text-white">
+    <div className="mx-auto w-full max-w-5xl p-3 sm:p-4 md:p-6 text-[color:var(--theme-text-primary)]">
       <h1 className="mb-3 text-lg font-header text-orange-500">Tech Assistant</h1>
 
       {/* Mobile */}
-      <div className="md:hidden rounded border border-neutral-800 bg-neutral-900">
+      <div className="md:hidden rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]">
         <TechAssistantMobile
           defaultVehicle={defaultVehicle}
           workOrderLineId={workOrderLineId}
@@ -32,7 +32,7 @@ export default function TechAssistantPage() {
       </div>
 
       {/* Desktop / tablet */}
-      <div className="hidden md:block rounded border border-neutral-800 bg-neutral-900 p-3">
+      <div className="hidden md:block rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
         <TechAssistant
           defaultVehicle={defaultVehicle}
           workOrderLineId={workOrderLineId}

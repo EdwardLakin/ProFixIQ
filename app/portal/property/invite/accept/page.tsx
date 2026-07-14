@@ -35,7 +35,7 @@ export default async function PropertyInviteAcceptPage({ searchParams }: { searc
   const banner = statusMessage(status);
 
   if (!token) {
-    return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-neutral-100">Invalid invite</h1><p className="mt-3 text-sm text-neutral-300">Missing invite token.</p></section>;
+    return <section className="metal-card rounded-3xl p-5"><h1 className="text-2xl text-[color:var(--theme-text-primary)]">Invalid invite</h1><p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">Missing invite token.</p></section>;
   }
 
   const supabase = client();
@@ -45,8 +45,8 @@ export default async function PropertyInviteAcceptPage({ searchParams }: { searc
   const preview = await getPropertyPortalInvitePreview(token);
 
   return (
-    <section className="metal-card rounded-3xl p-5 text-neutral-100">
-      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">Portal</p>
+    <section className="metal-card rounded-3xl p-5 text-[color:var(--theme-text-primary)]">
+      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">Portal</p>
       <h1 className="mt-2 text-2xl">Accept property portal invite</h1>
       {banner && (
         <p className={`mt-3 rounded-lg border px-3 py-2 text-sm ${banner.tone === "ok" ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200" : "border-amber-400/40 bg-amber-500/10 text-amber-200"}`}>
@@ -54,8 +54,8 @@ export default async function PropertyInviteAcceptPage({ searchParams }: { searc
         </p>
       )}
 
-      <div className="mt-5 space-y-2 text-sm text-neutral-300">
-        <p className="text-neutral-200">Sign in with the invited email address to continue.</p>
+      <div className="mt-5 space-y-2 text-sm text-[color:var(--theme-text-secondary)]">
+        <p className="text-[color:var(--theme-text-primary)]">Sign in with the invited email address to continue.</p>
         <p>{preview.message}</p>
         <form action={acceptPropertyPortalInvite} className="pt-2">
           <input type="hidden" name="token" value={token} />

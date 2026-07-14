@@ -15,25 +15,25 @@ export default function MobileMaintenance50AirRunnerPage() {
   const src = `/inspections/maintenance-50-air?view=mobile&embed=1${extra}`;
 
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-950 text-foreground">
-      <header className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
+    <div className="flex min-h-screen flex-col bg-[color:var(--theme-surface-page)] text-foreground">
+      <header className="flex items-center justify-between gap-2 border-b border-[color:var(--theme-border-soft)] px-3 py-2">
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-full border border-neutral-700 bg-neutral-950 px-3 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
         >
           ← Back
         </button>
 
         <div className="flex-1 px-2 text-center">
-          <h1 className="truncate text-xs font-blackops uppercase tracking-[0.18em] text-neutral-200">
+          <h1 className="truncate text-xs font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
             Maint. 50 (Air Brake)
           </h1>
         </div>
 
         <Link
           href={`/inspections/maintenance-50-air${qs ? `?${qs}` : ""}`}
-          className="rounded-full border border-[color:var(--accent-copper-soft)] bg-[color:var(--accent-copper-soft)] px-3 py-1 text-[0.7rem] font-semibold text-black hover:bg-[color:var(--accent-copper-light)]"
+          className="rounded-full border border-[color:var(--accent-copper-soft)] bg-[color:var(--accent-copper-soft)] px-3 py-1 text-[0.7rem] font-semibold text-[color:var(--theme-text-on-accent)] hover:bg-[color:var(--accent-copper-light)]"
         >
           Desktop
         </Link>
@@ -43,7 +43,7 @@ export default function MobileMaintenance50AirRunnerPage() {
         <iframe
           src={src}
           title="Maintenance 50 Air Inspection"
-          className="h-full w-full border-0 bg-black"
+          className="h-full w-full border-0 bg-[color:var(--theme-surface-page)]"
         />
       </main>
     </div>

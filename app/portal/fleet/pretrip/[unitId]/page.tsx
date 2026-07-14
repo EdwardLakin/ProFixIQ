@@ -12,12 +12,12 @@ export default async function PortalFleetPretripPage({ params }: Props) {
   const uiContext = await resolveFleetUiContext(supabase);
 
   return (
-    <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-card">
-      <div className="mb-4 border-b border-white/10 pb-3">
+    <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-card">
+      <div className="mb-4 border-b border-[color:var(--theme-border-soft)] pb-3">
         <h1 className="text-xl text-sky-300" style={{ fontFamily: "var(--font-blackops)" }}>
           Portal Pre-trip • Unit {unitId}
         </h1>
-        <p className="mt-1 text-xs text-neutral-400">
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
           {uiContext.experience === "external_driver"
             ? "Submit your pre-trip and flag defects for service review."
             : "Submit or assist with a unit pre-trip and route defects into requests."}

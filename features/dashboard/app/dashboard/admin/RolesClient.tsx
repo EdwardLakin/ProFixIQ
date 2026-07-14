@@ -30,7 +30,7 @@ export default function AdminRolesClient() {
   }, [supabase]);
 
   return (
-    <div className="p-6 text-white">
+    <div className="p-6 text-[color:var(--theme-text-primary)]">
       <h1 className="text-2xl font-semibold mb-4">Roles</h1>
 
       {err && (
@@ -48,7 +48,7 @@ export default function AdminRolesClient() {
           {rows.map((r) => (
             <li
               key={r.id}
-              className="p-3 rounded bg-neutral-900/50 border border-neutral-800"
+              className="p-3 rounded bg-[color:var(--theme-surface-panel)] border border-[color:var(--theme-border-soft)]"
             >
               <div className="font-medium">{r.full_name ?? r.id}</div>
               <div className="text-xs opacity-75">Role: {r.role ?? "—"}</div>

@@ -82,14 +82,14 @@ export default async function RootLayout({
     >
       <head>
         <Script id="pfq-theme-preload" strategy="beforeInteractive">
-          {`(function(){try{var r=document.documentElement;var pref=localStorage.getItem('pfq-theme-mode')||'dark';var resolved=pref==='system'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):pref;if(resolved!=='light'&&resolved!=='dark'){resolved='dark';}r.setAttribute('data-theme-preference',pref);r.setAttribute('data-theme-mode',resolved);}catch(_e){}})();`}
+          {`(function(){try{var r=document.documentElement;var pref=localStorage.getItem('pfq-theme-mode')||localStorage.getItem('theme')||'dark';if(pref!=='light'&&pref!=='dark'&&pref!=='system'){pref='dark';}var resolved=pref==='system'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):pref;r.setAttribute('data-theme-preference',pref);r.setAttribute('data-theme-mode',resolved);r.classList.toggle('dark',resolved==='dark');r.style.colorScheme=resolved;}catch(_e){}})();`}
         </Script>
       </head>
       <body
         className="min-h-screen antialiased"
         style={{
           backgroundImage:
-            "var(--app-shell-bg, radial-gradient(circle at top, rgba(59,130,246,0.12), transparent 56%), radial-gradient(circle at bottom, rgba(15,23,42,0.96), #020617 70%))",
+            "var(--theme-gradient-panel)",
         }}
       >
         {useAppShell ? (
@@ -105,10 +105,10 @@ export default async function RootLayout({
           toastOptions={{
             style: {
               background:
-                "var(--theme-header-bg, radial-gradient(circle at top, rgba(15,23,42,0.96), #020617 70%))",
+                "var(--theme-gradient-panel)",
               border:
                 "1px solid var(--theme-card-border, rgba(148, 163, 184, 0.5))",
-              color: "var(--theme-text-primary, #e5e7eb)",
+              color: "var(--theme-text-primary, var(--theme-text-primary))",
             },
           }}
         />

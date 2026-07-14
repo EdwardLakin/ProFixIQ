@@ -63,7 +63,7 @@ export default function HistoryList({ items }: Props) {
 
   if (!items.length) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-300 shadow-card backdrop-blur-xl">
+      <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)] shadow-card backdrop-blur-xl">
         No service history yet. Once this vehicle has been in for service,
         you’ll see it here.
       </div>
@@ -74,28 +74,28 @@ export default function HistoryList({ items }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-3 shadow-card backdrop-blur-xl">
+      <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-xl">
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-[200px] flex-1">
-            <label className="mb-1 block text-[11px] uppercase tracking-[0.12em] text-neutral-400">
+            <label className="mb-1 block text-[11px] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
               Search
             </label>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none placeholder:text-neutral-500"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)]"
               placeholder="Search vehicle, work order, notes…"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] uppercase tracking-[0.12em] text-neutral-400">
+            <label className="mb-1 block text-[11px] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
               Status
             </label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="min-w-[170px] rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+              className="min-w-[170px] rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none"
             >
               <option value="">All statuses</option>
               <option value="awaiting">Awaiting</option>
@@ -109,7 +109,7 @@ export default function HistoryList({ items }: Props) {
 
           {hasFilters && (
             <button
-              className="ml-auto rounded-full border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-200 transition hover:bg-black/55"
+              className="ml-auto rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-inset)]"
               onClick={() => {
                 setQ("");
                 setStatus("");
@@ -120,7 +120,7 @@ export default function HistoryList({ items }: Props) {
           )}
         </div>
 
-        <div className="mt-2 text-xs text-neutral-400">
+        <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
           Showing{" "}
           <span className="font-semibold text-[var(--accent-copper-light)]">
             {filtered.length}
@@ -130,7 +130,7 @@ export default function HistoryList({ items }: Props) {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-300 shadow-card backdrop-blur-xl">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)] shadow-card backdrop-blur-xl">
           No service visits match your filters. Try clearing the search or
           choosing a different status.
         </div>
@@ -142,7 +142,7 @@ export default function HistoryList({ items }: Props) {
               STATUS_LABELS[statusKey] ?? (statusKey || "Unknown");
             const statusClass =
               STATUS_CLASSES[statusKey] ??
-              "border border-white/10 bg-black/40 text-neutral-200";
+              "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]";
 
             const title = h.vehicle
               ? `${h.vehicle.year ?? ""} ${h.vehicle.make ?? ""} ${
@@ -153,10 +153,10 @@ export default function HistoryList({ items }: Props) {
             return (
               <li
                 key={h.id}
-                className="rounded-2xl border border-white/10 bg-black/30 p-3 shadow-card backdrop-blur-xl"
+                className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-xl"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-xs text-neutral-400">
+                  <div className="text-xs text-[color:var(--theme-text-secondary)]">
                     {formatDate(h.service_date)}
                   </div>
 
@@ -169,21 +169,21 @@ export default function HistoryList({ items }: Props) {
                   )}
                 </div>
 
-                <div className="mt-1 text-sm font-semibold text-neutral-50">
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {title}
                   {h.work_order && (
-                    <span className="ml-1 text-xs font-normal text-neutral-400">
+                    <span className="ml-1 text-xs font-normal text-[color:var(--theme-text-secondary)]">
                       · WO #{h.work_order.id}
                     </span>
                   )}
                 </div>
 
                 {h.vehicle && (
-                  <div className="mt-0.5 text-xs text-neutral-400">
+                  <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
                     {h.vehicle.vin && (
                       <span className="mr-3">
                         VIN:{" "}
-                        <span className="font-mono text-neutral-200">
+                        <span className="font-mono text-[color:var(--theme-text-primary)]">
                           {h.vehicle.vin}
                         </span>
                       </span>
@@ -191,7 +191,7 @@ export default function HistoryList({ items }: Props) {
                     {h.vehicle.license_plate && (
                       <span>
                         Plate:{" "}
-                        <span className="font-mono text-neutral-200">
+                        <span className="font-mono text-[color:var(--theme-text-primary)]">
                           {h.vehicle.license_plate}
                         </span>
                       </span>
@@ -200,13 +200,13 @@ export default function HistoryList({ items }: Props) {
                 )}
 
                 {h.description && (
-                  <div className="mt-2 text-sm text-neutral-200">
+                  <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">
                     {h.description}
                   </div>
                 )}
 
                 {h.notes && (
-                  <div className="mt-1 text-xs text-neutral-400">
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                     {h.notes}
                   </div>
                 )}

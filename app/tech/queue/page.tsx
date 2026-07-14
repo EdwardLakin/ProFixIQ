@@ -56,9 +56,9 @@ const PRIORITY_BADGE: Record<JobPriority, string> = {
   high:
     "inline-flex items-center whitespace-nowrap rounded-full border border-orange-400/60 bg-orange-900/25 px-2 py-0.5 text-[10px] font-semibold text-orange-100",
   normal:
-    "inline-flex items-center whitespace-nowrap rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[10px] font-semibold text-neutral-200",
+    "inline-flex items-center whitespace-nowrap rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]",
   low:
-    "inline-flex items-center whitespace-nowrap rounded-full border border-slate-400/45 bg-slate-900/30 px-2 py-0.5 text-[10px] font-semibold text-slate-200",
+    "inline-flex items-center whitespace-nowrap rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]",
 };
 
 /**
@@ -69,18 +69,18 @@ const PRIORITY_BADGE: Record<JobPriority, string> = {
  */
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-slate-600/70 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.16),rgba(15,23,42,0.98))] hover:border-slate-300/70",
+    "border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] hover:border-[color:var(--theme-border-soft)]",
   in_progress:
-    "border-[color:var(--accent-copper-soft,#fdba74)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.28),rgba(15,23,42,0.98))] hover:border-[color:var(--accent-copper-soft,#fdba74)]/90",
+    "border-[color:var(--accent-copper-soft,#fdba74)] bg-[var(--theme-gradient-panel)] hover:border-[color:var(--accent-copper-soft,#fdba74)]/90",
   on_hold:
-    "border-amber-400/80 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.24),rgba(15,23,42,0.97))] hover:border-amber-300/80",
+    "border-amber-400/80 bg-[var(--theme-gradient-panel)] hover:border-amber-300/80",
 };
 
 const ACTIVE_RING =
   "ring-2 ring-[color:var(--accent-copper-soft,#fdba74)]/90 shadow-[0_0_35px_rgba(249,115,22,0.55)]";
 
 const SAME_WO_RING =
-  "ring-1 ring-white/10 shadow-[0_0_22px_rgba(255,255,255,0.06)]";
+  "ring-1 ring-[color:var(--theme-border-strong)] shadow-[0_0_22px_rgba(255,255,255,0.06)]";
 
 const PARTS_BADGE =
   "inline-flex items-center gap-1 rounded-full border border-sky-400/55 bg-sky-900/25 px-2 py-0.5 text-[10px] font-semibold text-sky-100";
@@ -396,19 +396,19 @@ export default function TechQueuePage() {
   }, [sortedLines, activeFilter]);
 
   if (loading)
-    return <div className="p-6 text-white">Loading assigned jobs…</div>;
+    return <div className="p-6 text-[color:var(--theme-text-primary)]">Loading assigned jobs…</div>;
   if (err) return <div className="p-6 text-red-200">{err}</div>;
 
   const compact = prefs.compactCards;
 
   return (
-    <div className="p-6 text-white">
+    <div className="p-6 text-[color:var(--theme-text-primary)]">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-blackops text-[color:var(--accent-copper,#f97316)]">
           Your Assigned Jobs
         </h1>
 
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-300">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
           <Link
             href="/assistant?pageType=tech_queue&pageTitle=Tech%20Queue"
             className="rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-200 hover:bg-orange-500/15"
@@ -421,7 +421,7 @@ export default function TechQueuePage() {
               Auto-refresh ON
             </span>
           ) : (
-            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-neutral-300">
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[color:var(--theme-text-secondary)]">
               Auto-refresh OFF
             </span>
           )}
@@ -433,7 +433,7 @@ export default function TechQueuePage() {
           <button
             type="button"
             onClick={() => void load()}
-            className="rounded-full border border-white/15 bg-black/35 px-3 py-1 text-xs font-semibold text-white/90 hover:border-[color:var(--accent-copper-soft,#fdba74)]/70 hover:bg-white/5"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-copper-soft,#fdba74)]/70 hover:bg-[color:var(--theme-surface-subtle)]"
           >
             Refresh
           </button>
@@ -453,10 +453,10 @@ export default function TechQueuePage() {
                 "rounded-2xl border text-left transition",
                 compact ? "p-3" : "p-4",
                 STATUS_STYLES[s],
-                isActive ? "ring-1 ring-white/20" : "",
+                isActive ? "ring-1 ring-[color:var(--theme-border-strong)]" : "",
               ].join(" ")}
             >
-              <div className="text-xs uppercase tracking-wide text-neutral-300">
+              <div className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
                 {STATUS_LABELS[s]}
               </div>
               <div
@@ -469,7 +469,7 @@ export default function TechQueuePage() {
                 {counts[s]}
               </div>
               {isActive && (
-                <div className="mt-1 text-[10px] text-neutral-200/90">
+                <div className="mt-1 text-[10px] text-[color:var(--theme-text-secondary)]">
                   Showing {STATUS_LABELS[s].toLowerCase()}
                 </div>
               )}
@@ -516,25 +516,25 @@ export default function TechQueuePage() {
             <div
               key={line.id}
               className={[
-                "relative overflow-hidden rounded-2xl border shadow-[0_18px_45px_rgba(0,0,0,0.75)]",
+                "relative overflow-hidden rounded-2xl border shadow-[var(--theme-shadow-medium)]",
                 compact ? "p-3" : "p-4",
                 bucket === "in_progress"
-                  ? "border-[color:var(--accent-copper-soft,#fdba74)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.22),rgba(15,23,42,0.98))]"
+                  ? "border-[color:var(--accent-copper-soft,#fdba74)] bg-[var(--theme-gradient-panel)]"
                   : bucket === "on_hold"
-                    ? "border-amber-400/70 bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.18),rgba(15,23,42,0.98))]"
-                    : "border-slate-600/60 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.12),rgba(15,23,42,0.98))]",
+                    ? "border-amber-400/70 bg-[var(--theme-gradient-panel)]"
+                    : "border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)]",
                 isActiveJob ? ACTIVE_RING : "",
                 isSameWorkOrder ? SAME_WO_RING : "",
               ].join(" ")}
             >
-              <div className="pointer-events-none absolute inset-y-2 left-2 w-[3px] rounded-full bg-gradient-to-b from-transparent via-white/20 to-transparent opacity-70" />
+              <div className="pointer-events-none absolute inset-y-2 left-2 w-[3px] rounded-full bg-gradient-to-b from-transparent via-[color:var(--theme-surface-subtle)] to-transparent opacity-70" />
 
               <div className="flex items-center justify-between gap-3 pl-3">
                 <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-300">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                     {woLabel}
                     {isSameWorkOrder ? (
-                      <span className="ml-2 text-[10px] text-neutral-200/80">
+                      <span className="ml-2 text-[10px] text-[color:var(--theme-text-secondary)]">
                         • Same WO
                       </span>
                     ) : null}
@@ -548,15 +548,15 @@ export default function TechQueuePage() {
                   <div
                     className={
                       compact
-                        ? "mt-1 truncate text-sm font-semibold text-white"
-                        : "mt-1 truncate text-base font-semibold text-white"
+                        ? "mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]"
+                        : "mt-1 truncate text-base font-semibold text-[color:var(--theme-text-primary)]"
                     }
                   >
                     {title}
                   </div>
 
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-white/15 bg-black/35 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
+                    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
                       {STATUS_LABELS[bucket]}
                     </span>
                     <span className={PRIORITY_BADGE[priority]}>
@@ -581,7 +581,7 @@ export default function TechQueuePage() {
                     <button
                       type="button"
                       onClick={() => router.push(focusHref)}
-                      className="rounded-full border border-white/15 bg-black/35 px-3 py-1 text-xs font-semibold text-white/90 hover:border-[color:var(--accent-copper-soft,#fdba74)]/70 hover:bg-white/5"
+                      className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-copper-soft,#fdba74)]/70 hover:bg-[color:var(--theme-surface-subtle)]"
                     >
                       Open →
                     </button>
@@ -593,7 +593,7 @@ export default function TechQueuePage() {
         })}
 
         {filteredLines.length === 0 && (
-          <div className="rounded-2xl border border-white/10 bg-black/35 p-4 text-sm text-neutral-300">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
             No jobs in this bucket.
           </div>
         )}

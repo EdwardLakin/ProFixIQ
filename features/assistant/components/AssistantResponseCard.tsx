@@ -38,16 +38,16 @@ export default function AssistantResponseCard({ data }: Props) {
   }
 
   return (
-    <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 p-5">
-      <div className="mb-2 text-xs uppercase text-neutral-400">Direct answer</div>
-      <div className="whitespace-pre-line text-sm text-white">{data.summary}</div>
+    <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+      <div className="mb-2 text-xs uppercase text-[color:var(--theme-text-secondary)]">Direct answer</div>
+      <div className="whitespace-pre-line text-sm text-[color:var(--theme-text-primary)]">{data.summary}</div>
 
       {data.bullets.length > 0 ? (
         <div className="mt-4">
-          <div className="mb-2 text-xs text-neutral-400">Supporting evidence & context</div>
+          <div className="mb-2 text-xs text-[color:var(--theme-text-secondary)]">Supporting evidence & context</div>
           <ul className="space-y-1">
             {data.bullets.map((bullet, i) => (
-              <li key={`${bullet}-${i}`} className="text-sm text-neutral-200">
+              <li key={`${bullet}-${i}`} className="text-sm text-[color:var(--theme-text-primary)]">
                 • {bullet}
               </li>
             ))}
@@ -58,19 +58,19 @@ export default function AssistantResponseCard({ data }: Props) {
 
       {data.partSuggestions && data.partSuggestions.length > 0 ? (
         <div className="mt-4 space-y-2">
-          <div className="mb-2 text-xs text-neutral-400">Suggested parts (review first)</div>
+          <div className="mb-2 text-xs text-[color:var(--theme-text-secondary)]">Suggested parts (review first)</div>
           {data.partSuggestions.map((part) => (
-            <div key={part.candidateId} className="rounded-xl border border-white/10 bg-black/40 p-3">
+            <div key={part.candidateId} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-white">{part.title}</div>
-                  <div className="text-xs text-neutral-300">
+                  <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{part.title}</div>
+                  <div className="text-xs text-[color:var(--theme-text-secondary)]">
                     {part.sku ? `${part.sku} • ` : ""}Qty {part.quantitySuggestion} • {fitmentLabel(part.fitmentConfidence)}
                   </div>
                 </div>
-                <div className="text-[11px] text-neutral-400">rank {Math.round(part.rankScore)}</div>
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">rank {Math.round(part.rankScore)}</div>
               </div>
-              <div className="mt-2 text-xs text-neutral-300">{part.reviewRecommendation}</div>
+              <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">{part.reviewRecommendation}</div>
               {part.warnings.length > 0 ? (
                 <ul className="mt-2 space-y-1 text-xs text-amber-300">
                   {part.warnings.slice(0, 2).map((warning) => (
@@ -83,7 +83,7 @@ export default function AssistantResponseCard({ data }: Props) {
                   <Link
                     key={evidence.id}
                     href={evidence.href ?? "#"}
-                    className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-neutral-300"
+                    className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[10px] text-[color:var(--theme-text-secondary)]"
                   >
                     {evidence.label}
                   </Link>
@@ -96,20 +96,20 @@ export default function AssistantResponseCard({ data }: Props) {
 
       {data.relatedRecords && data.relatedRecords.length > 0 ? (
         <div className="mt-4 space-y-2">
-          <div className="mb-2 text-xs text-neutral-400">Related records</div>
+          <div className="mb-2 text-xs text-[color:var(--theme-text-secondary)]">Related records</div>
           {data.relatedRecords.slice(0, 6).map((record, i) => (
             <div
               key={`${record.label}-${record.href ?? i}`}
-              className="rounded-xl border border-white/10 bg-black/40 p-3"
+              className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
             >
               {record.href ? (
                 <Link href={record.href} className="text-sm font-semibold text-orange-200 hover:text-orange-100">
                   {record.label}
                 </Link>
               ) : (
-                <div className="text-sm font-semibold text-white">{record.label}</div>
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{record.label}</div>
               )}
-              <div className="text-xs text-neutral-300">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">
                 {record.type ? record.type.replaceAll("_", " ") : "record"}
               </div>
             </div>
@@ -117,14 +117,14 @@ export default function AssistantResponseCard({ data }: Props) {
         </div>
       ) : data.notifications.length > 0 ? (
         <div className="mt-4 space-y-2">
-          <div className="mb-2 text-xs text-neutral-400">Related records</div>
+          <div className="mb-2 text-xs text-[color:var(--theme-text-secondary)]">Related records</div>
           {data.notifications.slice(0, 3).map((notification, i) => (
             <div
               key={`${notification.code}-${notification.entityId ?? i}`}
-              className="rounded-xl border border-white/10 bg-black/40 p-3"
+              className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
             >
-              <div className="text-sm font-semibold text-white">{notification.title}</div>
-              <div className="text-xs text-neutral-300">{notification.message}</div>
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{notification.title}</div>
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">{notification.message}</div>
             </div>
           ))}
         </div>
@@ -132,7 +132,7 @@ export default function AssistantResponseCard({ data }: Props) {
 
       {data.actions.length > 0 ? (
         <div className="mt-4">
-          <div className="mb-2 text-xs text-neutral-400">Suggested next actions</div>
+          <div className="mb-2 text-xs text-[color:var(--theme-text-secondary)]">Suggested next actions</div>
           <div className="flex flex-wrap gap-2">
             {data.actions.map((action, i) =>
               action.kind === "planner" ? (

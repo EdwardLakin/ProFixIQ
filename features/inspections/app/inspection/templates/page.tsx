@@ -160,20 +160,19 @@ export default function InspectionTemplatesPage() {
 
   const headerCard =
     "rounded-2xl border border-[rgba(100,116,139,0.34)] " +
-    "bg-[linear-gradient(180deg,rgba(10,14,24,0.92),rgba(4,8,18,0.96))] " +
-    "shadow-[0_30px_90px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "bg-[linear-gradient(180deg,var(--theme-surface-inset),var(--theme-surface-inset))] " +
+    "shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 
   const listCard =
     "rounded-2xl border border-[rgba(73,86,112,0.38)] " +
-    "bg-[linear-gradient(180deg,rgba(10,12,18,0.94),rgba(2,4,8,0.98))] " +
-    "shadow-[0_24px_80px_rgba(0,0,0,0.95)] backdrop-blur-xl";
+    "bg-[var(--theme-gradient-panel)] " +
+    "shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 
   const pillBase =
     "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border " +
     "transition-colors";
 
   // copper palette (replaces all orange usage)
-  const COPPER_22 = "rgba(59,130,246,0.12)";
   const COPPER_26 = "rgba(59,130,246,0.16)";
   const COPPER_16 = "rgba(59,130,246,0.10)";
   const COPPER_90 = "rgba(224,174,130,0.90)";
@@ -184,19 +183,19 @@ export default function InspectionTemplatesPage() {
   const COPPER_SHADOW_80 = "rgba(200,122,67,0.80)";
 
   return (
-    <div className="px-4 py-6 text-white">
+    <div className="px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto w-full max-w-6xl space-y-5">
         {/* Atmospheric page wash */}
         <div
           aria-hidden
           className={`
             pointer-events-none fixed inset-0 -z-10
-            bg-[radial-gradient(circle_at_14%_8%,${COPPER_22},transparent_44%),radial-gradient(circle_at_82%_24%,rgba(28,60,112,0.18),transparent_40%),radial-gradient(circle_at_bottom,rgba(7,10,18,0.98),#010103_76%)]
+            bg-[var(--theme-gradient-panel)]
           `}
         />
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(180deg,rgba(2,4,9,0.25),rgba(0,0,0,0.78)_72%)]"
+          className="pointer-events-none fixed inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
         />
 
         <GuidedPageStepPanel />
@@ -212,7 +211,7 @@ export default function InspectionTemplatesPage() {
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 bg-[linear-gradient(160deg,rgba(9,10,14,0.05),rgba(2,2,4,0.35)_62%,rgba(1,1,2,0.62))]"
+            className="pointer-events-none absolute inset-0 bg-[var(--theme-gradient-panel)]"
           />
 
           <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -223,14 +222,14 @@ export default function InspectionTemplatesPage() {
               >
                 Inspection Templates
               </h1>
-              <p className="mt-1 text-xs text-neutral-300">
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Build, import, and manage inspection templates for your shop and fleets.
               </p>
             </div>
 
             <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
               {/* Scope pills */}
-              <div className="flex overflow-hidden rounded-full border border-[rgba(100,116,139,0.42)] bg-[rgba(2,4,9,0.78)] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.45)]">
+              <div className="flex overflow-hidden rounded-full border border-[rgba(100,116,139,0.42)] bg-[var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)]">
                 {(["mine", "shared", "all"] as Scope[]).map((s) => {
                   const isActive = scope === s;
                   return (
@@ -241,8 +240,8 @@ export default function InspectionTemplatesPage() {
                         pillBase +
                         " " +
                         (isActive
-                          ? `border-[${COPPER_70}] bg-[rgba(15,23,42,0.95)] text-[rgba(248,250,252,0.95)]`
-                          : "border-transparent bg-transparent text-neutral-400 hover:bg-zinc-900/80")
+                          ? `border-[${COPPER_70}] bg-[var(--theme-surface-inset)] text-[rgba(248,250,252,0.95)]`
+                          : "border-transparent bg-transparent text-[color:var(--theme-text-secondary)] hover:bg-zinc-900/80")
                       }
                     >
                       {s === "mine" ? "My Templates" : s === "shared" ? "Shared" : "All"}
@@ -257,7 +256,7 @@ export default function InspectionTemplatesPage() {
                 className={`
                   mt-1 inline-flex items-center justify-center rounded-full
                   bg-[linear-gradient(to_right,rgba(200,122,67,0.85),rgba(200,122,67,0.55))]
-                  px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-black
+                  px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)]
                   shadow-[0_0_22px_${COPPER_SHADOW_60}] hover:shadow-[0_0_30px_${COPPER_SHADOW_80}]
                   md:mt-0
                 `}
@@ -268,21 +267,21 @@ export default function InspectionTemplatesPage() {
           </div>
 
           {/* Search */}
-          <div className="relative mt-4 flex flex-col gap-2 rounded-2xl border border-[rgba(100,116,139,0.28)] bg-[linear-gradient(180deg,rgba(5,8,14,0.88),rgba(2,2,4,0.95))] p-3 md:flex-row md:items-center">
+          <div className="relative mt-4 flex flex-col gap-2 rounded-2xl border border-[rgba(100,116,139,0.28)] bg-[var(--theme-gradient-panel)] p-3 md:flex-row md:items-center">
             <div className="relative flex-1">
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by name, description, or tags…"
                 className={`
-                  w-full rounded-xl border border-[rgba(111,120,140,0.55)] bg-[rgba(2,5,11,0.92)]
-                  px-3 py-2 text-sm text-white placeholder:text-neutral-500
+                  w-full rounded-xl border border-[rgba(111,120,140,0.55)] bg-[var(--theme-surface-inset)]
+                  px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]
                   focus:outline-none focus:ring-2 focus:ring-[${COPPER_55}]
                 `}
               />
             </div>
 
-            <div className="text-[11px] text-neutral-500 md:pl-3">
+            <div className="text-[11px] text-[color:var(--theme-text-muted)] md:pl-3">
               <span className="hidden md:inline">Tip:</span>{" "}
               Use fleet imports to match customer forms exactly.
             </div>
@@ -295,15 +294,15 @@ export default function InspectionTemplatesPage() {
         {/* Templates list */}
         <div className={listCard + " px-4 py-4 md:px-6 md:py-5"}>
           {loading ? (
-            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-4 text-sm text-neutral-300">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]">
               Loading templates…
             </div>
           ) : rows.length === 0 ? (
-            <div className="rounded-xl border border-neutral-800 bg-black/60 px-4 py-6 text-center text-sm text-neutral-300">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-6 text-center text-sm text-[color:var(--theme-text-secondary)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
                 No templates found
               </div>
-              <p className="mt-2 text-xs text-neutral-400">
+              <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                 Try adjusting your filters or import a fleet form to generate a template.
               </p>
             </div>
@@ -358,14 +357,14 @@ export default function InspectionTemplatesPage() {
                   chips.push({
                     label: "Custom",
                     className:
-                      "border-[rgba(148,163,184,0.7)] bg-[rgba(15,23,42,0.85)] text-slate-100",
+                      "border-[rgba(148,163,184,0.7)] bg-[var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]",
                   });
                 }
 
                 return (
                   <li
                     key={t.id}
-                    className="relative overflow-hidden rounded-2xl border border-[rgba(83,97,125,0.46)] bg-[linear-gradient(180deg,rgba(6,9,16,0.94),rgba(2,3,7,0.98))] p-4 shadow-[0_24px_70px_rgba(0,0,0,0.95)]"
+                    className="relative overflow-hidden rounded-2xl border border-[rgba(83,97,125,0.46)] bg-[var(--theme-gradient-panel)] p-4 shadow-[var(--theme-shadow-medium)]"
                   >
                     <div
                       aria-hidden
@@ -379,10 +378,10 @@ export default function InspectionTemplatesPage() {
                       {/* Title + scope + chips */}
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="text-sm font-semibold text-neutral-50">
+                          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                             {t.template_name ?? "Untitled Template"}
                           </div>
-                          <div className="mt-1 line-clamp-3 text-xs text-neutral-400">
+                          <div className="mt-1 line-clamp-3 text-xs text-[color:var(--theme-text-secondary)]">
                             {t.description || "No description provided."}
                           </div>
                         </div>
@@ -393,7 +392,7 @@ export default function InspectionTemplatesPage() {
                               "rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] " +
                               (t.is_public
                                 ? "border-[rgba(56,189,248,0.5)] bg-[rgba(8,47,73,0.6)] text-sky-200"
-                                : "border-[rgba(148,163,184,0.6)] bg-[rgba(15,23,42,0.8)] text-slate-200")
+                                : "border-[rgba(148,163,184,0.6)] bg-[var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]")
                             }
                           >
                             {t.is_public ? "Shared" : "Private"}
@@ -416,22 +415,22 @@ export default function InspectionTemplatesPage() {
                       </div>
 
                       {/* Tags + meta */}
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-muted)]">
                         <span>{createdAt}</span>
                         {tags.length > 0 && (
                           <>
-                            <span className="text-neutral-600">•</span>
+                            <span className="text-[color:var(--theme-text-muted)]">•</span>
                             <div className="flex flex-wrap gap-1">
                               {tags.slice(0, 4).map((tag) => (
                                 <span
                                   key={tag}
-                                  className="rounded-full border border-neutral-700 bg-black/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-300"
+                                  className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]"
                                 >
                                   {tag}
                                 </span>
                               ))}
                               {tags.length > 4 && (
-                                <span className="text-[10px] text-neutral-500">
+                                <span className="text-[10px] text-[color:var(--theme-text-muted)]">
                                   +{tags.length - 4} more
                                 </span>
                               )}
@@ -447,9 +446,9 @@ export default function InspectionTemplatesPage() {
                           <Link
                             href={`/inspections/run?templateId=${t.id}`}
                             className={`
-                              rounded-full border border-[color:var(--metal-border-soft,#374151)]
-                              bg-black/70 px-3 py-1.5 text-[11px] uppercase tracking-[0.16em]
-                              text-neutral-100 hover:border-[${COPPER_65}] hover:bg-black/80
+                              rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+                              bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em]
+                              text-[color:var(--theme-text-primary)] hover:border-[${COPPER_65}] hover:bg-[color:var(--theme-surface-overlay)]
                             `}
                           >
                             Use
@@ -460,9 +459,9 @@ export default function InspectionTemplatesPage() {
                             <Link
                               href={`/inspections/custom-draft?templateId=${t.id}&template=${encodedName}`}
                               className={`
-                                rounded-full border border-[color:var(--metal-border-soft,#374151)]
-                                bg-black/70 px-3 py-1.5 text-[11px] uppercase tracking-[0.16em]
-                                text-neutral-100 hover:border-[${COPPER_65}] hover:bg-black/80
+                                rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))]
+                                bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.16em]
+                                text-[color:var(--theme-text-primary)] hover:border-[${COPPER_65}] hover:bg-[color:var(--theme-surface-overlay)]
                               `}
                             >
                               Edit

@@ -27,15 +27,15 @@ type BookingRow = DB["public"]["Tables"]["bookings"]["Row"];
 const COPPER = "#C57A4A";
 
 function cardClass() {
-  return "rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card";
+  return "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card";
 }
 
 function inputClass() {
-  return "w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-white/20";
+  return "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none focus:border-[color:var(--theme-border-soft)]";
 }
 
 function sectionTitle(s: string) {
-  return <div className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">{s}</div>;
+  return <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">{s}</div>;
 }
 
 async function postJson<TResp>(
@@ -112,12 +112,12 @@ function modalShell(open: boolean) {
 }
 
 function modalBackdrop(open: boolean) {
-  return cx("absolute inset-0 bg-black/70 backdrop-blur-sm transition-opacity", open ? "opacity-100" : "opacity-0");
+  return cx("absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm transition-opacity", open ? "opacity-100" : "opacity-0");
 }
 
 function modalCard(open: boolean) {
   return cx(
-    "relative w-full max-w-2xl rounded-3xl border border-white/10 bg-black/70 p-4 shadow-[0_0_40px_rgba(0,0,0,0.85)] backdrop-blur-md transition-transform",
+    "relative w-full max-w-2xl rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)] backdrop-blur-md transition-transform",
     open ? "translate-y-0" : "translate-y-6",
   );
 }
@@ -611,16 +611,16 @@ export default function PortalRequestBuildPage() {
   }
 
   if (loading) {
-    return <div className={cardClass() + " mx-auto max-w-3xl text-sm text-neutral-200"}>Loading…</div>;
+    return <div className={cardClass() + " mx-auto max-w-3xl text-sm text-[color:var(--theme-text-primary)]"}>Loading…</div>;
   }
 
   if (!wo?.id || !customer?.id) {
     return (
-      <div className="mx-auto max-w-3xl space-y-3 text-white">
+      <div className="mx-auto max-w-3xl space-y-3 text-[color:var(--theme-text-primary)]">
         <Toaster position="top-center" />
         <div className={cardClass()}>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">Build request</h1>
-          <p className="mt-2 text-sm text-neutral-400">This request is missing or expired.</p>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Build request</h1>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This request is missing or expired.</p>
           <div className="mt-4">
             <LinkButton href="/portal/request/when" size="sm">
               Start again
@@ -637,24 +637,24 @@ export default function PortalRequestBuildPage() {
   const bookingLabel = fmtBookingRange(booking);
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-5 text-white">
+    <div className="mx-auto w-full max-w-3xl space-y-5 text-[color:var(--theme-text-primary)]">
       <Toaster position="top-center" />
 
       <header className="space-y-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div
-              className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
+              className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
               style={{ color: COPPER }}
             >
               Request
             </div>
-            <h1 className="mt-2 text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+            <h1 className="mt-2 text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
               Intake &amp; request
             </h1>
-            <p className="mt-1 text-xs text-neutral-400">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"} • WO{" "}
-              <span className="font-mono text-neutral-300">{wo.id.slice(0, 8)}…</span>
+              <span className="font-mono text-[color:var(--theme-text-secondary)]">{wo.id.slice(0, 8)}…</span>
               {bookingLabel ? <span className="ml-2">• {bookingLabel}</span> : null}
             </p>
           </div>
@@ -675,12 +675,12 @@ export default function PortalRequestBuildPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             {sectionTitle("Intake form")}
-            <div className="mt-1 text-xs text-neutral-500">
+            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               Tell us what’s going on. This helps the shop triage your request faster.
             </div>
           </div>
-          <div className="text-[0.75rem] text-neutral-500">
-            {intakeSavedAt ? <span className="text-emerald-200">Saved</span> : <span className="text-neutral-400">Not saved yet</span>}
+          <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
+            {intakeSavedAt ? <span className="text-emerald-200">Saved</span> : <span className="text-[color:var(--theme-text-secondary)]">Not saved yet</span>}
           </div>
         </div>
 
@@ -723,22 +723,22 @@ export default function PortalRequestBuildPage() {
           <Button type="button" onClick={() => void saveIntake()} disabled={intakeSaving}>
             {intakeSaving ? "Saving…" : "Save intake"}
           </Button>
-          <span className="text-[0.75rem] text-neutral-500">
-            Saved into the work order notes as <span className="text-neutral-300">PORTAL INTAKE</span>.
+          <span className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
+            Saved into the work order notes as <span className="text-[color:var(--theme-text-secondary)]">PORTAL INTAKE</span>.
           </span>
         </div>
       </section>
 
       <section className={cardClass()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-neutral-100">Current draft</h2>
-          <div className="text-[0.75rem] text-neutral-500">
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Current draft</h2>
+          <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
             Lines: {lines.length} • Quote requests: {quoteLines.length}
           </div>
         </div>
 
         {lines.length === 0 && quoteLines.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-sm text-neutral-300">
+          <div className="mt-3 rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
             Nothing added yet. Add menu items, custom lines, or quote requests below.
           </div>
         ) : (
@@ -749,29 +749,29 @@ export default function PortalRequestBuildPage() {
               const est = getOptNumber(l, "price_estimate");
 
               return (
-                <div key={l.id} className="rounded-xl border border-white/10 bg-black/35 p-3">
+                <div key={l.id} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-neutral-100">{title}</div>
-                      <div className="mt-0.5 text-xs text-neutral-400">
-                        Status: <span className="text-neutral-300">{status}</span>
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+                      <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                        Status: <span className="text-[color:var(--theme-text-secondary)]">{status}</span>
                         {l.menu_item_id ? (
-                          <span className="ml-2 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-neutral-200">
+                          <span className="ml-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
                             menu
                           </span>
                         ) : (
-                          <span className="ml-2 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-neutral-200">
+                          <span className="ml-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
                             custom
                           </span>
                         )}
                       </div>
 
                       {typeof l.notes === "string" && l.notes.trim().length > 0 ? (
-                        <div className="mt-2 text-xs text-neutral-400">{l.notes}</div>
+                        <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">{l.notes}</div>
                       ) : null}
                     </div>
 
-                    <div className="text-right text-xs text-neutral-400">Est: {fmtMoney(est)}</div>
+                    <div className="text-right text-xs text-[color:var(--theme-text-secondary)]">Est: {fmtMoney(est)}</div>
                   </div>
                 </div>
               );
@@ -783,20 +783,20 @@ export default function PortalRequestBuildPage() {
               const qty = typeof q.qty === "number" && Number.isFinite(q.qty) ? q.qty : 1;
 
               return (
-                <div key={q.id} className="rounded-xl border border-white/10 bg-black/25 p-3">
+                <div key={q.id} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-neutral-100">{title}</div>
-                      <div className="mt-0.5 text-xs text-neutral-400">
-                        Stage: <span className="text-neutral-300">{stage}</span> • Qty{" "}
-                        <span className="text-neutral-300">{qty}</span>
-                        <span className="ml-2 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-neutral-200">
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+                      <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                        Stage: <span className="text-[color:var(--theme-text-secondary)]">{stage}</span> • Qty{" "}
+                        <span className="text-[color:var(--theme-text-secondary)]">{qty}</span>
+                        <span className="ml-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
                           quote
                         </span>
                       </div>
 
                       {typeof q.notes === "string" && q.notes.trim().length > 0 ? (
-                        <div className="mt-2 text-xs text-neutral-500">{q.notes}</div>
+                        <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">{q.notes}</div>
                       ) : null}
                     </div>
                   </div>
@@ -811,7 +811,7 @@ export default function PortalRequestBuildPage() {
         <div className="flex items-end justify-between gap-3">
           <div>
             {sectionTitle("Add menu items")}
-            <div className="mt-1 text-xs text-neutral-500">Fixed pricing lines your shop already offers.</div>
+            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Fixed pricing lines your shop already offers.</div>
           </div>
           <div className="w-full max-w-sm">
             <input className={inputClass()} placeholder="Search menu…" value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} />
@@ -819,7 +819,7 @@ export default function PortalRequestBuildPage() {
         </div>
 
         {filteredMenu.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/10 bg-black/25 p-3 text-sm text-neutral-300">
+          <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
             No menu items found.
           </div>
         ) : (
@@ -834,17 +834,17 @@ export default function PortalRequestBuildPage() {
                   key={m.id}
                   type="button"
                   onClick={() => void addMenuLine(m.id)}
-                  className="rounded-xl border border-white/10 bg-black/35 p-3 text-left transition hover:bg-black/45 active:scale-[0.99]"
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-left transition hover:bg-[color:var(--theme-surface-inset)] active:scale-[0.99]"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-neutral-100">{title}</div>
-                      <div className="mt-1 text-xs text-neutral-400">
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                         {m.category ? <span>{String(m.category)}</span> : <span>Menu</span>}
                         {hrs != null ? <span className="ml-2">• {hrs}h</span> : null}
                       </div>
                     </div>
-                    <div className="text-xs text-neutral-300">{fmtMoney(price)}</div>
+                    <div className="text-xs text-[color:var(--theme-text-secondary)]">{fmtMoney(price)}</div>
                   </div>
                 </button>
               );
@@ -855,7 +855,7 @@ export default function PortalRequestBuildPage() {
 
       <section className={cardClass() + " space-y-3"}>
         {sectionTitle("Add custom line")}
-        <div className="text-xs text-neutral-500">
+        <div className="text-xs text-[color:var(--theme-text-muted)]">
           For concerns you already know. We’ll estimate labor and route parts quoting as needed.
         </div>
 
@@ -881,7 +881,7 @@ export default function PortalRequestBuildPage() {
 
       <section className={cardClass() + " space-y-3"}>
         {sectionTitle("Quote-only request")}
-        <div className="text-xs text-neutral-500">
+        <div className="text-xs text-[color:var(--theme-text-muted)]">
           Request pricing without committing to a work order line yet. Parts will be priced and returned to your portal.
         </div>
 
@@ -912,8 +912,8 @@ export default function PortalRequestBuildPage() {
       <section className={cardClass()}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-neutral-100">Review &amp; submit</div>
-            <div className="mt-1 text-xs text-neutral-500">
+            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Review &amp; submit</div>
+            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               You’ll review terms and submit your intake + request to the shop.
             </div>
           </div>
@@ -924,7 +924,7 @@ export default function PortalRequestBuildPage() {
         </div>
       </section>
 
-      <div className="pb-2 text-[0.75rem] text-neutral-500">
+      <div className="pb-2 text-[0.75rem] text-[color:var(--theme-text-muted)]">
         Tip: Menu items are pre-priced. Custom and quote-only lines can trigger parts pricing and AI assistance.
       </div>
 
@@ -937,7 +937,7 @@ export default function PortalRequestBuildPage() {
               <div className="font-blackops text-[0.9rem] uppercase tracking-[0.18em]" style={{ color: COPPER }}>
                 Review &amp; sign
               </div>
-              <div className="mt-1 text-xs text-neutral-300">
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Confirm your intake + request details and agree to terms before submitting.
               </div>
             </div>
@@ -945,63 +945,63 @@ export default function PortalRequestBuildPage() {
             <button
               type="button"
               onClick={() => setReviewOpen(false)}
-              className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-xs text-neutral-200 hover:bg-black/70"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
             >
               Close
             </button>
           </div>
 
           <div className="mt-4 grid gap-3">
-            <div className="rounded-2xl border border-white/10 bg-black/35 p-3">
-              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">Summary</div>
-              <div className="mt-2 text-sm text-neutral-100">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Summary</div>
+              <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">
                 {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"}
               </div>
-              <div className="mt-1 text-xs text-neutral-400">
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 {bookingLabel ? <span>{bookingLabel} • </span> : null}
-                WO <span className="font-mono text-neutral-300">{wo.id}</span> • Lines {lines.length} • Quote requests{" "}
+                WO <span className="font-mono text-[color:var(--theme-text-secondary)]">{wo.id}</span> • Lines {lines.length} • Quote requests{" "}
                 {quoteLines.length}
               </div>
 
-              <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
-                <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">Intake</div>
-                <div className="mt-2 text-sm text-neutral-100">{intakeConcern.trim() || "—"}</div>
-                {intakeDetails.trim() ? <div className="mt-1 text-xs text-neutral-400">{intakeDetails.trim()}</div> : null}
-                <div className="mt-2 text-xs text-neutral-500">
-                  Contact: <span className="text-neutral-300">{intakeContactPref || "—"}</span>
+              <div className="mt-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Intake</div>
+                <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">{intakeConcern.trim() || "—"}</div>
+                {intakeDetails.trim() ? <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{intakeDetails.trim()}</div> : null}
+                <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+                  Contact: <span className="text-[color:var(--theme-text-secondary)]">{intakeContactPref || "—"}</span>
                   {intakeMileage.trim() ? (
                     <>
                       {" "}
-                      • Mileage: <span className="text-neutral-300">{intakeMileage.trim()}</span>
+                      • Mileage: <span className="text-[color:var(--theme-text-secondary)]">{intakeMileage.trim()}</span>
                     </>
                   ) : null}
                 </div>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-3 text-xs text-neutral-300">
-              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-400">Disclaimers</div>
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-neutral-300">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
+              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Disclaimers</div>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-[color:var(--theme-text-secondary)]">
                 <li>Prices and estimates are subject to change after inspection and diagnosis.</li>
                 <li>This is a request and is not confirmed until the shop approves the appointment.</li>
                 <li>Parts availability and additional findings may affect timing and total cost.</li>
               </ul>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               <LegalTerms onAgreeChange={setAgreed} defaultOpen />
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-neutral-300">
-                  Signature <span className="text-neutral-500">(recommended)</span>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                  Signature <span className="text-[color:var(--theme-text-muted)]">(recommended)</span>
                 </div>
-                <div className="text-[0.7rem] text-neutral-500">
+                <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                   {sigUrl ? (
                     <span className="text-emerald-200">Saved</span>
                   ) : (
-                    <span className="text-neutral-400">Not provided</span>
+                    <span className="text-[color:var(--theme-text-secondary)]">Not provided</span>
                   )}
                 </div>
               </div>
@@ -1019,7 +1019,7 @@ export default function PortalRequestBuildPage() {
                   {submitting ? "Submitting…" : "Agree & Submit request"}
                 </Button>
 
-                <span className="text-[0.7rem] text-neutral-500">Staff will review and approve the appointment.</span>
+                <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">Staff will review and approve the appointment.</span>
               </div>
             </div>
           </div>

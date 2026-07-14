@@ -12,10 +12,10 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         ref={ref}
         className={clsx(
           "w-full min-h-[100px] rounded-[var(--theme-radius-md,0.5rem)] border px-4 py-2 text-sm",
-          "border-[var(--theme-input-border,#334155)]",
-          "bg-[var(--theme-input-bg,#0B1220)]",
-          "text-[var(--theme-input-text,#FFFFFF)]",
-          "placeholder:text-[var(--theme-text-secondary,#94A3B8)]",
+          "border-[var(--theme-input-border,var(--theme-border-soft))]",
+          "bg-[var(--theme-input-bg,var(--theme-surface-page))]",
+          "text-[var(--theme-input-text,var(--theme-text-inverse))]",
+          "placeholder:text-[var(--theme-text-secondary,var(--theme-text-muted))]",
           "backdrop-blur-sm",
           "focus:outline-none focus:ring-2",
           "focus:ring-[var(--brand-primary,#C97A3D)]",

@@ -66,7 +66,7 @@ export default function ClientDebug(): JSX.Element {
 
   if (!info) {
     return (
-      <div className="p-4 text-sm text-neutral-400">Loading auth debug…</div>
+      <div className="p-4 text-sm text-[color:var(--theme-text-secondary)]">Loading auth debug…</div>
     );
   }
 
@@ -86,7 +86,7 @@ export default function ClientDebug(): JSX.Element {
         </div>
       </div>
 
-      <pre className="rounded bg-neutral-900 p-3 text-xs overflow-auto">
+      <pre className="rounded bg-[color:var(--theme-surface-panel)] p-3 text-xs overflow-auto">
         {JSON.stringify(repl, null, 2)}
       </pre>
     </div>

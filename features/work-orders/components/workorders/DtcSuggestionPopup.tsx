@@ -72,7 +72,7 @@ function confidenceTone(
   if (confidence === "low") {
     return "border-red-500/40 bg-red-500/10 text-red-100";
   }
-  return "border-white/10 bg-black/40 text-neutral-200";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]";
 }
 
 function buildSummaryText(summary: DtcAnalysisSummary): string {
@@ -416,27 +416,27 @@ export default function DtcSuggestionModal({
     >
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Vehicle context
             </div>
-            <div className="mt-2 text-sm text-neutral-100">
+            <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">
               {vehicleLabel || "No vehicle linked"}
             </div>
-            <div className="mt-1 text-xs text-neutral-500">
+            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               {vehicleMeta || "Using work order context"}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               DTC code
             </label>
             <input
               value={dtcCode}
               onChange={(e) => setDtcCode(e.target.value.toUpperCase())}
               placeholder="P0420 / SPN FMI / OEM code"
-              className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/50"
+              className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/50"
             />
 
             <button
@@ -450,9 +450,9 @@ export default function DtcSuggestionModal({
           </div>
 
           {summary ? (
-            <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                   Current summary
                 </div>
                 <span
@@ -463,19 +463,19 @@ export default function DtcSuggestionModal({
               </div>
 
               {summary.title ? (
-                <div className="mt-2 text-sm font-semibold text-neutral-100">
+                <div className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {summary.title}
                 </div>
               ) : null}
 
               {summary.description ? (
-                <div className="mt-2 text-sm text-neutral-300">
+                <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                   {summary.description}
                 </div>
               ) : null}
 
               {summary.diagnosis ? (
-                <div className="mt-3 text-sm text-neutral-200">
+                <div className="mt-3 text-sm text-[color:var(--theme-text-primary)]">
                   {summary.diagnosis}
                 </div>
               ) : null}
@@ -484,7 +484,7 @@ export default function DtcSuggestionModal({
                 <button
                   type="button"
                   onClick={() => void sendToCauseCorrection()}
-                  className="inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-100 transition hover:bg-white/10"
+                  className="inline-flex w-full items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
                 >
                   Send to Cause / Correction
                 </button>
@@ -493,7 +493,7 @@ export default function DtcSuggestionModal({
                   type="button"
                   onClick={() => void handleApplyToJob()}
                   disabled={saving}
-                  className="inline-flex w-full items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-black shadow-[0_0_18px_rgba(197,122,74,0.45)] transition hover:brightness-110 disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(197,122,74,0.45)] transition hover:brightness-110 disabled:opacity-60"
                 >
                   {saving ? "Applying…" : "Apply summary to job"}
                 </button>
@@ -502,18 +502,18 @@ export default function DtcSuggestionModal({
           ) : null}
         </div>
 
-        <div className="flex min-h-[540px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-          <div className="border-b border-white/10 px-4 py-3">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+        <div className="flex min-h-[540px] flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Diagnostic conversation
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 py-4">
             {loadingThread ? (
-              <div className="text-sm text-neutral-400">Loading saved thread…</div>
+              <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading saved thread…</div>
             ) : messages.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-black/25 p-4 text-sm text-neutral-400">
+              <div className="rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
                 Start with a DTC code, then keep feeding it test results.
               </div>
             ) : (
@@ -523,11 +523,11 @@ export default function DtcSuggestionModal({
                     key={msg.id}
                     className={
                       msg.role === "assistant"
-                        ? "mr-8 rounded-2xl border border-[var(--accent-copper-soft)]/25 bg-[var(--accent-copper-faint)] px-4 py-3 text-sm text-neutral-100"
-                        : "ml-8 rounded-2xl border border-white/10 bg-black/45 px-4 py-3 text-sm text-neutral-200"
+                        ? "mr-8 rounded-2xl border border-[var(--accent-copper-soft)]/25 bg-[var(--accent-copper-faint)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)]"
+                        : "ml-8 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)]"
                     }
                   >
-                    <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                    <div className="mb-1 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                       {msg.role === "assistant" ? "AI diagnostic assist" : "You"}
                     </div>
                     <div className="whitespace-pre-wrap">{msg.content}</div>
@@ -535,7 +535,7 @@ export default function DtcSuggestionModal({
                 ))}
 
                 {busy ? (
-                  <div className="mr-8 rounded-2xl border border-[var(--accent-copper-soft)]/25 bg-[var(--accent-copper-faint)] px-4 py-3 text-sm text-neutral-100">
+                  <div className="mr-8 rounded-2xl border border-[var(--accent-copper-soft)]/25 bg-[var(--accent-copper-faint)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)]">
                     Thinking through code logic, vehicle context, and your latest test results…
                   </div>
                 ) : null}
@@ -545,8 +545,8 @@ export default function DtcSuggestionModal({
             )}
           </div>
 
-          <div className="border-t border-white/10 px-4 py-4">
-            <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+          <div className="border-t border-[color:var(--theme-border-soft)] px-4 py-4">
+            <label className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Add test result or observation
             </label>
             <textarea
@@ -554,14 +554,14 @@ export default function DtcSuggestionModal({
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
               placeholder="Example: Rear O2 stays near 0.72V. Fuel trims +18 at idle. No exhaust leak found ahead of catalyst."
-              className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/50"
+              className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/50"
             />
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => void handleContinue()}
                 disabled={busy || loadingThread || messages.length === 0}
-                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-100 transition hover:bg-white/10 disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
               >
                 {busy ? "Working…" : "Continue diagnosis"}
               </button>
@@ -575,7 +575,7 @@ export default function DtcSuggestionModal({
                   setDtcCode("");
                 }}
                 disabled={busy}
-                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-300 transition hover:bg-white/10 disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
               >
                 Reset local view
               </button>

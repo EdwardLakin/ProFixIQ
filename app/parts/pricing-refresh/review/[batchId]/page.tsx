@@ -158,12 +158,12 @@ export default function PricingBatchReviewPage(): JSX.Element {
   }
 
   return (
-    <div className="space-y-4 p-4 text-white">
-      <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+    <div className="space-y-4 p-4 text-[color:var(--theme-text-primary)]">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold">Review Supplier Batch</h1>
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
               Confirm mappings before creating fresh pricing snapshots.
             </p>
           </div>
@@ -172,18 +172,18 @@ export default function PricingBatchReviewPage(): JSX.Element {
             type="button"
             onClick={() => void applyBatch()}
             disabled={applying || loading}
-            className="rounded-lg border border-[#8b5a2b]/60 bg-black/30 px-3 py-2 text-sm font-semibold text-[#c88a4d] disabled:opacity-60"
+            className="rounded-lg border border-[#8b5a2b]/60 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-semibold text-[#c88a4d] disabled:opacity-60"
           >
             {applying ? "Applying…" : "Apply Batch"}
           </button>
         </div>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
         {loading ? (
-          <div className="text-sm text-neutral-400">Loading batch…</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading batch…</div>
         ) : rows.length === 0 ? (
-          <div className="text-sm text-neutral-400">No rows found.</div>
+          <div className="text-sm text-[color:var(--theme-text-secondary)]">No rows found.</div>
         ) : (
           <div className="space-y-3">
             {rows.map((row) => {
@@ -194,13 +194,13 @@ export default function PricingBatchReviewPage(): JSX.Element {
               return (
                 <div
                   key={row.id}
-                  className="space-y-3 rounded-lg border border-white/10 bg-black/30 p-3"
+                  className="space-y-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
                 >
                   <div>
-                    <div className="font-medium text-neutral-100">
+                    <div className="font-medium text-[color:var(--theme-text-primary)]">
                       {row.raw_description ?? row.raw_part_number ?? "Imported row"}
                     </div>
-                    <div className="mt-1 text-xs text-neutral-500">
+                    <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                       Part #: {row.raw_part_number ?? "—"} • Qty: {row.raw_qty ?? "—"} •
                       Cost: {row.raw_unit_cost ?? "—"} • Status: {row.review_status}
                     </div>
@@ -219,7 +219,7 @@ export default function PricingBatchReviewPage(): JSX.Element {
                         });
                       }}
                       disabled={savingRowId === row.id}
-                      className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                      className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
                     >
                       <option value="">Select repair item</option>
                       {repairItems.map((repair) => {
@@ -253,7 +253,7 @@ export default function PricingBatchReviewPage(): JSX.Element {
                         });
                       }}
                       disabled={!row.mapped_menu_repair_item_id || savingRowId === row.id}
-                      className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                      className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
                     >
                       <option value="">Select repair part</option>
                       {partsForRepair.map((part) => (
@@ -275,7 +275,7 @@ export default function PricingBatchReviewPage(): JSX.Element {
                         })
                       }
                       disabled={savingRowId === row.id}
-                      className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-neutral-100 disabled:opacity-60"
+                      className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] disabled:opacity-60"
                     >
                       {savingRowId === row.id ? "Saving…" : "Confirm Row"}
                     </button>

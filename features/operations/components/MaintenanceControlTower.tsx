@@ -48,27 +48,27 @@ export function MaintenanceControlTower({
     <section className="space-y-6">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-neutral-500">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
             {headerLabel}
           </p>
           <h1
-            className="mt-1 text-3xl text-neutral-100 md:text-4xl"
+            className="mt-1 text-3xl text-[color:var(--theme-text-primary)] md:text-4xl"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
             {title}
           </h1>
-          <p className="mt-2 max-w-xl text-sm text-neutral-400">{subtitle}</p>
-          <p className="mt-1 text-[11px] text-neutral-500">
+          <p className="mt-2 max-w-xl text-sm text-[color:var(--theme-text-secondary)]">{subtitle}</p>
+          <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
             Actor surface: {actorSurfaceLabel}
           </p>
 
           {focusFilter?.active && (
-            <p className="mt-2 text-[11px] text-neutral-400">
-              Filter: <span className="text-neutral-200">{focusFilter.label}</span>{" "}
+            <p className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
+              Filter: <span className="text-[color:var(--theme-text-primary)]">{focusFilter.label}</span>{" "}
               <button
                 type="button"
                 onClick={focusFilter.onClear}
-                className="ml-2 underline decoration-neutral-600 underline-offset-2 hover:text-neutral-200"
+                className="ml-2 underline decoration-neutral-600 underline-offset-2 hover:text-[color:var(--theme-text-primary)]"
               >
                 Clear
               </button>
@@ -80,7 +80,7 @@ export function MaintenanceControlTower({
           <select
             value={locationFilter.value}
             onChange={(e) => locationFilter.onChange(e.target.value)}
-            className="rounded-xl border border-[color:var(--metal-border-soft)] bg-black/60 px-3 py-2 text-xs text-neutral-200 shadow-[0_12px_35px_rgba(0,0,0,0.85)]"
+            className="rounded-xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]"
           >
             <option value="all">{locationFilter.allLabel ?? "All locations"}</option>
             {locationFilter.options.map((option) => (

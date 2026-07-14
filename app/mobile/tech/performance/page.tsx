@@ -171,21 +171,21 @@ export default function MobileTechPerformancePage() {
   const hasData = rows.length > 0;
 
   return (
-    <main className="mobile-tech-page min-h-screen text-white">
+    <main className="mobile-tech-page min-h-screen text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-md flex-col gap-3 px-4 pb-8 pt-4">
         <header className="mobile-tech-panel space-y-1 px-4 py-3">
-          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">ProFixIQ • Tech</div>
+          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">ProFixIQ • Tech</div>
           <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-sky-300">My Performance</h1>
-          <p className="text-[0.8rem] text-neutral-400">Jobs, hours and efficiency for your chosen time range.</p>
-          <p className="text-[0.68rem] text-neutral-500">
+          <p className="text-[0.8rem] text-[color:var(--theme-text-secondary)]">Jobs, hours and efficiency for your chosen time range.</p>
+          <p className="text-[0.68rem] text-[color:var(--theme-text-muted)]">
             Productivity view: clocked hours are from labor segments (with timecard fallback), not attendance shift punches.
           </p>
         </header>
 
         <section className="mobile-tech-panel space-y-2 px-3 py-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">Time range</span>
-            <span className="text-[0.7rem] text-neutral-300">{dateRangeLabel}</span>
+            <span className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Time range</span>
+            <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">{dateRangeLabel}</span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {(["weekly", "monthly", "quarterly", "yearly"] as Range[]).map((r) => {
@@ -226,15 +226,15 @@ export default function MobileTechPerformancePage() {
         )}
 
         {!loading && !error && (
-          <section className="mobile-tech-panel space-y-1 px-3 py-3 text-xs text-neutral-200">
+          <section className="mobile-tech-panel space-y-1 px-3 py-3 text-xs text-[color:var(--theme-text-primary)]">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">AI summary</span>
-              {aiLoading && <span className="text-[0.65rem] text-neutral-400">Analyzing…</span>}
+              <span className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">AI summary</span>
+              {aiLoading && <span className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">Analyzing…</span>}
             </div>
             {aiSummary ? (
               <p className="whitespace-pre-wrap">{aiSummary}</p>
             ) : !aiLoading ? (
-              <p className="text-[0.7rem] text-neutral-400">No AI summary yet for this range.</p>
+              <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">No AI summary yet for this range.</p>
             ) : null}
           </section>
         )}
@@ -246,8 +246,8 @@ export default function MobileTechPerformancePage() {
 function StatTile({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div className="mobile-tech-stat px-3 py-3">
-      <div className="text-[0.62rem] uppercase tracking-[0.18em] text-neutral-400">{label}</div>
-      <div className={`mt-1 text-sm font-semibold text-neutral-100 ${accent ?? ""}`}>{value}</div>
+      <div className="text-[0.62rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">{label}</div>
+      <div className={`mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)] ${accent ?? ""}`}>{value}</div>
     </div>
   );
 }
@@ -258,7 +258,7 @@ function Notice({ children, tone = "default" }: { children: ReactNode; tone?: "d
       className={
         tone === "danger"
           ? "mobile-tech-panel border-red-500/35 bg-red-950/20 px-3 py-3 text-[0.8rem] text-red-100"
-          : "mobile-tech-panel px-3 py-4 text-[0.8rem] text-neutral-400"
+          : "mobile-tech-panel px-3 py-4 text-[0.8rem] text-[color:var(--theme-text-secondary)]"
       }
     >
       {children}

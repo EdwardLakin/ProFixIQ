@@ -148,7 +148,7 @@ export function PartsRequestWorkbench({
   }
 
   return (
-    <div className="space-y-4 p-4 text-white">
+    <div className="space-y-4 p-4 text-[color:var(--theme-text-primary)]">
       <PartsRequestWorkbenchHeader
         requestLabel={model.requestLabel}
         status={model.status}
@@ -351,28 +351,28 @@ function ConfirmConflictDialog({
   if (!item) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl border border-amber-400/30 bg-neutral-950 p-5 text-white shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--theme-surface-overlay)] p-4 backdrop-blur-sm">
+      <div className="w-full max-w-lg rounded-2xl border border-amber-400/30 bg-[color:var(--theme-surface-page)] p-5 text-[color:var(--theme-text-primary)] shadow-2xl">
         <div className="text-lg font-semibold text-amber-100">Confirm possible mismatch</div>
-        <p className="mt-2 text-sm text-neutral-300">
+        <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
           The requested part and selected inventory part may not match. Confirm only if you reviewed both values.
         </p>
         <div className="mt-4 grid gap-3 text-sm">
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-            <div className="text-xs uppercase tracking-[0.14em] text-neutral-500">Requested</div>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Requested</div>
             <div className="mt-1 font-medium">{item.description || "—"}</div>
-            <div className="mt-1 text-xs text-neutral-400">Part #: {item.requestedPartNumber || "—"}</div>
+            <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Part #: {item.requestedPartNumber || "—"}</div>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-            <div className="text-xs uppercase tracking-[0.14em] text-neutral-500">Selected inventory part</div>
+          <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Selected inventory part</div>
             <div className="mt-1 font-medium">{selectedPart?.label ?? "Unknown selected part"}</div>
-            <div className="mt-1 text-xs text-neutral-400">
+            <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Part #: {selectedPart?.partNumber || selectedPart?.sku || "—"}
             </div>
           </div>
         </div>
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" className="rounded-lg border border-white/10 px-3 py-2 text-sm text-neutral-200 hover:bg-white/5" onClick={onCancel}>
+          <button type="button" className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]" onClick={onCancel}>
             Cancel
           </button>
           <button type="button" className="rounded-lg border border-amber-300/40 bg-amber-500/15 px-3 py-2 text-sm font-medium text-amber-100 hover:bg-amber-500/25" onClick={onConfirm}>

@@ -145,27 +145,27 @@ export default function AiActionApprovalsInboxClient() {
         <SummaryCard label="Recently decided" value={summary.approved + summary.rejected + summary.expired} />
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+      <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <SelectFilter label="Status" value={status} onChange={(value) => setStatus(value as never)} options={["pending", "approved", "rejected", "expired", "all"]} />
           <SelectFilter label="Domain" value={domain} onChange={(value) => setDomain(value as never)} options={["all", "work_orders", "shop_boost"]} />
           <SelectFilter label="Risk" value={risk} onChange={(value) => setRisk(value as never)} options={["all", "critical", "high", "medium", "low"]} />
-          <label className="flex flex-col gap-1 text-xs text-neutral-300 md:col-span-2">
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)] md:col-span-2">
             Search
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search approval title or subject"
-              className="rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-sm text-white outline-none ring-0 placeholder:text-neutral-500"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none ring-0 placeholder:text-[color:var(--theme-text-muted)]"
             />
           </label>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-neutral-400">
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[color:var(--theme-text-secondary)]">
           <button
             type="button"
             onClick={() => void load(null)}
-            className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+            className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
           >
             Refresh
           </button>
@@ -173,21 +173,21 @@ export default function AiActionApprovalsInboxClient() {
         </div>
       </div>
 
-      {loading ? <p className="text-sm text-neutral-400">Loading approval inbox…</p> : null}
+      {loading ? <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading approval inbox…</p> : null}
       {error ? <p className="rounded-xl border border-red-400/30 bg-red-950/20 p-3 text-sm text-red-200">{error}</p> : null}
 
       {!loading && !error && rows.length === 0 ? (
-        <p className="rounded-2xl border border-white/10 bg-black/25 p-4 text-sm text-neutral-300">
+        <p className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
           No approval requests matched your filters.
         </p>
       ) : null}
 
       <div className="space-y-3">
         {rows.map((row) => (
-          <article key={row.id} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+          <article key={row.id} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
             <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase">
-              <span className="rounded-full border border-white/20 px-2 py-0.5 text-neutral-200">{row.status}</span>
-              <span className="rounded-full border border-white/20 px-2 py-0.5 text-neutral-200">{row.riskLevel ?? "unknown"} risk</span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[color:var(--theme-text-primary)]">{row.status}</span>
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[color:var(--theme-text-primary)]">{row.riskLevel ?? "unknown"} risk</span>
               <span className="rounded-full border border-cyan-400/35 px-2 py-0.5 text-cyan-200">{row.domain === "shop_boost" ? "Shop Boost" : "Work order"}</span>
               {row.ownerPinRequired ? (
                 <span className="rounded-full border border-amber-400/40 px-2 py-0.5 text-amber-200">
@@ -196,10 +196,10 @@ export default function AiActionApprovalsInboxClient() {
               ) : null}
             </div>
 
-            <h2 className="mt-2 text-base font-semibold text-white">{row.title}</h2>
-            <p className="mt-1 text-sm text-neutral-300">{row.description}</p>
+            <h2 className="mt-2 text-base font-semibold text-[color:var(--theme-text-primary)]">{row.title}</h2>
+            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{row.description}</p>
 
-            <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-neutral-400 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-[color:var(--theme-text-secondary)] md:grid-cols-2 xl:grid-cols-4">
               <span>Requested: {row.requestedAt ? new Date(row.requestedAt).toLocaleString() : "—"}</span>
               <span>Requested by: {row.requestedByLabel ?? "—"}</span>
               <span>Decided: {row.decidedAt ? new Date(row.decidedAt).toLocaleString() : "—"}</span>
@@ -250,7 +250,7 @@ export default function AiActionApprovalsInboxClient() {
         <button
           type="button"
           onClick={() => void load(nextCursor)}
-          className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/20"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
         >
           Next page
         </button>
@@ -261,9 +261,9 @@ export default function AiActionApprovalsInboxClient() {
 
 function SummaryCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-      <p className="text-[10px] uppercase tracking-[0.15em] text-neutral-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-white">{value}</p>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+      <p className="text-[10px] uppercase tracking-[0.15em] text-[color:var(--theme-text-muted)]">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">{value}</p>
     </div>
   );
 }
@@ -280,12 +280,12 @@ function SelectFilter({
   options: string[];
 }) {
   return (
-    <label className="flex flex-col gap-1 text-xs text-neutral-300">
+    <label className="flex flex-col gap-1 text-xs text-[color:var(--theme-text-secondary)]">
       {label}
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-lg border border-white/15 bg-black/35 px-2.5 py-2 text-sm text-white"
+        className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-2 text-sm text-[color:var(--theme-text-primary)]"
       >
         {options.map((option) => (
           <option key={option} value={option}>

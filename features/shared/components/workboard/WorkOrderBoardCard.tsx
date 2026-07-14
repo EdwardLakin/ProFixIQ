@@ -28,12 +28,12 @@ function priorityChipClass(priority: number | null | undefined): string {
     return "border-orange-500/50 bg-orange-500/15 text-orange-200";
   }
   if (priority === 3) {
-    return "border-white/10 bg-white/5 text-neutral-300";
+    return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]";
   }
   if (priority === 4) {
-    return "border-slate-500/40 bg-slate-500/10 text-slate-300";
+    return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]";
   }
-  return "border-white/10 bg-white/5 text-neutral-300";
+  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]";
 }
 
 export default function WorkOrderBoardCard(props: {
@@ -59,7 +59,7 @@ export default function WorkOrderBoardCard(props: {
   const content = (
     <div
       className={[
-        "rounded-2xl border bg-black/25 backdrop-blur transition",
+        "rounded-2xl border bg-[color:var(--theme-surface-inset)] backdrop-blur transition",
         accent.border,
         compact ? "p-3" : "p-4",
       ].join(" ")}
@@ -73,7 +73,7 @@ export default function WorkOrderBoardCard(props: {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm font-extrabold text-white">
+            <div className="text-sm font-extrabold text-[color:var(--theme-text-primary)]">
               {row.custom_id ?? "Work order"}
             </div>
 
@@ -114,11 +114,11 @@ export default function WorkOrderBoardCard(props: {
             ) : null}
           </div>
 
-          <div className="mt-1 truncate text-sm font-semibold text-neutral-200">
+          <div className="mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
             {row.display_name ?? "Customer"}
           </div>
 
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-400">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--theme-text-secondary)]">
             {row.unit_label ? <span>Unit {row.unit_label}</span> : null}
             {row.vehicle_label ? <span>{row.vehicle_label}</span> : null}
             {variant !== "portal" && row.assigned_summary ? (
@@ -127,14 +127,14 @@ export default function WorkOrderBoardCard(props: {
           </div>
 
           {variant !== "portal" && (row.advisor_name || techLabel) ? (
-            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-neutral-400">
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
               {row.advisor_name ? (
-                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5">
                   Advisor: {row.advisor_name}
                 </span>
               ) : null}
               {techLabel ? (
-                <span data-testid="technician-assignment-badge" className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+                <span data-testid="technician-assignment-badge" className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5">
                   Assigned: {techLabel}
                 </span>
               ) : (
@@ -142,7 +142,7 @@ export default function WorkOrderBoardCard(props: {
                   Unassigned
                 </span>
               )}
-              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5">
+              <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5">
                 Labor: {laborStatus}
               </span>
             </div>
@@ -150,7 +150,7 @@ export default function WorkOrderBoardCard(props: {
         </div>
 
         <div className="shrink-0 text-right">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
             In state
           </div>
           <div
@@ -160,7 +160,7 @@ export default function WorkOrderBoardCard(props: {
                 ? "text-red-200"
                 : row.risk_level === "warn"
                   ? "text-amber-200"
-                  : "text-neutral-200",
+                  : "text-[color:var(--theme-text-primary)]",
             ].join(" ")}
           >
             {timeAgoLabel(row.time_in_stage_seconds ?? null)}
@@ -169,14 +169,14 @@ export default function WorkOrderBoardCard(props: {
       </div>
 
       <div className="mt-4">
-        <div className="flex items-center justify-between text-[11px] text-neutral-400">
+        <div className="flex items-center justify-between text-[11px] text-[color:var(--theme-text-secondary)]">
           <span>
             {row.jobs_completed}/{row.jobs_total} jobs complete
           </span>
           {!compact ? <span>{row.progress_pct}%</span> : null}
         </div>
 
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/8">
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
           <div
             className={`h-full rounded-full ${accent.progress}`}
             style={{ width: `${progressWidth}%` }}
@@ -189,13 +189,13 @@ export default function WorkOrderBoardCard(props: {
         row.jobs_blocked != null ||
         row.jobs_waiting_parts != null) ? (
         <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
             Open {row.jobs_open ?? 0}
           </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
             Blocked (parts/on hold) {row.jobs_blocked ?? 0}
           </span>
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200">
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
             Waiting parts {row.jobs_waiting_parts ?? 0}
           </span>
         </div>
@@ -206,7 +206,7 @@ export default function WorkOrderBoardCard(props: {
           {blockers.map((chip) => (
             <span
               key={chip}
-              className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-neutral-200"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[11px] font-semibold text-[color:var(--theme-text-primary)]"
             >
               {chip}
             </span>
@@ -215,7 +215,7 @@ export default function WorkOrderBoardCard(props: {
       ) : null}
 
       {variant === "portal" && row.portal_status_note ? (
-        <div className="mt-3 text-xs text-neutral-300">
+        <div className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
           {row.portal_status_note}
         </div>
       ) : null}

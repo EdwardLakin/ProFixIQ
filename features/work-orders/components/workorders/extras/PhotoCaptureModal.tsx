@@ -132,24 +132,24 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
       size="sm"
     >
       <div className="space-y-3">
-        <div className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
             Job photo
           </div>
-          <div className="mt-1 text-xs text-neutral-400">
+          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Attach supporting evidence for the job card, approval flow, and future history.
           </div>
         </div>
 
         <div className="flex items-end justify-between gap-3">
           <div className="space-y-1">
-            <label className="block text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+            <label className="block text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Source
             </label>
             <select
               value={source}
               onChange={(e) => setSource(e.target.value as Source)}
-              className="w-full rounded-md border border-[var(--metal-border-soft)] bg-black/60 px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
+              className="w-full rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
             >
               <option value="camera">Camera</option>
               <option value="photos_files">Photos / Files</option>
@@ -159,7 +159,7 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
           <button
             type="button"
             onClick={handlePick}
-            className="inline-flex items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-100 hover:bg-white/5"
+            className="inline-flex items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
           >
             Choose
           </button>
@@ -189,7 +189,7 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
         )}
 
         {/* preview */}
-        <div className="rounded-2xl border border-white/10 bg-black/40 p-3">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           {file ? (
             <div className="flex items-start gap-3">
               {previewUrl ? (
@@ -197,19 +197,19 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
                 <img
                   src={previewUrl}
                   alt="Selected"
-                  className="h-16 w-16 rounded-lg border border-white/10 object-cover"
+                  className="h-16 w-16 rounded-lg border border-[color:var(--theme-border-soft)] object-cover"
                 />
               ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-white/10 bg-black/60 text-xs text-neutral-400">
+                <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-xs text-[color:var(--theme-text-secondary)]">
                   IMG
                 </div>
               )}
 
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold text-neutral-100">
+                <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {file.name}
                 </div>
-                <div className="mt-0.5 text-xs text-neutral-400">
+                <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
                   {formatBytes(file.size)}
                 </div>
                 <div className="mt-2 flex gap-2">
@@ -217,7 +217,7 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
                     type="button"
                     onClick={clearFile}
                     disabled={busy}
-                    className="rounded-full border border-white/10 bg-black/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-200 hover:bg-white/5 disabled:opacity-60"
+                    className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
                   >
                     Remove
                   </button>
@@ -225,7 +225,7 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
                     type="button"
                     onClick={handlePick}
                     disabled={busy}
-                    className="rounded-full border border-[var(--accent-copper-soft)]/70 bg-black/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-soft)] hover:bg-[var(--accent-copper-faint)] disabled:opacity-60"
+                    className="rounded-full border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-soft)] hover:bg-[var(--accent-copper-faint)] disabled:opacity-60"
                   >
                     Replace
                   </button>
@@ -233,15 +233,15 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
               </div>
             </div>
           ) : (
-            <div className="text-xs text-neutral-400">
+            <div className="text-xs text-[color:var(--theme-text-secondary)]">
               Pick a job photo. On mobile, “Camera” opens the camera. “Photos / Files” opens your library or file picker.
             </div>
           )}
         </div>
 
         {/* small helper */}
-        <p className="text-[11px] text-neutral-500">
-          Tip: Use <span className="text-neutral-300">Photos / Files</span> if you need to select an existing picture instead of capturing a new one.
+        <p className="text-[11px] text-[color:var(--theme-text-muted)]">
+          Tip: Use <span className="text-[color:var(--theme-text-secondary)]">Photos / Files</span> if you need to select an existing picture instead of capturing a new one.
         </p>
 
         {/* soft-disable submit by messaging (ModalShell likely controls button; we still guard in submit) */}

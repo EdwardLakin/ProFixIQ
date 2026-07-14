@@ -250,16 +250,16 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
   const provinceLabel = country === "CA" ? "Province" : "State";
   const postalLabel = country === "CA" ? "Postal code" : "ZIP code";
   const currency = country === "CA" ? "CAD" : "USD";
-  const inputClass = "border-white/10 bg-neutral-950/70 text-neutral-100 placeholder:text-neutral-500";
+  const inputClass = "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]";
 
   return (
-    <div className="fixed inset-0 z-[90] overflow-y-auto bg-black/75 p-4 backdrop-blur-sm">
-      <section className="mx-auto my-6 max-w-5xl rounded-[2rem] border border-white/10 bg-neutral-950 p-5 text-neutral-100 shadow-2xl">
-        <div className="flex flex-col gap-3 border-b border-white/10 pb-4 md:flex-row md:items-start md:justify-between">
+    <div className="fixed inset-0 z-[90] overflow-y-auto bg-[color:var(--theme-surface-overlay)] p-4 backdrop-blur-sm">
+      <section className="mx-auto my-6 max-w-5xl rounded-[2rem] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-5 text-[color:var(--theme-text-primary)] shadow-2xl">
+        <div className="flex flex-col gap-3 border-b border-[color:var(--theme-border-soft)] pb-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-200/85">Guided onboarding · Shop Settings</p>
-            <h2 className="mt-2 text-2xl font-semibold text-white">Confirm setup-critical shop defaults</h2>
-            <p className="mt-2 max-w-3xl text-sm text-neutral-300">These focused settings keep quotes, invoices, approvals, and booking hours ready without leaving guided onboarding.</p>
+            <h2 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">Confirm setup-critical shop defaults</h2>
+            <p className="mt-2 max-w-3xl text-sm text-[color:var(--theme-text-secondary)]">These focused settings keep quotes, invoices, approvals, and booking hours ready without leaving guided onboarding.</p>
           </div>
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Close</Button>
@@ -268,14 +268,14 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
           </div>
         </div>
 
-        {loading ? <div className="mt-5 rounded-xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-300">Loading current shop settings…</div> : null}
+        {loading ? <div className="mt-5 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">Loading current shop settings…</div> : null}
 
         <div className="mt-5 grid gap-5 lg:grid-cols-2">
           <Panel title="Business">
             <div className="grid gap-3 md:grid-cols-2">
               <Input className={inputClass} value={shopName} onChange={(e) => setShopName(e.target.value)} placeholder="Shop name" />
-              <select value={country} onChange={(e) => setCountry(e.target.value as CountryCode)} className="h-10 rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-neutral-100"><option value="US">United States</option><option value="CA">Canada</option></select>
-              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="h-10 rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-neutral-100">{TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}</select>
+              <select value={country} onChange={(e) => setCountry(e.target.value as CountryCode)} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]"><option value="US">United States</option><option value="CA">Canada</option></select>
+              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]">{TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}</select>
               <Input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" />
               <Input className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
               <Input className={inputClass} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Street address" />
@@ -290,8 +290,8 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
               <Input className={inputClass} value={laborRate} onChange={(e) => setLaborRate(e.target.value)} placeholder={`Labor rate (${currency}/hr)`} />
               <Input className={inputClass} value={diagnosticFee} onChange={(e) => setDiagnosticFee(e.target.value)} placeholder={`Diagnostic fee (${currency})`} />
               <Input className={inputClass} value={taxRate} onChange={(e) => setTaxRate(e.target.value)} placeholder="Tax rate (%)" />
-              <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm"><input type="checkbox" checked={shopSuppliesEnabled} onChange={(e) => setShopSuppliesEnabled(e.target.checked)} /> Shop supplies enabled</label>
-              <select value={shopSuppliesType} onChange={(e) => setShopSuppliesType(e.target.value === "flat" ? "flat" : "percentage")} className="h-10 rounded-md border border-white/10 bg-neutral-950/70 px-3 text-sm text-neutral-100"><option value="percentage">Percentage</option><option value="flat">Flat amount</option></select>
+              <label className="flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"><input type="checkbox" checked={shopSuppliesEnabled} onChange={(e) => setShopSuppliesEnabled(e.target.checked)} /> Shop supplies enabled</label>
+              <select value={shopSuppliesType} onChange={(e) => setShopSuppliesType(e.target.value === "flat" ? "flat" : "percentage")} className="h-10 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)]"><option value="percentage">Percentage</option><option value="flat">Flat amount</option></select>
               <Input className={inputClass} value={shopSuppliesPercent} onChange={(e) => setShopSuppliesPercent(e.target.value)} placeholder="Shop supplies (%)" />
               <Input className={inputClass} value={shopSuppliesFlatAmount} onChange={(e) => setShopSuppliesFlatAmount(e.target.value)} placeholder={`Shop supplies flat (${currency})`} />
               <Input className={inputClass} value={shopSuppliesCapAmount} onChange={(e) => setShopSuppliesCapAmount(e.target.value)} placeholder={`Supplies cap (${currency})`} />
@@ -299,13 +299,13 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
           </Panel>
 
           <Panel title="Hours">
-            <div className="divide-y divide-white/10 rounded-xl border border-white/10 bg-black/20">
+            <div className="divide-y divide-[color:var(--theme-border-soft)] rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
               {hours.map((row, idx) => (
                 <div key={row.weekday} className="grid gap-3 p-3 md:grid-cols-[70px_110px_1fr_1fr] md:items-center">
                   <div className="text-sm font-semibold">{WEEKDAYS[row.weekday]}</div>
                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!row.closed} onChange={(e) => setHours((prev) => prev.map((h, i) => i === idx ? { ...h, closed: e.target.checked } : h))} /> Closed</label>
-                  <input type="time" className="rounded-md border border-white/10 bg-neutral-950 px-3 py-2 text-sm" value={row.open_time} disabled={!!row.closed} onChange={(e) => setHours((prev) => prev.map((h, i) => i === idx ? { ...h, open_time: e.target.value } : h))} />
-                  <input type="time" className="rounded-md border border-white/10 bg-neutral-950 px-3 py-2 text-sm" value={row.close_time} disabled={!!row.closed} onChange={(e) => setHours((prev) => prev.map((h, i) => i === idx ? { ...h, close_time: e.target.value } : h))} />
+                  <input type="time" className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm" value={row.open_time} disabled={!!row.closed} onChange={(e) => setHours((prev) => prev.map((h, i) => i === idx ? { ...h, open_time: e.target.value } : h))} />
+                  <input type="time" className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm" value={row.close_time} disabled={!!row.closed} onChange={(e) => setHours((prev) => prev.map((h, i) => i === idx ? { ...h, close_time: e.target.value } : h))} />
                 </div>
               ))}
             </div>
@@ -320,7 +320,7 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
                 ["Auto-generate quote PDF", autoGeneratePdf, setAutoGeneratePdf],
                 ["Auto-send quote email", autoSendQuoteEmail, setAutoSendQuoteEmail],
               ] as Array<[string, boolean, (next: boolean) => void]>).map(([label, value, setter]) => (
-                <label key={String(label)} className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                <label key={String(label)} className="flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
                   <input type="checkbox" checked={Boolean(value)} onChange={(e) => setter(e.target.checked)} />
                   {label}
                 </label>
@@ -335,5 +335,5 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
 }
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"><h3 className="mb-3 text-lg font-semibold text-white">{title}</h3>{children}</section>;
+  return <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4"><h3 className="mb-3 text-lg font-semibold text-[color:var(--theme-text-primary)]">{title}</h3>{children}</section>;
 }

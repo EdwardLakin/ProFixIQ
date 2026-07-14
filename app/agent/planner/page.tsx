@@ -961,7 +961,7 @@ export default function PlannerPage() {
       title="Planner"
       description="Turn operational goals into reviewable action plans, then confirm and execute."
     >
-      <div className="metal-card rounded-3xl p-5 shadow-[0_12px_35px_rgba(0,0,0,0.85)]">
+      <div className="metal-card rounded-3xl p-5 shadow-[var(--theme-shadow-medium)]">
         <div className="flex flex-wrap gap-2">
           {plannerPresets.map((m) => (
             <Button
@@ -981,11 +981,11 @@ export default function PlannerPage() {
           ))}
         </div>
 
-        <div className="mt-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <div className="mt-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)]">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Active planner preset
           </div>
-          <div className="mt-1 text-sm text-neutral-100">
+          <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
             {plannerPresets.find((preset) => preset.id === planner)?.description}
           </div>
           {lane ? (
@@ -993,21 +993,21 @@ export default function PlannerPage() {
               Operational lane: {LANE_LABEL[lane]}
             </div>
           ) : null}
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-300">
-            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Goal</span>
-            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Proposed plan</span>
-            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Affected records</span>
-            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Review checks</span>
-            <span className="rounded-full border border-white/15 bg-black/30 px-3 py-1">Execute / stage</span>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--theme-text-secondary)]">
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">Goal</span>
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">Proposed plan</span>
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">Affected records</span>
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">Review checks</span>
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1">Execute / stage</span>
           </div>
         </div>
 
-        <div className="mt-3 flex items-center justify-between rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/30 p-3">
+        <div className="mt-3 flex items-center justify-between rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Advanced settings
             </div>
-            <div className="mt-1 text-xs text-neutral-400">
+            <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Internal planner tuning and safe create behavior.
             </div>
           </div>
@@ -1022,12 +1022,12 @@ export default function PlannerPage() {
         </div>
 
         {showAdvanced ? (
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-3 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-[var(--theme-shadow-medium)]">
             <div className="min-w-[220px]">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Data mode
               </div>
-              <div className="mt-1 text-sm text-neutral-100">
+              <div className="mt-1 text-sm text-[color:var(--theme-text-primary)]">
                 {allowCreate
                   ? "Setup mode (allow auto-create)"
                   : "Existing DB mode (no auto-create)"}
@@ -1066,7 +1066,7 @@ export default function PlannerPage() {
             </div>
 
             {!allowCreate ? (
-              <div className="w-full text-xs text-neutral-400">
+              <div className="w-full text-xs text-[color:var(--theme-text-secondary)]">
                 Existing DB mode is best for history lookups, bookings, status
                 questions, and live shop summaries.
               </div>
@@ -1074,11 +1074,11 @@ export default function PlannerPage() {
           </div>
         ) : null}
 
-        <div className="mt-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/40 p-4 shadow-[0_10px_26px_rgba(0,0,0,0.55)]">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <div className="mt-3 rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)]">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             What to do here
           </div>
-          <div className="mt-2 text-sm leading-7 text-neutral-200">
+          <div className="mt-2 text-sm leading-7 text-[color:var(--theme-text-primary)]">
             Describe the outcome you want Planner to produce. Planner will return proposed steps, affected records, and checks before execution.
           </div>
         </div>
@@ -1087,11 +1087,11 @@ export default function PlannerPage() {
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
           placeholder='e.g. "Create a work order for this complaint", "Move this booking to tomorrow morning", or "Prepare advisor follow-up for pending approvals"'
-          className="mt-3 min-h-[120px] w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-3 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+          className="mt-3 min-h-[120px] w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] shadow-[var(--theme-shadow-medium)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
         />
 
         {(hydratingContext || resolvedCustomerId || resolvedVehicleId) ? (
-          <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-neutral-300">
+          <div className="mt-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
             {hydratingContext
               ? "Loading customer and vehicle context…"
               : "Context linked from suggested action / record."}
@@ -1100,26 +1100,26 @@ export default function PlannerPage() {
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <label className="block">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Customer
             </div>
             <input
               value={customerQuery}
               onChange={(e) => setCustomerQuery(e.target.value)}
-              className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+              className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] shadow-[var(--theme-shadow-medium)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
               placeholder="e.g. John Smith"
             />
           </label>
 
           <label className="block">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Plate / VIN
             </div>
             <div className="flex gap-2">
               <input
                 value={plateOrVin}
                 onChange={(e) => setPlateOrVin(e.target.value)}
-                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] shadow-[var(--theme-shadow-medium)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
                 placeholder="e.g. 8ABC123 or 1FT…"
               />
               <Button
@@ -1135,13 +1135,13 @@ export default function PlannerPage() {
           </label>
 
           <label className="block">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Email invoice to
             </div>
             <input
               value={emailInvoiceTo}
               onChange={(e) => setEmailInvoiceTo(e.target.value)}
-              className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+              className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] shadow-[var(--theme-shadow-medium)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
               placeholder="customer@example.com"
               type="email"
               inputMode="email"
@@ -1149,27 +1149,27 @@ export default function PlannerPage() {
           </label>
 
           <label className="block">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Booking ID / Work Order ID
             </div>
             <div className="grid gap-2 md:grid-cols-2">
               <input
                 value={bookingId}
                 onChange={(e) => setBookingId(e.target.value)}
-                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] shadow-[var(--theme-shadow-medium)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
                 placeholder="Booking ID"
               />
               <input
                 value={workOrderId}
                 onChange={(e) => setWorkOrderId(e.target.value)}
-                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/60 p-2 text-sm text-neutral-100 placeholder:text-neutral-500 shadow-[0_10px_26px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
+                className="w-full rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] shadow-[var(--theme-shadow-medium)] focus:outline-none focus:ring-2 focus:ring-orange-400/50"
                 placeholder="Work Order ID"
               />
             </div>
           </label>
 
           <label className="block">
-            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Photo (DL / Registration)
             </div>
             <input
@@ -1177,7 +1177,7 @@ export default function PlannerPage() {
               accept="image/*"
               capture="environment"
               onChange={(e) => onPickPhoto(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-neutral-100 file:mr-4 file:rounded-xl file:border file:border-[color:var(--metal-border-soft)] file:bg-black/40 file:px-3 file:py-2 file:text-xs file:font-semibold file:uppercase file:tracking-[0.18em] file:text-neutral-100 hover:file:bg-black/60"
+              className="block w-full text-sm text-[color:var(--theme-text-primary)] file:mr-4 file:rounded-xl file:border file:border-[color:var(--metal-border-soft)] file:bg-[color:var(--theme-surface-inset)] file:px-3 file:py-2 file:text-xs file:font-semibold file:uppercase file:tracking-[0.18em] file:text-[color:var(--theme-text-primary)] hover:file:bg-[color:var(--theme-surface-overlay)]"
             />
             {photoPreview ? (
               <div className="relative mt-2 h-40 w-full overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft)]">
@@ -1194,20 +1194,20 @@ export default function PlannerPage() {
         </div>
 
         {runId ? (
-          <div className="mt-4 text-xs text-neutral-400">
+          <div className="mt-4 text-xs text-[color:var(--theme-text-secondary)]">
             Run ID:{" "}
-            <code className="rounded bg-black/40 px-2 py-1 text-[11px] text-neutral-200">
+            <code className="rounded bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)]">
               {runId}
             </code>
           </div>
         ) : null}
 
         {summary ? (
-          <div className="mt-4 rounded-3xl border border-orange-400/20 bg-orange-500/10 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
+          <div className="mt-4 rounded-3xl border border-orange-400/20 bg-orange-500/10 p-4 shadow-[var(--theme-shadow-medium)]">
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-300">
               Proposed plan
             </div>
-            <div className="text-sm text-neutral-100">{summary}</div>
+            <div className="text-sm text-[color:var(--theme-text-primary)]">{summary}</div>
           </div>
         ) : null}
 
@@ -1227,7 +1227,7 @@ export default function PlannerPage() {
                 return (
               <div
                 key={`${proposal.id}-${proposal.lane}-${index}`}
-                className={`rounded-3xl p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)] ${
+                className={`rounded-3xl p-4 shadow-[var(--theme-shadow-medium)] ${
                   isDraft
                     ? "border border-violet-400/30 bg-violet-950/20"
                     : "border border-sky-400/30 bg-sky-950/20"
@@ -1236,29 +1236,29 @@ export default function PlannerPage() {
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">
                   {isDraft ? "Draft proposal" : isConfirmable ? "Review before apply" : "Informational plan"}
                 </div>
-                <div className="mt-1 text-lg font-semibold text-white">{proposal.title}</div>
-                <div className="mt-2 text-sm text-neutral-200">{proposal.summary}</div>
+                <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{proposal.title}</div>
+                <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">{proposal.summary}</div>
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-black/35 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                  <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                       Proposed plan
                     </div>
                     <ul className="mt-2 space-y-1">
                       {proposal.proposed_steps.map((item, itemIdx) => (
-                        <li key={`${proposal.id}-step-${itemIdx}`} className="text-sm text-neutral-100">
+                        <li key={`${proposal.id}-step-${itemIdx}`} className="text-sm text-[color:var(--theme-text-primary)]">
                           • {item}
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-black/35 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                  <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                       Source rationale
                     </div>
                     <ul className="mt-2 space-y-1">
                       {proposal.source_rationale.map((item, itemIdx) => (
-                        <li key={`${proposal.id}-source-${itemIdx}`} className="text-sm text-neutral-100">
+                        <li key={`${proposal.id}-source-${itemIdx}`} className="text-sm text-[color:var(--theme-text-primary)]">
                           • {item}
                         </li>
                       ))}
@@ -1267,8 +1267,8 @@ export default function PlannerPage() {
                 </div>
 
                 {proposal.affected_records.length > 0 ? (
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                  <div className="mt-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                       Affected records
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -1316,13 +1316,13 @@ export default function PlannerPage() {
                 ) : null}
 
                 {proposal.review_actions.length > 0 ? (
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-300">
+                  <div className="mt-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
                       Review actions
                     </div>
                     <ul className="mt-2 space-y-1">
                       {proposal.review_actions.map((action, actionIdx) => (
-                        <li key={`${actionIdx}-${action}`} className="text-sm text-neutral-100">
+                        <li key={`${actionIdx}-${action}`} className="text-sm text-[color:var(--theme-text-primary)]">
                           • {action}
                         </li>
                       ))}
@@ -1335,7 +1335,7 @@ export default function PlannerPage() {
                     <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">
                       Required confirmation
                     </div>
-                    <label className="mt-2 flex items-center gap-2 text-sm text-neutral-100">
+                    <label className="mt-2 flex items-center gap-2 text-sm text-[color:var(--theme-text-primary)]">
                       <input
                         type="checkbox"
                         checked={Boolean(applyConfirmations[proposal.id])}
@@ -1407,7 +1407,7 @@ export default function PlannerPage() {
                     ) : null}
                   </div>
                 ) : proposal.result_summary ? (
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/35 p-3 text-sm text-neutral-200">
+                  <div className="mt-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)]">
                     {proposal.result_summary}
                   </div>
                 ) : null}
@@ -1419,20 +1419,20 @@ export default function PlannerPage() {
         ) : null}
 
         {notifications.length > 0 ? (
-          <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)]">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Affected records & alerts
             </div>
             <div className="space-y-2">
               {notifications.map((item, index) => (
                 <div
                   key={`${item.title ?? "alert"}-${index}`}
-                  className="rounded-2xl border border-white/10 bg-black/40 p-3"
+                  className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
                 >
-                  <div className="text-sm font-semibold text-white">
+                  <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     {item.title ?? "Alert"}
                   </div>
-                  <div className="mt-1 text-xs text-neutral-300">
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                     {item.message ?? ""}
                   </div>
                   {item.href ? (
@@ -1446,18 +1446,18 @@ export default function PlannerPage() {
           </div>
         ) : null}
 
-        <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-black/60 p-4 shadow-[0_12px_35px_rgba(0,0,0,0.75)]">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <div className="mt-4 rounded-3xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)]">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Review checks & execution log
           </div>
           {steps.length === 0 ? (
-            <div className="text-sm text-neutral-400">Generate a plan to begin review checks.</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">Generate a plan to begin review checks.</div>
           ) : (
             <ul className="space-y-2">
               {steps.map((s, i) => (
                 <li key={`${i}-${s}`} className="flex items-start gap-2">
                   <span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-orange-400/80" />
-                  <span className="text-sm text-neutral-100">{s}</span>
+                  <span className="text-sm text-[color:var(--theme-text-primary)]">{s}</span>
                 </li>
               ))}
             </ul>
@@ -1537,8 +1537,8 @@ export default function PlannerPage() {
       ) : null}
 
       {toast ? (
-        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-black/80 px-4 py-2 shadow-[0_16px_50px_rgba(0,0,0,0.85)]">
-          <div className="flex items-center gap-2 text-sm text-neutral-100">
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-2 shadow-[var(--theme-shadow-medium)]">
+          <div className="flex items-center gap-2 text-sm text-[color:var(--theme-text-primary)]">
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" />
             {toast}
           </div>

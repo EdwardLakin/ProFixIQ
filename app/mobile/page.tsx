@@ -348,13 +348,13 @@ export default function MobileHome() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-center px-4 py-16 text-center">
-          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
             ProFixIQ • Mobile
           </div>
-          <div className="mt-3 h-10 w-56 animate-pulse rounded-lg bg-neutral-900/70" />
-          <div className="mt-4 h-3 w-40 animate-pulse rounded bg-neutral-900/60" />
+          <div className="mt-3 h-10 w-56 animate-pulse rounded-lg bg-[color:var(--theme-surface-panel)]" />
+          <div className="mt-4 h-3 w-40 animate-pulse rounded bg-[color:var(--theme-surface-panel)]" />
         </div>
       </main>
     );
@@ -366,7 +366,7 @@ export default function MobileHome() {
 
   if (profile && canonicalRole === "mechanic") {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileTechHome
             techName={profile.full_name || "Tech"}
@@ -382,7 +382,7 @@ export default function MobileHome() {
 
   if (profile && role === "advisor") {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileAdvisorHome
             advisorName={profile.full_name || "Advisor"}
@@ -396,7 +396,7 @@ export default function MobileHome() {
 
   if (profile && (role === "manager" || role === "owner" || role === "admin" || role === "foreman")) {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileManagerHome
             managerName={profile.full_name || "Manager"}
@@ -410,7 +410,7 @@ export default function MobileHome() {
 
   if (profile && role === "lead_hand") {
     return (
-      <main className="min-h-screen bg-black text-white">
+      <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
         <div className="mx-auto flex max-w-5xl flex-col gap-4 px-0 pb-8 pt-2">
           <MobileLeadHome
             leadName={profile.full_name || "Lead"}
@@ -427,11 +427,11 @@ export default function MobileHome() {
   /* ------------------------------------------------------------------ */
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-6">
         {/* Header */}
         <header className="space-y-1 text-center">
-          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
+          <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
             ProFixIQ • Mobile
           </div>
 
@@ -440,15 +440,15 @@ export default function MobileHome() {
           </h1>
 
           {userName ? (
-            <p className="text-[0.8rem] text-neutral-400">
-              Hi <span className="font-medium text-neutral-100">{userName}</span>
+            <p className="text-[0.8rem] text-[color:var(--theme-text-secondary)]">
+              Hi <span className="font-medium text-[color:var(--theme-text-primary)]">{userName}</span>
               {shopName ? (
-                <span className="ml-1 text-neutral-300">({shopName})</span>
+                <span className="ml-1 text-[color:var(--theme-text-secondary)]">({shopName})</span>
               ) : null}
               .
             </p>
           ) : (
-            <p className="text-[0.8rem] text-neutral-400">
+            <p className="text-[0.8rem] text-[color:var(--theme-text-secondary)]">
               Stay on top of jobs from your phone.
             </p>
           )}
@@ -458,13 +458,13 @@ export default function MobileHome() {
         <section className="grid grid-cols-2 gap-3">
           <Link
             href="/mobile/work-orders"
-            className="flex h-28 flex-col justify-between rounded-2xl border border-orange-500/70 bg-gradient-to-br from-orange-500/20 via-black/40 to-black/80 p-3 shadow-lg shadow-orange-500/30"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-orange-500/70 bg-gradient-to-br from-orange-500/20 via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] p-3 shadow-lg shadow-orange-500/30"
           >
             <div className="text-[0.7rem] uppercase tracking-[0.18em] text-orange-200/80">
               Jobs
             </div>
             <div>
-              <div className="text-sm font-semibold text-white">Work Orders</div>
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Work Orders</div>
               <div className="mt-1 text-[0.75rem] text-orange-100/90">
                 View &amp; update live jobs.
               </div>
@@ -473,16 +473,16 @@ export default function MobileHome() {
 
           <Link
             href="/mobile/work-orders/create"
-            className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-br from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] p-3"
           >
-            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Quick
             </div>
             <div>
-              <div className="text-sm font-semibold text-white">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 New Work Order
               </div>
-              <div className="mt-1 text-[0.75rem] text-neutral-400">
+              <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                 Capture customer &amp; vehicle.
               </div>
             </div>
@@ -490,16 +490,16 @@ export default function MobileHome() {
 
           <Link
             href="/mobile/inspections"
-            className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-br from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] p-3"
           >
-            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Inspections
             </div>
             <div>
-              <div className="text-sm font-semibold text-white">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 Inspection Queue
               </div>
-              <div className="mt-1 text-[0.75rem] text-neutral-400">
+              <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                 Start &amp; review inspection forms.
               </div>
             </div>
@@ -507,23 +507,23 @@ export default function MobileHome() {
 
           <Link
             href="/mobile/messages"
-            className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
+            className="flex h-28 flex-col justify-between rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-br from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] p-3"
           >
-            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
+            <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               AI
             </div>
             <div>
-              <div className="text-sm font-semibold text-white">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                 AI &amp; Messages
               </div>
-              <div className="mt-1 text-[0.75rem] text-neutral-400">
+              <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                 Chat with AI and your team.
               </div>
             </div>
           </Link>
         </section>
 
-        <footer className="mt-2 text-center text-[0.65rem] text-neutral-500">
+        <footer className="mt-2 text-center text-[0.65rem] text-[color:var(--theme-text-muted)]">
           Mobile companion • Use the desktop app for admin &amp; setup.
         </footer>
       </div>

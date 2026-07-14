@@ -223,7 +223,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.08),transparent_34%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.06),transparent_32%),#050914] px-4 py-6 text-white">
+    <div className="min-h-[calc(100vh-4rem)] bg-[var(--theme-gradient-panel)] px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto max-w-6xl space-y-4">
         <GuidedPageStepPanel />
         {shouldShowImport ? (
@@ -233,30 +233,30 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
           />
         ) : null}
         {/* existing controls kept */}
-        <section className="rounded-[26px] border border-slate-700/60 bg-slate-950/70 px-4 py-5 shadow-[0_18px_48px_rgba(2,6,23,0.58)] sm:px-6 sm:py-6">
+        <section className="rounded-[26px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-5 shadow-[var(--theme-shadow-medium)] sm:px-6 sm:py-6">
           <div className="mb-3 flex flex-wrap items-end gap-3">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && load()}
               placeholder="Customer, VIN, WO, invoice, total, notes…"
-              className="min-w-[220px] flex-1 rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-1.5 text-sm"
+              className="min-w-[220px] flex-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-sm"
             />
             <input
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-1.5 text-sm"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-sm"
             />
             <input
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-1.5 text-sm"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-sm"
             />
             <button
               onClick={load}
-              className="rounded-full border border-slate-700/70 px-3 py-1.5 text-xs"
+              className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs"
             >
               Apply
             </button>
@@ -318,7 +318,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
                         ) : null}
                       </div>
                     }
-                    className="shadow-[0_14px_38px_rgba(2,6,23,0.82)]"
+                    className="shadow-[var(--theme-shadow-medium)]"
                   />
                 );
               })}

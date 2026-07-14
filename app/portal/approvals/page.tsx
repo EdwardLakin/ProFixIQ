@@ -220,14 +220,14 @@ export default function PortalApprovalsPage() {
   };
 
   const shell =
-    "rounded-3xl border border-white/10 bg-black/25 p-4 backdrop-blur-md shadow-card sm:p-6";
+    "rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card sm:p-6";
   const glass =
-    "rounded-2xl border border-white/10 bg-black/25 backdrop-blur-md shadow-card";
+    "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] backdrop-blur-md shadow-card";
   const metalHeader =
-    "rounded-2xl border border-white/10 bg-gradient-to-r from-slate-900/70 via-black/40 to-black/60 px-4 py-3";
+    "rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-r from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-3";
 
   return (
-    <div className="min-h-dvh app-metal-bg text-white">
+    <div className="min-h-dvh app-metal-bg text-[color:var(--theme-text-primary)]">
       <Toaster position="top-center" />
       <div className="mx-auto w-full max-w-5xl px-3 py-4 md:px-6">
         <div className={shell}>
@@ -236,20 +236,20 @@ export default function PortalApprovalsPage() {
               <div className="font-blackops text-[0.9rem] tracking-[0.18em]" style={{ color: COPPER }}>
                 APPROVALS
               </div>
-              <div className="mt-1 text-xs text-neutral-300">
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Review and approve parts for jobs awaiting your confirmation.
               </div>
-              <div className="mt-2 text-[0.7rem] text-neutral-400">
+              <div className="mt-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                 When all items on a job are approved, the job automatically moves forward.
               </div>
             </div>
 
             <div className="flex shrink-0 flex-col items-end gap-2">
               <div className="flex items-center gap-2">
-                <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[0.7rem] text-neutral-200">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)]">
                   {lines.length} jobs
                 </span>
-                <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[0.7rem] text-neutral-200">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)]">
                   {flattenedCount} items
                 </span>
               </div>
@@ -259,14 +259,14 @@ export default function PortalApprovalsPage() {
                   type="button"
                   onClick={() => void fetchApprovals({ silent: true })}
                   disabled={loading || refreshing}
-                  className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95 disabled:opacity-60"
+                  className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[0.7rem] font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-overlay)] active:scale-95 disabled:opacity-60"
                 >
                   {refreshing ? "Refreshing…" : "Refresh"}
                 </button>
                 <button
                   type="button"
                   onClick={() => router.push("/portal")}
-                  className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-3 py-1 text-[0.7rem] font-semibold text-neutral-100 transition hover:bg-black/70 active:scale-95"
+                  className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[0.7rem] font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-overlay)] active:scale-95"
                 >
                   Home
                 </button>
@@ -282,7 +282,7 @@ export default function PortalApprovalsPage() {
                 <button
                   type="button"
                   onClick={() => void fetchApprovals()}
-                  className="inline-flex items-center rounded-full border border-red-400/40 bg-black/40 px-4 py-2 text-xs font-semibold text-red-100 hover:bg-black/70"
+                  className="inline-flex items-center rounded-full border border-red-400/40 bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-red-100 hover:bg-[color:var(--theme-surface-overlay)]"
                 >
                   Try again
                 </button>
@@ -292,30 +292,30 @@ export default function PortalApprovalsPage() {
 
           {loading && !error ? (
             <div className="mt-4 grid gap-3">
-              <div className="h-24 rounded-2xl border border-white/10 bg-black/25 animate-pulse" />
-              <div className="h-24 rounded-2xl border border-white/10 bg-black/25 animate-pulse" />
-              <div className="h-24 rounded-2xl border border-white/10 bg-black/25 animate-pulse" />
+              <div className="h-24 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] animate-pulse" />
+              <div className="h-24 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] animate-pulse" />
+              <div className="h-24 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] animate-pulse" />
             </div>
           ) : null}
 
           {!loading && !error && lines.length === 0 ? (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-6 text-center">
-              <div className="text-sm font-semibold text-neutral-100">Nothing to approve</div>
-              <div className="mt-1 text-xs text-neutral-400">
+            <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-center">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Nothing to approve</div>
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 You don’t have any jobs waiting for approval right now.
               </div>
               <div className="mt-4 flex justify-center gap-2">
                 <button
                   type="button"
                   onClick={() => router.push("/portal")}
-                  className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-black/70"
+                  className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
                 >
                   Back to portal
                 </button>
                 <button
                   type="button"
                   onClick={() => void fetchApprovals({ silent: true })}
-                  className="inline-flex items-center rounded-full border border-white/18 bg-black/40 px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-black/70"
+                  className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
                 >
                   Refresh
                 </button>
@@ -384,39 +384,39 @@ export default function PortalApprovalsPage() {
 
                 return (
                   <div key={ln.id} className={glass}>
-                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 px-4 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-4 py-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="truncate text-sm font-semibold text-neutral-100">{title}</div>
+                          <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
                           <StatusBadge variant={summary.variant}>{summary.label}</StatusBadge>
                         </div>
-                        <div className="mt-2 text-xs text-neutral-300">
+                        <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
                           Decision needed: approve required parts so this work order can continue.
                         </div>
 
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] text-neutral-400">
-                          <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5">
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
+                          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
                             Work: {lineDecisionStatus.label}
                           </span>
-                          <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5">
+                          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
                             Approval: {formatDecisionStatus({ approvalState: ln.approval_state }).label}
                           </span>
                           {ln.hold_reason ? (
-                            <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5">
+                            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
                               Hold: {ln.hold_reason}
                             </span>
                           ) : null}
-                          <span className="rounded-full border border-white/10 bg-black/35 px-2 py-0.5">
+                          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5">
                             Created: {fmtDate(ln.created_at)}
                           </span>
                         </div>
                       </div>
 
                       <div className="shrink-0 text-right">
-                        <div className="text-[0.65rem] text-neutral-400 uppercase tracking-[0.18em]">
+                        <div className="text-[0.65rem] text-[color:var(--theme-text-secondary)] uppercase tracking-[0.18em]">
                           Work order
                         </div>
-                        <div className="mt-1 rounded-full border border-white/12 bg-black/40 px-3 py-1 font-mono text-[0.7rem] text-neutral-100">
+                        <div className="mt-1 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 font-mono text-[0.7rem] text-[color:var(--theme-text-primary)]">
                           {ln.work_order_id}
                         </div>
                       </div>
@@ -427,20 +427,20 @@ export default function PortalApprovalsPage() {
                       <DecisionEventFeed events={decisionEvents} compact className="mb-3" maxVisible={4} />
                       <div className="mb-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                         <div>
-                          <div className="text-[0.75rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+                          <div className="text-[0.75rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                             Evidence-backed recommendation
                           </div>
-                          <div className="text-[0.7rem] text-neutral-500">
+                          <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                             Review pricing and approve each required part. This is the action step for this job.
                           </div>
                         </div>
-                        <div className="text-[0.68rem] text-neutral-400">
-                          Primary action: <span className="text-neutral-200">Approve</span>
+                        <div className="text-[0.68rem] text-[color:var(--theme-text-secondary)]">
+                          Primary action: <span className="text-[color:var(--theme-text-primary)]">Approve</span>
                         </div>
                       </div>
 
-                      <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/35">
-                        <div className="grid grid-cols-12 gap-2 border-b border-white/10 bg-black/45 px-3 py-2 text-[0.65rem] uppercase tracking-[0.16em] text-neutral-400">
+                      <div className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+                        <div className="grid grid-cols-12 gap-2 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.65rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                           <div className="col-span-6">Description</div>
                           <div className="col-span-1 text-right">Qty</div>
                           <div className="col-span-2">Vendor</div>
@@ -448,9 +448,9 @@ export default function PortalApprovalsPage() {
                           <div className="col-span-1 text-right"> </div>
                         </div>
 
-                        <div className="divide-y divide-white/5">
+                        <div className="divide-y divide-[color:var(--theme-border-soft)]">
                           {items.length === 0 ? (
-                            <div className="px-3 py-3 text-xs text-neutral-400">
+                            <div className="px-3 py-3 text-xs text-[color:var(--theme-text-secondary)]">
                               No part items found for this job.
                             </div>
                           ) : (
@@ -461,16 +461,16 @@ export default function PortalApprovalsPage() {
                               return (
                                 <div key={it.id} className="grid grid-cols-12 gap-2 px-3 py-3">
                                   <div className="col-span-6 min-w-0">
-                                    <div className="truncate text-sm text-neutral-100">
+                                    <div className="truncate text-sm text-[color:var(--theme-text-primary)]">
                                       {it.description ?? "—"}
                                     </div>
-                                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] text-neutral-400">
+                                    <div className="mt-1 flex flex-wrap items-center gap-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                                       <span
                                         className={cx(
                                           "rounded-full border px-2 py-0.5",
                                           approved
                                             ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
-                                            : "border-white/10 bg-black/40 text-neutral-300",
+                                            : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]",
                                         )}
                                       >
                                         {approved ? "Approved" : "Awaiting approval"}
@@ -478,15 +478,15 @@ export default function PortalApprovalsPage() {
                                     </div>
                                   </div>
 
-                                  <div className="col-span-1 text-right text-sm text-neutral-100">
+                                  <div className="col-span-1 text-right text-sm text-[color:var(--theme-text-primary)]">
                                     {it.qty ?? 1}
                                   </div>
 
-                                  <div className="col-span-2 text-sm text-neutral-200">
+                                  <div className="col-span-2 text-sm text-[color:var(--theme-text-primary)]">
                                     {it.vendor ?? "—"}
                                   </div>
 
-                                  <div className="col-span-2 text-right text-sm text-neutral-100">
+                                  <div className="col-span-2 text-right text-sm text-[color:var(--theme-text-primary)]">
                                     {fmtMoney(it.quoted_price)}
                                   </div>
 
@@ -534,9 +534,9 @@ export default function PortalApprovalsPage() {
                         </div>
                       </div>
 
-                      <div className="mt-3 text-[0.7rem] text-neutral-500">
+                      <div className="mt-3 text-[0.7rem] text-[color:var(--theme-text-muted)]">
                         If every item on this job is approved, the job will automatically move to{" "}
-                        <span className="text-neutral-300">Queued</span>.
+                        <span className="text-[color:var(--theme-text-secondary)]">Queued</span>.
                       </div>
                     </div>
                   </div>
@@ -546,10 +546,10 @@ export default function PortalApprovalsPage() {
           ) : null}
 
           {!loading && !error ? (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4">
-              <div className="text-xs text-neutral-400">
+            <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+              <div className="text-xs text-[color:var(--theme-text-secondary)]">
                 If approvals never appear, confirm the portal user is linked by{" "}
-                <span className="font-mono text-neutral-200">customers.user_id = auth.uid()</span>.
+                <span className="font-mono text-[color:var(--theme-text-primary)]">customers.user_id = auth.uid()</span>.
               </div>
             </div>
           ) : null}

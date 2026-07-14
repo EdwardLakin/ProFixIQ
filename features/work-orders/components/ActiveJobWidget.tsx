@@ -140,11 +140,11 @@ export function ActiveJobWidget(): JSX.Element {
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 px-4 py-3 text-xs text-neutral-400">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-3 text-xs text-[color:var(--theme-text-secondary)]">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
           Active job
         </div>
-        <div className="mt-2 h-4 w-40 animate-pulse rounded-full bg-neutral-800" />
+        <div className="mt-2 h-4 w-40 animate-pulse rounded-full bg-[color:var(--theme-surface-panel-strong)]" />
       </div>
     );
   }
@@ -162,11 +162,11 @@ export function ActiveJobWidget(): JSX.Element {
 
   if (!line || !workOrder) {
     return (
-      <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 px-4 py-3 text-xs text-neutral-400">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-3 text-xs text-[color:var(--theme-text-secondary)]">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
           Active job
         </div>
-        <div className="mt-1 text-neutral-300">
+        <div className="mt-1 text-[color:var(--theme-text-secondary)]">
           No active job. Punch into a job to start tracking time.
         </div>
       </div>
@@ -181,27 +181,27 @@ export function ActiveJobWidget(): JSX.Element {
           toast.error("Active job link is not available.");
         }
       }}
-      className="group block rounded-xl border border-emerald-500/60 bg-neutral-950/90 px-4 py-3 text-xs text-neutral-200 shadow-[0_0_20px_rgba(16,185,129,0.45)] transition hover:border-emerald-400 hover:shadow-[0_0_26px_rgba(16,185,129,0.75)]"
+      className="group block rounded-xl border border-emerald-500/60 bg-[color:var(--theme-surface-page)] px-4 py-3 text-xs text-[color:var(--theme-text-primary)] shadow-[0_0_20px_rgba(16,185,129,0.45)] transition hover:border-emerald-400 hover:shadow-[0_0_26px_rgba(16,185,129,0.75)]"
     >
       <div className="mb-1 flex items-center justify-between gap-2">
         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
           ● Active job
         </div>
-        <div className="text-[10px] text-neutral-500">
+        <div className="text-[10px] text-[color:var(--theme-text-muted)]">
           Tap to open work order
         </div>
       </div>
 
-      <div className="text-sm font-medium text-neutral-50">
+      <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
         WO {workOrder.custom_id || workOrder.id.slice(0, 8)}
       </div>
-      <div className="mt-0.5 truncate text-[13px] text-neutral-200">
+      <div className="mt-0.5 truncate text-[13px] text-[color:var(--theme-text-primary)]">
         {line.line_no ? `#${line.line_no} ` : ""}
         {line.description || line.complaint || "Job"}
       </div>
 
       {vehicle && (
-        <div className="mt-0.5 truncate text-[11px] text-neutral-400">
+        <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-secondary)]">
           {vehicle.year ?? ""} {vehicle.make ?? ""} {vehicle.model ?? ""}{" "}
           {vehicle.license_plate ? `• ${vehicle.license_plate}` : ""}
         </div>
