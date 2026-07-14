@@ -1,5 +1,29 @@
 begin;
 
+do $$
+declare
+  v_constraint_def text;
+  v_check_expression text;
+begin
+  select pg_get_constraintdef(c.oid)
+    into v_constraint_def
+  from pg_constraint c
+  where c.conrelid = 'public.work_order_quote_lines'::regclass
+    and c.conname = 'work_order_quote_lines_stage_check';
+
+  if v_constraint_def is not null and position('ready_to_send' in v_constraint_def) = 0 then
+    v_check_expression := regexp_replace(v_constraint_def, '^CHECK \\((.*)\\)$', '\\1');
+
+    execute 'alter table public.work_order_quote_lines drop constraint work_order_quote_lines_stage_check';
+    execute format(
+      'alter table public.work_order_quote_lines add constraint work_order_quote_lines_stage_check check ((%s) or stage::text = %L)',
+      v_check_expression,
+      'ready_to_send'
+    );
+  end if;
+end;
+$$;
+
 create or replace function public.sync_quote_line_pricing_from_parts(
   p_shop_id uuid,
   p_quote_line_id uuid
