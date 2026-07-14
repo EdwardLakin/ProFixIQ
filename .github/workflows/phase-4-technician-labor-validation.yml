@@ -1,0 +1,29 @@
+name: Phase 4 Technician Labor Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/work-orders/**"
+      - "features/work-orders/server/**"
+      - "supabase/migrations/20260714050*.sql"
+      - "tests/phase4-*.test.ts"
+      - ".github/workflows/phase-4-technician-labor-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm exec eslint app/api/work-orders/assign-line/route.ts 'app/api/work-orders/lines/[id]/start/route.ts' 'app/api/work-orders/lines/[id]/pause/route.ts' 'app/api/work-orders/lines/[id]/resume/route.ts' 'app/api/work-orders/lines/[id]/finish/route.ts' features/work-orders/server/applyJobPunchTransition.ts features/work-orders/server/technicianJobLabor.ts tests/phase4-technician-labor-sql-contract.test.ts tests/phase4-technician-labor-routes.test.ts
+      - run: pnpm exec vitest run tests/phase4-technician-labor-sql-contract.test.ts tests/phase4-technician-labor-routes.test.ts
