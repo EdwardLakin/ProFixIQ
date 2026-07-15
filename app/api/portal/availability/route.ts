@@ -67,7 +67,9 @@ const addMinutes = (date: Date, mins: number) =>
 const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) =>
   aStart < bEnd && bStart < aEnd;
 
-function parseHm(time: string | null | undefined): { h: number; m: number } | null {
+function parseHm(
+  time: string | null | undefined,
+): { h: number; m: number } | null {
   if (!time) return null;
 
   // accept "HH:MM" or "HH:MM:SS" and tolerate suffixes like "+00"
@@ -88,9 +90,17 @@ function parseHm(time: string | null | undefined): { h: number; m: number } | nu
  * We probe at local noon to avoid DST/offset edge weirdness.
  * Returns 0..6 (Sun..Sat).
  */
-function weekdayForLocalYMD(tz: string, y: number, m: number, d: number): number {
+function weekdayForLocalYMD(
+  tz: string,
+  y: number,
+  m: number,
+  d: number,
+): number {
   const probe = makeZonedDate(tz, y, m, d, 12, 0);
-  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" });
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "short",
+  });
   const w = fmt.format(probe);
   const idx = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(w);
   return idx >= 0 ? idx : probe.getUTCDay();
@@ -120,7 +130,12 @@ function weekdayCandidates(raw: unknown): number[] {
 type ShopsRow = Database["public"]["Tables"]["shops"]["Row"];
 type ShopPick = Pick<
   ShopsRow,
-  "id" | "slug" | "timezone" | "accepts_online_booking"
+  | "id"
+  | "slug"
+  | "timezone"
+  | "accepts_online_booking"
+  | "min_notice_minutes"
+  | "max_lead_days"
 >;
 
 type ShopHoursRow = Database["public"]["Tables"]["shop_hours"]["Row"];
@@ -140,7 +155,10 @@ export async function GET(req: NextRequest) {
     const slug = searchParams.get("shop") || "";
     const startYMD = searchParams.get("start") || "";
     const endYMD = searchParams.get("end") || "";
-    const slotMins = Math.max(5, Math.min(180, Number(searchParams.get("slotMins") || 30)));
+    const slotMins = Math.max(
+      5,
+      Math.min(180, Number(searchParams.get("slotMins") || 30)),
+    );
 
     if (!slug || !startYMD || !endYMD) {
       return NextResponse.json(
@@ -152,12 +170,15 @@ export async function GET(req: NextRequest) {
     // 1) Load shop config
     const shopRes = await supabase
       .from("shops")
-      .select("id, slug, timezone, accepts_online_booking")
+      .select(
+        "id, slug, timezone, accepts_online_booking, min_notice_minutes, max_lead_days",
+      )
       .eq("slug", slug)
       .maybeSingle();
 
     const shop = shopRes.data as ShopPick | null;
-    if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 });
+    if (!shop)
+      return NextResponse.json({ error: "Shop not found" }, { status: 404 });
 
     const tz = shop.timezone || "UTC";
 
@@ -166,8 +187,8 @@ export async function GET(req: NextRequest) {
     }
 
     // Defaults
-    const MIN_NOTICE_MIN = 120; // 2 hours
-    const MAX_LEAD_DAYS = 30;   // 30 days
+    const MIN_NOTICE_MIN = shop.min_notice_minutes ?? 120;
+    const MAX_LEAD_DAYS = shop.max_lead_days ?? 30;
     const now = new Date();
     const maxLeadUntil = addMinutes(now, MAX_LEAD_DAYS * 24 * 60);
 
@@ -184,7 +205,10 @@ export async function GET(req: NextRequest) {
     const e = parseYMD(endYMD);
 
     const windowStartUtc = makeZonedDate(tz, s.y, s.m, s.d, 0, 0);
-    const windowEndUtc = addMinutes(makeZonedDate(tz, e.y, e.m, e.d, 23, 59), 1);
+    const windowEndUtc = addMinutes(
+      makeZonedDate(tz, e.y, e.m, e.d, 23, 59),
+      1,
+    );
 
     const timeOffRes = await supabase
       .from("shop_time_off")
@@ -263,7 +287,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ tz, slots });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to compute availability";
+    const message =
+      err instanceof Error ? err.message : "Failed to compute availability";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

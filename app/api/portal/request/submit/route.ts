@@ -63,12 +63,16 @@ export async function POST(req: Request) {
 
     const workOrderId = (body?.workOrderId ?? "").trim();
     const bookingId = (body?.bookingId ?? "").trim();
-    if (!workOrderId || !bookingId) return bad("Missing workOrderId or bookingId");
+    if (!workOrderId || !bookingId)
+      return bad("Missing workOrderId or bookingId");
 
     const customerAgreedAt = parseIsoDate(body?.customerAgreedAt ?? null);
-    if (!customerAgreedAt) return bad("You must agree to the terms before submitting.", 400);
+    if (!customerAgreedAt)
+      return bad("You must agree to the terms before submitting.", 400);
 
-    const customerSignatureUrl = toNonEmptyString(body?.customerSignatureUrl ?? null);
+    const customerSignatureUrl = toNonEmptyString(
+      body?.customerSignatureUrl ?? null,
+    );
 
     // Resolve portal customer
     const { data: customer, error: custErr } = await supabase
@@ -94,7 +98,9 @@ export async function POST(req: Request) {
     // Load booking + ensure same shop
     const { data: booking, error: bErr } = await supabase
       .from("bookings")
-      .select("id, shop_id, customer_id, work_order_id, starts_at, ends_at, status")
+      .select(
+        "id, shop_id, customer_id, work_order_id, starts_at, ends_at, status",
+      )
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -105,7 +111,8 @@ export async function POST(req: Request) {
 
     const warnings: string[] = [];
     const alreadySubmitted = Boolean(wo.portal_submitted_at);
-    const alreadyFinalized = booking.status === "confirmed" && booking.work_order_id === wo.id;
+    const alreadyFinalized =
+      booking.status === "pending" && booking.work_order_id === wo.id;
     if (alreadySubmitted && alreadyFinalized) {
       return NextResponse.json(
         {
@@ -130,15 +137,21 @@ export async function POST(req: Request) {
       portal_submitted_at: wo.portal_submitted_at ?? new Date().toISOString(),
     };
 
-    const { error: woUpdErr } = await supabase.from("work_orders").update(woUpdate).eq("id", wo.id);
+    const { error: woUpdErr } = await supabase
+      .from("work_orders")
+      .update(woUpdate)
+      .eq("id", wo.id);
     if (woUpdErr) return bad("Failed to save agreement/signature", 500);
 
     const bookingUpdate: DB["public"]["Tables"]["bookings"]["Update"] = {
-      status: "confirmed",
+      status: "pending",
       work_order_id: wo.id,
     };
 
-    const { error: updErr } = await supabase.from("bookings").update(bookingUpdate).eq("id", booking.id);
+    const { error: updErr } = await supabase
+      .from("bookings")
+      .update(bookingUpdate)
+      .eq("id", booking.id);
     if (updErr) return bad("Failed to finalize booking", 500);
 
     const concern = extractPortalIntakeConcern(wo.notes);
@@ -155,19 +168,22 @@ export async function POST(req: Request) {
         .limit(1);
 
       if (!exErr && (!existing || existing.length === 0)) {
-        const insertLine: DB["public"]["Tables"]["work_order_lines"]["Insert"] = {
-          work_order_id: wo.id,
-          shop_id: wo.shop_id,
+        const insertLine: DB["public"]["Tables"]["work_order_lines"]["Insert"] =
+          {
+            work_order_id: wo.id,
+            shop_id: wo.shop_id,
 
-          // Make the intake visible in the workflow immediately:
-          job_type: "diagnostic",
-          status: "awaiting",
-          description: desc,
-          complaint: concern,
-          notes: "Auto-created from portal intake on submit.",
-        };
+            // Make the intake visible in the workflow immediately:
+            job_type: "diagnostic",
+            status: "awaiting",
+            description: desc,
+            complaint: concern,
+            notes: "Auto-created from portal intake on submit.",
+          };
 
-        const { error: insertErr } = await supabase.from("work_order_lines").insert(insertLine);
+        const { error: insertErr } = await supabase
+          .from("work_order_lines")
+          .insert(insertLine);
         if (insertErr) {
           warnings.push("portal_intake_line_insert_failed");
           console.warn("portal submit: failed to insert intake line", {
@@ -201,7 +217,13 @@ export async function POST(req: Request) {
       });
 
       return NextResponse.json(
-        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null, warnings },
+        {
+          ok: true,
+          workOrderId: wo.id,
+          bookingId: booking.id,
+          partsRequestId: null,
+          warnings,
+        },
         { status: 200 },
       );
     }
@@ -228,12 +250,19 @@ export async function POST(req: Request) {
 
     if (items.length === 0) {
       return NextResponse.json(
-        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null, warnings },
+        {
+          ok: true,
+          workOrderId: wo.id,
+          bookingId: booking.id,
+          partsRequestId: null,
+          warnings,
+        },
         { status: 200 },
       );
     }
 
-    type RpcArgs = DB["public"]["Functions"]["create_part_request_with_items"]["Args"];
+    type RpcArgs =
+      DB["public"]["Functions"]["create_part_request_with_items"]["Args"];
 
     const rpcArgs: RpcArgs = {
       p_work_order_id: wo.id,
@@ -241,7 +270,10 @@ export async function POST(req: Request) {
       p_notes: "Portal request submit: auto parts quote",
     };
 
-    const { data: partsRequestId, error: prErr } = await supabase.rpc("create_part_request_with_items", rpcArgs);
+    const { data: partsRequestId, error: prErr } = await supabase.rpc(
+      "create_part_request_with_items",
+      rpcArgs,
+    );
 
     if (prErr) {
       warnings.push("parts_request_create_failed");
@@ -251,13 +283,25 @@ export async function POST(req: Request) {
         message: prErr.message,
       });
       return NextResponse.json(
-        { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId: null, warnings },
+        {
+          ok: true,
+          workOrderId: wo.id,
+          bookingId: booking.id,
+          partsRequestId: null,
+          warnings,
+        },
         { status: 200 },
       );
     }
 
     return NextResponse.json(
-      { ok: true, workOrderId: wo.id, bookingId: booking.id, partsRequestId, warnings },
+      {
+        ok: true,
+        workOrderId: wo.id,
+        bookingId: booking.id,
+        partsRequestId,
+        warnings,
+      },
       { status: 200 },
     );
   } catch (e: unknown) {

@@ -106,6 +106,66 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* The public marketing site has a deliberate light presentation independent
+   of the signed-in application's saved theme preference. */
+.pfq-marketing {
+  --marketing-bg: #f7f5f1;
+  --marketing-surface: #ffffff;
+  --marketing-stone: #f0ece6;
+  --marketing-ink: #17202a;
+  --marketing-muted: #5f6b76;
+  --marketing-border: #ddd8d0;
+  --marketing-border-strong: #c9c2b8;
+  --marketing-copper: #c1663b;
+  --marketing-copper-dark: #8f4528;
+  --marketing-copper-light: #e7a57c;
+  --marketing-copper-soft: #f7e3d7;
+  --marketing-steel: #355b75;
+
+  --pfq-copper: var(--marketing-copper);
+  --accent-copper: var(--marketing-copper);
+  --accent-copper-soft: var(--marketing-copper-dark);
+  --accent-copper-light: var(--marketing-copper-dark);
+  --theme-surface-page: var(--marketing-bg);
+  --theme-surface-panel: #ffffff;
+  --theme-surface-panel-strong: #ffffff;
+  --theme-surface-inset: var(--marketing-stone);
+  --theme-surface-subtle: rgba(95, 107, 118, 0.09);
+  --theme-surface-hover: rgba(95, 107, 118, 0.14);
+  --theme-surface-overlay: rgba(255, 255, 255, 0.98);
+  --theme-backdrop: rgba(23, 32, 42, 0.36);
+  --theme-border-soft: var(--marketing-border);
+  --theme-border-strong: var(--marketing-border-strong);
+  --theme-text-primary: var(--marketing-ink);
+  --theme-text-secondary: var(--marketing-muted);
+  --theme-text-muted: #78838d;
+  --theme-text-on-accent: #ffffff;
+  --theme-card-bg: #ffffff;
+  --theme-card-border: var(--marketing-border);
+  --theme-input-bg: #ffffff;
+  --theme-input-border: var(--marketing-border-strong);
+  --theme-input-text: var(--marketing-ink);
+  --theme-shadow-soft: 0 12px 30px rgba(23, 32, 42, 0.08);
+  --theme-shadow-medium: 0 22px 55px rgba(23, 32, 42, 0.11);
+  color-scheme: light;
+}
+
+.marketing-eyebrow {
+  color: var(--marketing-copper-dark);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.marketing-heading {
+  color: var(--marketing-ink);
+  font-size: clamp(2.25rem, 4.4vw, 3.5rem);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1.06;
+}
+
 html[data-theme-mode="light"] {
   /* BrandThemeBoot writes brand values inline, so mode tokens intentionally
      use !important to remain authoritative when the mode changes. */
@@ -179,6 +239,88 @@ html[data-theme-mode="light"] {
   --app-shell-bg:
     radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 55%),
     linear-gradient(180deg, var(--theme-app-bg), var(--theme-app-bg-secondary)) !important;
+}
+
+/* Keep pastel status pills readable against light surfaces without changing
+   their existing dark-mode colors or non-pill accent text. */
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-400"] {
+  color: #b91c1c;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-amber-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-amber-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-amber-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-amber-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-yellow-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-yellow-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-yellow-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-yellow-400"] {
+  color: #92400e;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-green-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-green-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-green-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-green-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-emerald-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-emerald-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-emerald-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-emerald-400"] {
+  color: #047857;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-cyan-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-cyan-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-cyan-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-cyan-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-sky-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-sky-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-sky-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-sky-400"] {
+  color: #0369a1;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-blue-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-blue-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-blue-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-blue-400"] {
+  color: #1d4ed8;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-violet-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-violet-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-violet-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-violet-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-purple-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-purple-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-purple-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-purple-400"] {
+  color: #6d28d9;
+}
+
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-50"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-orange-400"],
+html[data-theme-mode="light"] [class*="rounded"][class*="text-[var(--accent-copper"],
+html[data-theme-mode="light"] [class*="rounded"][class*="text-[color:var(--accent-copper"],
+html[data-theme-mode="light"] .accent-chip {
+  color: #9a4b2b;
+}
+
+/* Header action controls are not status pills. Give them an explicit mode-aware
+   text contract so translucent header surfaces cannot wash out their labels. */
+.app-shell-action {
+  color: var(--theme-text-primary) !important;
+}
+
+html[data-theme-mode="light"] .app-shell-action {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #0f172a !important;
 }
 
 body {

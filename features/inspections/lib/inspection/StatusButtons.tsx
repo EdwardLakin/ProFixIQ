@@ -40,7 +40,7 @@ type StatusButtonsProps = {
  * - Uses gap instead of mr/mb (cleaner wrapping)
  * - Supports compact mode
  */
-export default function StatusButtons(_props: any) {
+export default function StatusButtons(_props: StatusButtonsProps) {
   const {
     item,
     sectionIndex,
@@ -54,21 +54,21 @@ export default function StatusButtons(_props: any) {
   const selected = item.status;
 
   const size = compact
-    ? "h-7 px-2.5 text-[10px]"
-    : "h-8 px-3 text-[11px]";
+    ? "h-8 px-2.5 text-[10px]"
+    : "h-9 px-3 text-[11px]";
 
   const container = wrap
-    ? "mt-1 flex flex-wrap items-center gap-2"
-    : "mt-1 flex items-center gap-2 overflow-x-auto";
+    ? "mt-1 grid grid-cols-4 gap-1"
+    : "mt-1 flex items-center gap-1 overflow-x-auto";
 
   const base =
-    "inline-flex items-center justify-center rounded-md " +
+    "inline-flex min-w-0 items-center justify-center rounded-lg " +
     size +
     " " +
     "select-none " +
     "font-semibold uppercase tracking-[0.16em] " +
-    "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] " +
-    "backdrop-blur-sm transition-colors duration-150 " +
+    "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)] " +
+    "transition-colors duration-150 " +
     "focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.55)] " + // copper focus ring
     "focus:ring-offset-2 focus:ring-offset-[color:var(--theme-surface-page)]";
 
@@ -78,38 +78,34 @@ export default function StatusButtons(_props: any) {
     switch (key) {
       case "ok": {
         const selectedClasses =
-          " border-emerald-400/90 text-emerald-50 " +
-          "bg-emerald-900/40 shadow-[0_0_0_1px_rgba(52,211,153,0.7)]";
+          " border-emerald-400/80 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100";
         const hover =
-          " hover:border-emerald-400/80 hover:text-emerald-100 hover:bg-emerald-900/30";
+          " hover:border-emerald-400/80 hover:bg-emerald-50 hover:text-emerald-800 dark:hover:bg-emerald-950/35 dark:hover:text-emerald-100";
         return base + hover + (isSel ? " " + selectedClasses : "");
       }
 
       case "fail": {
         const selectedClasses =
-          " border-red-500/90 text-red-50 " +
-          "bg-red-950/50 shadow-[0_0_0_1px_rgba(248,113,113,0.8)]";
+          " border-red-400/80 bg-red-50 text-red-800 dark:bg-red-950/45 dark:text-red-100";
         const hover =
-          " hover:border-red-500/80 hover:text-red-100 hover:bg-red-950/40";
+          " hover:border-red-400/80 hover:bg-red-50 hover:text-red-800 dark:hover:bg-red-950/35 dark:hover:text-red-100";
         return base + hover + (isSel ? " " + selectedClasses : "");
       }
 
       case "recommend": {
         const selectedClasses =
-          " border-amber-400/90 text-amber-50 " +
-          "bg-amber-950/40 shadow-[0_0_0_1px_rgba(251,191,36,0.85)]";
+          " border-amber-400/80 bg-amber-50 text-amber-900 dark:bg-amber-950/45 dark:text-amber-100";
         const hover =
-          " hover:border-amber-400/80 hover:text-amber-100 hover:bg-amber-950/30";
+          " hover:border-amber-400/80 hover:bg-amber-50 hover:text-amber-900 dark:hover:bg-amber-950/35 dark:hover:text-amber-100";
         return base + hover + (isSel ? " " + selectedClasses : "");
       }
 
       case "na":
       default: {
         const selectedClasses =
-          " border-sky-400/90 text-sky-50 " +
-          "bg-sky-950/40 shadow-[0_0_0_1px_rgba(56,189,248,0.8)]";
+          " border-sky-400/80 bg-sky-50 text-sky-800 dark:bg-sky-950/45 dark:text-sky-100";
         const hover =
-          " hover:border-sky-400/80 hover:text-sky-100 hover:bg-sky-950/30";
+          " hover:border-sky-400/80 hover:bg-sky-50 hover:text-sky-800 dark:hover:bg-sky-950/35 dark:hover:text-sky-100";
         return base + hover + (isSel ? " " + selectedClasses : "");
       }
     }

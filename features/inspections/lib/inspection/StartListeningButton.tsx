@@ -41,17 +41,17 @@ export default function StartListeningButton({
       size="sm"
       aria-pressed={isListening}
       aria-label={isListening ? "Voice listening active" : "Start voice listening"}
-      className={`inline-flex items-center gap-2 rounded-full text-[11px] font-semibold uppercase tracking-[0.18em] ${
+      className={`inline-flex items-center gap-2 rounded-lg border-white/20 text-[11px] font-semibold tracking-[0.04em] ${
         isListening
-          ? "border-[color:var(--accent-copper-soft,#f97316)] bg-[color:var(--theme-surface-overlay)] text-[color:var(--accent-copper,#f97316)]"
-          : "bg-[linear-gradient(to_right,var(--accent-copper-soft,#fb923c),var(--accent-copper,#ea580c))] text-[color:var(--theme-text-on-accent)] shadow-[0_0_18px_rgba(234,88,12,0.6)]"
+          ? "bg-white/10 text-white"
+          : "bg-[color:var(--brand-primary)] text-white shadow-none"
       }`}
     >
       <span
         className={`inline-block h-2 w-2 rounded-full ${
           isListening
-            ? "bg-[color:var(--accent-copper,#f97316)] animate-pulse"
-            : "bg-[color:var(--theme-surface-overlay)]"
+            ? "bg-orange-300 animate-pulse"
+            : "bg-white"
         }`}
       />
       {isListening ? "Listening…" : "Start Listening"}

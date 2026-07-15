@@ -2,9 +2,14 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { notifyBookingConfirmation } from "@/features/portal/server/notifyBookingConfirmation";
 
 type DB = Database;
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -18,6 +23,7 @@ type PatchBody = {
   starts_at?: string;
   ends_at?: string;
   reason?: string | null;
+  customer_id?: string | null;
   idempotencyKey?: string;
 };
 
@@ -30,7 +36,9 @@ async function getAuthedContext(
   } = await supabase.auth.getUser();
 
   if (userErr || !user) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    return {
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
 
   const { data: profile, error: profileErr } = await supabase
@@ -41,13 +49,18 @@ async function getAuthedContext(
 
   if (profileErr || !profile?.shop_id) {
     return {
-      error: NextResponse.json({ error: "Profile/shop not found" }, { status: 403 }),
+      error: NextResponse.json(
+        { error: "Profile/shop not found" },
+        { status: 403 },
+      ),
     };
   }
 
   const actor = getActorCapabilities({ role: profile.role });
   if (!actor.isKnownRole || !actor.canManageScheduling) {
-    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+    return {
+      error: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
   }
 
   return {
@@ -70,7 +83,8 @@ function operationKey(req: Request, body?: PatchBody): string {
 function rpcStatus(message: string): number {
   const lower = message.toLowerCase();
   if (lower.includes("not found")) return 404;
-  if (lower.includes("not authorized") || lower.includes("another shop")) return 403;
+  if (lower.includes("not authorized") || lower.includes("another shop"))
+    return 403;
   if (
     lower.includes("terminal") ||
     lower.includes("overlap") ||
@@ -124,7 +138,8 @@ export async function PATCH(
   if ("error" in auth) return auth.error;
 
   const body = (await req.json().catch(() => ({}))) as PatchBody;
-  const isReschedule = body.starts_at !== undefined || body.ends_at !== undefined;
+  const isReschedule =
+    body.starts_at !== undefined || body.ends_at !== undefined;
   const isCancel = body.status === "cancelled";
 
   if (isReschedule || isCancel) {
@@ -158,20 +173,83 @@ export async function PATCH(
       const message = [error.message, error.details, error.hint]
         .filter(Boolean)
         .join(" — ");
-      return NextResponse.json({ error: message }, { status: rpcStatus(message) });
+      return NextResponse.json(
+        { error: message },
+        { status: rpcStatus(message) },
+      );
     }
 
     return NextResponse.json(data);
   }
 
+  const { data: existing, error: existingErr } = await supabase
+    .from("bookings")
+    .select("id,status")
+    .eq("id", id)
+    .eq("shop_id", auth.profile.shop_id)
+    .maybeSingle();
+  if (existingErr) {
+    return NextResponse.json({ error: existingErr.message }, { status: 500 });
+  }
+  if (!existing) {
+    return NextResponse.json({ error: "Booking not found" }, { status: 404 });
+  }
+
+  const currentStatus = existing.status ?? "pending";
+  const requestedStatus = body.status;
+  const transitionAllowed =
+    !requestedStatus ||
+    requestedStatus === currentStatus ||
+    (currentStatus === "pending" && requestedStatus === "confirmed") ||
+    (currentStatus === "confirmed" && requestedStatus === "completed");
+  if (!transitionAllowed) {
+    return NextResponse.json(
+      {
+        error: `Cannot move appointment from ${currentStatus} to ${requestedStatus}`,
+      },
+      { status: 409 },
+    );
+  }
+
   const update: DB["public"]["Tables"]["bookings"]["Update"] = {};
-  if (body.status === "pending" || body.status === "confirmed" || body.status === "completed") {
+  if (
+    body.status === "pending" ||
+    body.status === "confirmed" ||
+    body.status === "completed"
+  ) {
     update.status = body.status;
   }
   if (body.notes !== undefined) update.notes = body.notes;
+  if (body.customer_id !== undefined) {
+    if (!body.customer_id) {
+      return NextResponse.json(
+        { error: "A canonical customer is required" },
+        { status: 400 },
+      );
+    }
+    const { data: customer, error: customerErr } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("id", body.customer_id)
+      .eq("shop_id", auth.profile.shop_id)
+      .maybeSingle();
+    if (customerErr) {
+      return NextResponse.json({ error: customerErr.message }, { status: 500 });
+    }
+    if (!customer) {
+      return NextResponse.json(
+        { error: "Customer does not belong to this shop" },
+        { status: 403 },
+      );
+    }
+    update.customer_id = body.customer_id;
+  }
 
   if (Object.keys(update).length === 0) {
-    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    return NextResponse.json(
+      { error: "No valid fields to update" },
+      { status: 400 },
+    );
   }
 
   const { data: updated, error: updateErr } = await supabase
@@ -179,7 +257,9 @@ export async function PATCH(
     .update(update)
     .eq("id", id)
     .eq("shop_id", auth.profile.shop_id)
-    .select("id, starts_at, ends_at, status, notes, customer_id, vehicle_id, work_order_id")
+    .select(
+      "id, shop_id, starts_at, ends_at, status, notes, customer_id, vehicle_id, work_order_id",
+    )
     .maybeSingle();
 
   if (updateErr) {
@@ -189,7 +269,29 @@ export async function PATCH(
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
 
-  return NextResponse.json(updated);
+  let confirmationNotification: "not_requested" | "sent" | "skipped" =
+    "not_requested";
+  if (body.status === "confirmed" && currentStatus !== "confirmed") {
+    try {
+      confirmationNotification = (await notifyBookingConfirmation(
+        supabase,
+        updated,
+      ))
+        ? "sent"
+        : "skipped";
+    } catch (notificationError) {
+      confirmationNotification = "skipped";
+      console.error(
+        "booking confirmation notification failed",
+        notificationError,
+      );
+    }
+  }
+
+  return NextResponse.json({
+    ...updated,
+    confirmation_notification: confirmationNotification,
+  });
 }
 
 export async function DELETE(
@@ -226,7 +328,10 @@ export async function DELETE(
     const message = [error.message, error.details, error.hint]
       .filter(Boolean)
       .join(" — ");
-    return NextResponse.json({ error: message }, { status: rpcStatus(message) });
+    return NextResponse.json(
+      { error: message },
+      { status: rpcStatus(message) },
+    );
   }
 
   return NextResponse.json(data);

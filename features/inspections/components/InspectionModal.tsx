@@ -227,41 +227,40 @@ export default function InspectionModal({
     };
   }, [open]);
 
-  const panelWidth = compact ? "max-w-4xl" : "max-w-6xl";
-  const bodyHeight = compact ? "max-h-[80vh]" : "max-h-[92vh]";
+  const panelWidth = compact ? "max-w-6xl" : "max-w-[1440px]";
+  const bodyHeight = compact ? "h-[78vh]" : "h-[calc(94vh-64px)]";
 
   const cardBase =
-    "rounded-2xl border border-[color:var(--theme-border-soft)] " +
-    "bg-[var(--theme-gradient-panel)] " +
-    "shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
+    "overflow-hidden rounded-[1.5rem] border border-[color:var(--theme-border-strong)] " +
+    "bg-[color:var(--theme-surface-panel-strong)] " +
+    "shadow-[0_32px_90px_rgba(15,23,42,0.28)]";
 
-  const innerShell = "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]";
+  const innerShell = "bg-[color:var(--theme-surface-page)]";
 
   return (
     <Dialog
       open={open}
       // ✅ Backdrop click + Esc will call close()
       onClose={close}
-      className="fixed inset-0 z-[300] flex items-center justify-center px-2 py-6 sm:px-4"
+      className="pfq-inspection-modal fixed inset-0 z-[300] flex items-center justify-center px-2 py-3 sm:px-4 sm:py-5"
     >
       {/* clickable dimmed backdrop */}
-      <div className="fixed inset-0 z-[290] bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" aria-hidden />
+      <div className="fixed inset-0 z-[290] bg-slate-950/55 backdrop-blur-[3px]" aria-hidden />
 
       <Dialog.Panel
         className={`relative z-[310] mx-auto w-full ${panelWidth} ${cardBase}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 rounded-t-2xl border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-2.5">
-          <div className="space-y-1">
-            <Dialog.Title className="text-base font-semibold tracking-wide text-foreground sm:text-lg">
+        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-4 py-3 sm:px-5">
+          <div className="min-w-0">
+            <Dialog.Title className="text-base font-semibold tracking-[-0.02em] text-[color:var(--theme-text-primary)] sm:text-lg">
               {title}
             </Dialog.Title>
 
             {derived.displayTemplate && (
-              <p className="text-[10px] text-muted-foreground">
-                Template:{" "}
-                <span className="font-mono text-[rgba(184,115,51,0.95)]">
+              <p className="mt-0.5 truncate text-xs text-[color:var(--theme-text-secondary)]">
+                <span className="font-medium text-[color:var(--brand-primary)]">
                   {derived.displayTemplate}
                 </span>
               </p>
@@ -272,14 +271,14 @@ export default function InspectionModal({
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-[11px] text-foreground hover:border-[rgba(184,115,51,0.9)] hover:bg-[color:var(--theme-surface-panel)]"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--brand-primary)]"
             >
               {compact ? "Expand" : "Shrink"}
             </button>
             <button
               type="button"
               onClick={close}
-              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2 py-1 text-xs text-muted-foreground hover:bg-[color:var(--theme-surface-panel-strong)]"
+              className="grid h-9 w-9 place-items-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-sm text-[color:var(--theme-text-secondary)] transition hover:border-[color:var(--brand-primary)] hover:text-[color:var(--theme-text-primary)]"
               aria-label="Close inspection"
             >
               ✕
@@ -290,14 +289,14 @@ export default function InspectionModal({
         {/* Body */}
         <div
           ref={scrollRef}
-          className={`${bodyHeight} overflow-y-auto overscroll-contain ${innerShell} rounded-b-2xl p-4 text-foreground`}
+          className={`${bodyHeight} overflow-y-auto overscroll-contain ${innerShell} text-[color:var(--theme-text-primary)]`}
           style={{
             WebkitOverflowScrolling: "touch",
             scrollbarGutter: "stable both-edges",
           }}
         >
           {derived.missingWOLine && (
-            <div className="mb-3 rounded-xl border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-xs text-amber-100">
+            <div className="m-4 rounded-xl border border-amber-400/50 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
               <strong>Heads up:</strong>{" "}
               <code className="font-mono text-amber-50">workOrderLineId</code> is
               missing; save/finish will be blocked.
@@ -309,30 +308,10 @@ export default function InspectionModal({
               No inspection selected.
             </div>
           ) : (
-            <div className="mx-auto w-full max-w-5xl">
+            <div className="mx-auto w-full">
               <InspectionHost template={derived.screenTemplate} embed params={derived.params} />
             </div>
           )}
-
-          {/* Footer actions */}
-          <div className="sticky bottom-0 mt-4 flex flex-col gap-2 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              onClick={() => setCompact((v) => !v)}
-              className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-xs text-muted-foreground hover:border-[rgba(184,115,51,0.9)] hover:text-foreground hover:bg-[color:var(--theme-surface-panel)] sm:text-[11px]"
-            >
-              {compact ? "Expand view" : "Shrink view"}
-            </button>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={close}
-                className="rounded-full border border-[rgba(184,115,51,0.9)] bg-[rgba(184,115,51,0.12)] px-4 py-1.5 text-xs font-medium text-[rgba(252,211,77,0.98)] hover:bg-[rgba(184,115,51,0.22)] sm:text-sm"
-              >
-                Close inspection
-              </button>
-            </div>
-          </div>
         </div>
       </Dialog.Panel>
     </Dialog>

@@ -25,7 +25,10 @@ function dayKeyLocal(d: Date) {
 function timeLabel(startsAtIso: string, endsAtIso: string) {
   const start = new Date(startsAtIso);
   const end = new Date(endsAtIso);
-  const s = start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const s = start.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   const e = end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return `${s} – ${e}`;
 }
@@ -47,9 +50,11 @@ function displayCustomerName(b: Booking): string {
 
 function statusPill(status?: string | null) {
   const s = (status || "pending").toLowerCase();
-  if (s === "confirmed") return "border-emerald-500/30 bg-emerald-900/15 text-emerald-200";
-  if (s === "cancelled") return "border-red-500/30 bg-red-900/15 text-red-200";
-  return "border-sky-400/30 bg-sky-900/20 text-sky-100";
+  if (s === "confirmed")
+    return "border-emerald-500/30 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200";
+  if (s === "cancelled")
+    return "border-red-500/30 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200";
+  return "border-amber-500/30 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200";
 }
 
 function bookingCardStyle(status?: string | null) {
@@ -58,10 +63,10 @@ function bookingCardStyle(status?: string | null) {
     return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-inset)]";
   }
   if (s === "confirmed") {
-    return "border-emerald-400/25 bg-emerald-500/10 hover:bg-emerald-500/15";
+    return "border-emerald-500/25 bg-emerald-50/70 hover:bg-emerald-50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/30";
   }
   // pending
-  return "border-sky-400/30 bg-sky-500/10 hover:bg-sky-500/20";
+  return "border-amber-500/30 bg-amber-50/70 hover:bg-amber-50 dark:bg-amber-950/20 dark:hover:bg-amber-950/30";
 }
 
 export default function WeeklyCalendar({
@@ -72,7 +77,7 @@ export default function WeeklyCalendar({
   loading = false,
 }: Props) {
   const days = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => {
+    return Array.from({ length: 5 }, (_, i) => {
       const d = new Date(weekStart);
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() + i);
@@ -101,7 +106,7 @@ export default function WeeklyCalendar({
   const todayKey = dayKeyLocal(new Date());
 
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {days.map((d) => {
         const k = dayKeyLocal(d);
         const dayBookings = grouped.get(k) ?? [];
@@ -114,7 +119,7 @@ export default function WeeklyCalendar({
         return (
           <div
             key={k}
-            className="flex min-h-[160px] flex-col gap-2 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-card backdrop-blur-md overflow-hidden"
+            className="flex min-h-[240px] min-w-0 flex-col gap-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-sm"
           >
             {/* Day header */}
             <div className="flex items-center gap-2">
@@ -176,7 +181,14 @@ export default function WeeklyCalendar({
                       }
                     >
                       <div className="flex w-full items-center justify-between gap-2">
-                        <div className={"truncate font-semibold " + (isCancelled ? "text-[color:var(--theme-text-secondary)] line-through" : "text-[color:var(--theme-text-primary)]")}>
+                        <div
+                          className={
+                            "truncate font-semibold " +
+                            (isCancelled
+                              ? "text-[color:var(--theme-text-secondary)] line-through"
+                              : "text-[color:var(--theme-text-primary)]")
+                          }
+                        >
                           {displayCustomerName(b)}
                         </div>
 
@@ -190,7 +202,14 @@ export default function WeeklyCalendar({
                             {b.status || "pending"}
                           </span>
 
-                          <span className={"whitespace-nowrap text-[0.6rem] " + (isCancelled ? "text-[color:var(--theme-text-secondary)]" : "text-[color:var(--theme-text-primary)]")}>
+                          <span
+                            className={
+                              "whitespace-nowrap text-[0.6rem] " +
+                              (isCancelled
+                                ? "text-[color:var(--theme-text-secondary)]"
+                                : "text-[color:var(--theme-text-primary)]")
+                            }
+                          >
                             {timeLabel(b.starts_at, b.ends_at)}
                           </span>
                         </div>

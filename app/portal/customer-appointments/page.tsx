@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Toaster, toast } from "sonner";
@@ -21,7 +21,6 @@ type PortalBooking = {
   status?: string | null;
 };
 
-
 function cardClass() {
   return "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-md shadow-card";
 }
@@ -29,9 +28,9 @@ function cardClass() {
 function pillClass(status?: string | null) {
   const s = (status || "pending").toLowerCase();
   if (s === "confirmed")
-    return "border-emerald-500/30 bg-emerald-900/15 text-emerald-200";
+    return "border-emerald-500/30 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200";
   if (s === "cancelled")
-    return "border-red-500/30 bg-red-900/15 text-red-200";
+    return "border-red-500/30 bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-200";
   return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
 }
 
@@ -67,6 +66,7 @@ export default function PortalCustomerAppointmentsPage() {
 
   const [bookings, setBookings] = useState<PortalBooking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
+  const cancellationKeys = useRef<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +115,9 @@ export default function PortalCustomerAppointmentsPage() {
     (async () => {
       setLoadingBookings(true);
       try {
-        const res = await fetch("/api/portal/customer-bookings", { cache: "no-store" });
+        const res = await fetch("/api/portal/customer-bookings", {
+          cache: "no-store",
+        });
 
         if (!res.ok) throw new Error("Failed to load your appointments.");
 
@@ -157,16 +159,22 @@ export default function PortalCustomerAppointmentsPage() {
     if (!confirm("Cancel this appointment?")) return;
 
     try {
+      const operationKey = cancellationKeys.current[id] ?? crypto.randomUUID();
+      cancellationKeys.current[id] = operationKey;
       const res = await fetch(`/api/portal/customer-bookings/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "cancelled" }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
+        },
+        body: JSON.stringify({ status: "cancelled", operationKey }),
       });
 
       const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(j?.error || "Cancel failed");
 
       toast.success("Appointment cancelled.");
+      delete cancellationKeys.current[id];
       setBookings((prev) =>
         prev.map((b) => (b.id === id ? { ...b, status: "cancelled" } : b)),
       );
@@ -179,7 +187,11 @@ export default function PortalCustomerAppointmentsPage() {
   if (loading) {
     return (
       <div className="mx-auto max-w-xl">
-        <div className={cardClass() + " text-sm text-[color:var(--theme-text-primary)]"}>
+        <div
+          className={
+            cardClass() + " text-sm text-[color:var(--theme-text-primary)]"
+          }
+        >
           Loading your portal…
         </div>
       </div>
@@ -237,14 +249,20 @@ export default function PortalCustomerAppointmentsPage() {
             Upcoming ({upcoming.length})
           </h2>
           {loadingBookings ? (
-            <span className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">Loading…</span>
+            <span className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+              Loading…
+            </span>
           ) : null}
         </div>
 
         {loadingBookings ? (
-          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">Fetching your bookings…</p>
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
+            Fetching your bookings…
+          </p>
         ) : upcoming.length === 0 ? (
-          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No upcoming appointments.</p>
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
+            No upcoming appointments.
+          </p>
         ) : (
           <ul className="mt-3 space-y-2">
             {upcoming.map((b) => {
@@ -259,7 +277,9 @@ export default function PortalCustomerAppointmentsPage() {
                       <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {date}
                       </div>
-                      <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{time}</div>
+                      <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                        {time}
+                      </div>
 
                       {b.notes ? (
                         <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
@@ -283,7 +303,7 @@ export default function PortalCustomerAppointmentsPage() {
                         size="xs"
                         variant="outline"
                         onClick={() => void cancelBooking(b.id)}
-                        className="border-red-500/40 text-red-200 hover:bg-red-900/20"
+                        className="border-red-500/40 text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/30"
                       >
                         Cancel
                       </Button>
@@ -302,9 +322,13 @@ export default function PortalCustomerAppointmentsPage() {
         </h2>
 
         {loadingBookings ? (
-          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">Loading…</p>
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
+            Loading…
+          </p>
         ) : past.length === 0 ? (
-          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">No past appointments.</p>
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
+            No past appointments.
+          </p>
         ) : (
           <ul className="mt-3 space-y-2">
             {past.slice(0, 25).map((b) => {
@@ -319,7 +343,9 @@ export default function PortalCustomerAppointmentsPage() {
                       <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                         {date}
                       </div>
-                      <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">{time}</div>
+                      <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                        {time}
+                      </div>
                     </div>
 
                     <span
@@ -333,7 +359,9 @@ export default function PortalCustomerAppointmentsPage() {
                   </div>
 
                   {b.notes ? (
-                    <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">{b.notes}</div>
+                    <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+                      {b.notes}
+                    </div>
                   ) : null}
                 </li>
               );

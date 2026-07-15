@@ -44,7 +44,12 @@ export async function GET(req: Request): Promise<Response> {
   const shopSlug = url.searchParams.get("shop") ?? "";
   const start = url.searchParams.get("start") ?? "";
   const end = url.searchParams.get("end") ?? "";
-  if (!shopSlug || !start || !end) return bad("Missing shop, start, or end");
+  const status = url.searchParams.get("status") ?? "";
+  const pendingQueue = status === "pending";
+
+  if (!shopSlug || (!pendingQueue && (!start || !end))) {
+    return bad("Missing shop or date range");
+  }
 
   const {
     data: { user },
@@ -60,7 +65,10 @@ export async function GET(req: Request): Promise<Response> {
   if (profErr || !profile?.shop_id) return bad("Profile / shop not found", 403);
 
   const actor = getActorCapabilities({ role: profile.role });
-  if (!actor.isKnownRole || (!actor.canManageScheduling && !actor.canViewShopWideData)) {
+  if (
+    !actor.isKnownRole ||
+    (!actor.canManageScheduling && !actor.canViewShopWideData)
+  ) {
     return bad("Not allowed", 403);
   }
 
@@ -70,28 +78,49 @@ export async function GET(req: Request): Promise<Response> {
     .eq("slug", shopSlug)
     .single();
   if (shopErr || !shop) return bad("Shop not found", 404);
-  if (shop.id !== profile.shop_id) return bad("You cannot view bookings for this shop", 403);
+  if (shop.id !== profile.shop_id)
+    return bad("You cannot view bookings for this shop", 403);
 
-  const startIso = new Date(`${start}T00:00:00.000Z`).toISOString();
-  const endDate = new Date(`${end}T00:00:00.000Z`);
-  endDate.setDate(endDate.getDate() + 1);
-  const endIso = endDate.toISOString();
-
-  const { data: rows, error: rowsErr } = await supabase
+  let bookingsQuery = supabase
     .from("bookings")
-    .select(`
+    .select(
+      `
       id, shop_id, customer_id, vehicle_id, work_order_id,
       starts_at, ends_at, status, notes,
       customers:customer_id (first_name, last_name, email, phone),
       shops:shop_id (slug)
-    `)
+    `,
+    )
     .eq("shop_id", shop.id)
-    .gte("starts_at", startIso)
-    .lt("starts_at", endIso)
     .order("starts_at", { ascending: true });
-  if (rowsErr || !rows) return bad("Failed to load bookings", 500);
 
-  const payload: BookingPayload[] = (rows as unknown as BookingRow[]).map((row) => {
+  if (pendingQueue) {
+    bookingsQuery = bookingsQuery.eq("status", "pending");
+  } else {
+    const startIso = new Date(`${start}T00:00:00.000Z`).toISOString();
+    const endDate = new Date(`${end}T00:00:00.000Z`);
+    endDate.setDate(endDate.getDate() + 1);
+    const endIso = endDate.toISOString();
+    bookingsQuery = bookingsQuery
+      .gte("starts_at", startIso)
+      .lt("starts_at", endIso);
+  }
+
+  const { data: rows, error: rowsErr } = await bookingsQuery;
+
+  if (rowsErr || !rows) {
+    console.error("appointments GET failed", {
+      shopId: shop.id,
+      pendingQueue,
+      message: rowsErr?.message,
+      code: rowsErr?.code,
+    });
+    return bad(rowsErr?.message || "Failed to load bookings", 500);
+  }
+
+  const bookings = rows as unknown as BookingRow[];
+
+  const payload: BookingPayload[] = bookings.map((row) => {
     const customer = row.customers ?? null;
     return {
       id: row.id,
@@ -123,7 +152,9 @@ export async function POST(req: Request): Promise<Response> {
   } = await supabase.auth.getUser();
   if (authErr || !user) return bad("Not authenticated", 401);
 
-  const body = (await req.json().catch(() => null)) as CreatePortalBookingInput | null;
+  const body = (await req
+    .json()
+    .catch(() => null)) as CreatePortalBookingInput | null;
   if (!body) return bad("Invalid JSON body", 400);
   const operationKey =
     req.headers.get("Idempotency-Key")?.trim() ||

@@ -157,7 +157,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 ref={labelRef}
                 className={[
                   "block min-w-0",
-                  expanded ? "whitespace-normal break-words" : "line-clamp-2 lg:truncate",
+                  expanded ? "whitespace-normal break-words" : "line-clamp-2",
                   expandEnabled && !expanded ? "cursor-help" : "",
                 ].join(" ")}
                 onMouseEnter={onMouseEnter}
