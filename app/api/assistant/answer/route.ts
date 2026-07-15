@@ -6,6 +6,7 @@ import type {
   AssistantAskRequest,
   AssistantAskResponse,
 } from "@/features/agent/assistant/types";
+import { AssistantContextValidationError } from "@/features/agent/assistant/server/trustedContext";
 
 
 async function requireUser(
@@ -75,6 +76,12 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  if (body.question.length > 8000) {
+    return NextResponse.json<AssistantAskResponse>(
+      { ok: false, error: "Question is too long" },
+      { status: 400 },
+    );
+  }
 
   try {
     const answer = await answerAssistant({
@@ -89,6 +96,7 @@ export async function POST(request: Request) {
       answer,
     });
   } catch (error: unknown) {
+    const status = error instanceof AssistantContextValidationError ? 400 : 500;
     return NextResponse.json<AssistantAskResponse>(
       {
         ok: false,
@@ -97,7 +105,7 @@ export async function POST(request: Request) {
             ? error.message
             : "Failed to answer assistant question",
       },
-      { status: 500 },
+      { status },
     );
   }
 }
