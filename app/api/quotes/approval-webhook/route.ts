@@ -1,15 +1,14 @@
+import "server-only";
+
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/types/supabase";
-import { applyAndPropagateWorkOrderLineApprovalDecision } from "@/features/work-orders/server/workOrderLineApproval";
-import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/workOrderQuoteLineApproval";
-import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
-import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { upsertMenuRepairItemFromQuoteLine } from "@/features/menu-repair-items/server/upsertMenuRepairItemFromQuoteLine";
 
-type DB = Database;
+export const runtime = "nodejs";
+
 type Json = Record<string, unknown>;
-
 type Body = {
   workOrderId?: string;
   shopId?: string | null;
@@ -20,69 +19,99 @@ type Body = {
   declineUnchecked?: boolean;
   approverId?: string | null;
   signatureUrl?: string | null;
+  operationKey?: string | null;
+  idempotencyKey?: string | null;
+};
+type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
 };
 
-const isString = (v: unknown): v is string => typeof v === "string";
-const toStringArray = (v: unknown): string[] =>
-  Array.isArray(v)
-    ? v
-        .filter(isString)
-        .map((item) => item.trim())
-        .filter(Boolean)
+const isString = (value: unknown): value is string => typeof value === "string";
+const clean = (value: unknown): string => (isString(value) ? value.trim() : "");
+const toIds = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? [...new Set(value.filter(isString).map((item) => item.trim()).filter(Boolean))]
     : [];
 
-function dedupe(items: string[]): string[] {
-  return [...new Set(items)];
+function errorStatus(message: string): number {
+  const lower = message.toLowerCase();
+  if (lower.includes("not found")) return 404;
+  if (
+    lower.includes("not authorized") ||
+    lower.includes("does not own") ||
+    lower.includes("actor mismatch") ||
+    lower.includes("shop mismatch")
+  ) {
+    return 403;
+  }
+  if (
+    lower.includes("financially_locked") ||
+    lower.includes("current status") ||
+    lower.includes("both approved and declined")
+  ) {
+    return 409;
+  }
+  return 400;
 }
 
-function serviceSupabase() {
-  return createClient<DB>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
+function stableOperationKey(input: {
+  actorUserId: string;
+  workOrderId: string;
+  approvedLineIds: string[];
+  declinedLineIds: string[];
+  approvedQuoteLineIds: string[];
+  declinedQuoteLineIds: string[];
+  signatureUrl: string | null;
+}): string {
+  const payload = JSON.stringify({
+    actorUserId: input.actorUserId,
+    workOrderId: input.workOrderId,
+    approvedLineIds: [...input.approvedLineIds].sort(),
+    declinedLineIds: [...input.declinedLineIds].sort(),
+    approvedQuoteLineIds: [...input.approvedQuoteLineIds].sort(),
+    declinedQuoteLineIds: [...input.declinedQuoteLineIds].sort(),
+    signatureUrl: input.signatureUrl,
+  });
+  return crypto.createHash("sha256").update(payload).digest("hex");
 }
 
 export async function POST(req: Request) {
-  // Compatibility note:
-  // This route is an authenticated approval-submission endpoint (not an anonymous third-party webhook).
-  // Keep this path for backward compatibility; future cleanup may alias/rename to /api/quotes/approve.
   const supabase = createServerSupabaseRoute();
-
   const {
     data: { user },
-    error: authErr,
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (authErr || !user) {
+  if (authError || !user) {
     return NextResponse.json({ error: "Not authenticated" } satisfies Json, {
       status: 401,
     });
   }
 
-  let body: Body;
-  try {
-    body = (await req.json()) as Body;
-  } catch {
+  const body = (await req.json().catch(() => null)) as Body | null;
+  if (!body) {
     return NextResponse.json({ error: "Invalid JSON body" } satisfies Json, {
       status: 400,
     });
   }
 
-  const workOrderId = isString(body.workOrderId) ? body.workOrderId.trim() : "";
-  const bodyShopId = isString(body.shopId) ? body.shopId.trim() : "";
-  const approvedLineIds = dedupe(toStringArray(body.approvedLineIds));
-  const declinedLineIds = dedupe(toStringArray(body.declinedLineIds));
-  const approvedQuoteLineIds = dedupe(toStringArray(body.approvedQuoteLineIds));
-  const declinedQuoteLineIds = dedupe(toStringArray(body.declinedQuoteLineIds));
-  const declineUnchecked = body.declineUnchecked ?? true;
-  const signatureUrl = isString(body.signatureUrl) ? body.signatureUrl : null;
+  const workOrderId = clean(body.workOrderId);
+  const approvedLineIds = toIds(body.approvedLineIds);
+  const declinedLineIds = body.declineUnchecked === false ? [] : toIds(body.declinedLineIds);
+  const approvedQuoteLineIds = toIds(body.approvedQuoteLineIds);
+  const declinedQuoteLineIds =
+    body.declineUnchecked === false ? [] : toIds(body.declinedQuoteLineIds);
+  const signatureUrl = clean(body.signatureUrl) || null;
 
   if (!workOrderId) {
     return NextResponse.json({ error: "Missing workOrderId" } satisfies Json, {
       status: 400,
     });
   }
-
   if (
     approvedLineIds.length === 0 &&
     declinedLineIds.length === 0 &&
@@ -90,283 +119,175 @@ export async function POST(req: Request) {
     declinedQuoteLineIds.length === 0
   ) {
     return NextResponse.json(
-      {
-        error: "At least one line or quote line decision is required",
-      } satisfies Json,
+      { error: "At least one approval decision is required" } satisfies Json,
       { status: 400 },
     );
   }
 
-  const { data: rawWorkOrder, error: woErr } = await supabase
+  const { data: workOrder, error: workOrderError } = await supabase
     .from("work_orders")
-    .select(
-      "id, shop_id, customer_id, approval_state, status, customer_approval_at, customer_approved_by",
-    )
+    .select("id,shop_id,customer_id")
     .eq("id", workOrderId)
     .maybeSingle<{
       id: string;
       shop_id: string | null;
       customer_id: string | null;
-      approval_state: string | null;
-      status: string | null;
-      customer_approval_at: string | null;
-      customer_approved_by: string | null;
     }>();
 
-  if (woErr || !rawWorkOrder) {
+  if (workOrderError || !workOrder?.shop_id) {
     return NextResponse.json({ error: "Work order not found" } satisfies Json, {
       status: 404,
     });
   }
 
-  const { data: customer, error: customerErr } = await supabase
-    .from("customers")
-    .select("id, shop_id")
-    .eq("user_id", user.id)
-    .maybeSingle<{ id: string; shop_id: string | null }>();
-
-  const workOrder = rawWorkOrder;
-
-  if (customerErr) {
-    return NextResponse.json(
-      { error: "Customer account not found for this user" } satisfies Json,
-      { status: 404 },
-    );
-  }
-
-  const customerId = customer?.id ?? null;
-  const isCustomerActor = Boolean(customerId);
-  let isStaffActor = false;
-
-  if (!isCustomerActor) {
-    const { data: requesterProfile, error: requesterProfileErr } =
-      await supabase
-        .from("profiles")
-        .select("shop_id, role")
-        .eq("user_id", user.id)
-        .maybeSingle<{ shop_id: string | null; role: string | null }>();
-
-    if (
-      requesterProfileErr ||
-      !requesterProfile?.shop_id ||
-      !workOrder.shop_id
-    ) {
-      return NextResponse.json({ error: "Not allowed" } satisfies Json, {
-        status: 403,
-      });
-    }
-
-    const role = (requesterProfile.role ?? "").toLowerCase();
-    const canActForShop =
-      role === "owner" ||
-      role === "admin" ||
-      role === "manager" ||
-      role === "advisor";
-
-    isStaffActor =
-      canActForShop && requesterProfile.shop_id === workOrder.shop_id;
-
-    if (!isStaffActor) {
-      return NextResponse.json({ error: "Not allowed" } satisfies Json, {
-        status: 403,
-      });
-    }
-  }
-
-  if (customerId && workOrder.customer_id !== customerId) {
-    return NextResponse.json(
-      { error: "Work order not found for this customer" } satisfies Json,
-      { status: 404 },
-    );
-  }
-
-  if (bodyShopId && workOrder.shop_id && bodyShopId !== workOrder.shop_id) {
+  const requestedShopId = clean(body.shopId);
+  if (requestedShopId && requestedShopId !== workOrder.shop_id) {
     return NextResponse.json({ error: "Shop mismatch" } satisfies Json, {
       status: 403,
     });
   }
 
-  const requestedLineIds = dedupe([...approvedLineIds, ...declinedLineIds]);
-  let linesToApprove: string[] = [];
-  let linesToDecline: string[] = [];
+  const { data: customer, error: customerError } = await supabase
+    .from("customers")
+    .select("id,shop_id,user_id")
+    .eq("user_id", user.id)
+    .maybeSingle<{
+      id: string;
+      shop_id: string | null;
+      user_id: string | null;
+    }>();
 
-  if (requestedLineIds.length > 0) {
-    const { data: lineRows, error: linesErr } = await supabase
-      .from("work_order_lines")
-      .select("id, approval_state")
-      .eq("work_order_id", workOrderId)
-      .in("id", requestedLineIds);
+  if (customerError) {
+    return NextResponse.json({ error: customerError.message } satisfies Json, {
+      status: 400,
+    });
+  }
 
-    if (linesErr) {
-      return NextResponse.json({ error: linesErr.message } satisfies Json, {
-        status: 400,
-      });
-    }
-
-    const rows =
-      (lineRows as Array<{
-        id: string;
-        approval_state: string | null;
-      }> | null) ?? [];
-
-    if (rows.length !== requestedLineIds.length) {
+  let customerId: string | null = null;
+  if (customer) {
+    if (
+      workOrder.customer_id !== customer.id ||
+      customer.shop_id !== workOrder.shop_id
+    ) {
       return NextResponse.json(
-        {
-          error: "One or more line IDs are invalid for this work order",
-        } satisfies Json,
-        { status: 400 },
+        { error: "Work order not found for this customer" } satisfies Json,
+        { status: 404 },
       );
     }
+    customerId = customer.id;
+  } else {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id,shop_id,role")
+      .eq("id", user.id)
+      .maybeSingle<{
+        id: string;
+        shop_id: string | null;
+        role: string | null;
+      }>();
 
-    const currentByLine = new Map(
-      rows.map((row) => [row.id, (row.approval_state ?? "").toLowerCase()]),
-    );
-    linesToApprove = approvedLineIds.filter(
-      (lineId) => currentByLine.get(lineId) !== "approved",
-    );
-    linesToDecline = declineUnchecked
-      ? declinedLineIds.filter(
-          (lineId) => currentByLine.get(lineId) !== "declined",
-        )
-      : [];
+    const actor = getActorCapabilities({ role: profile?.role ?? null });
+    if (
+      profileError ||
+      !profile?.shop_id ||
+      profile.shop_id !== workOrder.shop_id ||
+      !actor.isKnownRole ||
+      !actor.canManageWorkOrders
+    ) {
+      return NextResponse.json({ error: "Not allowed" } satisfies Json, {
+        status: 403,
+      });
+    }
   }
 
-  try {
-    if (!workOrder.shop_id) {
-      throw new Error("Work order is missing shop scope");
-    }
-
-    const supabaseAdmin =
-      approvedQuoteLineIds.length > 0 ||
-      (declineUnchecked && declinedQuoteLineIds.length > 0)
-        ? serviceSupabase()
-        : null;
-
-    if (approvedQuoteLineIds.length > 0) {
-      const result = await applyWorkOrderQuoteLineDecision({
-        supabase: supabaseAdmin ?? supabase,
-        quoteLineIds: approvedQuoteLineIds,
-        workOrderId,
-        shopId: workOrder.shop_id,
-        customerId,
-        actorUserId: user.id,
-        decision: "approve",
-      });
-
-      if (!result.ok)
-        throw new Error(result.error ?? "Unable to approve quote lines");
-    }
-
-    if (declineUnchecked && declinedQuoteLineIds.length > 0) {
-      const result = await applyWorkOrderQuoteLineDecision({
-        supabase: supabaseAdmin ?? supabase,
-        quoteLineIds: declinedQuoteLineIds,
-        workOrderId,
-        shopId: workOrder.shop_id,
-        customerId,
-        actorUserId: user.id,
-        decision: "decline",
-      });
-
-      if (!result.ok)
-        throw new Error(result.error ?? "Unable to decline quote lines");
-    }
-
-    if (linesToApprove.length > 0) {
-      const { error } = await applyAndPropagateWorkOrderLineApprovalDecision({
-        supabase,
-        decision: "approve",
-        lineIds: linesToApprove,
-        workOrderId,
-      });
-
-      if (error) throw new Error(error.message);
-    }
-
-    if (linesToDecline.length > 0) {
-      const { error } = await applyAndPropagateWorkOrderLineApprovalDecision({
-        supabase,
-        decision: "decline",
-        lineIds: linesToDecline,
-        workOrderId,
-      });
-
-      if (error) throw new Error(error.message);
-    }
-
-    const approvedAt =
-      workOrder.customer_approval_at ?? new Date().toISOString();
-    const nextStatus =
-      workOrder.status === "awaiting_approval" ||
-      workOrder.status === "awaiting"
-        ? normalizeWorkOrderStatus("queued")
-        : normalizeWorkOrderStatus(workOrder.status ?? "queued");
-
-    let woUpdateQuery = supabase
-      .from("work_orders")
-      .update({
-        customer_approval_at: approvedAt,
-        customer_approved_by: workOrder.customer_approved_by ?? user.id,
-        customer_approval_signature_path: signatureUrl,
-        customer_approval_signature_url: signatureUrl,
-        customer_signature_url: signatureUrl,
-        approval_state: "approved",
-        status: nextStatus,
-      })
-      .eq("id", workOrderId);
-
-    if (customerId) {
-      woUpdateQuery = woUpdateQuery.eq("customer_id", customerId);
-    } else if (workOrder.shop_id) {
-      woUpdateQuery = woUpdateQuery.eq("shop_id", workOrder.shop_id);
-    }
-
-    const { error: woUpdateErr } = await woUpdateQuery;
-
-    if (woUpdateErr) throw new Error(woUpdateErr.message);
-
-    const idempotent =
-      linesToApprove.length === 0 &&
-      linesToDecline.length === 0 &&
-      approvedQuoteLineIds.length === 0 &&
-      (declineUnchecked ? declinedQuoteLineIds.length === 0 : true) &&
-      workOrder.approval_state === "approved";
-
-    await logOperationalEvent({
-      supabase,
-      event: "work_order_approval_decision_recorded",
-      actorId: user.id,
-      entityType: "work_order",
-      entityId: workOrderId,
-      details: {
-        approved_line_ids: approvedLineIds,
-        declined_line_ids: declineUnchecked ? declinedLineIds : [],
-        approved_quote_line_ids: approvedQuoteLineIds,
-        declined_quote_line_ids: declineUnchecked ? declinedQuoteLineIds : [],
-        approved_line_ids_changed: linesToApprove,
-        declined_line_ids_changed: linesToDecline,
-        decline_unchecked: declineUnchecked,
-        signature_saved: Boolean(signatureUrl),
-        idempotent,
-      },
+  const suppliedKey =
+    req.headers.get("Idempotency-Key")?.trim() ||
+    clean(body.operationKey) ||
+    clean(body.idempotencyKey);
+  const operationKey =
+    suppliedKey ||
+    stableOperationKey({
+      actorUserId: user.id,
+      workOrderId,
+      approvedLineIds,
+      declinedLineIds,
+      approvedQuoteLineIds,
+      declinedQuoteLineIds,
+      signatureUrl,
     });
 
-    return NextResponse.json(
-      {
-        success: true,
-        workOrderId,
-        approvedLineIds,
-        declinedLineIds: declineUnchecked ? declinedLineIds : [],
-        approvedQuoteLineIds,
-        declinedQuoteLineIds: declineUnchecked ? declinedQuoteLineIds : [],
-        idempotent,
-      } satisfies Json,
-      { status: 200 },
-    );
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Internal error";
+  const rpc = supabase as unknown as RpcClient;
+  const { data, error } = await rpc.rpc(
+    "apply_approval_compatibility_bundle_atomic",
+    {
+      p_shop_id: workOrder.shop_id,
+      p_work_order_id: workOrderId,
+      p_customer_id: customerId,
+      p_actor_user_id: user.id,
+      p_approved_line_ids: approvedLineIds,
+      p_declined_line_ids: declinedLineIds,
+      p_approved_quote_line_ids: approvedQuoteLineIds,
+      p_declined_quote_line_ids: declinedQuoteLineIds,
+      p_signature_url: signatureUrl,
+      p_operation_key: `${workOrder.shop_id}:approval-compat:${operationKey}`,
+      p_at: new Date().toISOString(),
+    },
+  );
+
+  if (error) {
+    const message = [error.message, error.details, error.hint]
+      .filter(Boolean)
+      .join(" — ");
     return NextResponse.json({ error: message } satisfies Json, {
-      status: 500,
+      status: errorStatus(message),
     });
   }
+
+  const menuRepairLearning: Array<{
+    quoteLineId: string;
+    workOrderLineId: string;
+    error: string | null;
+  }> = [];
+
+  if (approvedQuoteLineIds.length > 0) {
+    const { data: mappings } = await supabase
+      .from("work_order_quote_lines")
+      .select("id,work_order_line_id")
+      .eq("shop_id", workOrder.shop_id)
+      .eq("work_order_id", workOrderId)
+      .in("id", approvedQuoteLineIds);
+
+    for (const mapping of mappings ?? []) {
+      if (!mapping.work_order_line_id) continue;
+      try {
+        await upsertMenuRepairItemFromQuoteLine({
+          supabase,
+          shopId: workOrder.shop_id,
+          workOrderId,
+          quoteLineId: mapping.id,
+          workOrderLineId: mapping.work_order_line_id,
+          actorUserId: user.id,
+        });
+        menuRepairLearning.push({
+          quoteLineId: mapping.id,
+          workOrderLineId: mapping.work_order_line_id,
+          error: null,
+        });
+      } catch (learningError) {
+        menuRepairLearning.push({
+          quoteLineId: mapping.id,
+          workOrderLineId: mapping.work_order_line_id,
+          error:
+            learningError instanceof Error
+              ? learningError.message
+              : "Menu repair learning failed",
+        });
+      }
+    }
+  }
+
+  return NextResponse.json({
+    ...(data && typeof data === "object" ? data : { ok: true }),
+    menuRepairLearning,
+  });
 }
