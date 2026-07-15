@@ -97,7 +97,6 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
   const [shopSuppliesFlatAmount, setShopSuppliesFlatAmount] = useState("");
   const [shopSuppliesCapAmount, setShopSuppliesCapAmount] = useState("");
   const [hours, setHours] = useState<OnboardingHourRow[]>(DEFAULT_ONBOARDING_HOURS);
-  const [useAi, setUseAi] = useState(false);
   const [requireCauseCorrection, setRequireCauseCorrection] = useState(false);
   const [requireAuthorization, setRequireAuthorization] = useState(false);
   const [autoGeneratePdf, setAutoGeneratePdf] = useState(false);
@@ -141,7 +140,6 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
         setShopSuppliesPercent(typeof shop.shop_supplies_percent === "number" ? String(shop.shop_supplies_percent) : typeof shop.supplies_percent === "number" ? String(shop.supplies_percent) : "");
         setShopSuppliesFlatAmount(typeof shop.shop_supplies_flat_amount === "number" ? String(shop.shop_supplies_flat_amount) : "");
         setShopSuppliesCapAmount(typeof shop.shop_supplies_cap_amount === "number" ? String(shop.shop_supplies_cap_amount) : "");
-        setUseAi(Boolean(shop.use_ai));
         setRequireCauseCorrection(Boolean(shop.require_cause_correction));
         setRequireAuthorization(Boolean(shop.require_authorization));
         setAutoGeneratePdf(Boolean(shop.auto_generate_pdf));
@@ -202,7 +200,6 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
             shop_supplies_cap_amount: asNumber(shopSuppliesCapAmount),
             diagnostic_fee: asNumber(diagnosticFee),
             tax_rate: asNumber(taxRate),
-            use_ai: useAi,
             require_cause_correction: requireCauseCorrection,
             require_authorization: requireAuthorization,
             auto_generate_pdf: autoGeneratePdf,
@@ -314,7 +311,6 @@ export default function ShopSettingsSetupModal({ sessionId, open, onClose, onCom
           <Panel title="Workflow">
             <div className="space-y-3 text-sm">
               {([
-                ["Use AI features", useAi, setUseAi],
                 ["Require cause / correction on lines", requireCauseCorrection, setRequireCauseCorrection],
                 ["Require customer authorization", requireAuthorization, setRequireAuthorization],
                 ["Auto-generate quote PDF", autoGeneratePdf, setAutoGeneratePdf],

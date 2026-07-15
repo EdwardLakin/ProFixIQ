@@ -552,6 +552,181 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_automation_capability_settings: {
+        Row: {
+          capability: string
+          created_at: string
+          enabled: boolean
+          id: string
+          shop_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          capability: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          shop_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          capability?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          shop_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_automation_capability_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_automation_capability_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_automation_capability_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_automation_evidence: {
+        Row: {
+          capability: string
+          created_at: string
+          evidence_key: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          outcome: string
+          recorded_by: string | null
+          shop_id: string
+          source: string
+          source_entity_id: string | null
+          source_entity_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          capability: string
+          created_at?: string
+          evidence_key: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          outcome?: string
+          recorded_by?: string | null
+          shop_id: string
+          source: string
+          source_entity_id?: string | null
+          source_entity_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          capability?: string
+          created_at?: string
+          evidence_key?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          outcome?: string
+          recorded_by?: string | null
+          shop_id?: string
+          source?: string
+          source_entity_id?: string | null
+          source_entity_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_automation_evidence_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_automation_evidence_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_automation_evidence_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_automation_shop_controls: {
+        Row: {
+          automation_paused: boolean
+          created_at: string
+          pause_reason: string | null
+          paused_at: string | null
+          shop_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          automation_paused?: boolean
+          created_at?: string
+          pause_reason?: string | null
+          paused_at?: string | null
+          shop_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          automation_paused?: boolean
+          created_at?: string
+          pause_reason?: string | null
+          paused_at?: string | null
+          shop_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_automation_shop_controls_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_automation_shop_controls_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_automation_shop_controls_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+
       ai_events: {
         Row: {
           created_at: string

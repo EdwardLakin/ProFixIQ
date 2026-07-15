@@ -83,9 +83,17 @@ function buildTemplateKey(input: {
   return words.join("_") || "general_job";
 }
 
+export function nextLearnedTemplateUsageCount(
+  current: number | null | undefined,
+  incrementUsage: boolean,
+): number {
+  return Math.max(0, current ?? 0) + (incrementUsage ? 1 : 0);
+}
+
 async function upsertLearnedTemplate(
   supabase: SupabaseClient<DB>,
   row: DB["public"]["Tables"]["work_order_intelligence"]["Insert"],
+  incrementUsage: boolean,
 ): Promise<void> {
   const category = row.job_category ?? null;
   const complaint = safeText(row.complaint);
@@ -145,7 +153,7 @@ async function upsertLearnedTemplate(
       default_parts: defaultParts,
       source_work_order_id: row.work_order_id,
       source_work_order_line_id: row.work_order_line_id,
-      usage_count: (existing.usage_count ?? 0) + 1,
+      usage_count: nextLearnedTemplateUsageCount(existing.usage_count, incrementUsage),
       confidence_score: row.confidence_score ?? 1,
       tags: row.tags ?? [],
       last_seen_at: new Date().toISOString(),
@@ -194,12 +202,16 @@ export async function seedWorkOrderIntelligenceFromReview(args: {
   lines: WorkOrderLineRow[];
   vehicle?: VehicleLite | null;
   source?: string | null;
-}): Promise<{ inserted: number }> {
+}): Promise<{ inserted: number; skippedReason?: string }> {
   const { supabase, workOrder, lines, vehicle, source } = args;
 
   if (!workOrder.shop_id) return { inserted: 0 };
+  if (!isCompletedLearningStatus(workOrder.status)) {
+    return { inserted: 0, skippedReason: "work_order_not_completed" };
+  }
 
   const candidates = lines.filter((line) => {
+    if (!isCompletedLearningStatus(line.status)) return false;
     const complaint = safeText(line.complaint) ?? safeText(line.description);
     const cause = safeText(line.cause);
     const correction = safeText(line.correction);
@@ -243,16 +255,60 @@ export async function seedWorkOrderIntelligenceFromReview(args: {
       confidence_score: 1,
     };
 
+    const { data: existingIntelligence, error: existingIntelligenceError } = await supabase
+      .from("work_order_intelligence")
+      .select("id")
+      .eq("shop_id", workOrder.shop_id)
+      .eq("work_order_line_id", line.id)
+      .maybeSingle();
+    if (existingIntelligenceError) throw existingIntelligenceError;
+
     const { error } = await supabase
       .from("work_order_intelligence")
       .upsert(row, { onConflict: "work_order_line_id" });
 
     if (error) throw error;
 
-    await upsertLearnedTemplate(supabase, row);
+    await upsertLearnedTemplate(supabase, row, !existingIntelligence?.id);
     await maybeQueueStorySignal(supabase, row);
-    inserted += 1;
+    if (!existingIntelligence?.id) inserted += 1;
   }
 
   return { inserted };
+}
+
+export function isCompletedLearningStatus(value: string | null | undefined): boolean {
+  const status = (value ?? "").trim().toLowerCase();
+  return status === "completed" || status === "ready_to_invoice" || status === "invoiced";
+}
+
+export async function seedCompletedWorkOrderIntelligence(args: {
+  supabase: SupabaseClient<DB>;
+  shopId: string;
+  workOrderId: string;
+  source: string;
+}): Promise<{ inserted: number; skippedReason?: string }> {
+  const { supabase, shopId, workOrderId, source } = args;
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders").select("*").eq("id", workOrderId).eq("shop_id", shopId).maybeSingle();
+  if (workOrderError) throw workOrderError;
+  if (!workOrder) return { inserted: 0, skippedReason: "work_order_not_found" };
+  if (!isCompletedLearningStatus(workOrder.status)) {
+    return { inserted: 0, skippedReason: "work_order_not_completed" };
+  }
+
+  const { data: lines, error: linesError } = await supabase
+    .from("work_order_lines").select("*").eq("work_order_id", workOrderId).eq("shop_id", shopId);
+  if (linesError) throw linesError;
+  const completedLines = (lines ?? []).filter((line) => isCompletedLearningStatus(line.status));
+  if (completedLines.length === 0) return { inserted: 0, skippedReason: "no_completed_lines" };
+
+  let vehicle: VehicleLite | null = null;
+  if (workOrder.vehicle_id) {
+    const { data, error } = await supabase.from("vehicles").select("id,year,make,model")
+      .eq("id", workOrder.vehicle_id).eq("shop_id", shopId).maybeSingle();
+    if (error) throw error;
+    vehicle = data ?? null;
+  }
+  return seedWorkOrderIntelligenceFromReview({ supabase, workOrder, lines: completedLines, vehicle, source });
 }
