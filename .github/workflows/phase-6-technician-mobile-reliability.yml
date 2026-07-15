@@ -1,0 +1,47 @@
+name: Phase 6 Technician Mobile Reliability
+
+on:
+  pull_request:
+    paths:
+      - "features/shared/lib/offline/**"
+      - "features/work-orders/lib/jobPunchTransitionsClient.ts"
+      - "features/inspections/lib/inspection/save.ts"
+      - "app/api/inspections/save/route.ts"
+      - "supabase/migrations/20260715070*.sql"
+      - "tests/phase6-*.test.ts"
+      - ".github/workflows/phase-6-technician-mobile-reliability.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: >-
+          pnpm exec eslint
+          features/shared/lib/offline/mutations.ts
+          features/work-orders/lib/jobPunchTransitionsClient.ts
+          features/inspections/lib/inspection/save.ts
+          app/api/inspections/save/route.ts
+          tests/phase6-job-punch-client.test.ts
+          tests/phase6-offline-mutations.test.ts
+          tests/phase6-inspection-progress-route.test.ts
+          tests/phase6-inspection-progress-sql-contract.test.ts
+          tests/phase6-job-photo-evidence-sql-contract.test.ts
+      - run: >-
+          pnpm exec vitest run
+          tests/phase6-job-punch-client.test.ts
+          tests/phase6-offline-mutations.test.ts
+          tests/phase6-inspection-progress-route.test.ts
+          tests/phase6-inspection-progress-sql-contract.test.ts
+          tests/phase6-job-photo-evidence-sql-contract.test.ts
