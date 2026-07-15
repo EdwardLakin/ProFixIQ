@@ -23,7 +23,8 @@ describe("Phase 7 portal identity and booking lifecycle", () => {
     expect(inviteSql).toContain("accepted_by");
     expect(inviteSql).toContain("portal_lifecycle_operation_keys");
     expect(inviteRoute).toContain('rpc("accept_portal_invite_atomic"');
-    expect(setupRoute).toContain("inviteId=");
+    expect(setupRoute).toContain("const redirectParams = new URLSearchParams");
+    expect(setupRoute).toContain("invite: inviteId");
     expect(confirmPage).toContain("/api/portal/invites/accept");
     expect(confirmPage).not.toContain('.from("customers")');
     expect(confirmPage).not.toContain('.from("customer_portal_invites")');
@@ -33,8 +34,12 @@ describe("Phase 7 portal identity and booking lifecycle", () => {
     expect(bookingSql).toContain("apply_portal_booking_command_atomic");
     expect(bookingSql).toContain("pg_advisory_xact_lock");
     expect(bookingSql).toContain("This time overlaps an existing booking");
-    expect(bookingSql).toContain("Work-order-linked booking requires staff work-order workflow");
-    expect(staffBookingRoute).toContain('rpc("apply_portal_booking_command_atomic"');
+    expect(bookingSql).toContain(
+      "Work-order-linked booking requires staff work-order workflow",
+    );
+    expect(staffBookingRoute).toContain(
+      'rpc("apply_portal_booking_command_atomic"',
+    );
     expect(customerBookingRoute).toContain("Idempotency-Key");
   });
 
