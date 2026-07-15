@@ -53,19 +53,14 @@ function isSafeInternalNextPath(next: string): boolean {
 function normalizeSiteUrl(raw: string): string {
   const trimmed = String(raw || "").trim().replace(/\/$/, "");
   if (!trimmed) return "https://profixiq.com";
-
   const lower = trimmed.toLowerCase();
-  if (!/^https?:\/\//i.test(lower)) {
-    return `https://${lower}`;
-  }
-
+  if (!/^https?:\/\//i.test(lower)) return `https://${lower}`;
   return lower;
 }
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as Body;
-
     const shopSlug = trimField(body.shopSlug);
     const email = normalizeEmail(body.email);
     const name = trimField(body.name);
@@ -76,13 +71,11 @@ export async function POST(req: Request) {
     if (!shopSlug || !email) {
       return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
     }
-
     if (!isValidEmail(email)) {
       return NextResponse.json({ ok: false, error: "Invalid email" }, { status: 400 });
     }
 
     const safeNext = isSafeInternalNextPath(nextPath) ? nextPath : "/portal";
-
     const { data: shop, error: shopError } = await supabaseAdmin
       .from("shops")
       .select("id,slug,name,shop_name,accepts_online_booking")
@@ -93,7 +86,6 @@ export async function POST(req: Request) {
     if (shopError) {
       return NextResponse.json({ ok: false, error: "Shop lookup failed" }, { status: 500 });
     }
-
     if (!shop?.id) {
       return NextResponse.json({ ok: false, error: "Shop not found" }, { status: 404 });
     }
@@ -105,10 +97,14 @@ export async function POST(req: Request) {
       .eq("shop_id", shopId)
       .eq("email", email)
       .limit(1)
-      .maybeSingle<{ id: string; name: string | null; phone: string | null; phone_number: string | null }>();
+      .maybeSingle<{
+        id: string;
+        name: string | null;
+        phone: string | null;
+        phone_number: string | null;
+      }>();
 
     let customerId = existingCustomer?.id ?? null;
-
     if (!customerId) {
       const insertPayload: CustomersInsert = {
         shop_id: shopId,
@@ -118,17 +114,14 @@ export async function POST(req: Request) {
         phone: phone || null,
         notes: notes || null,
       };
-
       const { data: createdCustomer, error: createError } = await supabaseAdmin
         .from("customers")
         .insert(insertPayload)
         .select("id")
         .single<{ id: string }>();
-
       if (createError || !createdCustomer?.id) {
         return NextResponse.json({ ok: false, error: "Unable to process request" }, { status: 500 });
       }
-
       customerId = createdCustomer.id;
     } else if (existingCustomer) {
       const patch: Database["public"]["Tables"]["customers"]["Update"] = {};
@@ -144,43 +137,52 @@ export async function POST(req: Request) {
       .select("id")
       .eq("customer_id", customerId)
       .eq("email", email)
+      .is("revoked_at", null)
       .limit(1)
       .maybeSingle<{ id: string }>();
 
-    if (!existingInvite?.id) {
-      const token = crypto.randomBytes(32).toString("hex");
-      const { error: inviteError } = await supabaseAdmin.from("customer_portal_invites").insert({
-        customer_id: customerId,
-        email,
-        token,
-      });
-
-      if (inviteError) {
+    let inviteId = existingInvite?.id ?? null;
+    if (!inviteId) {
+      const { data: createdInvite, error: inviteError } = await supabaseAdmin
+        .from("customer_portal_invites")
+        .insert({
+          customer_id: customerId,
+          email,
+          token: crypto.randomUUID(),
+          expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
+        })
+        .select("id")
+        .single<{ id: string }>();
+      if (inviteError || !createdInvite?.id) {
         return NextResponse.json({ ok: false, error: "Unable to process request" }, { status: 500 });
       }
+      inviteId = createdInvite.id;
     }
 
     const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || "");
-    const redirectTo = `${siteUrl}/portal/auth/confirm?next=${encodeURIComponent(safeNext)}`;
+    const redirectParams = new URLSearchParams({
+      next: safeNext,
+      invite: inviteId,
+    });
+    const redirectTo = `${siteUrl}/portal/auth/confirm?${redirectParams.toString()}`;
 
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
       email,
       options: { redirectTo },
     });
-
     if (linkError) {
       return NextResponse.json({ ok: false, error: "Unable to process request" }, { status: 500 });
     }
 
     const portalLink = linkData?.properties?.action_link || null;
-
     if (!portalLink || typeof portalLink !== "string") {
       return NextResponse.json({ ok: false, error: "Unable to process request" }, { status: 500 });
     }
 
     const brand = await getActiveBrandForRender(shopId);
-    const shopName = (shop.shop_name ?? "").trim() || (shop.name ?? "").trim() || "ProFixIQ";
+    const shopName =
+      (shop.shop_name ?? "").trim() || (shop.name ?? "").trim() || "ProFixIQ";
 
     await sendPortalInviteEmail({
       shopId,
@@ -193,7 +195,6 @@ export async function POST(req: Request) {
       createdBy: null,
     });
 
-    // TODO: add IP/email-based rate limiting when shared limiter infra is available.
     return NextResponse.json({
       ok: true,
       message: "If the email is valid, we sent a portal access link.",
