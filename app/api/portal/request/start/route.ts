@@ -6,7 +6,6 @@ import { requirePortalCustomerActor } from "@/features/portal/server/requirePort
 
 export const runtime = "nodejs";
 
-
 type Body = {
   vehicleId?: string | null;
   visitType: "waiter" | "drop_off";
@@ -27,8 +26,7 @@ function bad(msg: string, status = 400) {
 }
 
 function isIsoDateString(s: string) {
-  const t = Date.parse(s);
-  return Number.isFinite(t);
+  return Number.isFinite(Date.parse(s));
 }
 
 function addMinsIso(startIso: string, mins: number): string {
@@ -42,14 +40,18 @@ function normalizeIdempotencyKey(v: unknown): string {
   return v.trim().toLowerCase().slice(0, 120);
 }
 
-function isDuplicateKeyError(err: { code?: string | null; message?: string | null } | null): boolean {
-  return err?.code === "23505" || (err?.message ?? "").toLowerCase().includes("duplicate key");
+function isDuplicateKeyError(
+  err: { code?: string | null; message?: string | null } | null,
+): boolean {
+  return (
+    err?.code === "23505" ||
+    (err?.message ?? "").toLowerCase().includes("duplicate key")
+  );
 }
 
 export async function POST(req: Request) {
   try {
     const supabase = createServerSupabaseRoute();
-
     const actor = await requirePortalCustomerActor(supabase);
 
     let body: Body;
@@ -88,53 +90,70 @@ export async function POST(req: Request) {
     const { data: customer, error: custErr } = await supabase
       .from("customers")
       .select("id, shop_id")
-            .eq("id", actor.customer.id)
+      .eq("id", actor.customer.id)
       .maybeSingle();
 
     if (custErr) return bad(custErr.message, 500);
     if (!customer?.id) return bad("Customer profile not found", 404);
-    if (!customer.shop_id) {
-      return bad("Customer is not linked to a shop", 400);
+    if (!customer.shop_id) return bad("Customer is not linked to a shop", 400);
+
+    const normalizedKey = normalizeIdempotencyKey(
+      req.headers.get("Idempotency-Key") ?? body.idempotencyKey ?? null,
+    );
+    if (!normalizedKey) {
+      return bad("A stable Idempotency-Key is required.");
     }
 
-    const normalizedKey = normalizeIdempotencyKey(body.idempotencyKey ?? null);
-    const sourceRowId = normalizedKey
-      ? `portal_start:${customer.id}:${normalizedKey}`
-      : null;
-
-    // Fast-path replay: return existing created pair for the same idempotency key.
-    if (sourceRowId) {
-      const { data: existingWo, error: existingWoErr } = await supabase
-        .from("work_orders")
+    const vehicleId =
+      typeof body.vehicleId === "string" && body.vehicleId.trim()
+        ? body.vehicleId.trim()
+        : null;
+    if (vehicleId) {
+      const { data: vehicle, error: vehicleErr } = await supabase
+        .from("vehicles")
         .select("id")
-        .eq("shop_id", customer.shop_id)
+        .eq("id", vehicleId)
         .eq("customer_id", customer.id)
-        .eq("source_row_id", sourceRowId)
+        .eq("shop_id", customer.shop_id)
         .maybeSingle();
+      if (vehicleErr) return bad(vehicleErr.message, 500);
+      if (!vehicle) return bad("Vehicle does not belong to this customer and shop", 403);
+    }
 
-      if (existingWoErr) return bad("Failed to verify request replay", 500);
+    const sourceRowId = `portal_start:${customer.id}:${normalizedKey}`;
 
-      if (existingWo?.id) {
-        const { data: existingBooking, error: existingBookingErr } = await supabase
-          .from("bookings")
-          .select("id")
-          .eq("work_order_id", existingWo.id)
-          .maybeSingle();
+    const { data: existingWo, error: existingWoErr } = await supabase
+      .from("work_orders")
+      .select("id")
+      .eq("shop_id", customer.shop_id)
+      .eq("customer_id", customer.id)
+      .eq("source_row_id", sourceRowId)
+      .maybeSingle();
 
-        if (existingBookingErr) return bad("Failed to verify existing booking", 500);
-        if (existingBooking?.id) {
-          return NextResponse.json(
-            { workOrderId: existingWo.id, bookingId: existingBooking.id, replayed: true },
-            { status: 200 },
-          );
-        }
+    if (existingWoErr) return bad("Failed to verify request replay", 500);
+    if (existingWo?.id) {
+      const { data: existingBooking, error: existingBookingErr } = await supabase
+        .from("bookings")
+        .select("id")
+        .eq("work_order_id", existingWo.id)
+        .maybeSingle();
+      if (existingBookingErr) return bad("Failed to verify existing booking", 500);
+      if (existingBooking?.id) {
+        return NextResponse.json(
+          {
+            workOrderId: existingWo.id,
+            bookingId: existingBooking.id,
+            replayed: true,
+          },
+          { status: 200 },
+        );
       }
     }
 
     const rpcPayload = {
       p_shop_id: customer.shop_id,
       p_customer_id: customer.id,
-      p_vehicle_id: body.vehicleId ?? null,
+      p_vehicle_id: vehicleId,
       p_starts_at: startsAt,
       p_ends_at: endsAt,
       p_visit_type: visitType,
@@ -142,15 +161,20 @@ export async function POST(req: Request) {
       p_source_row_id: sourceRowId,
     };
 
-    const { data: created, error: createErr } = await (supabase as never as {
-      rpc: (
-        fn: "portal_request_start_atomic",
-        args: typeof rpcPayload,
-      ) => Promise<{ data: StartRpcRow[] | null; error: { code?: string; message?: string } | null }>;
-    }).rpc("portal_request_start_atomic", rpcPayload);
+    const { data: created, error: createErr } = await (
+      supabase as never as {
+        rpc: (
+          fn: "portal_request_start_atomic",
+          args: typeof rpcPayload,
+        ) => Promise<{
+          data: StartRpcRow[] | null;
+          error: { code?: string; message?: string } | null;
+        }>;
+      }
+    ).rpc("portal_request_start_atomic", rpcPayload);
 
     if (createErr) {
-      if (isDuplicateKeyError(createErr) && sourceRowId) {
+      if (isDuplicateKeyError(createErr)) {
         const { data: fallbackWo } = await supabase
           .from("work_orders")
           .select("id")
@@ -165,10 +189,13 @@ export async function POST(req: Request) {
             .select("id")
             .eq("work_order_id", fallbackWo.id)
             .maybeSingle();
-
           if (fallbackBooking?.id) {
             return NextResponse.json(
-              { workOrderId: fallbackWo.id, bookingId: fallbackBooking.id, replayed: true },
+              {
+                workOrderId: fallbackWo.id,
+                bookingId: fallbackBooking.id,
+                replayed: true,
+              },
               { status: 200 },
             );
           }
