@@ -6,13 +6,15 @@ import type { Database, Json } from "@shared/types/types/supabase";
 import { estimateLabor } from "@ai/lib/ai/estimateLabor";
 import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import {
-  createCanonicalQuoteLines,
-  type CanonicalQuoteItem,
-  type CanonicalQuotePart,
+  classifyEligibleInspectionFinding,
+  isExplicitInspectionRecommendation,
+} from "@/features/work-orders/lib/work-orders/inspectionFindingEligibility";
+import type {
+  CanonicalQuoteItem,
+  CanonicalQuotePart,
 } from "@/features/work-orders/lib/work-orders/canonicalQuoteLines";
 
 type DB = Database;
-
 type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
 type InspectionItem = {
@@ -25,7 +27,7 @@ type InspectionItem = {
   unit?: string | null;
   notes?: string | null;
   note?: string | null;
-  status?: "ok" | "fail" | "na" | "recommend" | string | null;
+  status?: string | null;
   recommend?: boolean | string[] | null;
   parts?: Array<{
     description?: string;
@@ -57,6 +59,32 @@ type InspectionResult = {
   }>;
 };
 
+type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
+
+type AtomicImportResult = {
+  ok?: boolean;
+  ids?: string[];
+  items?: Array<{
+    requestedId?: string | null;
+    id?: string;
+    created?: boolean;
+    findingIdentity?: string | null;
+  }>;
+  createdCount?: number;
+  skippedDuplicateCount?: number;
+  createdPartRequestIds?: string[];
+  partRequestIds?: string[];
+  createdPartRequestItemCount?: number;
+  skippedPartRequestItemCount?: number;
+  idempotent?: boolean;
+};
+
 export type ImportFromInspectionArgs = {
   supabase: SupabaseClient<DB>;
   inspectionId: string;
@@ -64,6 +92,7 @@ export type ImportFromInspectionArgs = {
   vehicleId?: string | null;
   userId: string;
   autoGenerateParts?: boolean;
+  operationKey?: string;
 };
 
 export type ImportFromInspectionResult =
@@ -78,16 +107,11 @@ export type ImportFromInspectionResult =
       createdPartRequestIds: string[];
       skippedPartsRequestsCount: number;
       message: string;
-      /** @deprecated Legacy work_order_lines are no longer created by inspection import. */
       insertedJobIds: null;
-      /** @deprecated Legacy work_order_lines are no longer created by inspection import. */
       workOrderLineIds: null;
+      idempotent?: boolean;
     }
   | { ok: false; error: string };
-
-function normalizeSourceComponent(value: string | number | null | undefined): string {
-  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
 
 function safeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -97,44 +121,8 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function normalizeTitle(value: unknown): string {
+function normalize(value: unknown): string {
   return safeString(value).toLowerCase().replace(/\s+/g, " ");
-}
-
-function buildInspectionSourceKey(args: {
-  inspectionId: string;
-  sectionIndex: number;
-  itemIndex: number;
-  sectionTitle?: string;
-  sectionKey?: string;
-  itemName?: string;
-  itemLabel?: string;
-  unit?: string | null;
-}): string {
-  const normalizedSectionTitle = normalizeSourceComponent(args.sectionTitle);
-  const normalizedSectionKey = normalizeSourceComponent(args.sectionKey);
-  const normalizedItemName = normalizeSourceComponent(args.itemName || args.itemLabel);
-  const normalizedUnit = normalizeSourceComponent(args.unit);
-  const raw = `${args.inspectionId}|${args.sectionIndex}|${args.itemIndex}|${normalizedSectionKey}|${normalizedSectionTitle}|${normalizedItemName}|${normalizedUnit}`;
-  return crypto.createHash("sha256").update(raw).digest("hex");
-}
-
-function buildFindingIdentity(args: {
-  inspectionId: string;
-  sourceKey: string;
-  sectionKey: string;
-  normalizedTitle: string;
-  normalizedDescription: string;
-}): string {
-  return [
-    args.inspectionId,
-    args.sectionKey,
-    args.sourceKey,
-    args.normalizedTitle || args.normalizedDescription,
-    args.normalizedDescription,
-  ]
-    .filter(Boolean)
-    .join(":");
 }
 
 function itemTitle(item: InspectionItem): string {
@@ -153,7 +141,11 @@ function itemNotes(item: InspectionItem): string {
 
 function itemPhotoUrls(item: InspectionItem): string[] {
   const raw = Array.isArray(item.photoUrls) ? item.photoUrls : item.photo_urls;
-  return Array.isArray(raw) ? raw.filter((url): url is string => typeof url === "string" && url.trim().length > 0) : [];
+  return Array.isArray(raw)
+    ? raw.filter(
+        (url): url is string => typeof url === "string" && url.trim().length > 0,
+      )
+    : [];
 }
 
 function itemParts(item: InspectionItem): CanonicalQuotePart[] {
@@ -166,11 +158,63 @@ function itemParts(item: InspectionItem): CanonicalQuotePart[] {
       unitPrice: finiteNumber(part.unitPrice),
       notes: safeString(part.notes) || null,
     }))
-    .filter((part) => part.description.length > 0);
+    .filter((part) => Boolean(part.description));
 }
 
-function shouldIncludeInspectionItem(item: InspectionItem, jobType: CanonicalQuoteItem["jobType"]): boolean {
-  return item.status === "fail" || item.status === "recommend" || item.recommend === true || jobType !== "repair";
+function sourceKey(input: {
+  inspectionId: string;
+  sectionIndex: number;
+  itemIndex: number;
+  sectionKey: string;
+  sectionTitle: string;
+  title: string;
+  unit?: string | null;
+}): string {
+  const raw = [
+    input.inspectionId,
+    input.sectionIndex,
+    input.itemIndex,
+    normalize(input.sectionKey),
+    normalize(input.sectionTitle),
+    normalize(input.title),
+    normalize(input.unit),
+  ].join("|");
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
+function findingIdentity(input: {
+  inspectionId: string;
+  sectionKey: string;
+  sourceItemKey: string;
+  title: string;
+  description: string;
+}): string {
+  return [
+    input.inspectionId,
+    input.sectionKey,
+    input.sourceItemKey,
+    normalize(input.title) || normalize(input.description),
+    normalize(input.description),
+  ]
+    .filter(Boolean)
+    .join(":");
+}
+
+function stableImportKey(input: {
+  inspectionId: string;
+  workOrderId: string;
+  items: CanonicalQuoteItem[];
+}): string {
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        inspectionId: input.inspectionId,
+        workOrderId: input.workOrderId,
+        identities: input.items.map((item) => item.findingIdentity).sort(),
+      }),
+    )
+    .digest("hex");
 }
 
 export async function insertPrioritizedJobsFromInspection(
@@ -180,126 +224,122 @@ export async function insertPrioritizedJobsFromInspection(
     supabase,
     inspectionId,
     workOrderId,
-    vehicleId,
+    vehicleId = null,
     userId,
     autoGenerateParts = true,
   } = args;
 
-  const { data: inspection, error: inspErr } = await supabase
+  const { data: inspection, error: inspectionError } = await supabase
     .from("inspections")
     .select("*")
     .eq("id", inspectionId)
     .maybeSingle<InspectionRow>();
-
-  if (inspErr) {
-    return { ok: false, error: `Failed to fetch inspection: ${inspErr.message}` };
+  if (inspectionError) {
+    return { ok: false, error: `Failed to fetch inspection: ${inspectionError.message}` };
   }
-  if (!inspection) {
-    return { ok: false, error: "Inspection not found." };
-  }
-  if (!inspection.shop_id) {
-    return { ok: false, error: "Inspection is missing shop_id." };
+  if (!inspection?.shop_id) {
+    return { ok: false, error: "Inspection not found or missing shop scope." };
   }
 
-  const { data: workOrder, error: woErr } = await supabase
-    .from("work_orders")
-    .select("id, shop_id, vehicle_id, status")
-    .eq("id", workOrderId)
-    .maybeSingle<{ id: string; shop_id: string | null; vehicle_id: string | null; status: string | null }>();
-
-  if (woErr) {
-    return { ok: false, error: `Failed to fetch work order: ${woErr.message}` };
-  }
-  if (!workOrder) {
-    return { ok: false, error: "Work order not found." };
-  }
-  if (!workOrder.shop_id || workOrder.shop_id !== inspection.shop_id) {
-    return { ok: false, error: "Inspection and work order must belong to the same shop." };
-  }
-
-  const blockedStatuses = new Set(["cancelled", "canceled", "invoiced", "closed"]);
-  if (blockedStatuses.has((workOrder.status ?? "").toLowerCase())) {
-    return { ok: false, error: "Cannot import inspection findings into a cancelled, closed, or invoiced work order." };
-  }
-
-  const shopId = inspection.shop_id;
-  const result = (inspection as unknown as { result?: unknown })?.result as InspectionResult | undefined;
-
-  if (!result?.sections || !Array.isArray(result.sections)) {
+  const rawResult = (inspection as unknown as { result?: unknown }).result as
+    | InspectionResult
+    | undefined;
+  if (!rawResult?.sections || !Array.isArray(rawResult.sections)) {
     return { ok: false, error: "Invalid inspection format: missing sections." };
   }
 
-  const diagnosisKeywords = ["check engine", "diagnose", "misfire", "no start"];
-  const maintenanceKeywords = ["oil", "fluid", "filter", "belt", "coolant"];
-  const autoPartsKeywords = ["brake", "pads", "rotor", "fluid", "coolant", "filter", "belt"];
-
   const quoteItems: CanonicalQuoteItem[] = [];
+  const autoPartKeywords = ["brake", "pads", "rotor", "fluid", "coolant", "filter", "belt"];
 
-  for (const [sectionIndex, section] of result.sections.entries()) {
-    const sectionTitle = safeString(section.title) || safeString(section.name) || `Section ${sectionIndex + 1}`;
-    const sectionKey = safeString(section.key) || safeString(section.id) || normalizeTitle(sectionTitle) || `section-${sectionIndex}`;
+  for (const [sectionIndex, section] of rawResult.sections.entries()) {
+    const sectionTitle =
+      safeString(section.title) || safeString(section.name) || `Section ${sectionIndex + 1}`;
+    const sectionKey =
+      safeString(section.key) ||
+      safeString(section.id) ||
+      normalize(sectionTitle) ||
+      `section-${sectionIndex}`;
 
     for (const [itemIndex, item] of (section.items ?? []).entries()) {
       const title = itemTitle(item);
-      if (!title) continue;
+      if (!title || !isExplicitInspectionRecommendation(item)) continue;
 
-      const titleLower = title.toLowerCase();
-      let jobType: CanonicalQuoteItem["jobType"] = "repair";
-
-      if (diagnosisKeywords.some((keyword) => titleLower.includes(keyword))) jobType = "diagnosis";
-      else if (item.status === "fail") jobType = "inspection-fail";
-      else if (maintenanceKeywords.some((keyword) => titleLower.includes(keyword))) jobType = "maintenance";
-
-      if (!shouldIncludeInspectionItem(item, jobType)) continue;
-
-      const sourceKey = buildInspectionSourceKey({
+      const jobType = classifyEligibleInspectionFinding({
+        title,
+        status: item.status,
+      });
+      const key = sourceKey({
         inspectionId,
         sectionIndex,
         itemIndex,
-        sectionTitle,
         sectionKey,
-        itemName: title,
-        itemLabel: item.label,
+        sectionTitle,
+        title,
         unit: item.unit,
       });
       const notes = itemNotes(item);
-      const value = item.value != null ? String(item.value) : "";
-      const measurement = value ? `${value}${item.unit ?? ""}` : "";
-      const descriptionParts = [title, measurement ? `(${measurement})` : "", notes ? `- ${notes}` : ""];
-      const description = descriptionParts.filter(Boolean).join(" ");
-      const normalizedFindingTitle = normalizeTitle(title);
-      const normalizedDescription = normalizeTitle(description);
-      const findingIdentity = buildFindingIdentity({
+      const measurement =
+        item.value != null ? `${String(item.value)}${item.unit ?? ""}` : "";
+      const description = [
+        title,
+        measurement ? `(${measurement})` : "",
+        notes ? `- ${notes}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const identity = findingIdentity({
         inspectionId,
-        sourceKey,
         sectionKey,
-        normalizedTitle: normalizedFindingTitle,
-        normalizedDescription,
+        sourceItemKey: key,
+        title,
+        description,
       });
 
-      const explicitLaborHours = finiteNumber(item.laborHours) ?? finiteNumber(item.labor_hours);
-      const laborHours = explicitLaborHours ?? normalizeLaborHoursInput(await estimateLabor(title, jobType ?? "repair"), true);
+      const explicitLabor =
+        finiteNumber(item.laborHours) ?? finiteNumber(item.labor_hours);
+      const laborHours =
+        explicitLabor ??
+        normalizeLaborHoursInput(await estimateLabor(title, jobType), true);
       const parts = itemParts(item);
-
-      if (autoGenerateParts && parts.length === 0 && autoPartsKeywords.some((keyword) => description.toLowerCase().includes(keyword))) {
-        parts.push({ description: title, qty: 1, cost: null, unitCost: null, unitPrice: null, notes: "Auto-generated from inspection" });
+      if (
+        autoGenerateParts &&
+        parts.length === 0 &&
+        autoPartKeywords.some((keyword) =>
+          description.toLowerCase().includes(keyword),
+        )
+      ) {
+        parts.push({
+          description: title,
+          qty: 1,
+          cost: null,
+          unitCost: null,
+          unitPrice: null,
+          notes: "Auto-generated from inspection",
+        });
       }
 
-      const partsTotal = parts.reduce((sum, part) => sum + (finiteNumber(part.unitCost) ?? finiteNumber(part.cost) ?? 0) * (part.qty ?? 1), 0);
-      const hasUnpricedParts = parts.some((part) => finiteNumber(part.unitPrice) == null && finiteNumber(part.unitCost) == null && finiteNumber(part.cost) == null);
+      const partsTotal = parts.reduce(
+        (sum, part) =>
+          sum +
+          (finiteNumber(part.unitCost) ?? finiteNumber(part.cost) ?? 0) *
+            (part.qty ?? 1),
+        0,
+      );
+      const hasUnpricedParts = parts.some(
+        (part) =>
+          finiteNumber(part.unitPrice) == null &&
+          finiteNumber(part.unitCost) == null &&
+          finiteNumber(part.cost) == null,
+      );
 
       const metadata: Record<string, Json | undefined> = {
         legacy_import_route: "/api/work-orders/import-from-inspection",
-        canonicalized_phase: "5E-1",
-        shop_id: shopId,
-        work_order_id: workOrderId,
-        vehicle_id: vehicleId || workOrder.vehicle_id || undefined,
+        canonicalized_phase: "5",
         inspection_id: inspectionId,
-        source_inspection_item_key: sourceKey,
+        source_inspection_item_key: key,
         source_section_key: sectionKey,
         source_section_title: sectionTitle,
         source_item_title: title,
-        source_item_description: safeString(item.description) || undefined,
         technician_notes: notes || undefined,
         measurement: measurement || undefined,
         inspection_status: safeString(item.status) || undefined,
@@ -310,8 +350,6 @@ export async function insertPrioritizedJobsFromInspection(
           recommendationType: item.recommendationType ?? null,
           priority: item.priority ?? null,
         },
-        labor_estimate_hours: laborHours,
-        parts_estimate: parts,
         photo_urls: itemPhotoUrls(item),
       };
 
@@ -320,12 +358,15 @@ export async function insertPrioritizedJobsFromInspection(
         title,
         source: "inspection",
         sourceInspectionId: inspectionId,
+        sourceWorkOrderLineId:
+          (inspection as unknown as { work_order_line_id?: string | null })
+            .work_order_line_id ?? null,
         sourceSectionKey: sectionKey,
         sourceSectionTitle: sectionTitle,
-        sourceItemKey: sourceKey,
+        sourceItemKey: key,
         sourceFindingTitle: title,
-        normalizedFindingTitle,
-        findingIdentity,
+        normalizedFindingTitle: normalize(title),
+        findingIdentity: identity,
         photoUrls: itemPhotoUrls(item),
         jobType,
         estLaborHours: laborHours,
@@ -336,7 +377,10 @@ export async function insertPrioritizedJobsFromInspection(
         notes: notes || null,
         complaint: notes || description,
         aiComplaint: notes || description,
-        status: parts.length > 0 && hasUnpricedParts ? "pending_parts" : "advisor_pending",
+        status:
+          parts.length > 0 && hasUnpricedParts
+            ? "pending_parts"
+            : "advisor_pending",
         stage: "advisor_pending",
         parts,
         metadata,
@@ -361,35 +405,66 @@ export async function insertPrioritizedJobsFromInspection(
     };
   }
 
-  const resultFromQuoteLines = await createCanonicalQuoteLines({
-    supabase,
-    shopId,
-    workOrderId,
-    vehicleId: vehicleId || workOrder.vehicle_id || null,
-    suggestedBy: userId,
-    items: quoteItems,
+  const operationKey =
+    args.operationKey?.trim() ||
+    stableImportKey({ inspectionId, workOrderId, items: quoteItems });
+  const rpc = supabase as unknown as RpcClient;
+  const { data, error } = await rpc.rpc("import_inspection_quote_package_atomic", {
+    p_shop_id: inspection.shop_id,
+    p_work_order_id: workOrderId,
+    p_inspection_id: inspectionId,
+    p_requested_vehicle_id: vehicleId,
+    p_actor_user_id: userId,
+    p_operation_key: `${inspection.shop_id}:inspection-import:${operationKey}`,
+    p_items: quoteItems,
+    p_at: new Date().toISOString(),
   });
 
-  if (!resultFromQuoteLines.ok) {
-    return { ok: false, error: resultFromQuoteLines.error };
+  if (error) {
+    return {
+      ok: false,
+      error: [error.message, error.details, error.hint]
+        .filter(Boolean)
+        .join(" — "),
+    };
   }
 
-  const createdQuoteLines = resultFromQuoteLines.items
-    .filter((item) => item.created)
-    .map((item) => ({ id: item.id, findingIdentity: item.findingIdentity }));
+  const result = data && typeof data === "object" ? (data as AtomicImportResult) : {};
+  const items = Array.isArray(result.items) ? result.items : [];
+  const createdQuoteLines = items
+    .filter((item) => item.created === true && typeof item.id === "string")
+    .map((item) => ({
+      id: item.id as string,
+      findingIdentity:
+        typeof item.findingIdentity === "string" ? item.findingIdentity : null,
+    }));
+  const quoteLineIds = Array.isArray(result.ids)
+    ? result.ids.filter((id): id is string => typeof id === "string")
+    : items
+        .map((item) => item.id)
+        .filter((id): id is string => typeof id === "string");
+  const createdPartRequestIds = Array.isArray(result.createdPartRequestIds)
+    ? result.createdPartRequestIds.filter(
+        (id): id is string => typeof id === "string",
+      )
+    : [];
 
   return {
     ok: true,
-    insertedCount: resultFromQuoteLines.createdCount,
-    quoteLineIds: resultFromQuoteLines.ids,
+    insertedCount: Number(result.createdCount ?? createdQuoteLines.length),
+    quoteLineIds,
     createdQuoteLines,
-    skippedDuplicates: resultFromQuoteLines.skippedDuplicateCount,
-    skippedCount: resultFromQuoteLines.skippedDuplicateCount,
-    partsRequestsCount: resultFromQuoteLines.createdPartRequestIds.length,
-    createdPartRequestIds: resultFromQuoteLines.createdPartRequestIds,
-    skippedPartsRequestsCount: resultFromQuoteLines.skippedPartRequestItemCount,
-    message: "Imported findings to Quote Review. No work order lines were created before customer approval.",
+    skippedDuplicates: Number(result.skippedDuplicateCount ?? 0),
+    skippedCount: Number(result.skippedDuplicateCount ?? 0),
+    partsRequestsCount: createdPartRequestIds.length,
+    createdPartRequestIds,
+    skippedPartsRequestsCount: Number(
+      result.skippedPartRequestItemCount ?? 0,
+    ),
+    message:
+      "Imported findings to Quote Review. No work order lines were created before customer approval.",
     insertedJobIds: null,
     workOrderLineIds: null,
+    idempotent: result.idempotent === true,
   };
 }

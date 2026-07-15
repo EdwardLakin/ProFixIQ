@@ -18,10 +18,12 @@ type Body = {
   lineIds?: string[];
   workOrderId?: string | null;
   declineRemaining?: boolean;
+  operationKey?: string;
+  idempotencyKey?: string;
 };
 
-function safeTrim(v: unknown): string {
-  return typeof v === "string" ? v.trim() : "";
+function safeTrim(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function serviceSupabase() {
@@ -31,21 +33,18 @@ function serviceSupabase() {
   );
 }
 
-export async function POST(req: NextRequest, ctx: RouteContext) {
+export async function POST(req: NextRequest, context: RouteContext) {
   const routeSupabase = createServerSupabaseRoute();
-  const { id } = await ctx.params;
+  const { id } = await context.params;
   const routeQuoteLineId = safeTrim(id);
 
   const {
     data: { user },
-    error: userErr,
+    error: userError,
   } = await routeSupabase.auth.getUser();
 
-  if (userErr || !user) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
+  if (userError || !user) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   const body = (await req.json().catch(() => null)) as Body | null;
@@ -57,6 +56,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   const quoteLineIds = [
     ...new Set([routeQuoteLineId, ...requestedLineIds].filter(Boolean)),
   ];
+  const operationKey =
+    req.headers.get("Idempotency-Key")?.trim() ||
+    body?.operationKey?.trim() ||
+    body?.idempotencyKey?.trim() ||
+    "";
 
   if (
     !workOrderId ||
@@ -68,20 +72,25 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       { status: 400 },
     );
   }
+  if (!operationKey) {
+    return NextResponse.json(
+      { ok: false, error: "A stable Idempotency-Key is required." },
+      { status: 400 },
+    );
+  }
 
-  const { data: customer, error: customerErr } = await routeSupabase
+  const { data: customer, error: customerError } = await routeSupabase
     .from("customers")
     .select("id")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (customerErr) {
+  if (customerError) {
     return NextResponse.json(
-      { ok: false, error: customerErr.message },
+      { ok: false, error: customerError.message },
       { status: 400 },
     );
   }
-
   if (!customer?.id) {
     return NextResponse.json(
       { ok: false, error: "Customer profile not found" },
@@ -89,110 +98,54 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     );
   }
 
-  const { data: workOrder, error: workOrderErr } = await routeSupabase
+  const { data: workOrder, error: workOrderError } = await routeSupabase
     .from("work_orders")
     .select("id, shop_id, customer_id")
     .eq("id", workOrderId)
     .eq("customer_id", customer.id)
     .maybeSingle();
 
-  if (workOrderErr) {
+  if (workOrderError) {
     return NextResponse.json(
-      { ok: false, error: workOrderErr.message },
+      { ok: false, error: workOrderError.message },
       { status: 400 },
     );
   }
-
   if (
     !workOrder?.id ||
     !workOrder.shop_id ||
     workOrder.customer_id !== customer.id
   ) {
-    return NextResponse.json(
-      { ok: false, error: "Quote not found" },
-      { status: 404 },
-    );
+    return NextResponse.json({ ok: false, error: "Quote not found" }, { status: 404 });
   }
 
-  const supabaseAdmin = serviceSupabase();
   const result = await applyWorkOrderQuoteLineDecision({
-    supabase: supabaseAdmin,
+    supabase: serviceSupabase(),
     quoteLineIds,
     workOrderId: workOrder.id,
     shopId: workOrder.shop_id,
     customerId: customer.id,
     actorUserId: user.id,
     decision,
+    declineRemaining: body?.declineRemaining === true,
+    operationKey,
   });
 
   if (!result.ok) {
+    const status = result.error?.includes("FINANCIALLY_LOCKED") ? 409 : 400;
     return NextResponse.json(
       { ok: false, error: result.error ?? "Unable to update quote decision" },
-      { status: 400 },
+      { status },
     );
-  }
-
-  if (body?.declineRemaining && decision === "approve") {
-    const { data: remaining, error: remainingErr } = await supabaseAdmin
-      .from("work_order_quote_lines")
-      .select("id, status")
-      .eq("shop_id", workOrder.shop_id)
-      .eq("work_order_id", workOrder.id);
-
-    if (remainingErr) {
-      return NextResponse.json(
-        { ok: false, error: remainingErr.message },
-        { status: 400 },
-      );
-    }
-
-    const selectedIds = new Set(quoteLineIds);
-    const remainingIds = (remaining ?? [])
-      .filter(
-        (line) =>
-          !selectedIds.has(line.id) &&
-          safeTrim(line.status).toLowerCase() === "sent",
-      )
-      .map((line) => line.id)
-      .filter(Boolean);
-    if (remainingIds.length > 0) {
-      const declineResult = await applyWorkOrderQuoteLineDecision({
-        supabase: supabaseAdmin,
-        quoteLineIds: remainingIds,
-        workOrderId: workOrder.id,
-        shopId: workOrder.shop_id,
-        customerId: customer.id,
-        actorUserId: user.id,
-        decision: "decline",
-      });
-
-      if (!declineResult.ok) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              declineResult.error ?? "Unable to decline remaining quote lines",
-          },
-          { status: 400 },
-        );
-      }
-
-      return NextResponse.json({
-        ok: true,
-        quoteLineIds,
-        workOrderLineIds: result.workOrderLineIds,
-        declinedRemainingQuoteLineIds: remainingIds,
-        approvalState: declineResult.approvalState,
-        partRelink: result.partRelink,
-      });
-    }
   }
 
   return NextResponse.json({
     ok: true,
     quoteLineIds,
     workOrderLineIds: result.workOrderLineIds,
+    declinedRemainingQuoteLineIds: result.declinedRemainingQuoteLineIds,
     approvalState: result.approvalState,
     partRelink: result.partRelink,
+    idempotent: result.idempotent === true,
   });
 }
