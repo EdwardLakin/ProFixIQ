@@ -1,93 +1,67 @@
-// app/api/portal/request/add-custom-line/route.ts
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
+import { PortalAccessError } from "@/features/portal/server/portalAuth";
+import { addPortalRequestLine } from "@/features/portal/server/addPortalRequestLine";
 
 export const runtime = "nodejs";
 
-type DB = Database;
-
 type Body = {
-  workOrderId: string;
-  description: string; // customer complaint / request
+  workOrderId?: string;
+  description?: string;
   notes?: string;
   lineType?: "job" | "info";
+  idempotencyKey?: string;
 };
 
-function bad(msg: string, status = 400) {
-  return NextResponse.json({ error: msg }, { status });
+function bad(message: string, status = 400) {
+  return NextResponse.json({ error: message }, { status });
 }
 
 export async function POST(req: Request) {
+  const supabase = createServerSupabaseRoute();
+
   try {
-    const supabase = createServerSupabaseRoute();
+    const actor = await requirePortalCustomerActor(supabase);
+    const body = (await req.json().catch(() => null)) as Body | null;
+    const workOrderId = body?.workOrderId?.trim() ?? "";
+    const description = body?.description?.trim() ?? "";
+    const key =
+      req.headers.get("Idempotency-Key")?.trim() ||
+      body?.idempotencyKey?.trim() ||
+      "";
 
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-    if (authErr || !user) return bad("Not authenticated", 401);
-
-    let body: Body;
-    try {
-      body = (await req.json()) as Body;
-    } catch {
-      return bad("Invalid JSON body");
+    if (!workOrderId || !description) {
+      return bad("Missing workOrderId or description");
+    }
+    if (!actor.customer.shop_id) {
+      return bad("Customer is not linked to a shop", 409);
+    }
+    if (!key) {
+      return bad("A stable Idempotency-Key is required.");
     }
 
-    const workOrderId = (body?.workOrderId ?? "").trim();
-    const description = (body?.description ?? "").trim();
-    const notes = (body?.notes ?? "").trim();
-    const lineType = body?.lineType === "info" ? "info" : "job";
+    const result = await addPortalRequestLine({
+      supabase,
+      shopId: actor.customer.shop_id,
+      customerId: actor.customer.id,
+      workOrderId,
+      actorUserId: actor.userId,
+      kind: "custom",
+      description,
+      notes: body?.notes?.trim() || null,
+      lineType: body?.lineType === "info" ? "info" : "job",
+      operationKey: `${actor.customer.shop_id}:portal-custom-line:${key}`,
+    });
 
-    if (!workOrderId || !description) return bad("Missing workOrderId or description");
-
-    const { data: customer, error: custErr } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (custErr) return bad(custErr.message, 500);
-    if (!customer?.id) return bad("Customer profile not found", 404);
-
-    const { data: wo, error: woErr } = await supabase
-      .from("work_orders")
-      .select("id, shop_id, customer_id, vehicle_id")
-      .eq("id", workOrderId)
-      .maybeSingle();
-
-    if (woErr) return bad("Failed to load work order", 500);
-    if (!wo) return bad("Work order not found", 404);
-    if (wo.customer_id !== customer.id) return bad("Not allowed", 403);
-
-    const insertLine: DB["public"]["Tables"]["work_order_lines"]["Insert"] = {
-      work_order_id: wo.id,
-      shop_id: wo.shop_id,
-      vehicle_id: wo.vehicle_id ?? null,
-      complaint: description,
-      notes: notes || null,
-      status: "awaiting_approval",
-      approval_state: "pending",
-      line_type: lineType,
-      punchable: lineType === "info" ? false : null,
-      // labor_time intentionally null — customer can't set it
-      labor_time: null,
-      price_estimate: null,
-    };
-
-    const { data: created, error: insErr } = await supabase
-      .from("work_order_lines")
-      .insert(insertLine)
-      .select("*")
-      .single();
-
-    if (insErr || !created) return bad("Failed to add custom line", 500);
-
-    return NextResponse.json({ line: created }, { status: 201 });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("add-custom-line error:", msg);
-    return bad("Unexpected error", 500);
+    return NextResponse.json(result, { status: result.idempotent ? 200 : 201 });
+  } catch (error: unknown) {
+    if (error instanceof PortalAccessError) {
+      return bad(error.message, error.status);
+    }
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    const lower = message.toLowerCase();
+    const status = lower.includes("not owned") ? 403 : lower.includes("locked") ? 409 : 400;
+    return bad(message, status);
   }
 }
