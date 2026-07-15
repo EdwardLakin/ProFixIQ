@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Toaster, toast } from "sonner";
@@ -48,7 +48,9 @@ export default function PortalBookingPage() {
 
   const initialRequestedDate = dateFromSearch(search.get("requestedDate"));
   const [month, setMonth] = useState(() => initialRequestedDate ?? new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialRequestedDate);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
+    initialRequestedDate,
+  );
 
   const [loading, setLoading] = useState(false);
   const [shops, setShops] = useState<ShopOption[]>([]);
@@ -64,6 +66,7 @@ export default function PortalBookingPage() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+  const bookingAttemptRef = useRef<{ slot: string; key: string } | null>(null);
 
   useEffect(() => {
     const urlShop = search.get("shop") || "";
@@ -213,20 +216,34 @@ export default function PortalBookingPage() {
 
   async function book(startIso: string, endIso: string) {
     try {
+      if (bookingAttemptRef.current?.slot !== startIso) {
+        bookingAttemptRef.current = {
+          slot: startIso,
+          key: crypto.randomUUID(),
+        };
+      }
+      const operationKey = bookingAttemptRef.current.key;
       const res = await fetch("/api/portal/bookings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
+        },
         body: JSON.stringify({
           shopSlug,
           startsAt: startIso,
           endsAt: endIso,
           notes: "",
+          operationKey,
         }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || "Booking failed");
 
-      toast.success("Appointment requested! We’ll email you when it’s confirmed.");
+      toast.success(
+        "Appointment requested! We’ll email you when it’s confirmed.",
+      );
+      bookingAttemptRef.current = null;
       setSlots((prev) => prev.filter((s) => s.start !== startIso));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Could not book.";
@@ -300,7 +317,9 @@ export default function PortalBookingPage() {
         <div>
           <h1
             className="text-lg tracking-[0.18em] text-[var(--accent-copper-light)]"
-            style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+            style={{
+              fontFamily: "var(--font-blackops), system-ui, sans-serif",
+            }}
           >
             Book service appointment
           </h1>
@@ -319,7 +338,9 @@ export default function PortalBookingPage() {
               const slug = e.target.value;
               setShopSlug(slug);
               setSelectedDate(undefined);
-              router.replace(`/portal/booking?shop=${encodeURIComponent(slug)}`);
+              router.replace(
+                `/portal/booking?shop=${encodeURIComponent(slug)}`,
+              );
             }}
             className="min-w-[200px] rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] outline-none"
           >
@@ -337,11 +358,17 @@ export default function PortalBookingPage() {
       </div>
 
       <div className="mb-6 rounded-2xl border border-[rgba(197,122,74,0.22)] bg-[var(--theme-gradient-panel)] p-4 backdrop-blur-xl">
-        <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Send me my portal link</h2>
+        <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+          Send me my portal link
+        </h2>
         <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-          Need to book or view service? Send yourself a secure portal link first.
+          Need to book or view service? Send yourself a secure portal link
+          first.
         </p>
-        <form className="mt-3 grid gap-2 sm:grid-cols-2" onSubmit={requestPortalAccess}>
+        <form
+          className="mt-3 grid gap-2 sm:grid-cols-2"
+          onSubmit={requestPortalAccess}
+        >
           <input
             type="email"
             required
@@ -375,7 +402,9 @@ export default function PortalBookingPage() {
         {portalMessage && (
           <p
             className={`mt-2 text-xs ${
-              portalMessage.type === "success" ? "text-emerald-300" : "text-rose-300"
+              portalMessage.type === "success"
+                ? "text-emerald-300"
+                : "text-rose-300"
             }`}
           >
             {portalMessage.text}
@@ -396,7 +425,9 @@ export default function PortalBookingPage() {
         </div>
 
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-xl">
-          <h2 className="mb-1 font-semibold text-[color:var(--theme-text-primary)]">Step 3 • Select time</h2>
+          <h2 className="mb-1 font-semibold text-[color:var(--theme-text-primary)]">
+            Step 3 • Select time
+          </h2>
           <p className="mb-3 text-xs text-[color:var(--theme-text-secondary)]">
             Times shown in <span className="font-medium">{tz}</span>.
             {closedLabel && (
@@ -415,10 +446,14 @@ export default function PortalBookingPage() {
               Pick a date in Step 2 to see time slots.
             </p>
           ) : loading ? (
-            <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading available times…</p>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
+              Loading available times…
+            </p>
           ) : daySlots.length === 0 ? (
             isSelectedClosed ? (
-              <p className="text-sm text-[color:var(--theme-text-secondary)]">Shop is closed on this day.</p>
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                Shop is closed on this day.
+              </p>
             ) : (
               <p className="text-sm text-[color:var(--theme-text-secondary)]">
                 No available slots on this date. Try another day.

@@ -62,28 +62,30 @@ export default function CustomerVehicleHeader({
   ].filter(Boolean) as string[];
 
   return (
-    <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+    <div className="mt-3 border-t border-[color:var(--theme-border-soft)] pt-3">
+      {(templateName || rightSlot) && (
       <div className="mb-2 flex items-start justify-between gap-3">
-        <h1 className="text-xl font-bold text-orange-400">{templateName}</h1>
+        {templateName ? <h1 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">{templateName}</h1> : <span />}
         {rightSlot ? <div className="shrink-0">{rightSlot}</div> : null}
       </div>
+      )}
 
-      <div className="grid gap-2 text-sm text-zinc-200 md:grid-cols-2">
+      <div className="grid gap-3 text-sm md:grid-cols-2">
         {/* Customer */}
-        <div className="rounded border border-zinc-800 bg-zinc-950 p-2">
-          <div className="text-zinc-400">Customer</div>
-          <div className="font-medium">{fullName}</div>
-          <div className="text-zinc-400">
+        <div className="rounded-xl bg-[color:var(--theme-surface-inset)] px-3 py-2.5">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Customer / Fleet</div>
+          <div className="mt-1 font-semibold text-[color:var(--theme-text-primary)]">{fullName}</div>
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">
             {[customer?.phone, customer?.email].filter(Boolean).join(" · ") || "—"}
           </div>
-          {addr ? <div className="text-zinc-400">{addr}</div> : null}
+          {addr ? <div className="text-xs text-[color:var(--theme-text-secondary)]">{addr}</div> : null}
         </div>
 
         {/* Vehicle */}
-        <div className="rounded border border-zinc-800 bg-zinc-950 p-2">
-          <div className="text-zinc-400">Vehicle</div>
-          <div className="font-medium">{vehicleLabel}</div>
-          <div className="text-zinc-400">{subBits.join(" · ") || "—"}</div>
+        <div className="rounded-xl bg-[color:var(--theme-surface-inset)] px-3 py-2.5">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Vehicle</div>
+          <div className="mt-1 font-semibold text-[color:var(--theme-text-primary)]">{vehicleLabel}</div>
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">{subBits.join(" · ") || "—"}</div>
         </div>
       </div>
     </div>

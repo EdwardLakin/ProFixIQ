@@ -46,12 +46,12 @@ const ActionButton = ({
     type="button"
     onClick={onClick}
     title={title}
-    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm backdrop-blur-md transition-colors"
+    className="app-shell-action inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm backdrop-blur-md transition-colors"
     style={{
-      borderColor: "rgba(148,163,184,0.22)",
+      borderColor: "var(--theme-border-soft)",
       background:
         "var(--theme-gradient-panel)",
-      color: "rgb(226,232,240)",
+      color: "var(--theme-text-primary)",
     }}
   >
     {children}

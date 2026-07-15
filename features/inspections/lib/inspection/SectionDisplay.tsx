@@ -10,7 +10,6 @@ import type {
 } from "@inspections/lib/inspection/types";
 import InspectionItemCard from "./InspectionItemCard";
 import { Button } from "@shared/components/ui/Button";
-import Card from "@/features/shared/components/ui/Card";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { pricingStatusClass, pricingStatusText } from "@/features/menu-repair-items/lib/pricingStatus";
 
@@ -253,17 +252,17 @@ export default function SectionDisplay(props: SectionDisplayProps) {
   };
 
   return (
-    <Card className="mb-6 px-4 py-3 md:px-5 md:py-4">
+    <div>
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-4">
         {gridSection ? (
-          <div className="text-left text-base font-semibold tracking-[0.08em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-lg">
+          <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
             {resolvedTitle}
           </div>
         ) : (
           <button
             onClick={toggleOpen}
-            className="text-left text-base font-semibold tracking-[0.08em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-lg"
+            className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-xl"
             aria-expanded={open}
             type="button"
           >
@@ -285,7 +284,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 border-emerald-500/35 bg-emerald-50 px-2 text-[11px] text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/25 dark:text-emerald-200"
                 onClick={() => markAll("ok")}
                 type="button"
               >
@@ -294,7 +293,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 border-red-500/30 px-2 text-[11px] text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
                 onClick={() => markAll("fail")}
                 type="button"
               >
@@ -303,7 +302,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 border-sky-500/30 px-2 text-[11px] text-sky-700 hover:bg-sky-50 dark:text-sky-200 dark:hover:bg-sky-950/25"
                 onClick={() => markAll("na")}
                 type="button"
               >
@@ -312,7 +311,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 border-amber-500/35 px-2 text-[11px] text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/25"
                 onClick={() => markAll("recommend")}
                 type="button"
               >
@@ -341,9 +340,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
           {gridSection ? (
             <div />
           ) : (
-            <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)]">
+            <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)]">
               {/* Desktop header row — desktop only */}
-              <div className="hidden border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 lg:block">
+              <div className="hidden border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2.5 lg:block">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Item · Status · Notes
@@ -357,25 +356,14 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               {/* Mobile/Tablet: 1 col. Desktop: 2-up on lg+ */}
               <div
                 className={[
-                  "grid gap-2 p-2",
-                  "lg:grid-cols-2 lg:gap-[2px] lg:bg-[color:var(--theme-surface-subtle)] lg:p-[2px]",
-                  "[&>*]:rounded-lg",
+                  "grid gap-2 p-2.5",
+                  "lg:grid-cols-2 lg:gap-3 lg:p-3",
+                  "[&>*]:rounded-xl",
                   "[&>*]:border [&>*]:border-[color:var(--theme-border-soft)]",
-                  "[&>*]:bg-[var(--theme-gradient-panel)]",
-                  "[&>*]:shadow-[var(--theme-shadow-medium)]",
-                  "[&>*]:backdrop-blur-md",
+                  "[&>*]:bg-[color:var(--theme-surface-panel-strong)]",
                   "[&>*]:relative [&>*]:overflow-hidden",
-                  "[&>*]:before:absolute [&>*]:before:inset-x-0 [&>*]:before:top-0 [&>*]:before:h-[2px] [&>*]:before:content-['']",
-                  "[&>*]:before:bg-[linear-gradient(90deg,transparent,rgba(197,122,74,0.85),transparent)]",
                   "[&>*]:transition [&>*]:duration-150",
-                  "[&>*]:hover:-translate-y-[1px]",
-                  "[&>*]:hover:border-[rgba(197,122,74,0.45)]",
-                  "[&>*]:hover:shadow-[var(--theme-shadow-medium)]",
-                  "[&>*]:hover:bg-[var(--theme-gradient-panel)]",
-                  "[&>*:nth-child(odd)]:brightness-[1.02]",
-                  "[&>*:nth-child(even)]:brightness-[0.98]",
-                  "lg:[&>*:nth-child(4n+1)]:brightness-[1.02] lg:[&>*:nth-child(4n+2)]:brightness-[1.02]",
-                  "lg:[&>*:nth-child(4n+3)]:brightness-[0.98] lg:[&>*:nth-child(4n+4)]:brightness-[0.98]",
+                  "[&>*]:hover:border-[color:var(--theme-border-strong)]",
                 ].join(" ")}
               >
                 {items.map((item, itemIndex) => {
@@ -430,7 +418,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                     <div
                       key={keyBase}
                       className={[
-                        "relative px-3 py-3",
+                        "relative px-3 py-3.5",
+                        isFailOrRec ? "lg:col-span-2" : "",
                         "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
                         rail,
                         submitted ? "ring-1 ring-emerald-500/35" : "",
@@ -937,6 +926,6 @@ export default function SectionDisplay(props: SectionDisplayProps) {
           )}
         </div>
       )}
-    </Card>
+    </div>
   );
 }

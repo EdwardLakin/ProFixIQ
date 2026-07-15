@@ -48,7 +48,6 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
-import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import { cn } from "@shared/lib/utils";
 
@@ -2525,19 +2524,19 @@ type SmartMatchRow = {
   };
 
   const shell = isEmbed
-    ? "relative mx-auto max-w-[1100px] px-3 py-4 pb-[calc(9rem+env(safe-area-inset-bottom))]"
+    ? "relative mx-auto max-w-[1280px] px-3 py-4 pb-6 md:px-5 md:py-5"
     : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-[calc(9.5rem+env(safe-area-inset-bottom))]";
 
-  const headerCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-5 md:py-4 mb-3 md:mb-4`;
-  const sectionCard = `${PANEL_VARIANTS.primary} px-3 py-3 md:px-5 md:py-5 mb-4 md:mb-6`;
-  const supportCard = `${PANEL_VARIANTS.secondary} px-3 py-2 md:px-4 md:py-2.5`;
-  const passiveCard = `${PANEL_VARIANTS.passive} px-3 py-2.5 md:px-4 md:py-3`;
+  const headerCard = `${PANEL_VARIANTS.primary} rounded-2xl px-4 py-4 md:px-5 md:py-5 mb-3`;
+  const sectionCard = `${PANEL_VARIANTS.primary} rounded-2xl px-3 py-3 md:px-5 md:py-5 mb-4`;
+  const supportCard = "space-y-3";
+  const passiveCard = `${PANEL_VARIANTS.passive} rounded-xl px-3 py-2.5 md:px-4 md:py-3`;
 
   const sectionTitle =
-    "text-base md:text-lg font-semibold text-[var(--theme-text-primary,var(--theme-text-primary))] text-center tracking-[0.12em] uppercase";
+    "text-lg md:text-xl font-semibold text-[var(--theme-text-primary,var(--theme-text-primary))] tracking-[-0.02em]";
 
   const hint =
-    "mt-1 block text-center text-[11px] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]";
+    "mt-1 block text-xs text-[color:var(--theme-text-secondary)]";
 
 
   const findingsHref = useMemo(() => {
@@ -2627,10 +2626,12 @@ type SmartMatchRow = {
         `}</style>
       )}
 
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
-      />
+      {!isEmbed && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 -z-10 bg-[var(--theme-gradient-panel)]"
+        />
+      )}
 
       <div className="relative space-y-3">
         <div className={headerCard}>
@@ -2659,93 +2660,68 @@ type SmartMatchRow = {
         </div>
 
         <div className={supportCard}>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className={voicePulse ? "rounded-full shadow-[0_0_0_6px_rgba(16,185,129,0.12)]" : ""}>
-              <StatusBadge
-                variant={
-                  voiceState === "listening"
-                    ? "success"
+          <div className="flex flex-col gap-3 rounded-2xl bg-[#17202a] px-4 py-3 text-white shadow-[0_16px_36px_rgba(15,23,42,0.16)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[color:var(--brand-primary)]", voicePulse && "ring-4 ring-orange-300/20")}>
+                <span className={cn("h-2.5 w-2.5 rounded-full bg-white", voiceState === "listening" && "animate-pulse")} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold sm:text-base">
+                  {voiceState === "listening"
+                    ? "Listening for the next finding…"
                     : voiceState === "connecting"
-                      ? "warning"
+                      ? "Connecting voice capture…"
                       : voiceState === "error"
-                        ? "danger"
-                        : "neutral"
-                }
-                size="md"
-                className="inline-flex items-center gap-2 px-3 py-1"
-              >
-                <span
-                  className={[
-                    "h-2 w-2 rounded-full",
-                    voiceState === "listening"
-                      ? "bg-emerald-400"
-                      : voiceState === "connecting"
-                        ? "bg-amber-400"
-                        : voiceState === "error"
-                          ? "bg-red-400"
-                          : "bg-[color:var(--theme-surface-subtle)]",
-                    voiceState === "listening" ? "animate-pulse" : "",
-                  ].join(" ")}
-                />
-                {voiceState === "listening"
-                  ? "Listening…"
-                  : voiceState === "connecting"
-                    ? "Connecting…"
-                    : voiceState === "error"
-                      ? "Voice error"
-                      : "Voice idle"}
-                {voicePulse && <span className="text-emerald-200/80">• audio</span>}
-              </StatusBadge>
+                        ? "Voice capture needs attention"
+                        : isPaused
+                          ? "Voice capture paused"
+                          : "Voice capture ready"}
+                </div>
+                <div className="mt-1 flex h-3 items-center gap-0.5" aria-hidden>
+                  {[4, 8, 6, 11, 7, 13, 9, 5, 10, 6, 12, 8, 4, 9, 5, 7].map((height, index) => (
+                    <span key={`${height}-${index}`} className={cn("w-0.5 rounded-full bg-orange-300/80", !isListening && "opacity-25")} style={{ height }} />
+                  ))}
+                  {wakeActive ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-200">Ready</span> : null}
+                </div>
+              </div>
             </div>
 
-            {wakeActive && (
-              <div className="rounded-full border border-orange-400/60 bg-orange-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-200">
-                Ready
-              </div>
-            )}
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              {!isLocked && <StartListeningButton isListening={isListening} onStart={startListening} />}
+              {!isLocked && (isListening || isPaused) && (
+                <PauseResumeButton
+                  isPaused={isPaused}
+                  onPause={() => {
+                    setIsPaused(true);
+                    pauseSession();
+                    stopListening();
+                  }}
+                  onResume={() => {
+                    setIsPaused(false);
+                    resumeSession();
+                    void startListening();
+                  }}
+                />
+              )}
+            </div>
+          </div>
 
-            {!isLocked && (
-              <StartListeningButton isListening={isListening} onStart={startListening} />
-            )}
-
-            {!isLocked && (isListening || isPaused) && (
-              <PauseResumeButton
-                isPaused={isPaused}
-                onPause={() => {
-                  setIsPaused(true);
-                  pauseSession();
-                  stopListening();
-                }}
-                onResume={() => {
-                  setIsPaused(false);
-                  resumeSession();
-                  void startListening();
-                }}
-              />
-            )}
-
+          <div className="flex flex-col gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-3 py-3 shadow-[var(--theme-shadow-soft)] sm:flex-row sm:items-center sm:justify-between">
             <Button
               type="button"
               variant="outline"
-              className="w-full justify-center border-orange-300/70 bg-[color:var(--theme-surface-overlay)] text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-400 hover:bg-[color:var(--theme-surface-overlay)] sm:w-auto"
+              size="sm"
+              className="justify-center text-xs font-semibold sm:justify-start"
               onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
             >
-              Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+              {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
             </Button>
 
-            <div className="ml-auto flex items-center gap-2 text-[11px]">
-              <span className="rounded-full border border-red-500/35 bg-red-500/10 px-2 py-0.5 text-red-100">
-                Fail {failed.length}
-              </span>
-              <span className="rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-amber-100">
-                Rec {recommended.length}
-              </span>
-              <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 text-emerald-100">
-                OK/NA {otherOkNa.length}
-              </span>
-              <span className="rounded-full border border-sky-500/35 bg-sky-500/10 px-2 py-0.5 text-sky-100">
-                WO lines {linesAdded}
-              </span>
+            <div className="grid grid-cols-2 gap-2 text-xs sm:flex sm:items-center">
+              <span className="rounded-full bg-red-50 px-3 py-1.5 font-semibold text-red-700 dark:bg-red-950/35 dark:text-red-200">{failed.length} Fail</span>
+              <span className="rounded-full bg-amber-50 px-3 py-1.5 font-semibold text-amber-800 dark:bg-amber-950/35 dark:text-amber-200">{recommended.length} Recommend</span>
+              <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200">{otherOkNa.length} Pass / N/A</span>
+              <span className="rounded-full bg-sky-50 px-3 py-1.5 font-semibold text-sky-700 dark:bg-sky-950/35 dark:text-sky-200">{linesAdded} WO lines</span>
             </div>
           </div>
 
@@ -2860,7 +2836,7 @@ type SmartMatchRow = {
                         <button
                           type="button"
                           disabled={isLocked}
-                          className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/60 dark:bg-emerald-950/35 dark:text-emerald-100"
                           onClick={() => applyStatusToSection(sectionIndex, "ok")}
                         >
                           All OK
@@ -2868,7 +2844,7 @@ type SmartMatchRow = {
                         <button
                           type="button"
                           disabled={isLocked}
-                          className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/60 dark:bg-red-950/35 dark:text-red-100"
                           onClick={() => applyStatusToSection(sectionIndex, "fail")}
                         >
                           All Fail
@@ -2876,7 +2852,7 @@ type SmartMatchRow = {
                         <button
                           type="button"
                           disabled={isLocked}
-                          className="rounded-full border border-zinc-500/60 bg-zinc-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-200 hover:bg-zinc-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-500/60 dark:bg-sky-950/35 dark:text-sky-100"
                           onClick={() => applyStatusToSection(sectionIndex, "na")}
                         >
                           All NA
@@ -2884,7 +2860,7 @@ type SmartMatchRow = {
                         <button
                           type="button"
                           disabled={isLocked}
-                          className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-500/60 dark:bg-amber-950/35 dark:text-amber-100"
                           onClick={() =>
                             applyStatusToSection(sectionIndex, "recommend")
                           }
@@ -2893,7 +2869,7 @@ type SmartMatchRow = {
                         </button>
                         <button
                           type="button"
-                          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
+                          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.04em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
                           onClick={() => toggleSectionCollapsed(sectionIndex)}
                         >
                           {collapsed ? "Expand" : "Collapse"}
@@ -2902,7 +2878,7 @@ type SmartMatchRow = {
                     ) : (
                       <button
                         type="button"
-                        className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
+                        className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-3 py-1.5 text-[10px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
                         onClick={() => toggleSectionCollapsed(sectionIndex)}
                       >
                         {collapsed ? "Expand" : "Collapse"}
@@ -3187,17 +3163,20 @@ type SmartMatchRow = {
         )}
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur">
-        <div className="mx-auto flex max-w-[1100px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:items-center">{actions}</div>
-          <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+      <div className={cn(
+        "z-40 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-12px_30px_rgba(15,23,42,0.08)]",
+        isEmbed ? "sticky bottom-0 -mx-3 md:-mx-5" : "fixed inset-x-0 bottom-0",
+      )}>
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="grid grid-cols-2 gap-2 [&>*]:w-full [&>*:last-child:nth-child(odd)]:col-span-2 sm:flex sm:flex-wrap sm:items-center sm:[&>*]:w-auto">{actions}</div>
+          <div className="order-first text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:order-none">
             Draft auto-saves locally
           </div>
         </div>
       </div>
 
       {showMissingLineWarning && (
-        <div className="fixed inset-x-0 bottom-[52px] z-50 px-3">
+        <div className={cn("inset-x-0 z-50 px-3", isEmbed ? "sticky bottom-[76px]" : "fixed bottom-[52px]")}>
           <div className="mx-auto max-w-[1100px] rounded-xl border border-red-500/40 bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs text-red-200 shadow-[var(--theme-shadow-medium)]">
             Missing <code>workOrderLineId</code> — save/finish will be blocked.
           </div>
