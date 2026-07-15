@@ -40,9 +40,6 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     const body = (await req.json().catch(() => null)) as Body | null;
     const workOrderId = safeString(body?.workOrderId);
     const decision = body?.decision;
-    const key =
-      req.headers.get("Idempotency-Key")?.trim() ||
-      safeString(body?.idempotencyKey);
 
     if (
       !lineId ||
@@ -60,11 +57,42 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
         { status: 409 },
       );
     }
+
+    let key =
+      req.headers.get("Idempotency-Key")?.trim() ||
+      safeString(body?.idempotencyKey);
+
     if (!key) {
-      return NextResponse.json(
-        { ok: false, error: "A stable Idempotency-Key is required." },
-        { status: 400 },
-      );
+      const { data: currentLine, error: currentLineError } = await supabase
+        .from("work_order_lines")
+        .select("approval_state,updated_at")
+        .eq("id", lineId)
+        .eq("work_order_id", workOrderId)
+        .eq("shop_id", actor.customer.shop_id)
+        .maybeSingle<{
+          approval_state: string | null;
+          updated_at: string | null;
+        }>();
+
+      if (currentLineError) {
+        return NextResponse.json(
+          { ok: false, error: currentLineError.message },
+          { status: 400 },
+        );
+      }
+      if (!currentLine) {
+        return NextResponse.json(
+          { ok: false, error: "Line item not found" },
+          { status: 404 },
+        );
+      }
+
+      const stateVersion = [
+        currentLine.approval_state ?? "none",
+        currentLine.updated_at ?? "unknown",
+        decision,
+      ].join(":");
+      key = `derived:${lineId}:${stateVersion}`;
     }
 
     const rpc = supabase as unknown as RpcClient;
