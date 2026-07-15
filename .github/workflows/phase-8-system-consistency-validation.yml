@@ -1,0 +1,42 @@
+name: Phase 8 System Consistency Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/quotes/approval-webhook/route.ts"
+      - "app/api/work-orders/**"
+      - "features/work-orders/server/workOrderLineApproval.ts"
+      - "supabase/migrations/20260715090*.sql"
+      - "tests/phase8-*.test.ts"
+      - "docs/system-audit/phase-8-system-consistency-closeout.md"
+      - ".github/workflows/phase-8-system-consistency-validation.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: >-
+          pnpm exec eslint
+          app/api/quotes/approval-webhook/route.ts
+          app/api/work-orders/[id]/mark-ready/route.ts
+          app/api/work-orders/add-line/route.ts
+          app/api/work-orders/add-suggested-lines/route.ts
+          app/api/work-orders/update-status/route.ts
+          app/api/work-orders/lines/update-from-inspection/route.ts
+          tests/phase8-approval-consistency-contract.test.ts
+          tests/phase8-readiness-ai-legacy-contract.test.ts
+      - run: >-
+          pnpm exec vitest run
+          tests/phase8-approval-consistency-contract.test.ts
+          tests/phase8-readiness-ai-legacy-contract.test.ts

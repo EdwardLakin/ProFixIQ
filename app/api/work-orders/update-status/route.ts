@@ -1,155 +1,35 @@
-// app/api/work-orders/update-status/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/types/supabase";
-import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
-import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
-import { seedCompletedWorkOrderIntelligence } from "@/features/ai/server/workOrderIntelligence";
+import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-
-type Command = "punch-in" | "complete";
-
-type QuoteLineItem = {
-  name: string;
-  description?: string;
-  labor_time?: number;
-  part_name?: string;
-  part_price?: number;
-  parts_cost?: number;
-  total_price?: number;
-};
-
-type WorkOrderUpdate = Database["public"]["Tables"]["work_orders"]["Update"];
-type QuoteField = WorkOrderUpdate["quote"];
-
-interface RequestBody {
-  workOrderId: string;
-  command: Command;
-  quote?: QuoteLineItem[];
-  summary?: string;
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
-    if (!access.ok) return access.response;
-    const shopId = access.profile.shop_id;
-
-    const body = (await req.json()) as RequestBody;
-    const { workOrderId, command, quote, summary } = body;
-
-    if (!workOrderId || !command) {
-      return NextResponse.json(
-        { error: "Missing workOrderId or command" },
-        { status: 400 },
-      );
-    }
-
-    const { data: existingWorkOrder, error: existingErr } = await supabase
-      .from("work_orders")
-      .select("id, status")
-      .eq("id", workOrderId)
-      .eq("shop_id", shopId)
-      .maybeSingle();
-
-    if (existingErr) {
-      return NextResponse.json({ error: existingErr.message }, { status: 400 });
-    }
-    if (!existingWorkOrder?.id) {
-      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
-    }
-
-    let updateFields: WorkOrderUpdate = {};
-
-    if (command === "punch-in") {
-      updateFields = {
-        status: normalizeWorkOrderStatus("in_progress"),
-      };
-    } else if (command === "complete") {
-      const nextFields: WorkOrderUpdate = {
-        status: normalizeWorkOrderStatus("completed"),
-      };
-
-      if (quote && summary) {
-        const quotePayload = {
-          summary,
-          items: quote,
-        };
-
-        // Cast through QuoteField without using `any`
-        (nextFields as WorkOrderUpdate).quote =
-          quotePayload as unknown as QuoteField;
-      }
-
-      updateFields = nextFields;
-    } else {
-      return NextResponse.json(
-        { error: "Unknown command" },
-        { status: 400 },
-      );
-    }
-
-    const { error } = await supabase
-      .from("work_orders")
-      .update(updateFields)
-      .eq("id", workOrderId)
-      .eq("shop_id", shopId);
-
-    if (error) {
-      throw error;
-    }
-
-    await logOperationalEvent({
-      supabase,
-      event: "work_order_status_changed",
-      entityType: "work_order",
-      entityId: workOrderId,
-      details: {
-        command,
-        from_status: existingWorkOrder.status,
-        to_status: updateFields.status ?? null,
+/**
+ * Legacy compatibility endpoint.
+ *
+ * Parent work-order status is derived through canonical commands:
+ * - technician line start/pause/resume/finish routes
+ * - /api/work-orders/[id]/mark-ready
+ * - invoice/payment lifecycle RPCs
+ *
+ * This endpoint previously bypassed labor segments, quote review, readiness,
+ * financial locks, and parent rollups by directly updating work_orders.status.
+ */
+export async function POST() {
+  return NextResponse.json(
+    {
+      error: "Legacy work-order status mutation has been retired.",
+      code: "LEGACY_STATUS_ROUTE_RETIRED",
+      canonicalFlows: {
+        technicianLabor: "/api/work-orders/lines/[lineId]/{start|pause|resume|finish}",
+        readyToInvoice: "/api/work-orders/[id]/mark-ready",
+        invoiceLifecycle: "/api/invoices/send",
       },
-    });
-
-    let historySync: { ok: true; historyId: string | null; skippedReason?: string } | null = null;
-
-    if (command === "complete") {
-      try {
-        historySync = await syncWorkOrderToHistory(supabase, workOrderId);
-      } catch (historyError) {
-        console.warn("[work-orders/update-status] history sync failed:", historyError);
-      }
-
-      try {
-        await seedCompletedWorkOrderIntelligence({
-          supabase,
-          shopId,
-          workOrderId,
-          source: "work_order_completed",
-        });
-      } catch (intelligenceError) {
-        console.warn(
-          "[work-orders/update-status] completed-repair learning failed:",
-          intelligenceError,
-        );
-      }
-    }
-
-    return NextResponse.json({ success: true, updated: updateFields, historySync });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("Work order update failed:", message);
-    return NextResponse.json(
-      { error: "Update failed" },
-      { status: 500 },
-    );
-  }
+    },
+    {
+      status: 410,
+      headers: {
+        Deprecation: "true",
+        Sunset: "Wed, 15 Jul 2026 00:00:00 GMT",
+      },
+    },
+  );
 }
