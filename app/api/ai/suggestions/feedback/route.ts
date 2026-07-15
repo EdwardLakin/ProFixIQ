@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database, Json } from "@shared/types/types/supabase";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { recordAutomationEvidence } from "@/features/ai/server/automationEvidence";
 
 type DB = Database;
 
@@ -63,16 +64,12 @@ function normalizeParts(value: unknown): Json {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createServerSupabaseRoute();
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageWorkOrders",
+    });
+    if (!access.ok) return access.response;
+    const { supabase } = access;
+    const shopId = access.profile.shop_id;
 
     const body = (await req.json().catch(() => null)) as FeedbackBody | null;
 
@@ -98,6 +95,7 @@ export async function POST(req: Request) {
       .from("work_orders")
       .select("id, shop_id")
       .eq("id", workOrderId)
+      .eq("shop_id", shopId)
       .maybeSingle();
 
     if (workOrderError) {
@@ -117,8 +115,9 @@ export async function POST(req: Request) {
     if (workOrderLineId) {
       const { data: line, error: lineError } = await supabase
         .from("work_order_lines")
-        .select("id, work_order_id")
+        .select("id, work_order_id, shop_id")
         .eq("id", workOrderLineId)
+        .eq("shop_id", shopId)
         .maybeSingle();
 
       if (lineError) {
@@ -135,7 +134,7 @@ export async function POST(req: Request) {
 
     const insertPayload: DB["public"]["Tables"]["ai_suggestion_feedback"]["Insert"] =
       {
-        shop_id: workOrder.shop_id,
+        shop_id: shopId,
         work_order_id: workOrderId,
         work_order_line_id: workOrderLineId,
         suggestion_id: suggestionId,
@@ -143,18 +142,60 @@ export async function POST(req: Request) {
         labor_hours: laborHours,
         parts: normalizeParts(body?.parts),
         accepted,
-        created_by: user.id,
+        created_by: access.profile.id,
       };
 
-    const { error: insertError } = await supabase
+    const { data: feedback, error: insertError } = await supabase
       .from("ai_suggestion_feedback")
-      .insert(insertPayload);
+      .insert(insertPayload)
+      .select("id")
+      .single();
 
-    if (insertError) {
+    if (insertError || !feedback) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true });
+    let evidenceWarning: string | undefined;
+    try {
+      const outcome = accepted ? "matched" : "corrected";
+      const metadata: Json = {
+        accepted,
+        suggestion_id: suggestionId,
+        title,
+        labor_hours: laborHours,
+        work_order_id: workOrderId,
+        work_order_line_id: workOrderLineId,
+      };
+      await Promise.all([
+        recordAutomationEvidence({
+          shopId,
+          capability: "work_order_line_creation",
+          evidenceKey: `suggestion_feedback:${feedback.id}`,
+          outcome,
+          source: "advisor_suggestion_feedback",
+          sourceEntityType: "ai_suggestion_feedback",
+          sourceEntityId: feedback.id,
+          metadata,
+          recordedBy: access.profile.id,
+        }),
+        recordAutomationEvidence({
+          shopId,
+          capability: "quote_preparation",
+          evidenceKey: `suggestion_feedback:${feedback.id}`,
+          outcome,
+          source: "advisor_suggestion_feedback",
+          sourceEntityType: "ai_suggestion_feedback",
+          sourceEntityId: feedback.id,
+          metadata,
+          recordedBy: access.profile.id,
+        }),
+      ]);
+    } catch (evidenceError) {
+      console.warn("[ai/suggestions/feedback] readiness evidence failed:", evidenceError);
+      evidenceWarning = "Feedback saved, but readiness evidence could not be updated";
+    }
+
+    return NextResponse.json({ ok: true, warning: evidenceWarning });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unexpected error";
