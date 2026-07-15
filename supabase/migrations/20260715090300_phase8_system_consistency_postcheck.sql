@@ -22,10 +22,14 @@ begin
 
   if not exists (
     select 1
-    from pg_indexes
-    where schemaname = 'public'
-      and tablename = 'system_lifecycle_operation_keys'
-      and indexname = 'system_lifecycle_operation_keys_shop_id_operation_name_operation_key_key'
+    from pg_constraint constraint_row
+    join pg_class table_row on table_row.oid = constraint_row.conrelid
+    join pg_namespace namespace_row on namespace_row.oid = table_row.relnamespace
+    where namespace_row.nspname = 'public'
+      and table_row.relname = 'system_lifecycle_operation_keys'
+      and constraint_row.contype = 'u'
+      and pg_get_constraintdef(constraint_row.oid) =
+        'UNIQUE (shop_id, operation_name, operation_key)'
   ) then
     raise exception 'Phase 8 postcheck failed: system operation key uniqueness is missing.';
   end if;
