@@ -17,6 +17,7 @@ import {
 } from "@/features/shared/lib/ownerSidebarNav";
 import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
 const GROUP_ORDER = [
   "Dashboard",
@@ -33,15 +34,11 @@ const GROUP_ORDER = [
 ];
 
 function normalizeRole(raw: string | null | undefined): Role | null {
-  const r = String(raw ?? "")
-    .toLowerCase()
-    .trim();
-  if (!r) return null;
-
-  if (r === "tech" || r === "technician") return "mechanic";
-  if (r === "fleet pm" || r === "fleet_pm") return "fleet_manager";
-
-  return r as Role;
+  const canonical = canonicalizeRole(raw);
+  if (canonical === "unknown" || canonical === "customer" || canonical === "service") {
+    return null;
+  }
+  return canonical;
 }
 
 function isRouteMatch(pathname: string, href: string): boolean {

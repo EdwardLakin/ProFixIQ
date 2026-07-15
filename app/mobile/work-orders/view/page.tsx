@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -69,9 +70,6 @@ const NORMAL_FLOW_STATUSES: StatusKey[] = [
   "planned",
   "new",
 ];
-
-// roles that can assign techs from mobile advisor view
-const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 /* ------------------------------------------------------------------ */
 /* Input styles                                                        */
@@ -148,7 +146,7 @@ export default function MobileWorkOrdersViewPage() {
     })();
   }, [supabase]);
 
-  const canAssign = currentRole ? ASSIGN_ROLES.has(currentRole) : false;
+  const canAssign = getActorCapabilities({ role: currentRole }).canAssignWork;
 
   const load = useCallback(async () => {
     setLoading(true);

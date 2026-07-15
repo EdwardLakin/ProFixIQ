@@ -9,7 +9,7 @@ const supabase = createClient(
 );
 
 export async function GET() {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({ requiredCapability: "canAssignWork" });
   if (!access.ok) return access.response;
   const shopId = access.profile.shop_id;
 

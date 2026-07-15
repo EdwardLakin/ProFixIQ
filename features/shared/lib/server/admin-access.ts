@@ -3,7 +3,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import type { Database } from "@shared/types/types/supabase";
 import { createServerSupabaseRSC, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { canonicalizeRole, getActorCapabilities, type ActorCapabilities, type CanonicalRole } from "@/features/shared/lib/rbac";
+import { getActorCapabilities, type ActorCapabilities, type CanonicalRole } from "@/features/shared/lib/rbac";
 import { OWNER_PIN_PURPOSES, type OwnerPinPurpose, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 import { NextResponse } from "next/server";
 
@@ -13,12 +13,14 @@ type ShopScopedProfile = Omit<ProfileScope, "shop_id"> & { shop_id: string };
 
 type CapabilityKey = keyof ActorCapabilities;
 
-type AdminPageAccessOptions = {
-  allow: CanonicalRole[];
+type ShopPageAccessOptions = {
+  allowRoles?: readonly CanonicalRole[];
+  requiredCapability?: CapabilityKey;
+  requiredCapabilities?: readonly CapabilityKey[];
   redirectTo?: string;
 };
 
-export async function requireAdminPageAccess(options: AdminPageAccessOptions): Promise<{
+export async function requireShopPageAccess(options: ShopPageAccessOptions): Promise<{
   profile: ShopScopedProfile;
   canonicalRole: CanonicalRole;
 }> {
@@ -35,10 +37,22 @@ export async function requireAdminPageAccess(options: AdminPageAccessOptions): P
     .eq("id", user.id)
     .maybeSingle<ProfileScope>();
 
-  const role = canonicalizeRole(profile?.role);
-  const allowed = options.allow.includes(role);
+  const actor = getActorCapabilities({ role: profile?.role });
+  const role = actor.canonicalRole;
+  const allowedRole = !options.allowRoles || options.allowRoles.includes(role);
+  const allowedCapability = !options.requiredCapability || actor[options.requiredCapability];
+  const allowedCapabilities =
+    !options.requiredCapabilities?.length ||
+    options.requiredCapabilities.every((capability) => actor[capability]);
 
-  if (!profile || !profile.shop_id || !allowed) {
+  if (
+    !profile ||
+    !profile.shop_id ||
+    !actor.isKnownRole ||
+    !allowedRole ||
+    !allowedCapability ||
+    !allowedCapabilities
+  ) {
     redirect(options.redirectTo ?? "/dashboard");
   }
 
@@ -48,10 +62,20 @@ export async function requireAdminPageAccess(options: AdminPageAccessOptions): P
   };
 }
 
+export async function requireAdminPageAccess(options: {
+  allow: readonly CanonicalRole[];
+  redirectTo?: string;
+}) {
+  return requireShopPageAccess({
+    allowRoles: options.allow,
+    redirectTo: options.redirectTo,
+  });
+}
+
 type ApiAccessOptions = {
   requiredCapability?: CapabilityKey;
-  requiredCapabilities?: CapabilityKey[];
-  allowRoles?: CanonicalRole[];
+  requiredCapabilities?: readonly CapabilityKey[];
+  allowRoles?: readonly CanonicalRole[];
   requireOwnerPin?: boolean;
   ownerPinRequest?: Request;
   ownerPinAllowedPurposes?: OwnerPinPurpose[];
@@ -85,6 +109,12 @@ export async function requireShopScopedApiAccess(options: ApiAccessOptions = {})
 
   const actor = getActorCapabilities({ role: profile.role });
   const canonicalRole = actor.canonicalRole;
+
+  // This is a staff/shop boundary helper. Unrecognized profile roles must never
+  // inherit access merely because the profile happens to contain a shop_id.
+  if (!actor.isKnownRole) {
+    return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
+  }
 
   if (options.allowRoles && !options.allowRoles.includes(canonicalRole)) {
     return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };

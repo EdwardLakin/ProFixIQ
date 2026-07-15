@@ -1,7 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { DB, ProfileRow, ShopRow } from "../types";
-
-const ALLOWED_ROLES = new Set(["owner", "admin", "manager"]);
+import { hasAnyRole, ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 export type QuickBooksAuthContext = {
   user: User;
@@ -41,8 +40,7 @@ export async function requireQuickBooksShopAccess(
     return { ok: false, status: 400, error: "No shop found for this account." };
   }
 
-  const role = String(profile.role ?? "").trim().toLowerCase();
-  if (!ALLOWED_ROLES.has(role)) {
+  if (!hasAnyRole(profile.role, ROLE_GROUPS.accountAdministrators)) {
     return { ok: false, status: 403, error: "Forbidden" };
   }
 

@@ -35,6 +35,7 @@ import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents"
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -142,18 +143,6 @@ type TemplateSectionItem = { item: string; unit?: string | null };
 type TemplateSection = { title: string; items: TemplateSectionItem[] };
 
 // roles allowed to assign jobs
-const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor", "lead_hand", "foreman"]);
-
-// roles allowed to approve / decline
-const APPROVAL_ROLES = new Set([
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-  "lead_hand",
-  "lead",
-  "leadhand",
-]);
 
 // roles allowed to delete/void lines
 const LINE_DELETE_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
@@ -1107,8 +1096,9 @@ export default function WorkOrderIdClient(): JSX.Element {
     ? format(new Date(wo.expected_completion_at), "PPpp")
     : "—";
 
-  const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
-  const canApprove = currentUserRole ? APPROVAL_ROLES.has(currentUserRole) : false;
+  const currentActor = getActorCapabilities({ role: currentUserRole });
+  const canAssign = currentActor.canAssignWork;
+  const canApprove = currentActor.canAuthorizeQuotes;
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
 
