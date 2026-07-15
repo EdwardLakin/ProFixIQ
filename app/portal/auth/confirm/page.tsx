@@ -1,134 +1,80 @@
-// app/portal/auth/confirm/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
 
 const COPPER = "#C57A4A";
 
-type CustomersRow = Database["public"]["Tables"]["customers"]["Row"];
-type CustomersInsert = Database["public"]["Tables"]["customers"]["Insert"];
-type CustomerPortalInviteRow =
-  Database["public"]["Tables"]["customer_portal_invites"]["Row"];
+function safeInternalPath(value: string | null): string {
+  const path = value ?? "";
+  if (!path.startsWith("/") || path.startsWith("//")) return "/portal";
+  if (path.includes("\n") || path.includes("\r")) return "/portal";
+  return path;
+}
 
-/**
- * Portal Confirm
- * -----------------------------------------------------------------------------
- * Handles magic-link / email confirmation:
- *  - Reads ?code from Supabase PKCE magic link
- *  - exchangeCodeForSession(code)
- *  - Ensures a `customers` row is linked to this user (portal profile)
- *  - If session -> redirect to safe `next` or /portal
- *  - If no session -> redirect to /portal/auth/sign-in
- */
+function operationKey(inviteId: string, userId: string): string {
+  return `portal-confirm:${inviteId}:${userId}`;
+}
+
 export default function PortalConfirmPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const safeNext = safeInternalPath(searchParams.get("next"));
+    const inviteId = searchParams.get("invite")?.trim() ?? "";
 
-    const safeNext = (() => {
-      const n = searchParams.get("next") || "";
-      if (!n.startsWith("/")) return "/portal";
-      if (n.startsWith("//")) return "/portal";
-      if (n.includes("\n") || n.includes("\r")) return "/portal";
-      return n;
-    })();
-
-    (async () => {
+    void (async () => {
       try {
-        // Supabase magic link (PKCE) returns ?code=...
         const code = searchParams.get("code");
         if (code) {
-          const { error: exErr } = await supabase.auth.exchangeCodeForSession(
-            code,
-          );
-          if (exErr) throw new Error(exErr.message);
+          const { error: exchangeError } =
+            await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) throw new Error(exchangeError.message);
         }
 
         const {
           data: { session },
         } = await supabase.auth.getSession();
-
         if (cancelled) return;
-
         if (!session?.user) {
           router.replace("/portal/auth/sign-in");
           return;
         }
-
-        // -------------------------------------------------------------------
-        // Require invite context evidence before linking customer portal data.
-        // Without this, generic email confirmation can expose customer data.
-        // -------------------------------------------------------------------
-        try {
-          const email = session.user.email ?? null;
-          if (email) {
-            const normalizedEmail = email.toLowerCase();
-            const { data: inviteRows, error: inviteErr } = await supabase
-              .from("customer_portal_invites")
-              .select("id, customer_id, email")
-              .eq("email", normalizedEmail)
-              .limit(5);
-
-            const hasInviteContext =
-              !inviteErr && Array.isArray(inviteRows) && inviteRows.length > 0;
-
-            if (!hasInviteContext) {
-              router.replace("/portal");
-              return;
-            }
-
-            const { data: existing, error: findErr } = await supabase
-              .from("customers")
-              .select("id, shop_id, user_id")
-              .eq("email", normalizedEmail)
-              .limit(1);
-
-            if (!findErr && existing && existing.length > 0) {
-              const row = existing[0] as CustomersRow;
-              const inviteCustomerIds = (inviteRows as Pick<
-                CustomerPortalInviteRow,
-                "customer_id"
-              >[]).map((row) => row.customer_id);
-              const hasMatchingInviteCustomer = inviteCustomerIds.includes(
-                row.id,
-              );
-
-              if (!row.user_id && hasMatchingInviteCustomer) {
-                await supabase
-                  .from("customers")
-                  .update({ user_id: session.user.id })
-                  .eq("id", row.id);
-              }
-            } else if (inviteRows.some((r) => !!r.customer_id)) {
-              const insertPayload: CustomersInsert = {
-                user_id: session.user.id,
-                email: normalizedEmail,
-              };
-              await supabase
-                .from("customers")
-                .upsert(insertPayload, { onConflict: "user_id" });
-            }
-          }
-        } catch {
-          // If this fails, we still let them in; they just might not see WOs yet.
+        if (!inviteId) {
+          throw new Error("This portal access link is missing its invite identity.");
         }
 
-        // ✅ Land on safe `next` or /portal
-        router.replace(safeNext || "/portal");
-      } catch (e: unknown) {
+        const key = operationKey(inviteId, session.user.id);
+        const response = await fetch("/api/portal/invites/accept", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": key,
+          },
+          body: JSON.stringify({
+            inviteId,
+            operationKey: key,
+            idempotencyKey: key,
+          }),
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Unable to accept portal invite.");
+        }
+
+        if (!cancelled) router.replace(safeNext);
+      } catch (value: unknown) {
         if (cancelled) return;
         setError(
-          e instanceof Error ? e.message : "Unable to confirm sign-in.",
+          value instanceof Error ? value.message : "Unable to confirm sign-in.",
         );
-        router.replace("/portal/auth/sign-in");
       }
     })();
 
@@ -138,33 +84,12 @@ export default function PortalConfirmPage() {
   }, [router, searchParams, supabase]);
 
   return (
-    <div
-      className="
-        min-h-screen px-4 text-foreground
-        bg-background
-        bg-[var(--theme-gradient-panel)]
-      "
-    >
+    <div className="min-h-screen bg-background bg-[var(--theme-gradient-panel)] px-4 text-foreground">
       <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center py-8">
-        <div
-          className="
-            w-full rounded-3xl border
-            border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-            bg-[var(--theme-gradient-panel)]
-            shadow-[var(--theme-shadow-medium)]
-            px-6 py-7 sm:px-8 sm:py-9
-          "
-        >
+        <div className="w-full rounded-3xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[var(--theme-gradient-panel)] px-6 py-7 shadow-[var(--theme-shadow-medium)] sm:px-8 sm:py-9">
           <div className="mb-4 flex items-center justify-center">
             <div
-              className="
-                inline-flex items-center gap-1 rounded-full border
-                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                bg-[color:var(--theme-surface-overlay)]
-                px-3 py-1 text-[11px]
-                uppercase tracking-[0.22em]
-                text-[color:var(--theme-text-secondary)]
-              "
+              className="inline-flex items-center gap-1 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]"
               style={{ color: COPPER }}
             >
               Customer Portal
@@ -172,7 +97,7 @@ export default function PortalConfirmPage() {
           </div>
 
           <h1
-            className="text-center text-2xl sm:text-3xl font-semibold text-[color:var(--theme-text-primary)]"
+            className="text-center text-2xl font-semibold text-[color:var(--theme-text-primary)] sm:text-3xl"
             style={{ fontFamily: "var(--font-blackops), system-ui" }}
           >
             Completing sign-in
@@ -180,8 +105,8 @@ export default function PortalConfirmPage() {
 
           <p className="mt-2 text-center text-xs text-[color:var(--theme-text-secondary)] sm:text-sm">
             {error
-              ? "Sign-in failed — redirecting…"
-              : "One moment… we’re completing your sign-in."}
+              ? "We could not complete portal access."
+              : "One moment… we’re securely linking your portal account."}
           </p>
 
           {error ? (
