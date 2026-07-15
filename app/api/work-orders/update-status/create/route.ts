@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,7 +22,10 @@ function generateWorkOrderNumber(): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const access = await requireShopScopedApiAccess({ requiredCapability: "canManageWorkOrders" });
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canManageWorkOrders",
+      allowRoles: ROLE_GROUPS.workOrderCreators,
+    });
     if (!access.ok) return access.response;
     const shopId = access.profile.shop_id;
 

@@ -1,6 +1,5 @@
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-
-const WRITE_ROLES = new Set(["owner", "admin", "manager"]);
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 export type BrandReadAuth =
   | {
@@ -61,7 +60,7 @@ export async function requireBrandShopWriteAccess(
 ): Promise<BrandWriteAuth> {
   const auth = await requireBrandShopReadAccess(requestedShopId);
   if (!auth.ok) return auth;
-  if (!WRITE_ROLES.has(auth.role)) {
+  if (!getActorCapabilities({ role: auth.role }).canManageBranding) {
     return { ok: false, status: 403, error: "Forbidden" };
   }
   return auth;

@@ -8,6 +8,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
 import StatusPickerModal, {
@@ -76,9 +77,6 @@ const ACTIVE_STATUS_SET = new Set<string>(ACTIVE_STATUS_FILTER);
 
 const SEEDED_DEFAULT_STATUSES = [...ACTIVE_STATUS_FILTER, "completed"] as const satisfies readonly StatusKey[];
 const ACTIVE_LINE_EXCLUDED = new Set(["completed", "invoiced", "closed", "cancelled", "declined"]);
-
-const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor", "lead_hand", "foreman"]);
-const STATUS_PICKER_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 const INPUT_DARK =
   "w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-400/70 focus:ring-2 focus:ring-sky-500/30";
@@ -699,8 +697,9 @@ export default function WorkOrdersView(): JSX.Element {
     })();
   }, [supabase]);
 
-  const canAssign = currentRole ? ASSIGN_ROLES.has(currentRole) : false;
-  const canPickStatus = currentRole ? STATUS_PICKER_ROLES.has(currentRole) : false;
+  const currentActor = getActorCapabilities({ role: currentRole });
+  const canAssign = currentActor.canAssignWork;
+  const canPickStatus = currentActor.canManageWorkOrders;
 
   useEffect(() => {
     void load();

@@ -51,7 +51,7 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/work-orders/board",
     title: "Work Order Board",
     subtitle: "Live work flow",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
     scopes: ["dashboard", "home", "jobs", "work_orders", "all"],
   },
   {
@@ -72,14 +72,14 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/work-orders",
     title: "Work Orders",
     subtitle: "Shop work order board",
-    roles: ["manager", "lead_hand", "advisor", "owner", "admin"],
+    roles: ["manager", "lead_hand", "foreman", "advisor", "owner", "admin"],
     scopes: ["home", "jobs", "work_orders", "all"],
   },
   {
     href: "/mobile/inspections",
     title: "Inspections",
     subtitle: "Run checklists on vehicles",
-    roles: ["mechanic", "advisor", "manager", "lead_hand"],
+    roles: ["mechanic", "advisor", "manager", "lead_hand", "foreman"],
     scopes: ["home", "inspect", "inspections", "work_orders", "all"],
   },
   // 🔁 Planner → Appointments (mobile day planner)
@@ -87,14 +87,14 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/appointments",
     title: "Appointments",
     subtitle: "Today’s schedule",
-    roles: ["mechanic", "manager", "lead_hand", "owner", "admin"],
+    roles: ["advisor", "manager", "lead_hand", "foreman", "owner", "admin"],
     scopes: ["home", "appointments", "work_orders", "all"],
   },
   {
     href: "/mobile/messages",
     title: "Team Chat",
     subtitle: "Stay in sync",
-    roles: ["mechanic", "advisor", "manager", "lead_hand", "owner", "admin", "parts"],
+    roles: ["mechanic", "advisor", "manager", "lead_hand", "foreman", "owner", "admin", "parts"],
     scopes: ["home", "messages", "all"],
   },
   {
@@ -110,7 +110,7 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/reports",
     title: "Reports",
     subtitle: "Revenue & tech efficiency",
-    roles: ["owner", "admin", "manager", "lead_hand"],
+    roles: ["owner", "admin", "manager"],
     scopes: ["home", "work_orders", "all"],
   },
 
@@ -119,7 +119,7 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/technicians",
     title: "Technicians",
     subtitle: "Roster & performance",
-    roles: ["owner", "admin", "manager", "lead_hand"],
+    roles: ["owner", "admin", "manager"],
     scopes: ["home", "jobs", "work_orders", "all"],
   },
 
@@ -146,7 +146,7 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/tech/performance",
     title: "My Performance",
     subtitle: "Jobs, hours & efficiency",
-    roles: ["mechanic", "manager", "lead_hand", "owner", "admin"],
+    roles: ["mechanic"],
     scopes: ["home", "jobs", "all"],
   },
 
