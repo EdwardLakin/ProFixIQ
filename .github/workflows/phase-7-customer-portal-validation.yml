@@ -1,0 +1,48 @@
+name: Phase 7 Customer Portal Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/portal/**"
+      - "app/api/work-orders/lines/**"
+      - "app/portal/auth/confirm/page.tsx"
+      - "features/portal/server/**"
+      - "supabase/migrations/20260715080*.sql"
+      - "tests/phase7-*.test.ts"
+      - ".github/workflows/phase-7-customer-portal-validation.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: >-
+          pnpm exec eslint
+          app/api/portal/bookings/[id]/route.ts
+          app/api/portal/bookings/route.ts
+          app/api/portal/customer-bookings/[id]/route.ts
+          app/api/portal/invites/accept/route.ts
+          app/api/portal/qr/setup/route.ts
+          app/api/portal/request/start/route.ts
+          app/api/portal/request/add-custom-line/route.ts
+          app/api/portal/request/add-menu-line/route.ts
+          app/api/portal/request/add-inspection-line/route.ts
+          app/api/work-orders/lines/[id]/approval-decision/route.ts
+          app/portal/auth/confirm/page.tsx
+          features/portal/server/addPortalRequestLine.ts
+          features/portal/server/createPortalBooking.ts
+          features/portal/server/customerBookings.ts
+          tests/phase7-portal-invite-booking-contract.test.ts
+          tests/phase7-portal-request-approval-contract.test.ts
+      - run: >-
+          pnpm exec vitest run
+          tests/phase7-portal-invite-booking-contract.test.ts
+          tests/phase7-portal-request-approval-contract.test.ts
