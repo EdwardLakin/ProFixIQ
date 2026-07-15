@@ -45,9 +45,14 @@ describe("Phase 5 route and helper contract", () => {
   });
 
   it("keeps menu learning outside the customer-visible transaction", () => {
-    expect(approvalHelper.indexOf("apply_customer_quote_decision_atomic")).toBeLessThan(
-      approvalHelper.indexOf("upsertMenuRepairItemFromQuoteLine"),
+    const decisionCall = approvalHelper.indexOf(
+      'rpc("apply_customer_quote_decision_atomic"',
     );
+    const learningCall = approvalHelper.indexOf(
+      "await upsertMenuRepairItemFromQuoteLine",
+    );
+    expect(decisionCall).toBeGreaterThan(-1);
+    expect(learningCall).toBeGreaterThan(decisionCall);
   });
 
   it("routes legacy inspection import through the atomic anchored command", () => {
