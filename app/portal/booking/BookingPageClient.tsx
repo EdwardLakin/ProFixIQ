@@ -34,14 +34,21 @@ const fmtTime = (iso: string, tz: string) =>
     minute: "2-digit",
   }).format(new Date(iso));
 
+function dateFromSearch(value: string | null): Date | undefined {
+  if (!value || !/^20\d{2}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const parsed = new Date(`${value}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
 export default function PortalBookingPage() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const search = useSearchParams();
   const router = useRouter();
 
-  const [month, setMonth] = useState(() => new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const initialRequestedDate = dateFromSearch(search.get("requestedDate"));
+  const [month, setMonth] = useState(() => initialRequestedDate ?? new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialRequestedDate);
 
   const [loading, setLoading] = useState(false);
   const [shops, setShops] = useState<ShopOption[]>([]);
@@ -61,6 +68,11 @@ export default function PortalBookingPage() {
   useEffect(() => {
     const urlShop = search.get("shop") || "";
     setShopSlug((prev) => (prev === urlShop ? prev : urlShop));
+    const requested = dateFromSearch(search.get("requestedDate"));
+    if (requested) {
+      setMonth(requested);
+      setSelectedDate(requested);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 

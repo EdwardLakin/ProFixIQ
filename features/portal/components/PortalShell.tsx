@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import PortalNotificationsBell from "@/features/portal/components/PortalNotificationsBell";
+import PortalAssistantEntry from "@/features/portal/components/PortalAssistantEntry";
 
 
 type NavItem = {
@@ -198,6 +199,7 @@ export default function PortalShell({
 
         <div className="flex items-center gap-2">
           <PortalNotificationsBell />
+          <PortalAssistantEntry />
 
           <Link
             href="/portal/request/when"
