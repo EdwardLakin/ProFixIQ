@@ -1,28 +1,30 @@
-// app/api/inspections/save/route.ts ✅ FULL FILE REPLACEMENT
-
 import "server-only";
 
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database, Json } from "@shared/types/types/supabase";
+import type { Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 
-type DB = Database;
+type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
 
-function isRecord(x: unknown): x is Record<string, unknown> {
-  return typeof x === "object" && x !== null;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-function asString(x: unknown): string | null {
-  return typeof x === "string" && x.trim().length ? x.trim() : null;
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
-
-  // 1) parse body
   const raw = (await req.json().catch(() => null)) as unknown;
   if (!isRecord(raw)) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
@@ -30,6 +32,10 @@ export async function POST(req: NextRequest) {
 
   const workOrderLineId = asString(raw.workOrderLineId);
   const session = (raw.session ?? null) as InspectionSession | null;
+  const operationKey =
+    req.headers.get("Idempotency-Key")?.trim() ||
+    asString(raw.operationKey) ||
+    asString(raw.idempotencyKey);
 
   if (!workOrderLineId || !session) {
     return NextResponse.json(
@@ -37,120 +43,51 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  if (!operationKey) {
+    return NextResponse.json(
+      { error: "A stable Idempotency-Key is required." },
+      { status: 400 },
+    );
+  }
 
-  // 2) auth
   const {
     data: { user },
-    error: userErr,
+    error: userError,
   } = await supabase.auth.getUser();
-
-  if (userErr || !user) {
+  if (userError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 3) resolve WO + shop from the line (and ensure the line exists)
-  const { data: line, error: lineErr } = await supabase
-    .from("work_order_lines")
-    .select("id, work_order_id, work_orders!inner(shop_id)")
-    .eq("id", workOrderLineId)
-    .maybeSingle<{
-      id: string;
-      work_order_id: string | null;
-      work_orders: { shop_id: string | null };
-    }>();
-
-  if (lineErr) {
-    console.error("[inspections/save] line lookup failed", lineErr);
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", user.id)
+    .maybeSingle<{ shop_id: string | null }>();
+  if (profileError || !profile?.shop_id) {
     return NextResponse.json(
-      { error: "Failed to look up work order line" },
-      { status: 500 },
+      { error: "Unable to resolve actor shop." },
+      { status: 403 },
     );
   }
 
-  const workOrderId = asString(line?.work_order_id);
-  const shopId = asString(line?.work_orders?.shop_id);
+  const rpc = supabase as unknown as RpcClient;
+  const { data, error } = await rpc.rpc("save_inspection_progress_atomic", {
+    p_shop_id: profile.shop_id,
+    p_work_order_line_id: workOrderLineId,
+    p_actor_user_id: user.id,
+    p_session: session as unknown as Json,
+    p_operation_key: `${profile.shop_id}:inspection-progress:${operationKey}`,
+    p_at: new Date().toISOString(),
+  });
 
-  if (!workOrderId) {
-    return NextResponse.json(
-      { error: "Work order line is missing work_order_id" },
-      { status: 400 },
-    );
-  }
-  if (!shopId) {
-    return NextResponse.json(
-      { error: "Work order line is missing shop_id (via work order)" },
-      { status: 400 },
-    );
-  }
-
-  const nowIso = new Date().toISOString();
-
-  const { data: existingInspection, error: existingInspectionErr } = await supabase
-    .from("inspections")
-    .select("id, locked")
-    .eq("work_order_line_id", workOrderLineId)
-    .maybeSingle();
-
-  if (existingInspectionErr) {
-    console.error("[inspections/save] existing inspection lookup failed", existingInspectionErr);
-    return NextResponse.json({ error: "Failed to verify inspection lock state" }, { status: 500 });
+  if (error) {
+    const message = [error.message, error.details, error.hint]
+      .filter(Boolean)
+      .join(" — ");
+    const lower = message.toLowerCase();
+    const status = lower.includes("locked") || lower.includes("not found") ? 409 : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 
-  if (existingInspection?.locked) {
-    return NextResponse.json(
-      { error: "Inspection is finalized and locked. Reopen is required before editing." },
-      { status: 409 },
-    );
-  }
-
-  // NOTE: Supabase Json type wants a JSON-compatible value.
-  const sessionJson = session as unknown as Json;
-
-  // 4) upsert inspection_sessions (progress save)
-  const sessionPayload = {
-    work_order_id: workOrderId,
-    work_order_line_id: workOrderLineId,
-    user_id: user.id,
-    state: sessionJson,
-    updated_at: nowIso,
-  } satisfies DB["public"]["Tables"]["inspection_sessions"]["Insert"];
-
-  const { error: upSessionErr } = await supabase
-    .from("inspection_sessions")
-    .upsert(sessionPayload, { onConflict: "work_order_line_id" });
-
-  if (upSessionErr) {
-    console.error("[inspections/save] session upsert failed", upSessionErr);
-    return NextResponse.json({ error: upSessionErr.message }, { status: 500 });
-  }
-
-  // 5) ALSO upsert a draft inspections row for SAME WO + line
-  //    This is what finalize/pdf reads: inspections.summary
-  const inspectionPayload = {
-    work_order_id: workOrderId,
-    work_order_line_id: workOrderLineId,
-    shop_id: shopId,
-    user_id: user.id,
-    summary: sessionJson,
-    is_draft: true,
-    completed: false,
-    locked: existingInspection?.locked ?? false,
-    status: "draft",
-    updated_at: nowIso,
-  } satisfies DB["public"]["Tables"]["inspections"]["Insert"];
-
-  const { error: upInspectionErr } = await supabase
-    .from("inspections")
-    .upsert(inspectionPayload, { onConflict: "work_order_line_id" });
-
-  if (upInspectionErr) {
-    console.error("[inspections/save] inspections upsert failed", upInspectionErr);
-    // don’t fail progress-save if draft inspection row fails — but tell the client
-    return NextResponse.json(
-      { ok: true, warning: "Session saved, but inspections draft upsert failed" },
-      { status: 200 },
-    );
-  }
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(data ?? { ok: true });
 }

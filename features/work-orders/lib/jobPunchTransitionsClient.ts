@@ -9,25 +9,52 @@ type TransitionBody = {
   correction?: string | null;
 };
 
+type JobPunchTransitionOptions = {
+  operationKey?: string;
+};
+
 type ApiError = { error?: string };
 
 function buildTransitionPath(lineId: string, action: JobPunchAction): string {
   return `/api/work-orders/lines/${lineId}/${action}`;
 }
 
+export function createJobPunchOperationKey(
+  lineId: string,
+  action: JobPunchAction,
+): string {
+  const randomId =
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `job-punch:${lineId}:${action}:${randomId}`;
+}
+
 export async function runJobPunchTransition(
   lineId: string,
   action: JobPunchAction,
   body?: TransitionBody,
+  options?: JobPunchTransitionOptions,
 ): Promise<void> {
+  const suppliedKey = options?.operationKey?.trim();
+  const operationKey = suppliedKey || createJobPunchOperationKey(lineId, action);
+  const payload = {
+    ...(body ?? {}),
+    operationKey,
+    idempotencyKey: operationKey,
+  };
+
   const res = await fetch(buildTransitionPath(lineId, action), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": operationKey,
+    },
+    body: JSON.stringify(payload),
   });
 
   if (res.ok) return;
 
-  const payload = (await res.json().catch(() => null)) as ApiError | null;
-  throw new Error(payload?.error ?? `Failed to ${action} job`);
+  const responsePayload = (await res.json().catch(() => null)) as ApiError | null;
+  throw new Error(responsePayload?.error ?? `Failed to ${action} job`);
 }
