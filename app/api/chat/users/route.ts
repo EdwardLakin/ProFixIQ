@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   // find caller's profile by either key (handles id vs user_id)
   const { data: me, error: meErr } = await userClient
     .from("profiles")
-    .select("id, user_id, shop_id")
+    .select("id, user_id, shop_id, role")
     .or(`user_id.eq.${user.id},id.eq.${user.id}`)
     .maybeSingle();
   if (meErr || !me) {
@@ -81,5 +81,47 @@ export async function GET(req: Request) {
       avatar_url: (u as { avatar_url?: string | null }).avatar_url ?? null,
     })) ?? [];
 
-  return NextResponse.json({ users: normalized });
+  const canMessageCustomers = ["owner", "admin", "manager", "advisor"].includes(
+    (me.role ?? "").toLowerCase(),
+  );
+
+  if (!canMessageCustomers) {
+    return NextResponse.json({ users: normalized, customers: [] });
+  }
+
+  let customerQuery = admin
+    .from("customers")
+    .select("id, user_id, name, first_name, last_name, email, phone, shop_id")
+    .eq("shop_id", shopId)
+    .order("name", { ascending: true })
+    .limit(MAX_ROWS);
+
+  if (q) {
+    customerQuery = customerQuery.or(
+      `name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`,
+    );
+  }
+
+  const { data: customerRows, error: customerError } = await customerQuery;
+  if (customerError) {
+    return NextResponse.json(
+      { error: customerError.message ?? "Failed to load customers" },
+      { status: 500 },
+    );
+  }
+
+  const customers = (customerRows ?? []).map((customer) => ({
+    id: customer.id,
+    user_id: customer.user_id,
+    full_name:
+      customer.name?.trim() ||
+      [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() ||
+      customer.email ||
+      "Customer",
+    email: customer.email,
+    phone: customer.phone,
+    can_message: Boolean(customer.user_id),
+  }));
+
+  return NextResponse.json({ users: normalized, customers });
 }

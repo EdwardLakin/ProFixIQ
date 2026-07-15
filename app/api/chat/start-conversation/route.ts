@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { authorizeConversationCreate } from "@/features/ai/lib/chat/authorization";
+import { authorizeConversationContext } from "@/features/chat/server/conversationContext";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +16,13 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const body = (await req.json().catch(() => null)) as {
     participant_ids?: string[];
+    channel?: "internal" | "customer";
+    customer_id?: string | null;
     context_type?: string | null;
     context_id?: string | null;
     title?: string | null;
     is_broadcast?: boolean;
+    request_id?: string;
   } | null;
 
   const admin = createAdminSupabase();
@@ -27,46 +31,89 @@ export async function POST(req: Request): Promise<NextResponse> {
     supabase: admin,
     actorUserId: user.id,
     participantUserIds: body?.participant_ids ?? [],
+    channel: body?.channel ?? "internal",
+    customerId: body?.customer_id ?? null,
   });
 
   if (!createAccess.ok) {
     return NextResponse.json({ error: createAccess.error }, { status: createAccess.status });
   }
 
-  const { data: me, error: meError } = await admin
-    .from("profiles")
-    .select("role")
-    .or(`user_id.eq.${user.id},id.eq.${user.id}`)
-    .maybeSingle();
-
-  if (meError) {
-    return NextResponse.json({ error: meError.message }, { status: 500 });
-  }
-
-  if (body?.is_broadcast && !["owner", "manager", "admin"].includes(me?.role ?? "")) {
+  if (
+    body?.is_broadcast &&
+    (createAccess.actor.kind !== "staff" ||
+      !["owner", "manager", "admin"].includes(createAccess.actor.role ?? ""))
+  ) {
     return NextResponse.json({ error: "Only owner/manager/admin can broadcast" }, { status: 403 });
   }
 
-  const conversationId = randomUUID();
-  const { error: convoErr } = await admin.from("conversations").insert({
-    id: conversationId,
-    created_by: user.id,
-    context_type: body?.context_type ?? null,
-    context_id: body?.context_id ?? null,
-    title: body?.title ?? null,
-    is_group: createAccess.recipientUserIds.length > 1 || !!body?.is_broadcast,
+  const context = await authorizeConversationContext({
+    supabase: admin,
+    shopId: createAccess.actorShopId,
+    customerId: createAccess.customerId,
+    contextType: body?.context_type,
+    contextId: body?.context_id,
   });
 
-  if (convoErr) return NextResponse.json({ error: convoErr.message }, { status: 500 });
+  if (!context.ok) {
+    return NextResponse.json({ error: context.error }, { status: context.status });
+  }
 
-  const participants = [user.id, ...createAccess.recipientUserIds].map((id) => ({
-    id: randomUUID(),
-    conversation_id: conversationId,
-    user_id: id,
-  }));
+  const requestedId = body?.request_id?.trim();
+  if (
+    requestedId &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedId)
+  ) {
+    return NextResponse.json({ error: "request_id must be a UUID" }, { status: 400 });
+  }
 
-  const { error: partErr } = await admin.from("conversation_participants").insert(participants);
-  if (partErr) return NextResponse.json({ error: partErr.message }, { status: 500 });
+  const conversationId = requestedId ?? randomUUID();
+  if (requestedId) {
+    const { data: existing, error: existingError } = await admin
+      .from("conversations")
+      .select("id, created_by")
+      .eq("id", requestedId)
+      .maybeSingle();
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+    if (existing) {
+      if (existing.created_by !== user.id) {
+        return NextResponse.json({ error: "request_id is already in use" }, { status: 409 });
+      }
+      return NextResponse.json({ id: existing.id, reused: true }, { status: 200 });
+    }
+  }
 
-  return NextResponse.json({ id: conversationId }, { status: 200 });
+  const allParticipantIds = Array.from(
+    new Set([user.id, ...createAccess.recipientUserIds]),
+  );
+  const participantKinds = allParticipantIds.map((id) =>
+    id === user.id ? createAccess.actor.kind : createAccess.participantKinds[id] ?? "staff",
+  );
+
+  const { data: createdId, error: createError } = await admin.rpc(
+    "create_messaging_conversation",
+    {
+      _conversation_id: conversationId,
+      _created_by: user.id,
+      _shop_id: createAccess.actorShopId,
+      _channel: createAccess.channel,
+      _customer_id: context.anchors.customer_id,
+      _work_order_id: context.anchors.work_order_id,
+      _vehicle_id: context.anchors.vehicle_id,
+      _booking_id: context.anchors.booking_id,
+      _context_type: context.anchors.context_type,
+      _context_id: context.anchors.context_id,
+      _title: body?.title?.trim().slice(0, 160) || null,
+      _participant_user_ids: allParticipantIds,
+      _participant_kinds: participantKinds,
+    },
+  );
+
+  if (createError) {
+    return NextResponse.json({ error: createError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ id: createdId ?? conversationId }, { status: 201 });
 }

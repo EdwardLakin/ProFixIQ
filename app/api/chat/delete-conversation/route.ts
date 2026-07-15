@@ -36,27 +36,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  const { error: msgErr } = await admin
-    .from("messages")
-    .delete()
-    .eq("conversation_id", id);
-
-  if (msgErr) {
-    return NextResponse.json({ error: msgErr.message }, { status: 500 });
-  }
-
-  const { error: partErr } = await admin
-    .from("conversation_participants")
-    .delete()
-    .eq("conversation_id", id);
-
-  if (partErr) {
-    return NextResponse.json({ error: partErr.message }, { status: 500 });
-  }
-
   const { error: delErr } = await admin
     .from("conversations")
-    .delete()
+    .update({
+      archived_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", id);
 
   if (delErr) {

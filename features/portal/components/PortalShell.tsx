@@ -16,6 +16,7 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { href: "/portal", label: "Home" },
+  { href: "/portal/messages", label: "Messages" },
   { href: "/portal/request/when", label: "Request" },
   { href: "/portal/approvals", label: "Approvals" },
   { href: "/portal/customer-appointments", label: "Appointments" },
@@ -200,6 +201,13 @@ export default function PortalShell({
         <div className="flex items-center gap-2">
           <PortalNotificationsBell />
           <PortalAssistantEntry />
+
+          <Link
+            href="/portal/messages"
+            className="desktop-btn-secondary inline-flex items-center rounded-full border px-3 py-1 text-[0.7rem] font-semibold transition active:scale-95"
+          >
+            <span>Messages</span>
+          </Link>
 
           <Link
             href="/portal/request/when"

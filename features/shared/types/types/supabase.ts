@@ -3018,6 +3018,7 @@ export type Database = {
           added_at: string | null
           conversation_id: string
           id: string
+          participant_kind: string
           role: string | null
           user_id: string
         }
@@ -3025,6 +3026,7 @@ export type Database = {
           added_at?: string | null
           conversation_id: string
           id?: string
+          participant_kind?: string
           role?: string | null
           user_id: string
         }
@@ -3032,6 +3034,7 @@ export type Database = {
           added_at?: string | null
           conversation_id?: string
           id?: string
+          participant_kind?: string
           role?: string | null
           user_id?: string
         }
@@ -3047,31 +3050,58 @@ export type Database = {
       }
       conversations: {
         Row: {
+          archived_at: string | null
+          booking_id: string | null
+          channel: string
           context_id: string | null
           context_type: string | null
           created_at: string | null
           created_by: string | null
+          customer_id: string | null
           id: string
           is_group: boolean | null
+          last_message_at: string | null
+          shop_id: string | null
           title: string | null
+          updated_at: string
+          vehicle_id: string | null
+          work_order_id: string | null
         }
         Insert: {
+          archived_at?: string | null
+          booking_id?: string | null
+          channel?: string
           context_id?: string | null
           context_type?: string | null
           created_at?: string | null
           created_by?: string | null
+          customer_id?: string | null
           id?: string
           is_group?: boolean | null
+          last_message_at?: string | null
+          shop_id?: string | null
           title?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id?: string | null
         }
         Update: {
+          archived_at?: string | null
+          booking_id?: string | null
+          channel?: string
           context_id?: string | null
           context_type?: string | null
           created_at?: string | null
           created_by?: string | null
+          customer_id?: string | null
           id?: string
           is_group?: boolean | null
+          last_message_at?: string | null
+          shop_id?: string | null
           title?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id?: string | null
         }
         Relationships: []
       }
@@ -7692,6 +7722,7 @@ export type Database = {
       messages: {
         Row: {
           attachments: Json
+          client_message_id: string | null
           content: string
           conversation_id: string | null
           created_at: string
@@ -7706,6 +7737,7 @@ export type Database = {
         }
         Insert: {
           attachments?: Json
+          client_message_id?: string | null
           content: string
           conversation_id?: string | null
           created_at?: string
@@ -7720,6 +7752,7 @@ export type Database = {
         }
         Update: {
           attachments?: Json
+          client_message_id?: string | null
           content?: string
           conversation_id?: string | null
           created_at?: string
@@ -23198,6 +23231,24 @@ export type Database = {
       }
       check_plan_limit: { Args: { _feature: string }; Returns: boolean }
       clear_auth: { Args: never; Returns: undefined }
+      create_messaging_conversation: {
+        Args: {
+          _booking_id: string | null
+          _channel: string
+          _context_id: string | null
+          _context_type: string | null
+          _conversation_id: string
+          _created_by: string
+          _customer_id: string | null
+          _participant_kinds: string[]
+          _participant_user_ids: string[]
+          _shop_id: string
+          _title: string | null
+          _vehicle_id: string | null
+          _work_order_id: string | null
+        }
+        Returns: string
+      }
       compute_labor_cost_for_work_order: {
         Args: { p_work_order_id: string }
         Returns: number

@@ -55,5 +55,16 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: msgErr.message }, { status: 500 });
   }
 
-  return NextResponse.json<MessageRow[]>(messages ?? []);
+  const visibleMessages = (messages ?? []).map((message) =>
+    message.deleted_at
+      ? {
+          ...message,
+          content: "Message removed",
+          attachments: [],
+          metadata: {},
+        }
+      : message,
+  );
+
+  return NextResponse.json<MessageRow[]>(visibleMessages);
 }
