@@ -4,7 +4,7 @@ begin
     raise exception 'Phase 7 postcheck failed: portal lifecycle operation keys are missing.';
   end if;
 
-  if to_regprocedure('public.accept_portal_invite_atomic(uuid,uuid,text,text,timestamptz)') is null then
+  if to_regprocedure('public.accept_customer_portal_invite_atomic(uuid,uuid,text,text,timestamptz)') is null then
     raise exception 'Phase 7 postcheck failed: invite acceptance command is missing.';
   end if;
 
