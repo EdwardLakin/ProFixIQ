@@ -1,0 +1,32 @@
+name: Phase 5 Quote Lifecycle Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/work-orders/quotes/**"
+      - "app/api/work-orders/import-from-inspection/**"
+      - "app/api/work-orders/[id]/_lib/reviewWorkOrder.ts"
+      - "features/work-orders/server/workOrderQuoteLineApproval.ts"
+      - "features/work-orders/lib/work-orders/**"
+      - "supabase/migrations/20260715060*.sql"
+      - "tests/phase5-*.test.ts"
+      - ".github/workflows/phase-5-quote-lifecycle-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm exec eslint 'app/api/work-orders/quotes/[id]/approval-decision/route.ts' app/api/work-orders/import-from-inspection/route.ts 'app/api/work-orders/[id]/_lib/reviewWorkOrder.ts' features/work-orders/server/workOrderQuoteLineApproval.ts features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection.ts features/work-orders/lib/work-orders/inspectionFindingEligibility.ts tests/phase5-quote-lifecycle-sql-contract.test.ts tests/phase5-quote-lifecycle-routes.test.ts
+      - run: pnpm exec vitest run tests/phase5-quote-lifecycle-sql-contract.test.ts tests/phase5-quote-lifecycle-routes.test.ts
