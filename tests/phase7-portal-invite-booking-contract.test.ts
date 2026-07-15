@@ -18,11 +18,13 @@ const customerBookingRoute = read(
 
 describe("Phase 7 portal identity and booking lifecycle", () => {
   it("accepts one exact invite in a server-owned transaction", () => {
-    expect(inviteSql).toContain("accept_portal_invite_atomic");
+    expect(inviteSql).toContain("accept_customer_portal_invite_atomic");
     expect(inviteSql).toContain("for update");
-    expect(inviteSql).toContain("accepted_by");
+    expect(inviteSql).toContain("accepted_by_user_id");
     expect(inviteSql).toContain("portal_lifecycle_operation_keys");
-    expect(inviteRoute).toContain('rpc("accept_portal_invite_atomic"');
+    expect(inviteRoute).toContain(
+      'rpc("accept_customer_portal_invite_atomic"',
+    );
     expect(setupRoute).toContain("const redirectParams = new URLSearchParams");
     expect(setupRoute).toContain("invite: inviteId");
     expect(confirmPage).toContain("/api/portal/invites/accept");
