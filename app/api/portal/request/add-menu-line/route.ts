@@ -1,150 +1,63 @@
-// app/api/portal/request/add-menu-line/route.ts
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
+import { PortalAccessError } from "@/features/portal/server/portalAuth";
+import { addPortalRequestLine } from "@/features/portal/server/addPortalRequestLine";
 
 export const runtime = "nodejs";
 
-type DB = Database;
-
 type Body = {
-  workOrderId: string;
-  menuItemId: string;
-  qty?: number;
+  workOrderId?: string;
+  menuItemId?: string;
+  idempotencyKey?: string;
 };
 
-function bad(msg: string, status = 400) {
-  return NextResponse.json({ error: msg }, { status });
+function bad(message: string, status = 400) {
+  return NextResponse.json({ error: message }, { status });
 }
 
-type MenuItemPick = {
-  id: string;
-  shop_id: string;
-  description: string | null;
-  complaint: string | null;
-  base_price: number | null;
-  total_price: number | null;
-  base_labor_hours: number | null;
-  labor_hours: number | null;
-  base_part_cost: number | null;
-};
-
-type MenuItemPartPick = {
-  name: string | null;
-  quantity: number | null;
-  unit_cost: number | null;
-};
-
 export async function POST(req: Request) {
+  const supabase = createServerSupabaseRoute();
+
   try {
-    const supabase = createServerSupabaseRoute();
+    const actor = await requirePortalCustomerActor(supabase);
+    const body = (await req.json().catch(() => null)) as Body | null;
+    const workOrderId = body?.workOrderId?.trim() ?? "";
+    const menuItemId = body?.menuItemId?.trim() ?? "";
+    const key =
+      req.headers.get("Idempotency-Key")?.trim() ||
+      body?.idempotencyKey?.trim() ||
+      "";
 
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-    if (authErr || !user) return bad("Not authenticated", 401);
-
-    let body: Body;
-    try {
-      body = (await req.json()) as Body;
-    } catch {
-      return bad("Invalid JSON body");
+    if (!workOrderId || !menuItemId) {
+      return bad("Missing workOrderId or menuItemId");
+    }
+    if (!actor.customer.shop_id) {
+      return bad("Customer is not linked to a shop", 409);
+    }
+    if (!key) {
+      return bad("A stable Idempotency-Key is required.");
     }
 
-    const workOrderId = (body?.workOrderId ?? "").trim();
-    const menuItemId = (body?.menuItemId ?? "").trim();
+    const result = await addPortalRequestLine({
+      supabase,
+      shopId: actor.customer.shop_id,
+      customerId: actor.customer.id,
+      workOrderId,
+      actorUserId: actor.userId,
+      kind: "menu",
+      sourceId: menuItemId,
+      operationKey: `${actor.customer.shop_id}:portal-menu-line:${key}`,
+    });
 
-
-    if (!workOrderId || !menuItemId) return bad("Missing workOrderId or menuItemId");
-
-    // Portal customer
-    const { data: customer, error: custErr } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (custErr) return bad(custErr.message, 500);
-    if (!customer?.id) return bad("Customer profile not found", 404);
-
-    // Load WO (ownership + shop)
-    const { data: wo, error: woErr } = await supabase
-      .from("work_orders")
-      .select("id, shop_id, customer_id, vehicle_id")
-      .eq("id", workOrderId)
-      .maybeSingle();
-
-    if (woErr) return bad("Failed to load work order", 500);
-    if (!wo) return bad("Work order not found", 404);
-    if (wo.customer_id !== customer.id) return bad("Not allowed", 403);
-
-    const { data: menu, error: menuErr } = await supabase
-      .from("menu_items")
-      .select(
-        "id, shop_id, description, complaint, base_price, total_price, base_labor_hours, labor_hours, base_part_cost",
-      )
-      .eq("id", menuItemId)
-      .maybeSingle();
-
-    if (menuErr) return bad("Failed to load menu item", 500);
-    if (!menu) return bad("Menu item not found", 404);
-
-    const typedMenu = menu as unknown as MenuItemPick;
-    if (typedMenu.shop_id !== wo.shop_id) return bad("Menu item belongs to a different shop", 403);
-
-    const { data: partsRows } = await supabase
-      .from("menu_item_parts")
-      .select("name, quantity, unit_cost")
-      .eq("menu_item_id", typedMenu.id);
-
-    const parts = (Array.isArray(partsRows) ? partsRows : []) as unknown as MenuItemPartPick[];
-
-    const laborHours = typedMenu.labor_hours ?? typedMenu.base_labor_hours ?? null;
-    const linePrice = typedMenu.total_price ?? typedMenu.base_price ?? null;
-
-    const description =
-      typedMenu.description?.trim() ||
-      typedMenu.complaint?.trim() ||
-      "Service";
-
-    const partsNeeded = parts
-      .filter((p) => (p.name ?? "").trim().length > 0)
-      .map((p) => ({
-        name: (p.name ?? "").trim(),
-        qty: p.quantity ?? 1,
-        unitCost: p.unit_cost ?? null,
-      }));
-
-    // Insert work_order_line (status enums already exist in your schema)
-    const insertLine: DB["public"]["Tables"]["work_order_lines"]["Insert"] = {
-      work_order_id: wo.id,
-      shop_id: wo.shop_id,
-      vehicle_id: wo.vehicle_id ?? null,
-      menu_item_id: typedMenu.id,
-      complaint: description,
-      labor_time: laborHours,
-      price_estimate: linePrice,
-      status: "awaiting_approval",
-      approval_state: "pending",
-      // store parts suggestion into existing json-ish column if present in your types
-      // if your schema uses a different column name, swap it here:
-      parts_needed: partsNeeded as unknown as DB["public"]["Tables"]["work_order_lines"]["Insert"]["parts_needed"],
-
-    };
-
-    const { data: created, error: insErr } = await supabase
-      .from("work_order_lines")
-      .insert(insertLine)
-      .select("*")
-      .single();
-
-    if (insErr || !created) return bad("Failed to add line", 500);
-
-    return NextResponse.json({ line: created }, { status: 201 });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("add-menu-line error:", msg);
-    return bad("Unexpected error", 500);
+    return NextResponse.json(result, { status: result.idempotent ? 200 : 201 });
+  } catch (error: unknown) {
+    if (error instanceof PortalAccessError) {
+      return bad(error.message, error.status);
+    }
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    const lower = message.toLowerCase();
+    const status = lower.includes("not owned") ? 403 : lower.includes("locked") ? 409 : 400;
+    return bad(message, status);
   }
 }
