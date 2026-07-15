@@ -4,10 +4,9 @@ export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database, Json } from "@shared/types/types/supabase";
+import type { Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 
-type DB = Database;
 type RpcError = { message: string; details?: string | null; hint?: string | null };
 type RpcClient = {
   rpc: (
