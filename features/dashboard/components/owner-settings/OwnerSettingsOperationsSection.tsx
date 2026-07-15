@@ -19,7 +19,6 @@ type Props = {
   pricingValidDays: number;
   pricingValidDaysLoading: boolean;
   pricingValidDaysSaving: boolean;
-  useAi: boolean;
   requireCauseCorrection: boolean;
   requireAuthorization: boolean;
   autoGeneratePdf: boolean;
@@ -36,7 +35,6 @@ type Props = {
   onTaxRateChange: (value: string) => void;
   onPricingValidDaysChange: (value: number) => void;
   onSavePricingValidDays: () => void;
-  onUseAiChange: (value: boolean) => void;
   onRequireCauseCorrectionChange: (value: boolean) => void;
   onRequireAuthorizationChange: (value: boolean) => void;
   onAutoGeneratePdfChange: (value: boolean) => void;
@@ -59,7 +57,6 @@ export default function OwnerSettingsOperationsSection({
   pricingValidDays,
   pricingValidDaysLoading,
   pricingValidDaysSaving,
-  useAi,
   requireCauseCorrection,
   requireAuthorization,
   autoGeneratePdf,
@@ -76,7 +73,6 @@ export default function OwnerSettingsOperationsSection({
   onTaxRateChange,
   onPricingValidDaysChange,
   onSavePricingValidDays,
-  onUseAiChange,
   onRequireCauseCorrectionChange,
   onRequireAuthorizationChange,
   onAutoGeneratePdfChange,
@@ -219,10 +215,6 @@ export default function OwnerSettingsOperationsSection({
         description="Operational rules and automatic behaviors for shop workflows."
       >
         <div className="space-y-3">
-          <label className="flex items-center gap-2 text-sm text-[color:var(--theme-text-primary)]">
-            <input type="checkbox" checked={useAi} onChange={(e) => onUseAiChange(e.target.checked)} disabled={!isUnlocked} />
-            Use AI features
-          </label>
           <label className="flex items-center gap-2 text-sm text-[color:var(--theme-text-primary)]">
             <input type="checkbox" checked={requireCauseCorrection} onChange={(e) => onRequireCauseCorrectionChange(e.target.checked)} disabled={!isUnlocked} />
             Require cause / correction on lines

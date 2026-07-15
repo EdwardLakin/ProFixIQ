@@ -19,6 +19,7 @@ import {
   isOpenAIConfigured,
 } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 import type {
@@ -30,6 +31,11 @@ import type {
   AssistantLink,
   AssistantResolvedContext,
 } from "../types";
+import {
+  resolveTrustedAssistantAttachments,
+  resolveTrustedAssistantContext,
+  sanitizeAssistantPageContext,
+} from "./trustedContext";
 
 type AskParams = {
   shopId: string;
@@ -170,6 +176,21 @@ function buildAnswer(params: {
     resolvedContext: params.resolvedContext,
     partSuggestions: params.partSuggestions,
   };
+}
+
+function buildAccessDeniedAnswer(
+  resolvedContext: AssistantResolvedContext,
+  area: string,
+): AssistantAnswer {
+  return buildAnswer({
+    intent: "unknown",
+    summary: `Your current role does not have access to ${area}.`,
+    bullets: [
+      "The assistant follows the same shop permissions as the rest of ProFixIQ.",
+      "Ask an owner or manager if your role needs additional access.",
+    ],
+    resolvedContext,
+  });
 }
 
 function dedupeStrings(
@@ -500,18 +521,6 @@ async function answerDiagnosticConversation(args: {
     actions: [],
     resolvedContext: args.resolvedContext,
   });
-}
-
-function resolveContext(
-  request: AssistantAskRequest,
-): AssistantResolvedContext {
-  return {
-    workOrderId: request.context?.workOrderId ?? request.session?.workOrderId,
-    customerId: request.context?.customerId ?? request.session?.customerId,
-    vehicleId: request.context?.vehicleId ?? request.session?.vehicleId,
-    bookingId: request.context?.bookingId ?? request.session?.bookingId,
-    fleetUnitId: request.context?.fleetUnitId ?? request.session?.fleetUnitId,
-  };
 }
 
 function extractIdFromHref(href: string, segment: string): string | undefined {
@@ -1386,10 +1395,36 @@ export async function answerAssistant({
   shopId,
   userId,
   role,
-  request,
+  request: rawRequest,
 }: AskParams): Promise<AssistantAnswer> {
+  const supabase = getServerSupabase();
+  const trusted = await resolveTrustedAssistantContext({
+    supabase,
+    shopId,
+    context: rawRequest.context,
+    session: rawRequest.session,
+  });
+  const resolvedContext = trusted.context;
+  const trustedAttachments = await resolveTrustedAssistantAttachments({
+    supabase,
+    shopId,
+    context: resolvedContext,
+    attachments: rawRequest.imageAttachments,
+  });
+  const pageContext = sanitizeAssistantPageContext(rawRequest.context);
+  const request: AssistantAskRequest = {
+    ...rawRequest,
+    context: { ...pageContext, ...resolvedContext },
+    session: {
+      ...resolvedContext,
+      lastIntent: rawRequest.session?.lastIntent,
+    },
+    vehicle: trusted.vehicle ?? rawRequest.vehicle,
+    imageAttachments: trustedAttachments,
+  };
   const question = normalizeQuestion(request.question);
   const q = question.toLowerCase();
+  const actor = getActorCapabilities({ role });
 
   const ctx: ToolContext = {
     shopId,
@@ -1398,8 +1433,6 @@ export async function answerAssistant({
 
   const nameCandidate = extractNameLikeValue(question);
   const plateOrVin = extractPlateOrVin(question);
-  const resolvedContext = resolveContext(request);
-
   if (
     questionIncludes(q, [
       "approval",
@@ -1409,6 +1442,9 @@ export async function answerAssistant({
       "waiting on approval",
     ])
   ) {
+    if (!actor.canAuthorizeQuotes) {
+      return buildAccessDeniedAnswer(resolvedContext, "pending approval records");
+    }
     const result = await toolListPendingApprovals.run({ limit: 20 }, ctx);
 
     if (result.items.length === 0) {
@@ -1480,41 +1516,36 @@ export async function answerAssistant({
     });
   }
 
-  const partsAnswer = await answerPartsDomain({
-    shopId,
-    q,
-    resolvedContext,
-  });
-  if (partsAnswer) {
-    return partsAnswer;
+  if (looksLikePartsQuestion(q)) {
+    if (!actor.canViewShopWideData) {
+      return buildAccessDeniedAnswer(resolvedContext, "shop-wide parts records");
+    }
+    const partsAnswer = await answerPartsDomain({ shopId, q, resolvedContext });
+    if (partsAnswer) return partsAnswer;
   }
 
-  const fleetAnswer = await answerFleetDomain({
-    shopId,
-    q,
-    resolvedContext,
-    plateOrVin,
-  });
-  if (fleetAnswer) {
-    return fleetAnswer;
+  if (looksLikeFleetQuestion(q)) {
+    if (!actor.canViewShopWideData && !actor.canViewFleetOnlyData) {
+      return buildAccessDeniedAnswer(resolvedContext, "fleet records");
+    }
+    const fleetAnswer = await answerFleetDomain({ shopId, q, resolvedContext, plateOrVin });
+    if (fleetAnswer) return fleetAnswer;
   }
 
-  const opsIntelligenceAnswer = await answerOpsIntelligenceDomain({
-    shopId,
-    q,
-    resolvedContext,
-  });
-  if (opsIntelligenceAnswer) {
-    return opsIntelligenceAnswer;
+  if (looksLikeOpsIntelligenceQuestion(q)) {
+    if (!actor.canViewShopWideData) {
+      return buildAccessDeniedAnswer(resolvedContext, "shop-wide operational intelligence");
+    }
+    const opsIntelligenceAnswer = await answerOpsIntelligenceDomain({ shopId, q, resolvedContext });
+    if (opsIntelligenceAnswer) return opsIntelligenceAnswer;
   }
 
-  const authoringAnswer = await answerAuthoringDomain({
-    shopId,
-    q,
-    resolvedContext,
-  });
-  if (authoringAnswer) {
-    return authoringAnswer;
+  if (looksLikeAuthoringQuestion(q)) {
+    if (!actor.canManageBranding) {
+      return buildAccessDeniedAnswer(resolvedContext, "AI-assisted shop authoring");
+    }
+    const authoringAnswer = await answerAuthoringDomain({ shopId, q, resolvedContext });
+    if (authoringAnswer) return authoringAnswer;
   }
 
   if (
@@ -1529,6 +1560,9 @@ export async function answerAssistant({
       (isFollowUp(question) &&
         request.session?.lastIntent === "work_order_status"))
   ) {
+    if (!actor.canManageWorkOrders && !actor.canRunInspections && !actor.canViewShopWideData) {
+      return buildAccessDeniedAnswer(resolvedContext, "this work order");
+    }
     const result = await runGetWorkOrderStatusSummary(
       { workOrderId: resolvedContext.workOrderId },
       ctx,
@@ -1586,6 +1620,9 @@ export async function answerAssistant({
       "what did we do",
     ])
   ) {
+    if (!actor.canManageWorkOrders && !actor.canViewShopWideData) {
+      return buildAccessDeniedAnswer(resolvedContext, "customer visit history");
+    }
     const result = await runGetCustomerVisitHistory(
       {
         customerId: resolvedContext.customerId,
@@ -1663,6 +1700,9 @@ export async function answerAssistant({
       isFollowUp(question)) &&
       Boolean(resolvedContext.vehicleId || resolvedContext.customerId))
   ) {
+    if (!actor.canManageWorkOrders && !actor.canViewShopWideData && !actor.canViewFleetOnlyData) {
+      return buildAccessDeniedAnswer(resolvedContext, "vehicle history");
+    }
     const result = await runGetVehicleHistory(
       {
         vehicleId: resolvedContext.vehicleId,
@@ -1736,6 +1776,10 @@ export async function answerAssistant({
         ? userId
         : undefined;
 
+    if (!actor.canViewShopWideData && !techIdCandidate) {
+      return buildAccessDeniedAnswer(resolvedContext, "other technicians' current work");
+    }
+
     const result = await runGetTechCurrentWork(
       {
         techId: techIdCandidate,
@@ -1787,6 +1831,9 @@ export async function answerAssistant({
       "stale work orders",
     ])
   ) {
+    if (!actor.canViewShopWideData) {
+      return buildAccessDeniedAnswer(resolvedContext, "shop-wide stalled work orders");
+    }
     const result = await runGetStalledWorkOrders({}, ctx);
     const links = toLinks((result as { citations?: unknown }).citations);
     const bullets = dedupeStrings([
@@ -1843,6 +1890,9 @@ export async function answerAssistant({
       "appointment moved",
     ])
   ) {
+    if (!actor.canManageScheduling && !actor.canViewShopWideData) {
+      return buildAccessDeniedAnswer(resolvedContext, "shop appointment records");
+    }
     const result = await runGetBookings(
       {
         customerId: resolvedContext.customerId,
@@ -1893,6 +1943,9 @@ export async function answerAssistant({
       "shop snapshot",
     ])
   ) {
+    if (!actor.canViewShopWideData) {
+      return buildAccessDeniedAnswer(resolvedContext, "shop-wide status");
+    }
     const result = await runGetShopCurrentStatus({}, ctx);
     const links = toLinks((result as { citations?: unknown }).citations);
     const bullets = dedupeStrings([
@@ -1923,6 +1976,9 @@ export async function answerAssistant({
     isDiagnosticQuestion(question, request) &&
     !wantsKnowledgeMode(question)
   ) {
+    if (!actor.canRunInspections) {
+      return buildAccessDeniedAnswer(resolvedContext, "technician diagnostic assistance");
+    }
     return answerDiagnosticConversation({ question, request, resolvedContext });
   }
 

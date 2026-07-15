@@ -36,7 +36,6 @@ const ALLOWED_FIELDS = new Set([
   "tax_rate",
 
   // boolean flags
-  "use_ai",
   "require_cause_correction",
   "require_authorization",
   "email_on_complete",
@@ -98,7 +97,6 @@ export async function POST(req: Request) {
 
     const booleanKeys = new Set([
       "shop_supplies_enabled",
-      "use_ai",
       "require_cause_correction",
       "require_authorization",
       "email_on_complete",

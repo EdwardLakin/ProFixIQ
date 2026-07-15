@@ -6,6 +6,7 @@ import { logOperationalEvent } from "@/features/work-orders/server/logOperationa
 import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import { seedCompletedWorkOrderIntelligence } from "@/features/ai/server/workOrderIntelligence";
 
 export const runtime = "nodejs";
 
@@ -125,6 +126,20 @@ export async function POST(req: NextRequest) {
         historySync = await syncWorkOrderToHistory(supabase, workOrderId);
       } catch (historyError) {
         console.warn("[work-orders/update-status] history sync failed:", historyError);
+      }
+
+      try {
+        await seedCompletedWorkOrderIntelligence({
+          supabase,
+          shopId,
+          workOrderId,
+          source: "work_order_completed",
+        });
+      } catch (intelligenceError) {
+        console.warn(
+          "[work-orders/update-status] completed-repair learning failed:",
+          intelligenceError,
+        );
       }
     }
 

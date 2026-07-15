@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   AssistantAction,
   AssistantContext,
@@ -74,6 +74,11 @@ type AssistantSession = {
   bookingId?: string;
   fleetUnitId?: string;
   lastIntent?: string;
+};
+
+type ConversationMessage = {
+  role: "user" | "assistant";
+  content: string;
 };
 
 function notificationLevelFromType(type?: string): AssistantNotification["level"] {
@@ -185,14 +190,25 @@ function mapAnswerToResponse(answer: ApiAnswer, context?: AssistantContext): Ass
   };
 }
 
-export function useAssistant() {
+export function useAssistant(resetKey?: string) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<AssistantResponse | AssistantError | null>(null);
   const [session, setSession] = useState<AssistantSession>({});
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+
+  useEffect(() => {
+    setData(null);
+    setSession({});
+    setMessages([]);
+  }, [resetKey]);
 
   async function ask(query: string, context?: AssistantContext) {
     setLoading(true);
     setData(null);
+    const conversation = messages
+      .concat({ role: "user", content: query })
+      .slice(-19);
+    setMessages(conversation);
 
     try {
       const res = await fetch("/api/assistant/answer", {
@@ -202,6 +218,7 @@ export function useAssistant() {
           question: query,
           context,
           session,
+          messages: conversation,
         }),
       });
 
@@ -220,6 +237,13 @@ export function useAssistant() {
       }));
 
       setData(mapAnswerToResponse(json.answer, context));
+      const nextMessages = conversation.concat({
+          role: "assistant",
+          content: [json.answer.summary, ...(json.answer.bullets ?? [])]
+            .filter(Boolean)
+            .join("\n"),
+        }).slice(-20);
+      setMessages(nextMessages);
     } catch {
       setData({ error: "Failed to fetch" });
     } finally {
@@ -227,5 +251,11 @@ export function useAssistant() {
     }
   }
 
-  return { ask, loading, data };
+  function clearConversation() {
+    setData(null);
+    setSession({});
+    setMessages([]);
+  }
+
+  return { ask, loading, data, messages, clearConversation };
 }

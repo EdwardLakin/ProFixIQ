@@ -23,6 +23,7 @@ import OwnerPinModal from "@shared/components/OwnerPinModal";
 import OwnerSettingsHeader from "@/features/dashboard/components/owner-settings/OwnerSettingsHeader";
 import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-settings/OwnerSettingsBusinessSection";
 import OwnerSettingsOperationsSection from "@/features/dashboard/components/owner-settings/OwnerSettingsOperationsSection";
+import OwnerAiAutomationSection from "@/features/dashboard/components/owner-settings/OwnerAiAutomationSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
 import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
@@ -254,7 +255,6 @@ export default function OwnerSettingsPage() {
   const [taxRate, setTaxRate] = useState("");
 
   // Workflow flags
-  const [useAi, setUseAi] = useState(false);
   const [requireCauseCorrection, setRequireCauseCorrection] = useState(false);
   const [requireAuthorization, setRequireAuthorization] = useState(false);
 
@@ -592,7 +592,6 @@ try {
       );
       setTaxRate(typeof shop.tax_rate === "number" ? String(shop.tax_rate) : "");
 
-      setUseAi(!!shop.use_ai);
       setRequireCauseCorrection(!!shop.require_cause_correction);
       setRequireAuthorization(!!shop.require_authorization);
 
@@ -754,7 +753,6 @@ try {
         diagnostic_fee: diagnosticFee ? parseFloat(diagnosticFee) : null,
         tax_rate: taxRate ? parseFloat(taxRate) : null,
 
-        use_ai: useAi,
         require_cause_correction: requireCauseCorrection,
         require_authorization: requireAuthorization,
 
@@ -1417,7 +1415,6 @@ try {
             pricingValidDays={pricingValidDays}
             pricingValidDaysLoading={pricingValidDaysLoading}
             pricingValidDaysSaving={pricingValidDaysSaving}
-            useAi={useAi}
             requireCauseCorrection={requireCauseCorrection}
             requireAuthorization={requireAuthorization}
             autoGeneratePdf={autoGeneratePdf}
@@ -1434,13 +1431,13 @@ try {
             onTaxRateChange={setTaxRate}
             onPricingValidDaysChange={setPricingValidDays}
             onSavePricingValidDays={savePricingValidDays}
-            onUseAiChange={setUseAi}
             onRequireCauseCorrectionChange={setRequireCauseCorrection}
             onRequireAuthorizationChange={setRequireAuthorization}
             onAutoGeneratePdfChange={setAutoGeneratePdf}
             onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
             onAppearanceModeChange={(value) => void saveAppearanceMode(value)}
           />
+          <OwnerAiAutomationSection isUnlocked={isUnlocked} />
           <BrandStudioSummaryCard />
 
           <OwnerSettingsSectionIntro
