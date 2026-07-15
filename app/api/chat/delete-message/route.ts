@@ -62,7 +62,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const { error: deleteError } = await admin
     .from("messages")
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq("id", messageId);
 
   if (deleteError) {

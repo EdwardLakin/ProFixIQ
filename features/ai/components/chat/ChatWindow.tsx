@@ -198,13 +198,15 @@ export default function ChatWindow({
     const content = newMessage.trim();
     if (!content || sending) return;
 
-    const tempId = `temp-${Date.now()}`;
+    const clientMessageId = crypto.randomUUID();
+    const tempId = `temp-${clientMessageId}`;
     const optimistic: Message = {
       id: tempId,
       conversation_id: conversationId,
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
+      client_message_id: clientMessageId,
     } as Message;
 
     setMessages((prev) => [...prev, optimistic]);
@@ -218,9 +220,8 @@ export default function ChatWindow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId,
-          senderId: userId,
           content,
-          recipients: [],
+          clientMessageId,
         }),
       });
       if (!res.ok) {
@@ -228,10 +229,26 @@ export default function ChatWindow({
           "[ChatWindow] send-message failed:",
           await res.text(),
         );
+        setMessages((prev) => prev.filter((message) => message.id !== tempId));
+        setNewMessage(content);
         setError("Message failed to send.");
+        return;
       }
+
+      const inserted = (await res.json()) as Message;
+      setMessages((prev) => [
+        ...prev.filter(
+          (message) =>
+            message.id !== tempId &&
+            message.id !== inserted.id &&
+            message.client_message_id !== clientMessageId,
+        ),
+        inserted,
+      ]);
     } catch (err) {
       console.error("[ChatWindow] sendMessage error:", err);
+      setMessages((prev) => prev.filter((message) => message.id !== tempId));
+      setNewMessage(content);
       setError("Message failed to send.");
     } finally {
       setSending(false);

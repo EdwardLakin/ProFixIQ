@@ -10,6 +10,17 @@ type ProfileRow = {
   avatar_url?: string | null;
 };
 
+type CustomerRow = {
+  id: string;
+  user_id: string | null;
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  shop_id: string | null;
+};
+
 type QueryResult<T> = { data: T; error: { message: string } | null };
 
 const mockState = {
@@ -18,9 +29,12 @@ const mockState = {
     id: "profile-actor",
     user_id: "actor-user-id",
     shop_id: "shop-a",
+    role: "advisor",
   },
   profiles: [] as ProfileRow[],
+  customers: [] as CustomerRow[],
   lastProfilesEq: null as { column: string; value: string } | null,
+  lastCustomersEq: null as { column: string; value: string } | null,
 };
 
 function asAwaitable<T extends object>(
@@ -62,12 +76,49 @@ function createUserClient() {
 function createAdminClient() {
   return {
     from: vi.fn((table: string) => {
+      if (table === "customers") {
+        let eqFilter: { column: string; value: string } | null = null;
+        let searchQuery = "";
+        const baseQuery: Record<string, unknown> = {};
+        const query = asAwaitable(baseQuery, async () => {
+          const scoped =
+            eqFilter?.column === "shop_id"
+              ? mockState.customers.filter((row) => row.shop_id === eqFilter?.value)
+              : mockState.customers;
+          const searchMatch = /name\.ilike\.%(.*?)%,first_name\.ilike/.exec(searchQuery);
+          const text = (searchMatch?.[1] ?? "").trim().toLowerCase();
+          return {
+            data: text
+              ? scoped.filter((row) =>
+                  [row.name, row.first_name, row.last_name, row.email, row.phone]
+                    .filter(Boolean)
+                    .some((value) => value?.toLowerCase().includes(text)),
+                )
+              : scoped,
+            error: null,
+          };
+        });
+        query.select = vi.fn(() => query);
+        query.eq = vi.fn((column: string, value: string) => {
+          eqFilter = { column, value };
+          mockState.lastCustomersEq = eqFilter;
+          return query;
+        });
+        query.order = vi.fn(() => query);
+        query.limit = vi.fn(() => query);
+        query.or = vi.fn((pattern: string) => {
+          searchQuery = pattern;
+          return query;
+        });
+        return query;
+      }
+
       if (table !== "profiles") throw new Error(`Unexpected table: ${table}`);
 
       let eqFilter: { column: string; value: string } | null = null;
       let searchQuery = "";
 
-      const baseQuery: any = {};
+      const baseQuery: Record<string, unknown> = {};
       const query = asAwaitable(baseQuery, async () => {
           const filteredByShop =
             eqFilter && eqFilter.column === "shop_id"
@@ -126,8 +177,10 @@ describe("GET /api/chat/users", () => {
       id: "profile-actor",
       user_id: "actor-user-id",
       shop_id: "shop-a",
+      role: "advisor",
     };
     mockState.lastProfilesEq = null;
+    mockState.lastCustomersEq = null;
     mockState.profiles = [
       {
         id: "profile-actor",
@@ -151,6 +204,28 @@ describe("GET /api/chat/users", () => {
         full_name: "Bob Owner",
         role: "owner",
         email: "bob@shop-b.com",
+        shop_id: "shop-b",
+      },
+    ];
+    mockState.customers = [
+      {
+        id: "customer-a",
+        user_id: "customer-a-user",
+        name: "Casey Customer",
+        first_name: "Casey",
+        last_name: "Customer",
+        email: "casey@example.com",
+        phone: "555-0100",
+        shop_id: "shop-a",
+      },
+      {
+        id: "customer-b",
+        user_id: "customer-b-user",
+        name: "Cross Shop Customer",
+        first_name: "Cross",
+        last_name: "Shop",
+        email: "cross@example.com",
+        phone: "555-0200",
         shop_id: "shop-b",
       },
     ];
@@ -200,5 +275,34 @@ describe("GET /api/chat/users", () => {
       column: "shop_id",
       value: "shop-a",
     });
+    expect(mockState.lastCustomersEq).toEqual({
+      column: "shop_id",
+      value: "shop-a",
+    });
+  });
+
+  it("returns only same-shop customers and exposes portal messaging readiness", async () => {
+    const { GET } = await import("../app/api/chat/users/route");
+    const response = await GET(new Request("http://localhost/api/chat/users"));
+    const body = (await response.json()) as {
+      customers: Array<{ id: string; can_message: boolean }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.customers).toEqual([
+      expect.objectContaining({ id: "customer-a", can_message: true }),
+    ]);
+  });
+
+  it("does not expose the customer directory to non-customer-facing roles", async () => {
+    mockState.me.role = "tech";
+
+    const { GET } = await import("../app/api/chat/users/route");
+    const response = await GET(new Request("http://localhost/api/chat/users"));
+    const body = (await response.json()) as { customers: unknown[] };
+
+    expect(response.status).toBe(200);
+    expect(body.customers).toEqual([]);
+    expect(mockState.lastCustomersEq).toBeNull();
   });
 });

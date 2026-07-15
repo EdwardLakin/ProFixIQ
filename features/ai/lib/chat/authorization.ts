@@ -2,50 +2,105 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 type ConversationRow = Database["public"]["Tables"]["conversations"]["Row"];
+type MessagingChannel = "internal" | "customer";
+type ParticipantKind = "staff" | "customer";
+const CUSTOMER_MESSAGING_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
-type ProfileRow = Pick<
-  Database["public"]["Tables"]["profiles"]["Row"],
-  "id" | "user_id" | "shop_id" | "role"
->;
+export type MessagingActor =
+  | {
+      kind: "staff";
+      userId: string;
+      profileId: string;
+      shopId: string;
+      role: string | null;
+      customerId: null;
+    }
+  | {
+      kind: "customer";
+      userId: string;
+      customerId: string;
+      shopId: string;
+      role: null;
+      profileId: null;
+    };
 
-type ActorProfile = Omit<ProfileRow, "shop_id"> & { shop_id: string };
+type AccessFailure = {
+  ok: false;
+  status: 400 | 403 | 404 | 500;
+  error: string;
+};
 
 type AccessResult =
   | {
       ok: true;
+      actor: MessagingActor;
       conversation: ConversationRow;
       participantUserIds: string[];
     }
-  | {
-      ok: false;
-      status: 403 | 404 | 500;
-      error: string;
-    };
+  | AccessFailure;
 
 type LifecycleAction = "delete" | "manage_participants" | "read_participants";
 
-async function getActorProfile({
+export async function resolveMessagingActor({
   supabase,
   actorUserId,
 }: {
   supabase: SupabaseClient<Database>;
   actorUserId: string;
-}): Promise<{ ok: true; profile: ActorProfile } | { ok: false; status: 403 | 500; error: string }> {
-  const { data: profile, error } = await supabase
+}): Promise<{ ok: true; actor: MessagingActor } | AccessFailure> {
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, user_id, shop_id, role")
     .or(`user_id.eq.${actorUserId},id.eq.${actorUserId}`)
     .maybeSingle();
 
-  if (error) {
-    return { ok: false, status: 500, error: error.message };
+  if (profileError) {
+    return { ok: false, status: 500, error: profileError.message };
   }
 
-  if (!profile || !profile.shop_id) {
-    return { ok: false, status: 403, error: "Actor must belong to a shop profile" };
+  if (profile?.shop_id) {
+    return {
+      ok: true,
+      actor: {
+        kind: "staff",
+        userId: actorUserId,
+        profileId: profile.id,
+        shopId: profile.shop_id,
+        role: profile.role,
+        customerId: null,
+      },
+    };
   }
 
-  return { ok: true, profile: { ...profile, shop_id: profile.shop_id } };
+  const { data: customer, error: customerError } = await supabase
+    .from("customers")
+    .select("id, user_id, shop_id")
+    .eq("user_id", actorUserId)
+    .maybeSingle();
+
+  if (customerError) {
+    return { ok: false, status: 500, error: customerError.message };
+  }
+
+  if (customer?.shop_id) {
+    return {
+      ok: true,
+      actor: {
+        kind: "customer",
+        userId: actorUserId,
+        customerId: customer.id,
+        shopId: customer.shop_id,
+        role: null,
+        profileId: null,
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    status: 403,
+    error: "Messaging access requires a shop staff or invited customer account",
+  };
 }
 
 export async function authorizeConversationActor({
@@ -57,9 +112,12 @@ export async function authorizeConversationActor({
   conversationId: string;
   actorUserId: string;
 }): Promise<AccessResult> {
+  const actorResult = await resolveMessagingActor({ supabase, actorUserId });
+  if (!actorResult.ok) return actorResult;
+
   const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
-    .select("id, created_by, context_type, context_id, is_group, title, created_at")
+    .select("*")
     .eq("id", conversationId)
     .maybeSingle();
 
@@ -80,23 +138,41 @@ export async function authorizeConversationActor({
     return { ok: false, status: 500, error: participantsError.message };
   }
 
-  const participantUserIds = (participantRows ?? [])
-    .map((row) => row.user_id)
-    .filter((userId): userId is string => Boolean(userId));
+  const participantUserIds = Array.from(
+    new Set(
+      (participantRows ?? [])
+        .map((row) => row.user_id)
+        .filter((userId): userId is string => Boolean(userId)),
+    ),
+  );
 
-  const isAllowed =
+  const isMember =
     conversation.created_by === actorUserId ||
     participantUserIds.includes(actorUserId);
 
-  if (!isAllowed) {
-    return {
-      ok: false,
-      status: 403,
-      error: "You are not part of this conversation",
-    };
+  if (!isMember) {
+    return { ok: false, status: 403, error: "You are not part of this conversation" };
   }
 
-  return { ok: true, conversation, participantUserIds };
+  if (conversation.shop_id && conversation.shop_id !== actorResult.actor.shopId) {
+    return { ok: false, status: 403, error: "Conversation belongs to another shop" };
+  }
+
+  if (actorResult.actor.kind === "customer") {
+    if (
+      conversation.channel !== "customer" ||
+      conversation.customer_id !== actorResult.actor.customerId
+    ) {
+      return { ok: false, status: 403, error: "Conversation is not available in the customer portal" };
+    }
+  }
+
+  return {
+    ok: true,
+    actor: actorResult.actor,
+    conversation,
+    participantUserIds,
+  };
 }
 
 export async function authorizeConversationLifecycleAction({
@@ -112,64 +188,24 @@ export async function authorizeConversationLifecycleAction({
 }): Promise<
   | {
       ok: true;
+      actor: MessagingActor;
       conversation: ConversationRow;
       participantUserIds: string[];
       actorShopId: string;
     }
-  | {
-      ok: false;
-      status: 403 | 404 | 500;
-      error: string;
-    }
+  | AccessFailure
 > {
-  const actorProfileResult = await getActorProfile({ supabase, actorUserId });
-  if (!actorProfileResult.ok) return actorProfileResult;
-
   const access = await authorizeConversationActor({
     supabase,
     conversationId,
     actorUserId,
   });
-
-  if (!access.ok) {
-    return access;
-  }
-
-  const participantUserIds = Array.from(new Set(access.participantUserIds));
-
-  let participantProfiles: Array<{ id: string | null; user_id: string | null; shop_id: string | null }> = [];
-  if (participantUserIds.length > 0) {
-    const { data: profileRows, error: participantProfilesError } = await supabase
-      .from("profiles")
-      .select("id, user_id, shop_id")
-      .or(
-        participantUserIds
-          .map((id) => `user_id.eq.${id},id.eq.${id}`)
-          .join(","),
-      );
-
-    if (participantProfilesError) {
-      return { ok: false, status: 500, error: participantProfilesError.message };
-    }
-
-    participantProfiles = profileRows ?? [];
-  }
-
-  const actorShopId = actorProfileResult.profile.shop_id;
-
-  const hasCrossShopParticipant = participantProfiles.some(
-    (profile) => profile.shop_id && profile.shop_id !== actorShopId,
-  );
-
-  if (hasCrossShopParticipant) {
-    return {
-      ok: false,
-      status: 403,
-      error: "Conversation participants must remain in the actor shop",
-    };
-  }
+  if (!access.ok) return access;
 
   if (action === "delete" || action === "manage_participants") {
+    if (access.actor.kind !== "staff") {
+      return { ok: false, status: 403, error: "Only shop staff can manage conversations" };
+    }
     if (access.conversation.created_by !== actorUserId) {
       return {
         ok: false,
@@ -184,9 +220,10 @@ export async function authorizeConversationLifecycleAction({
 
   return {
     ok: true,
+    actor: access.actor,
     conversation: access.conversation,
-    participantUserIds,
-    actorShopId,
+    participantUserIds: access.participantUserIds,
+    actorShopId: access.actor.shopId,
   };
 }
 
@@ -194,57 +231,157 @@ export async function authorizeConversationCreate({
   supabase,
   actorUserId,
   participantUserIds,
+  channel = "internal",
+  customerId = null,
 }: {
   supabase: SupabaseClient<Database>;
   actorUserId: string;
   participantUserIds: string[];
+  channel?: MessagingChannel;
+  customerId?: string | null;
 }): Promise<
   | {
       ok: true;
+      actor: MessagingActor;
       actorShopId: string;
+      channel: MessagingChannel;
+      customerId: string | null;
       recipientUserIds: string[];
+      participantKinds: Record<string, ParticipantKind>;
     }
-  | {
-      ok: false;
-      status: 400 | 403 | 500;
-      error: string;
-    }
+  | AccessFailure
 > {
-  const actorProfileResult = await getActorProfile({ supabase, actorUserId });
-  if (!actorProfileResult.ok) return actorProfileResult;
+  const actorResult = await resolveMessagingActor({ supabase, actorUserId });
+  if (!actorResult.ok) return actorResult;
 
-  const actorShopId = actorProfileResult.profile.shop_id;
-
-  const uniqueRecipientIds = Array.from(new Set(participantUserIds)).filter(
-    (id) => Boolean(id) && id !== actorUserId,
-  );
-
-  if (uniqueRecipientIds.length === 0) {
-    return { ok: false, status: 400, error: "participant_ids required" };
+  const actor = actorResult.actor;
+  if (actor.kind === "customer" && channel !== "customer") {
+    return { ok: false, status: 403, error: "Customers can only start customer conversations" };
   }
 
-  const { data: recipients, error: recipientsError } = await supabase
-    .from("profiles")
-    .select("id, user_id")
-    .eq("shop_id", actorShopId)
-    .or(uniqueRecipientIds.map((id) => `user_id.eq.${id},id.eq.${id}`).join(","));
+  const uniqueStaffIds = Array.from(new Set(participantUserIds))
+    .map((id) => id.trim())
+    .filter((id) => id && id !== actorUserId);
 
-  if (recipientsError) {
-    return { ok: false, status: 500, error: recipientsError.message };
+  let staffUserIds: string[] = [];
+  if (uniqueStaffIds.length > 0) {
+    const { data: staff, error: staffError } = await supabase
+      .from("profiles")
+      .select("id, user_id")
+      .eq("shop_id", actor.shopId)
+      .or(uniqueStaffIds.map((id) => `user_id.eq.${id},id.eq.${id}`).join(","));
+
+    if (staffError) {
+      return { ok: false, status: 500, error: staffError.message };
+    }
+
+    staffUserIds = Array.from(
+      new Set(
+        (staff ?? [])
+          .map((row) => row.user_id ?? row.id)
+          .filter((id): id is string => Boolean(id) && id !== actorUserId),
+      ),
+    );
+  }
+
+  if (channel === "internal") {
+    if (actor.kind !== "staff") {
+      return { ok: false, status: 403, error: "Internal conversations are staff only" };
+    }
+    if (staffUserIds.length === 0) {
+      return { ok: false, status: 400, error: "Select at least one same-shop staff recipient" };
+    }
+    return {
+      ok: true,
+      actor,
+      actorShopId: actor.shopId,
+      channel,
+      customerId: null,
+      recipientUserIds: staffUserIds,
+      participantKinds: Object.fromEntries(staffUserIds.map((id) => [id, "staff"])),
+    };
+  }
+
+  if (
+    actor.kind === "staff" &&
+    !CUSTOMER_MESSAGING_ROLES.has((actor.role ?? "").toLowerCase())
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      error: "Your role cannot start customer conversations",
+    };
+  }
+
+  const resolvedCustomerId = actor.kind === "customer" ? actor.customerId : customerId;
+  if (!resolvedCustomerId) {
+    return { ok: false, status: 400, error: "Select a customer for this conversation" };
+  }
+
+  const { data: customer, error: customerError } = await supabase
+    .from("customers")
+    .select("id, user_id, shop_id")
+    .eq("id", resolvedCustomerId)
+    .eq("shop_id", actor.shopId)
+    .maybeSingle();
+
+  if (customerError) {
+    return { ok: false, status: 500, error: customerError.message };
+  }
+  if (!customer?.user_id) {
+    return {
+      ok: false,
+      status: 400,
+      error: customer ? "Customer must activate their portal before in-app messaging" : "Customer not found in this shop",
+    };
+  }
+  if (actor.kind === "customer" && customer.user_id !== actorUserId) {
+    return { ok: false, status: 403, error: "Customers cannot message on behalf of another customer" };
+  }
+
+  if (actor.kind === "customer" && staffUserIds.length === 0) {
+    const { data: serviceTeam, error: serviceTeamError } = await supabase
+      .from("profiles")
+      .select("id, user_id")
+      .eq("shop_id", actor.shopId)
+      .in("role", ["advisor", "manager", "owner", "admin"])
+      .limit(50);
+
+    if (serviceTeamError) {
+      return { ok: false, status: 500, error: serviceTeamError.message };
+    }
+    staffUserIds = Array.from(
+      new Set(
+        (serviceTeam ?? [])
+          .map((row) => row.user_id ?? row.id)
+          .filter((id): id is string => Boolean(id) && id !== actorUserId),
+      ),
+    );
+  }
+
+  if (actor.kind === "customer" && staffUserIds.length === 0) {
+    return { ok: false, status: 400, error: "No customer-facing shop staff are available" };
   }
 
   const recipientUserIds = Array.from(
-    new Set((recipients ?? []).map((recipient) => recipient.user_id ?? recipient.id).filter(Boolean) as string[]),
-  ).filter((id) => id !== actorUserId);
-
-  if (recipientUserIds.length === 0) {
-    return { ok: false, status: 400, error: "No valid in-shop recipients found" };
-  }
+    new Set([
+      ...staffUserIds,
+      ...(customer.user_id === actorUserId ? [] : [customer.user_id]),
+    ]),
+  );
+  const participantKinds: Record<string, ParticipantKind> = Object.fromEntries(
+    staffUserIds.map((id) => [id, "staff"]),
+  );
+  if (customer.user_id !== actorUserId) participantKinds[customer.user_id] = "customer";
 
   return {
     ok: true,
-    actorShopId,
+    actor,
+    actorShopId: actor.shopId,
+    channel,
+    customerId: resolvedCustomerId,
     recipientUserIds,
+    participantKinds,
   };
 }
 
@@ -255,30 +392,21 @@ export async function getActorConversationIds({
   supabase: SupabaseClient<Database>;
   actorUserId: string;
 }): Promise<{ ids: string[]; error: string | null }> {
-  const { data: createdConversations, error: createdError } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("created_by", actorUserId);
-
-  if (createdError) {
-    return { ids: [], error: createdError.message };
-  }
-
-  const { data: participantRows, error: participantError } = await supabase
+  const { data: participantRows, error } = await supabase
     .from("conversation_participants")
     .select("conversation_id")
     .eq("user_id", actorUserId);
 
-  if (participantError) {
-    return { ids: [], error: participantError.message };
-  }
+  if (error) return { ids: [], error: error.message };
 
-  const ids = Array.from(
-    new Set([
-      ...(createdConversations ?? []).map((row) => row.id),
-      ...(participantRows ?? []).map((row) => row.conversation_id),
-    ]),
-  ).filter((id): id is string => Boolean(id));
-
-  return { ids, error: null };
+  return {
+    ids: Array.from(
+      new Set(
+        (participantRows ?? [])
+          .map((row) => row.conversation_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ),
+    error: null,
+  };
 }

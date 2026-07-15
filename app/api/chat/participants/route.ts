@@ -17,6 +17,7 @@ type ParticipantRow = {
   user_id: string | null;
   role: string | null;
   added_at: string | null;
+  participant_kind: "staff" | "customer";
 };
 
 function normalizeParticipantIds(value: unknown): string[] {
@@ -67,7 +68,7 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   const { data: participantRows, error: participantError } = await admin
     .from("conversation_participants")
-    .select("id, conversation_id, user_id, role, added_at")
+    .select("id, conversation_id, user_id, role, added_at, participant_kind")
     .eq("conversation_id", conversationId);
 
   if (participantError) {
@@ -113,6 +114,7 @@ export async function GET(req: Request): Promise<NextResponse> {
       user_id: row.user_id,
       role: row.role,
       added_at: row.added_at,
+      participant_kind: row.participant_kind,
       full_name: profile?.full_name ?? null,
       email: profile?.email ?? null,
       avatar_url: profile?.avatar_url ?? null,
@@ -185,6 +187,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     conversation_id: conversationId,
     user_id: userId,
     role: body?.role ?? null,
+    participant_kind: "staff" as const,
   }));
 
   const { error: insertError } = await admin
@@ -239,7 +242,7 @@ export async function PATCH(req: Request): Promise<NextResponse> {
 
   const { data: existingRow, error: existingError } = await admin
     .from("conversation_participants")
-    .select("id, conversation_id, user_id, role, added_at")
+    .select("id, conversation_id, user_id, role, added_at, participant_kind")
     .eq("id", participantId)
     .eq("conversation_id", conversationId)
     .maybeSingle();
@@ -250,6 +253,13 @@ export async function PATCH(req: Request): Promise<NextResponse> {
 
   if (!existingRow) {
     return NextResponse.json({ error: "Participant not found" }, { status: 404 });
+  }
+
+  if (existingRow.participant_kind === "customer") {
+    return NextResponse.json(
+      { error: "The customer participant cannot be modified" },
+      { status: 400 },
+    );
   }
 
   const updatePayload: { role?: string | null; user_id?: string } = {};
@@ -297,7 +307,7 @@ export async function PATCH(req: Request): Promise<NextResponse> {
     .update(updatePayload)
     .eq("id", participantId)
     .eq("conversation_id", conversationId)
-    .select("id, conversation_id, user_id, role, added_at")
+    .select("id, conversation_id, user_id, role, added_at, participant_kind")
     .maybeSingle();
 
   if (updateError) {
@@ -348,35 +358,41 @@ export async function DELETE(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: access.error }, { status: access.status });
   }
 
-  if (participantUserId && participantUserId === access.conversation.created_by) {
+  let targetQuery = admin
+    .from("conversation_participants")
+    .select("id, user_id, participant_kind")
+    .eq("conversation_id", conversationId);
+
+  if (participantId) {
+    targetQuery = targetQuery.eq("id", participantId);
+  }
+
+  if (participantUserId) {
+    targetQuery = targetQuery.eq("user_id", participantUserId);
+  }
+
+  const { data: targetRow, error: targetError } = await targetQuery.maybeSingle();
+
+  if (targetError) {
+    return NextResponse.json({ error: targetError.message }, { status: 500 });
+  }
+
+  if (!targetRow) {
+    return NextResponse.json({ error: "Participant not found" }, { status: 404 });
+  }
+
+  if (targetRow.user_id === access.conversation.created_by) {
     return NextResponse.json(
       { error: "Conversation creator cannot be removed" },
       { status: 400 },
     );
   }
 
-  if (!participantUserId) {
-    const { data: targetRow, error: targetError } = await admin
-      .from("conversation_participants")
-      .select("user_id")
-      .eq("id", participantId as string)
-      .eq("conversation_id", conversationId)
-      .maybeSingle();
-
-    if (targetError) {
-      return NextResponse.json({ error: targetError.message }, { status: 500 });
-    }
-
-    if (!targetRow) {
-      return NextResponse.json({ error: "Participant not found" }, { status: 404 });
-    }
-
-    if (targetRow.user_id && targetRow.user_id === access.conversation.created_by) {
-      return NextResponse.json(
-        { error: "Conversation creator cannot be removed" },
-        { status: 400 },
-      );
-    }
+  if (targetRow.participant_kind === "customer") {
+    return NextResponse.json(
+      { error: "The customer participant cannot be removed" },
+      { status: 400 },
+    );
   }
 
   const deleteQuery = admin
