@@ -174,7 +174,17 @@ export default function AskAssistantEntry({
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const { ask, loading, data } = useAssistant();
+  const contextKey = [
+    context.pageType,
+    context.workOrderId,
+    context.customerId,
+    context.vehicleId,
+    context.bookingId,
+  ].filter(Boolean).join(":");
+  const { ask, loading, data, messages, clearConversation } = useAssistant(contextKey);
+  const transcriptMessages = messages.at(-1)?.role === "assistant"
+    ? messages.slice(0, -1)
+    : messages;
 
   const effectiveQuery = query.trim() || getDefaultPrompt(context);
 
@@ -205,6 +215,21 @@ export default function AskAssistantEntry({
             </DialogHeader>
 
             <div className="mt-4 space-y-4">
+              {transcriptMessages.length > 0 ? (
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                  {transcriptMessages.slice(-8).map((message, index) => (
+                    <div
+                      key={`${message.role}-${index}-${message.content.slice(0, 24)}`}
+                      className={message.role === "user"
+                        ? "ml-8 rounded-xl bg-[color:var(--theme-surface-overlay)] p-3 text-sm text-[color:var(--theme-text-primary)]"
+                        : "mr-8 whitespace-pre-line rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-sm text-[color:var(--theme-text-secondary)]"}
+                    >
+                      {message.content}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
               <textarea
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -223,6 +248,7 @@ export default function AskAssistantEntry({
                     variant="ghost"
                     onClick={() => {
                       setQuery("");
+                      clearConversation();
                     }}
                     disabled={loading}
                   >

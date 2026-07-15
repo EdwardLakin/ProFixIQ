@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!body.question?.trim()) {
+  if (typeof body.question !== "string" || !body.question.trim()) {
     return NextResponse.json<AssistantAskResponse>(
       { ok: false, error: "Question is required" },
       { status: 400 },
@@ -79,6 +79,22 @@ export async function POST(request: Request) {
   if (body.question.length > 8000) {
     return NextResponse.json<AssistantAskResponse>(
       { ok: false, error: "Question is too long" },
+      { status: 400 },
+    );
+  }
+  if (body.messages !== undefined && (!Array.isArray(body.messages) ||
+    body.messages.length > 20 || body.messages.some((message) =>
+      !message || (message.role !== "user" && message.role !== "assistant") ||
+      typeof message.content !== "string" || message.content.length > 4000))) {
+    return NextResponse.json<AssistantAskResponse>(
+      { ok: false, error: "Conversation history is invalid" },
+      { status: 400 },
+    );
+  }
+  if (body.imageAttachments !== undefined &&
+    (!Array.isArray(body.imageAttachments) || body.imageAttachments.length > 3)) {
+    return NextResponse.json<AssistantAskResponse>(
+      { ok: false, error: "Too many image attachments" },
       { status: 400 },
     );
   }

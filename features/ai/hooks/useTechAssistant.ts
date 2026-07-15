@@ -145,10 +145,12 @@ export function useTechAssistant(opts?: AssistantOptions) {
       try {
         const body = {
           vehicle,
-          context,
           messages,
           imageAttachments: lastImageRef.current ? [lastImageRef.current] : [],
           ...payload,
+          context: {
+            workOrderId: opts?.workOrderId ?? lastImageRef.current?.workOrderId ?? undefined,
+          },
           question: withVehicleContext(payload.question ?? "", vehicle, context),
         };
 
@@ -176,7 +178,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         abortRef.current = null;
       }
     },
-    [messages, vehicle, context, canSend, setMessages],
+    [messages, vehicle, context, canSend, opts?.workOrderId, setMessages],
   );
 
   const sendChat = useCallback(

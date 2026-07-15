@@ -4,6 +4,7 @@ import type { Database } from "@shared/types/types/supabase";
 import type {
   AssistantAskContext,
   AssistantAskSession,
+  AssistantImageAttachment,
   AssistantResolvedContext,
   AssistantVehicleContext,
 } from "../types";
@@ -202,4 +203,48 @@ export async function resolveTrustedAssistantContext(args: {
         }
       : undefined,
   };
+}
+
+export async function resolveTrustedAssistantAttachments(args: {
+  supabase: SupabaseClient<DB>;
+  shopId: string;
+  context: AssistantResolvedContext;
+  attachments?: AssistantImageAttachment[];
+}): Promise<AssistantImageAttachment[]> {
+  const requested = (args.attachments ?? []).slice(0, 3);
+  if (requested.length === 0) return [];
+  if (!args.context.workOrderId || requested.some((attachment) => !isUuid(attachment.id))) {
+    throw new AssistantContextValidationError("Assistant photos require a verified work order context");
+  }
+
+  const ids = requested.map((attachment) => attachment.id);
+  const { data, error } = await args.supabase.from("work_order_media")
+    .select("id,url,storage_bucket,storage_path,file_name,content_type,note,work_order_id,work_order_line_id,kind,source")
+    .eq("shop_id", args.shopId)
+    .eq("work_order_id", args.context.workOrderId)
+    .in("id", ids);
+  if (error) throw new Error(error.message);
+  if ((data ?? []).length !== new Set(ids).size) {
+    throw new AssistantContextValidationError("One or more assistant photos are unavailable");
+  }
+
+  const byId = new Map((data ?? []).map((row) => [row.id, row]));
+  return ids.map((id) => {
+    const row = byId.get(id);
+    if (!row || row.kind !== "photo" || row.source !== "ai_assistant" ||
+      !row.content_type?.startsWith("image/")) {
+      throw new AssistantContextValidationError("One or more assistant photos are invalid");
+    }
+    return {
+      id: row.id,
+      url: row.url,
+      storageBucket: row.storage_bucket,
+      storagePath: row.storage_path,
+      fileName: row.file_name,
+      contentType: row.content_type,
+      note: row.note,
+      workOrderId: row.work_order_id,
+      workOrderLineId: row.work_order_line_id,
+    };
+  });
 }

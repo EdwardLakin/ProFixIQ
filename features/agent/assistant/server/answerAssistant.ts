@@ -32,6 +32,7 @@ import type {
   AssistantResolvedContext,
 } from "../types";
 import {
+  resolveTrustedAssistantAttachments,
   resolveTrustedAssistantContext,
   sanitizeAssistantPageContext,
 } from "./trustedContext";
@@ -1404,6 +1405,12 @@ export async function answerAssistant({
     session: rawRequest.session,
   });
   const resolvedContext = trusted.context;
+  const trustedAttachments = await resolveTrustedAssistantAttachments({
+    supabase,
+    shopId,
+    context: resolvedContext,
+    attachments: rawRequest.imageAttachments,
+  });
   const pageContext = sanitizeAssistantPageContext(rawRequest.context);
   const request: AssistantAskRequest = {
     ...rawRequest,
@@ -1413,6 +1420,7 @@ export async function answerAssistant({
       lastIntent: rawRequest.session?.lastIntent,
     },
     vehicle: trusted.vehicle ?? rawRequest.vehicle,
+    imageAttachments: trustedAttachments,
   };
   const question = normalizeQuestion(request.question);
   const q = question.toLowerCase();
