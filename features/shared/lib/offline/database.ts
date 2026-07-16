@@ -39,6 +39,13 @@ export type OfflineBlobRecord = {
   blob: Blob;
 };
 
+export type OfflineDatabaseStats = {
+  mutations: number;
+  snapshots: number;
+  blobs: number;
+  blobBytes: number;
+};
+
 class ProFixIQOfflineDatabase extends Dexie {
   mutations!: Table<StoredOfflineMutation, string>;
   snapshots!: Table<OfflineSnapshot, string>;
@@ -156,7 +163,8 @@ export async function saveOfflineBlob(
   record: OfflineBlobRecord,
 ): Promise<void> {
   const db = getDatabase();
-  if (!db) throw new Error("Offline file storage is unavailable on this device.");
+  if (!db)
+    throw new Error("Offline file storage is unavailable on this device.");
   await db.blobs.put(record);
 }
 
@@ -164,12 +172,71 @@ export async function getOfflineBlob(
   id: string,
 ): Promise<OfflineBlobRecord | null> {
   const db = getDatabase();
-  return db ? (await db.blobs.get(id)) ?? null : null;
+  return db ? ((await db.blobs.get(id)) ?? null) : null;
 }
 
 export async function removeOfflineBlob(id: string): Promise<void> {
   const db = getDatabase();
   if (db) await db.blobs.delete(id);
+}
+
+export async function getOfflineDatabaseStats(scope: {
+  userId: string;
+  shopId: string;
+}): Promise<OfflineDatabaseStats> {
+  const db = getDatabase();
+  if (!db) return { mutations: 0, snapshots: 0, blobs: 0, blobBytes: 0 };
+  const compoundScope: [string, string] = [scope.userId, scope.shopId];
+  const [mutations, snapshots, blobs] = await Promise.all([
+    db.mutations.where("[userId+shopId]").equals(compoundScope).count(),
+    db.snapshots.where("[userId+shopId]").equals(compoundScope).count(),
+    db.blobs.where("[userId+shopId]").equals(compoundScope).toArray(),
+  ]);
+  return {
+    mutations,
+    snapshots,
+    blobs: blobs.length,
+    blobBytes: blobs.reduce((total, row) => total + row.blob.size, 0),
+  };
+}
+
+export async function pruneOfflineDatabase(args: {
+  scope: { userId: string; shopId: string };
+  retainedBlobIds: Set<string>;
+}): Promise<{ snapshotsRemoved: number; blobsRemoved: number }> {
+  const db = getDatabase();
+  if (!db) return { snapshotsRemoved: 0, blobsRemoved: 0 };
+  const compoundScope: [string, string] = [
+    args.scope.userId,
+    args.scope.shopId,
+  ];
+  const [snapshots, blobs] = await Promise.all([
+    db.snapshots.where("[userId+shopId]").equals(compoundScope).toArray(),
+    db.blobs.where("[userId+shopId]").equals(compoundScope).toArray(),
+  ]);
+  const now = Date.now();
+  const expiredSnapshotKeys = snapshots
+    .filter((row) => new Date(row.expiresAt).getTime() <= now)
+    .map((row) => row.key);
+  const orphanBlobIds = blobs
+    .filter(
+      (row) =>
+        !args.retainedBlobIds.has(row.id) &&
+        now - new Date(row.createdAt).getTime() > 1000 * 60 * 60,
+    )
+    .map((row) => row.id);
+  await Promise.all([
+    expiredSnapshotKeys.length
+      ? db.snapshots.bulkDelete(expiredSnapshotKeys)
+      : Promise.resolve(),
+    orphanBlobIds.length
+      ? db.blobs.bulkDelete(orphanBlobIds)
+      : Promise.resolve(),
+  ]);
+  return {
+    snapshotsRemoved: expiredSnapshotKeys.length,
+    blobsRemoved: orphanBlobIds.length,
+  };
 }
 
 export async function clearOfflineDatabase(): Promise<void> {

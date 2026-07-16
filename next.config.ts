@@ -8,7 +8,10 @@ const withSerwist = withSerwistInit({
   swDest: "public/sw.js",
   register: false,
   disable: process.env.NODE_ENV !== "production",
-  additionalPrecacheEntries: [{ url: "/offline", revision: null }],
+  additionalPrecacheEntries: [
+    { url: "/offline", revision: null },
+    { url: "/offline/sync", revision: null },
+  ],
 });
 
 const nextConfig: NextConfig = {
