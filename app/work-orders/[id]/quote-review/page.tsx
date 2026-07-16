@@ -4,11 +4,9 @@
 // We resolve to the real work_orders.id UUID before embedding quote review.
 
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 
-import FocusedJobSplitView from "../focused-job/_components/FocusedJobSplitView";
-import WorkOrderIdClient from "../Client"; // adjust ONLY if your filename is actually ../Client
-import QuoteReviewPanelClient from "./_components/QuoteReviewPanelClient";
 
 
 function looksLikeUuid(s: string): boolean {
@@ -19,6 +17,17 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const { id: routeId } = await props.params;
 
   const supabase = createServerSupabaseRSC();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect(
+      `/sign-in?redirect=${encodeURIComponent(
+        `/work-orders/${routeId}/quote-review`,
+      )}`,
+    );
+  }
 
   // Resolve routeId -> real UUID + custom_id
   let resolved: { id: string; custom_id: string | null } | null = null;
@@ -64,14 +73,5 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   }
 
   const woUuid = resolved.id;
-  const woCustomId = resolved.custom_id ?? routeId;
-
-  return (
-    <FocusedJobSplitView
-      left={<WorkOrderIdClient key={routeId} />}
-      right={
-        <QuoteReviewPanelClient workOrderId={woUuid} workOrderLabel={woCustomId} />
-      }
-    />
-  );
+  redirect(`/quote-review/${woUuid}`);
 }
