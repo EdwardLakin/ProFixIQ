@@ -1,10 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
-import { LEGAL_DOCUMENTS, legalHref } from "@/features/legal/lib/config";
 
 type Decision = "approve" | "decline" | "defer";
 type ApprovalState = "pending" | "approved" | "declined" | "deferred" | null;
@@ -34,98 +32,49 @@ function completedDecisionLabel(decision: Decision): string {
   return "Deferred";
 }
 
-function approvalStateForDecision(
-  decision: Decision,
-): Exclude<ApprovalState, null> {
+function approvalStateForDecision(decision: Decision): Exclude<ApprovalState, null> {
   if (decision === "approve") return "approved";
   if (decision === "decline") return "declined";
   return "deferred";
 }
 
-export default function QuoteApprovalActions({
-  workOrderId,
-  lines,
-  onChanged,
-}: Props) {
+export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: Props) {
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [authorizationAccepted, setAuthorizationAccepted] = useState(false);
-  const operationKeys = useRef(new Map<string, string>());
 
   const pendingLines = useMemo(
-    () =>
-      lines.filter((line) => (line.approval_state ?? "pending") === "pending"),
+    () => lines.filter((line) => (line.approval_state ?? "pending") === "pending"),
     [lines],
   );
 
-  const runDecision = async (
-    lineIds: string[],
-    decision: Decision,
-    declineRemaining = false,
-  ) => {
+  const runDecision = async (lineIds: string[], decision: Decision, declineRemaining = false) => {
     const ids = lineIds.map((id) => id.trim()).filter(Boolean);
     if (ids.length === 0 || loadingKey) return;
-    if (decision === "approve" && !authorizationAccepted) {
-      setError(
-        "Confirm the electronic repair authorization before approving work.",
-      );
-      return;
-    }
 
     const key = ids.length === 1 ? ids[0] : `${decision}-bulk`;
-    const operationIdentity = `${decision}:${[...ids].sort().join(",")}`;
-    const operationKey =
-      operationKeys.current.get(operationIdentity) ??
-      `portal-quote:${workOrderId}:${decision}:${
-        typeof window !== "undefined" && window.crypto?.randomUUID
-          ? window.crypto.randomUUID()
-          : `${Date.now()}-${ids.join("-")}`
-      }`;
-    operationKeys.current.set(operationIdentity, operationKey);
     setLoadingKey(key);
     setError(null);
 
     try {
-      const res = await fetch(
-        `/api/work-orders/quotes/${ids[0]}/approval-decision`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotency-Key": operationKey,
-          },
-          body: JSON.stringify({
-            decision,
-            lineIds: ids,
-            workOrderId,
-            declineRemaining,
-            legalAccepted: decision === "approve",
-            repairAuthorizationVersion:
-              decision === "approve"
-                ? LEGAL_DOCUMENTS.repairAuthorization.version
-                : undefined,
-          }),
-          cache: "no-store",
-        },
-      );
+      const res = await fetch(`/api/work-orders/quotes/${ids[0]}/approval-decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, lineIds: ids, workOrderId, declineRemaining }),
+        cache: "no-store",
+      });
 
-      const json = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-      } | null;
+      const json = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
 
       if (!res.ok || !json?.ok) {
         setError(json?.error ?? "Unable to update quote decision.");
         return;
       }
 
-      operationKeys.current.delete(operationIdentity);
-      if (decision === "approve") setAuthorizationAccepted(false);
       await onChanged?.();
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Unexpected error updating decision.",
-      );
+      setError(e instanceof Error ? e.message : "Unexpected error updating decision.");
     } finally {
       setLoadingKey(null);
     }
@@ -145,80 +94,34 @@ export default function QuoteApprovalActions({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() =>
-                void runDecision(
-                  pendingLines.map((line) => line.id),
-                  "approve",
-                )
-              }
-              disabled={!!loadingKey || !authorizationAccepted}
+              onClick={() => void runDecision(pendingLines.map((line) => line.id), "approve")}
+              disabled={!!loadingKey}
               className="inline-flex items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/15 px-4 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50"
             >
-              {loadingKey === "approve-bulk"
-                ? "Saving..."
-                : `Approve all (${pendingLines.length})`}
+              {loadingKey === "approve-bulk" ? "Saving..." : `Approve all (${pendingLines.length})`}
             </button>
             <button
               type="button"
-              onClick={() =>
-                void runDecision(
-                  pendingLines.map((line) => line.id),
-                  "decline",
-                )
-              }
+              onClick={() => void runDecision(pendingLines.map((line) => line.id), "decline")}
               disabled={!!loadingKey}
               className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50"
             >
-              {loadingKey === "decline-bulk"
-                ? "Saving..."
-                : `Decline all (${pendingLines.length})`}
+              {loadingKey === "decline-bulk" ? "Saving..." : `Decline all (${pendingLines.length})`}
             </button>
             <button
               type="button"
-              onClick={() =>
-                void runDecision(
-                  pendingLines.map((line) => line.id),
-                  "defer",
-                )
-              }
+              onClick={() => void runDecision(pendingLines.map((line) => line.id), "defer")}
               disabled={!!loadingKey}
               className="inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-transparent px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-50"
             >
-              {loadingKey === "defer-bulk"
-                ? "Saving..."
-                : `Defer all (${pendingLines.length})`}
+              {loadingKey === "defer-bulk" ? "Saving..." : `Defer all (${pendingLines.length})`}
             </button>
           </div>
         ) : null}
       </div>
       <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
-        Approving a quote item authorizes the shop to perform that work at the
-        displayed decision total. Declined or deferred items stay on the quote
-        and do not become punchable work.
+        Approving a quote item authorizes the shop to perform that work. Declined or deferred items stay on the quote and do not become punchable work.
       </div>
-
-      {pendingLines.length > 0 ? (
-        <label className="flex items-start gap-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3.5 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
-          <input
-            type="checkbox"
-            checked={authorizationAccepted}
-            onChange={(event) => setAuthorizationAccepted(event.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded"
-          />
-          <span>
-            I am authorized to approve this work and accept the{" "}
-            <Link
-              href={legalHref(LEGAL_DOCUMENTS.repairAuthorization)}
-              target="_blank"
-              className="font-semibold text-[var(--accent-copper)] hover:underline"
-            >
-              Electronic Repair Authorization Terms
-            </Link>
-            . The selected quote lines, amounts, account, timestamp and terms
-            version will be recorded.
-          </span>
-        </label>
-      ) : null}
 
       <div className="space-y-2">
         {lines.map((l) => {
@@ -248,36 +151,29 @@ export default function QuoteApprovalActions({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {(["approve", "decline", "defer"] as Decision[]).map(
-                    (decision) => {
-                      const disabled =
-                        !!loadingKey ||
-                        (decision === "approve" && !authorizationAccepted) ||
-                        (decision === "approve" && ap === "approved") ||
-                        (decision === "decline" && ap === "declined") ||
-                        (decision === "defer" && ap === "deferred");
-                      const isPrimaryApprove = decision === "approve";
-                      return (
-                        <button
-                          key={decision}
-                          type="button"
-                          onClick={() => void runDecision([l.id], decision)}
-                          disabled={disabled}
-                          className={
-                            isPrimaryApprove
-                              ? "inline-flex items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/15 px-4 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50"
-                              : "inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50"
-                          }
-                        >
-                          {isBusy
-                            ? "Saving..."
-                            : ap === approvalStateForDecision(decision)
-                              ? completedDecisionLabel(decision)
-                              : decisionLabel(decision)}
-                        </button>
-                      );
-                    },
-                  )}
+                  {(["approve", "decline", "defer"] as Decision[]).map((decision) => {
+                    const disabled =
+                      !!loadingKey ||
+                      (decision === "approve" && ap === "approved") ||
+                      (decision === "decline" && ap === "declined") ||
+                      (decision === "defer" && ap === "deferred");
+                    const isPrimaryApprove = decision === "approve";
+                    return (
+                      <button
+                        key={decision}
+                        type="button"
+                        onClick={() => void runDecision([l.id], decision)}
+                        disabled={disabled}
+                        className={
+                          isPrimaryApprove
+                            ? "inline-flex items-center justify-center rounded-full border border-emerald-400/70 bg-emerald-500/15 px-4 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-50"
+                            : "inline-flex items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50"
+                        }
+                      >
+                        {isBusy ? "Saving..." : ap === approvalStateForDecision(decision) ? completedDecisionLabel(decision) : decisionLabel(decision)}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

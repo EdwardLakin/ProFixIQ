@@ -32,11 +32,7 @@ export type RelinkQuoteLinePartsResult = {
   }>;
 };
 
-type RpcError = {
-  message: string;
-  details?: string | null;
-  hint?: string | null;
-};
+type RpcError = { message: string; details?: string | null; hint?: string | null };
 type RpcClient = {
   rpc: (
     name: string,
@@ -99,9 +95,6 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   decision: QuoteApprovalDecision;
   declineRemaining?: boolean;
   operationKey?: string;
-  legalAuthorization?: {
-    documentVersion: string;
-  };
 }): Promise<{
   ok: boolean;
   workOrderLineIds: string[];
@@ -112,9 +105,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   idempotent?: boolean;
   error?: string;
 }> {
-  const quoteLineIds = [
-    ...new Set(params.quoteLineIds.map((id) => id.trim()).filter(Boolean)),
-  ];
+  const quoteLineIds = [...new Set(params.quoteLineIds.map((id) => id.trim()).filter(Boolean))];
   if (quoteLineIds.length === 0) {
     return {
       ok: false,
@@ -141,7 +132,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
     });
 
   const rpc = params.supabase as unknown as RpcClient;
-  const rpcArgs = {
+  const { data, error } = await rpc.rpc("apply_customer_quote_decision_atomic", {
     p_shop_id: params.shopId,
     p_work_order_id: params.workOrderId,
     p_quote_line_ids: quoteLineIds,
@@ -151,14 +142,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
     p_actor_user_id: params.actorUserId,
     p_operation_key: `${params.shopId}:quote-decision:${rawOperationKey}`,
     p_at: new Date().toISOString(),
-  };
-  const { data, error } = params.legalAuthorization
-    ? await rpc.rpc("apply_customer_quote_decision_with_legal_atomic", {
-        ...rpcArgs,
-        p_repair_authorization_version:
-          params.legalAuthorization.documentVersion,
-      })
-    : await rpc.rpc("apply_customer_quote_decision_atomic", rpcArgs);
+  });
 
   if (error) {
     return {
@@ -174,9 +158,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
 
   const result = data && typeof data === "object" ? (data as RpcResult) : {};
   const workOrderLineIds = Array.isArray(result.work_order_line_ids)
-    ? result.work_order_line_ids.filter(
-        (id): id is string => typeof id === "string",
-      )
+    ? result.work_order_line_ids.filter((id): id is string => typeof id === "string")
     : [];
   const committedQuoteLineIds = Array.isArray(result.quote_line_ids)
     ? result.quote_line_ids.filter((id): id is string => typeof id === "string")
