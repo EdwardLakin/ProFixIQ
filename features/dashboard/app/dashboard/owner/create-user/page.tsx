@@ -23,7 +23,6 @@ type CreatePayload = {
   email?: string | null;
   full_name?: string | null;
   role?: UserRole | null;
-  shop_id?: string | null;
   phone?: string | null;
 };
 
@@ -41,7 +40,6 @@ export default function CreateUserPage(): JSX.Element {
     email: "",
     full_name: "",
     role: "mechanic",
-    shop_id: null,
     phone: "",
   });
 
@@ -66,9 +64,9 @@ export default function CreateUserPage(): JSX.Element {
   const [resetBusy, setResetBusy] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  // creator’s shop id (for auto-fill)
-  const [creatorShopId, setCreatorShopId] = useState<string | null>(null);
+  // Creator shop details are display aids only; the API derives tenant scope.
   const [creatorShopName, setCreatorShopName] = useState<string | null>(null);
+  const [creatorRole, setCreatorRole] = useState<string | null>(null);
   const [usernameTouched, setUsernameTouched] = useState(false);
 
   // load current user's shop_id once
@@ -81,12 +79,12 @@ export default function CreateUserPage(): JSX.Element {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("shop_id")
+        .select("shop_id, role")
         .eq("id", user.id)
         .maybeSingle();
 
       const shopId = profile?.shop_id ?? null;
-      setCreatorShopId(shopId);
+      setCreatorRole(profile?.role ?? null);
 
       if (shopId) {
         const { data: shop } = await supabase
@@ -97,11 +95,6 @@ export default function CreateUserPage(): JSX.Element {
 
         const displayName = (shop?.shop_name ?? "").trim() || (shop?.name ?? "").trim() || null;
         setCreatorShopName(displayName);
-
-        setForm((prev) => ({
-          ...prev,
-          shop_id: shopId,
-        }));
       }
     };
 
@@ -140,15 +133,17 @@ export default function CreateUserPage(): JSX.Element {
         email: (form.email ?? "").trim().toLowerCase() || null,
         full_name: (form.full_name ?? "").trim() || null,
         role: form.role ?? null,
-        shop_id: (form.shop_id ?? "")?.trim() || creatorShopId || null,
         phone: (form.phone ?? "")?.trim() || null,
       };
 
       if (!body.username) {
         throw new Error("Username is required.");
       }
-      if (!body.password) {
-        throw new Error("Temporary password is required.");
+      if (!body.full_name) {
+        throw new Error("Full name is required.");
+      }
+      if (body.password.trim().length < 8) {
+        throw new Error("Temporary password must be at least 8 characters.");
       }
 
       const res = await fetch("/api/admin/create-user", {
@@ -193,7 +188,6 @@ export default function CreateUserPage(): JSX.Element {
         email: "",
         full_name: "",
         phone: "",
-        shop_id: body.shop_id ?? creatorShopId ?? null,
       }));
       setUsernameTouched(false);
 
@@ -265,7 +259,7 @@ export default function CreateUserPage(): JSX.Element {
               , continue in People after create.
             </p>
             <p className="text-[11px] text-[color:var(--theme-text-muted)]">
-              If they forget it later, an owner or manager can issue a new
+              If they forget it later, an owner or admin can issue a new
               temporary password from this screen.
             </p>
           </div>
@@ -297,7 +291,7 @@ export default function CreateUserPage(): JSX.Element {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                Full name
+                Full name <span className="text-red-400">*</span>
               </label>
               <input
                 className={INPUT_CLASS}
@@ -367,8 +361,7 @@ export default function CreateUserPage(): JSX.Element {
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
               />
               <p className="text-[11px] text-[color:var(--theme-text-muted)]">
-                Share this directly with the user. They can change it later from
-                the Settings screen if you enable that flow.
+                At least 8 characters. The user must replace it during their first sign-in.
               </p>
             </div>
 
@@ -383,8 +376,8 @@ export default function CreateUserPage(): JSX.Element {
                   setForm({ ...form, role: e.target.value as UserRole })
                 }
               >
-                <option value="owner">Owner</option>
-                <option value="admin">Admin</option>
+                {creatorRole === "owner" ? <option value="owner">Owner</option> : null}
+                {creatorRole === "owner" ? <option value="admin">Admin</option> : null}
                 <option value="manager">Manager</option>
                 <option value="foreman">Foreman</option>
                 <option value="lead_hand">Lead Hand</option>
@@ -397,30 +390,9 @@ export default function CreateUserPage(): JSX.Element {
               </select>
               <p className="text-[11px] text-[color:var(--theme-text-muted)]">
                 App role controls access and permissions. Workforce title/category is managed
-                separately in the People profile. Use{" "}
-                <span style={{ color: COPPER }}>driver / dispatcher / fleet manager</span> for
-                Fleet Portal accounts.
+                separately in the People profile. External customer and fleet portal accounts
+                must use their dedicated invitation flows.
               </p>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                Shop ID{" "}
-                <span className="text-[color:var(--theme-text-muted)]">
-                  {creatorShopId ? "(auto from your profile)" : "(optional)"}
-                </span>
-              </label>
-              <input
-                className={INPUT_CLASS}
-                placeholder="Shop ID"
-                value={form.shop_id ?? ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    shop_id: e.target.value || null,
-                  })
-                }
-              />
             </div>
           </div>
 
@@ -443,7 +415,7 @@ export default function CreateUserPage(): JSX.Element {
             </button>
             <p className="text-xs text-[color:var(--theme-text-muted)]">
               Next step: complete workforce/profile setup in People, then share
-              credentials for first sign-in.
+              credentials for first sign-in. Shop access is assigned automatically.
             </p>
           </div>
         </div>
@@ -555,3 +527,4 @@ export default function CreateUserPage(): JSX.Element {
     </PageShell>
   );
 }
+

@@ -26,6 +26,16 @@ type Body = {
   phone?: string | null;
 };
 
+const PRIVILEGED_ROLES = new Set(["owner", "admin"]);
+const PROVISIONABLE_ROLES = new Set([
+  "owner", "admin", "manager", "foreman", "lead_hand", "advisor", "service",
+  "dispatcher", "parts", "mechanic", "fleet_manager", "driver",
+]);
+
+function isValidContactEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function logCreateUserStep(
   step: string,
   details: {
@@ -35,8 +45,6 @@ function logCreateUserStep(
     authUserId?: string | null;
     profileId?: string | null;
     normalizedUsername?: string | null;
-    syntheticAuthEmail?: string | null;
-    contactEmail?: string | null;
     hasContactEmail?: boolean;
     emailConfirmed?: boolean | null;
   } = {},
@@ -53,8 +61,6 @@ function logCreateUserError(
     authUserId?: string | null;
     profileId?: string | null;
     normalizedUsername?: string | null;
-    syntheticAuthEmail?: string | null;
-    contactEmail?: string | null;
     hasContactEmail?: boolean;
     emailConfirmed?: boolean | null;
     error?: string | null;
@@ -63,12 +69,37 @@ function logCreateUserError(
   console.warn("[admin/create-user]", { step, ...details });
 }
 
+async function rollbackCreatedAuthUser(args: {
+  serviceSupabase: ReturnType<typeof createAdminSupabase>;
+  authUserId: string;
+  adminId: string;
+  shopId: string;
+}): Promise<boolean> {
+  const { error } = await args.serviceSupabase.auth.admin.deleteUser(args.authUserId);
+  if (error) {
+    logCreateUserError("rollback_auth_user_failed", {
+      adminId: args.adminId,
+      targetShopId: args.shopId,
+      authUserId: args.authUserId,
+      error: error.message,
+    });
+    return false;
+  }
+
+  logCreateUserStep("rollback_auth_user_completed", {
+    adminId: args.adminId,
+    targetShopId: args.shopId,
+    authUserId: args.authUserId,
+  });
+  return true;
+}
+
 export async function POST(req: Request) {
   try {
     const raw = (await req.json()) as Partial<Body>;
 
     const password = raw.password ?? "";
-    const full_name = (raw.full_name ?? null) || null;
+    const full_name = String(raw.full_name ?? "").trim() || null;
     const requestedRole = (raw.role ?? null) || null;
     const canonicalRole = canonicalizeRole(requestedRole);
     const phone = (raw.phone ?? null) || null;
@@ -78,14 +109,35 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Invalid role. Allowed roles: owner, admin, manager, foreman, lead_hand, advisor, service, dispatcher, parts, mechanic, fleet_manager, driver, customer.",
+            "Invalid staff role. Allowed roles: owner, admin, manager, foreman, lead_hand, advisor, service, dispatcher, parts, mechanic, fleet_manager, driver.",
         },
         { status: 400 }
       );
     }
 
-    if (!password) {
-      return NextResponse.json({ error: "Temporary password is required." }, { status: 400 });
+    if (!PROVISIONABLE_ROLES.has(canonicalRole)) {
+      return NextResponse.json(
+        { error: "This account type must be created through its dedicated portal or invitation flow." },
+        { status: 400 },
+      );
+    }
+    if (!full_name) {
+      return NextResponse.json({ error: "Full name is required." }, { status: 400 });
+    }
+    if (full_name.length > 120) {
+      return NextResponse.json({ error: "Full name is too long." }, { status: 400 });
+    }
+    if (password.trim().length < 8) {
+      return NextResponse.json(
+        { error: "Temporary password must be at least 8 characters." },
+        { status: 400 },
+      );
+    }
+    if (inputEmail && !isValidContactEmail(inputEmail)) {
+      return NextResponse.json({ error: "Enter a valid contact email." }, { status: 400 });
+    }
+    if (phone && phone.length > 40) {
+      return NextResponse.json({ error: "Phone number is too long." }, { status: 400 });
     }
 
     const access = await requireShopScopedApiAccess({
@@ -93,6 +145,13 @@ export async function POST(req: Request) {
       allowRoles: ["owner", "admin"],
     });
     if (!access.ok) return access.response;
+
+    if (PRIVILEGED_ROLES.has(canonicalRole) && access.canonicalRole !== "owner") {
+      return NextResponse.json(
+        { error: "Only an owner can create owner or admin accounts." },
+        { status: 403 },
+      );
+    }
 
     // Always force the creator's shop_id to preserve tenant boundaries.
     const effectiveShopId = access.profile.shop_id;
@@ -123,6 +182,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Username is required." }, { status: 400 });
     }
 
+    const normalizedInputUsername = requestedUsername.toLowerCase().replace(/[^a-z0-9]+/g, "");
+    if (normalizedInputUsername.length < 2) {
+      return NextResponse.json(
+        { error: "Username must include at least 2 letters or numbers." },
+        { status: 400 },
+      );
+    }
     const username = normalizeProvisioningUsername(requestedUsername, shopNamespace);
 
     // ensure username is unique inside the current shop only
@@ -171,8 +237,6 @@ export async function POST(req: Request) {
       targetShopId: effectiveShopId,
       role: canonicalRole,
       normalizedUsername: username,
-      syntheticAuthEmail: syntheticEmail,
-      contactEmail,
       hasContactEmail: Boolean(contactEmail),
     });
 
@@ -212,8 +276,6 @@ export async function POST(req: Request) {
       role: canonicalRole,
       authUserId: newUserId,
       normalizedUsername: username,
-      syntheticAuthEmail: syntheticEmail,
-      contactEmail,
       hasContactEmail: Boolean(contactEmail),
       emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
     });
@@ -240,9 +302,20 @@ export async function POST(req: Request) {
       );
 
     if (profileErr) {
+      const rolledBack = await rollbackCreatedAuthUser({
+        serviceSupabase,
+        authUserId: newUserId,
+        adminId: access.profile.id,
+        shopId: effectiveShopId,
+      });
       if (String(profileErr.message ?? "").toLowerCase().includes("shop user limit reached")) {
         return NextResponse.json(
-          { error: "Shop user limit reached for your current plan." },
+          {
+            error: rolledBack
+              ? "Shop user limit reached for your current plan. No account was created."
+              : "Shop user limit reached, and automatic account cleanup failed. Contact support before retrying.",
+            code: rolledBack ? "shop_user_limit_reached" : "provisioning_rollback_failed",
+          },
           { status: 400 }
         );
       }
@@ -254,8 +327,13 @@ export async function POST(req: Request) {
         error: profileErr.message,
       });
       return NextResponse.json(
-        { error: "Profile upsert failed.", code: "profile_upsert_failed" },
-        { status: 400 }
+        {
+          error: rolledBack
+            ? "User setup could not be completed. No account was created; you can try again."
+            : "User setup could not be completed, and automatic cleanup failed. Contact support before retrying.",
+          code: rolledBack ? "profile_upsert_failed" : "provisioning_rollback_failed",
+        },
+        { status: 500 }
       );
     }
 
@@ -274,6 +352,12 @@ export async function POST(req: Request) {
       );
 
     if (workforceErr) {
+      const rolledBack = await rollbackCreatedAuthUser({
+        serviceSupabase,
+        authUserId: newUserId,
+        adminId: access.profile.id,
+        shopId: effectiveShopId,
+      });
       logCreateUserError("workforce_profile_seed_failed", {
         adminId: access.profile.id,
         targetShopId: effectiveShopId,
@@ -282,8 +366,13 @@ export async function POST(req: Request) {
         error: workforceErr.message,
       });
       return NextResponse.json(
-        { error: "Workforce profile seed failed.", code: "workforce_profile_seed_failed" },
-        { status: 400 }
+        {
+          error: rolledBack
+            ? "User setup could not be completed. No account was created; you can try again."
+            : "User setup could not be completed, and automatic cleanup failed. Contact support before retrying.",
+          code: rolledBack ? "workforce_profile_seed_failed" : "provisioning_rollback_failed",
+        },
+        { status: 500 }
       );
     }
 
@@ -294,8 +383,6 @@ export async function POST(req: Request) {
       authUserId: newUserId,
       profileId: newUserId,
       normalizedUsername: username,
-      syntheticAuthEmail: syntheticEmail,
-      contactEmail,
       hasContactEmail: Boolean(contactEmail),
       emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
     });
@@ -317,3 +404,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg, code: "unexpected_error" }, { status: 500 });
   }
 }
+
