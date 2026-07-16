@@ -41,6 +41,19 @@ describe("parts package handoff source contracts", () => {
     expect(focusedJob).toContain('.eq("is_active", true)');
   });
 
+  it("resolves canonical parts-request ids to their owning work order and scopes the result", () => {
+    expect(requestPage).toContain("const { data: requestById, error: requestLookupError }");
+    expect(requestPage).toContain('.eq("id", routeId)');
+    expect(requestPage).toContain("requestIdFilter = String(requestById.id)");
+    expect(requestPage).toContain('requestsForWorkOrder.eq("id", requestIdFilter)');
+  });
+
+  it("sends a stable content-derived idempotency key when committing a parts package", () => {
+    expect(requestPage).toContain("const packageFingerprint = (request?.items ?? [])");
+    expect(requestPage).toContain("const idempotencyKey =");
+    expect(requestPage).toContain('body: JSON.stringify({ idempotencyKey })');
+  });
+
   it("does not render a second Sonner toaster inside the app shell", () => {
     expect(appShell).not.toContain("<Toaster");
   });
