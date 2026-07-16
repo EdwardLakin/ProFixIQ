@@ -50,6 +50,7 @@ export default async function RootLayout({
     pathname.startsWith("/compare-plans") ||
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/demo") ||
+    pathname.startsWith("/legal") ||
     pathname.startsWith("/portal/auth/") ||
     pathname.startsWith("/portal/join/") ||
     pathname.startsWith("/portal/confirm");
@@ -90,8 +91,7 @@ export default async function RootLayout({
       <body
         className="min-h-screen antialiased"
         style={{
-          backgroundImage:
-            "var(--theme-gradient-panel)",
+          backgroundImage: "var(--theme-gradient-panel)",
         }}
       >
         {useAppShell ? (

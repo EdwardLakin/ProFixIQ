@@ -10,6 +10,11 @@ import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting"
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  LEGAL_DOCUMENTS,
+  legalHref,
+  signupLegalMetadata,
+} from "@/features/legal/lib/config";
 
 type Mode = "sign-in" | "sign-up";
 
@@ -31,12 +36,14 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
 
   const origin = useMemo(
     () =>
       typeof window !== "undefined"
         ? window.location.origin
-        : process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://profixiq.com",
+        : process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+          "https://profixiq.com",
     [],
   );
 
@@ -85,7 +92,10 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
           setError(result.error);
           return;
         }
-        const requested = safeInternalRedirect(searchParams.get("redirect"), result.destination);
+        const requested = safeInternalRedirect(
+          searchParams.get("redirect"),
+          result.destination,
+        );
         router.replace(requested);
         router.refresh();
         return;
@@ -100,18 +110,34 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         setError("Use at least 12 characters for your password.");
         return;
       }
+      if (!legalAccepted) {
+        setError(
+          "Review and accept the service terms before creating an owner account.",
+        );
+        return;
+      }
 
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo },
+        options: {
+          emailRedirectTo,
+          data: {
+            profixiq_account_kind: "shop_owner_signup",
+            profixiq_legal_acceptance: signupLegalMetadata(),
+          },
+        },
       });
       if (signUpError) {
-        setError("We couldn't create the account. Check your details and try again.");
+        setError(
+          "We couldn't create the account. Check your details and try again.",
+        );
         return;
       }
       if (!data.session) {
-        setNotice("Check your email to verify the account, then continue into shop setup.");
+        setNotice(
+          "Check your email to verify the account, then continue into shop setup.",
+        );
         return;
       }
       router.replace("/onboarding");
@@ -127,7 +153,11 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
       productLabel="Shop dashboard"
       heroTitle="The operating system for modern repair shops."
       heroDescription="Move from intake to invoice with every role, approval, and service record connected to the right shop."
-      highlights={["Role-aware access", "Live work visibility", "Secure approvals"]}
+      highlights={[
+        "Role-aware access",
+        "Live work visibility",
+        "Secure approvals",
+      ]}
     >
       <div className="mb-6">
         <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
@@ -152,6 +182,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
               setMode(value);
               setError("");
               setNotice("");
+              if (value === "sign-in") setLegalAccepted(false);
             }}
             className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
               mode === value
@@ -171,7 +202,10 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
 
       <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
         <div>
-          <label htmlFor="shop-identifier" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+          <label
+            htmlFor="shop-identifier"
+            className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]"
+          >
             {isSignIn ? "Email or username" : "Owner email"}
           </label>
           <input
@@ -179,7 +213,9 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
             className={inputClass}
             type={isSignIn ? "text" : "email"}
             autoComplete={isSignIn ? "username" : "email"}
-            placeholder={isSignIn ? "name@shop.com or username" : "owner@shop.com"}
+            placeholder={
+              isSignIn ? "name@shop.com or username" : "owner@shop.com"
+            }
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
             required
@@ -188,11 +224,17 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
 
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="shop-password" className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+            <label
+              htmlFor="shop-password"
+              className="text-xs font-semibold text-[color:var(--theme-text-secondary)]"
+            >
               Password
             </label>
             {isSignIn ? (
-              <Link href="/forgot-password" className="text-xs font-semibold text-[var(--accent-copper)] hover:underline">
+              <Link
+                href="/forgot-password"
+                className="text-xs font-semibold text-[var(--accent-copper)] hover:underline"
+              >
                 Forgot password?
               </Link>
             ) : null}
@@ -203,7 +245,9 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
               className={`${inputClass} pr-11`}
               type={showPassword ? "text" : "password"}
               autoComplete={isSignIn ? "current-password" : "new-password"}
-              placeholder={isSignIn ? "Enter your password" : "At least 12 characters"}
+              placeholder={
+                isSignIn ? "Enter your password" : "At least 12 characters"
+              }
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               minLength={isSignIn ? 6 : 12}
@@ -215,10 +259,54 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
               className="absolute inset-y-0 right-0 grid w-11 place-items-center text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
               aria-label={showPassword ? "Hide password" : "Show password"}
             >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
             </button>
           </div>
         </div>
+
+        {!isSignIn ? (
+          <label className="flex items-start gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3.5 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+            <input
+              type="checkbox"
+              checked={legalAccepted}
+              onChange={(event) => setLegalAccepted(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-[color:var(--theme-input-border)] text-[var(--accent-copper)] focus:ring-[var(--accent-copper)]"
+              required
+            />
+            <span>
+              I have authority to bind the shop, agree to the{" "}
+              <Link
+                className="font-semibold text-[var(--accent-copper)] hover:underline"
+                href={legalHref(LEGAL_DOCUMENTS.terms)}
+                target="_blank"
+              >
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link
+                className="font-semibold text-[var(--accent-copper)] hover:underline"
+                href={legalHref(LEGAL_DOCUMENTS.dpa)}
+                target="_blank"
+              >
+                Data Processing Addendum
+              </Link>
+              , and acknowledge the{" "}
+              <Link
+                className="font-semibold text-[var(--accent-copper)] hover:underline"
+                href={legalHref(LEGAL_DOCUMENTS.privacy)}
+                target="_blank"
+              >
+                Privacy Policy
+              </Link>
+              . These documents are draft pending counsel approval and must be
+              finalized before public signup.
+            </span>
+          </label>
+        ) : null}
 
         <button
           type="submit"
@@ -226,15 +314,25 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] shadow-[0_14px_32px_color-mix(in_srgb,var(--accent-copper)_25%,transparent)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {loading ? "Please wait…" : isSignIn ? "Sign in to ProFixIQ" : "Create owner account"}
+          {loading
+            ? "Please wait…"
+            : isSignIn
+              ? "Sign in to ProFixIQ"
+              : "Create owner account"}
         </button>
       </form>
 
       <div className="mt-6 grid gap-2 border-t border-[color:var(--theme-border-soft)] pt-5 sm:grid-cols-2">
-        <Link href="/mobile/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+        <Link
+          href="/mobile/sign-in"
+          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]"
+        >
           Mobile companion
         </Link>
-        <Link href="/portal/auth/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+        <Link
+          href="/portal/auth/sign-in"
+          className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]"
+        >
           Customer & fleet portals
         </Link>
       </div>

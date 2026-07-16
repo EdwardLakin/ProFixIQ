@@ -24,7 +24,11 @@ export default function AuthShell({
   productLabel = "Shop operations",
   heroTitle = "Run the whole shop with confidence.",
   heroDescription = "Work orders, inspections, approvals, parts, workforce, and customer communication—connected in one secure operating system.",
-  highlights = ["Tenant-scoped access", "Role-aware workflows", "Secure service records"],
+  highlights = [
+    "Tenant-scoped access",
+    "Role-aware workflows",
+    "Secure service records",
+  ],
   backHref = "/",
 }: AuthShellProps) {
   return (
@@ -38,12 +42,21 @@ export default function AuthShell({
       <div className="pointer-events-none absolute -left-24 top-1/3 h-72 w-72 rounded-full bg-[color:color-mix(in_srgb,var(--accent-copper)_11%,transparent)] blur-3xl" />
 
       <header className="relative z-10 flex h-16 items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-[color:color-mix(in_srgb,var(--theme-surface-overlay)_82%,transparent)] px-4 backdrop-blur-xl sm:px-7">
-        <Link href={backHref} className="inline-flex items-center gap-3" aria-label="ProFixIQ home">
-          <span className="text-xl tracking-[0.08em] text-[color:var(--theme-text-primary)] sm:text-2xl" style={{ fontFamily: "var(--font-blackops), system-ui" }}>
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-3"
+          aria-label="ProFixIQ home"
+        >
+          <span
+            className="text-xl tracking-[0.08em] text-[color:var(--theme-text-primary)] sm:text-2xl"
+            style={{ fontFamily: "var(--font-blackops), system-ui" }}
+          >
             PRO<span className="text-[var(--accent-copper)]">FIX</span>IQ
           </span>
           <span className="hidden h-5 w-px bg-[color:var(--theme-border-strong)] sm:block" />
-          <span className="hidden text-xs text-[color:var(--theme-text-muted)] sm:block">{productLabel}</span>
+          <span className="hidden text-xs text-[color:var(--theme-text-muted)] sm:block">
+            {productLabel}
+          </span>
         </Link>
         <ThemeToggleButton />
       </header>
@@ -62,8 +75,14 @@ export default function AuthShell({
           </p>
           <div className="mt-8 grid max-w-xl gap-3 sm:grid-cols-3">
             {highlights.map((highlight) => (
-              <div key={highlight} className="flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 text-xs font-medium text-[color:var(--theme-text-secondary)] backdrop-blur">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-[var(--accent-copper)]" aria-hidden />
+              <div
+                key={highlight}
+                className="flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 text-xs font-medium text-[color:var(--theme-text-secondary)] backdrop-blur"
+              >
+                <CheckCircle2
+                  className="h-4 w-4 shrink-0 text-[var(--accent-copper)]"
+                  aria-hidden
+                />
                 {highlight}
               </div>
             ))}
@@ -79,9 +98,29 @@ export default function AuthShell({
           >
             {children}
           </div>
-          <div className="mt-4 flex items-center justify-center gap-2 text-[11px] text-[color:var(--theme-text-muted)]">
-            <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-            Encrypted sessions · Tenant-scoped access
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-[11px] text-[color:var(--theme-text-muted)]">
+            <span className="inline-flex items-center gap-2">
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+              Encrypted sessions · Tenant-scoped access
+            </span>
+            <Link
+              href="/legal/terms"
+              className="hover:text-[var(--accent-copper)]"
+            >
+              Terms
+            </Link>
+            <Link
+              href="/legal/privacy"
+              className="hover:text-[var(--accent-copper)]"
+            >
+              Privacy
+            </Link>
+            <Link
+              href="/legal/support"
+              className="hover:text-[var(--accent-copper)]"
+            >
+              Support
+            </Link>
           </div>
         </section>
       </main>

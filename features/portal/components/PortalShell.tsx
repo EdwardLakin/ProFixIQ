@@ -8,7 +8,6 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import PortalNotificationsBell from "@/features/portal/components/PortalNotificationsBell";
 import PortalAssistantEntry from "@/features/portal/components/PortalAssistantEntry";
 
-
 type NavItem = {
   href: string;
   label: string;
@@ -99,7 +98,9 @@ export default function PortalShell({
   const [signingOut, setSigningOut] = useState(false);
 
   const hideNav =
-    isPortalAuth(pathname) || pathname.startsWith("/portal/shop/") || pathname.startsWith("/portal/join/");
+    isPortalAuth(pathname) ||
+    pathname.startsWith("/portal/shop/") ||
+    pathname.startsWith("/portal/join/");
 
   const activeHref = useMemo(() => {
     const exact = NAV.find((x) => x.href === pathname);
@@ -194,7 +195,9 @@ export default function PortalShell({
             <div className="text-[0.75rem] font-medium text-[color:var(--theme-text-primary)]">
               {title}
             </div>
-            <div className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">{subtitle}</div>
+            <div className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">
+              {subtitle}
+            </div>
           </div>
         </div>
 
@@ -274,7 +277,27 @@ export default function PortalShell({
             </nav>
 
             <div className="px-5 pb-5 text-xs text-[color:var(--theme-text-muted)]">
-              Powered by ProFixIQ
+              <div>Powered by ProFixIQ</div>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                <Link
+                  href="/legal/portal-terms"
+                  className="hover:text-[var(--accent-copper)]"
+                >
+                  Portal terms
+                </Link>
+                <Link
+                  href="/legal/privacy"
+                  className="hover:text-[var(--accent-copper)]"
+                >
+                  Privacy
+                </Link>
+                <Link
+                  href="/legal/support"
+                  className="hover:text-[var(--accent-copper)]"
+                >
+                  Support
+                </Link>
+              </div>
             </div>
           </div>
         </aside>
@@ -330,7 +353,30 @@ export default function PortalShell({
                 </button>
 
                 <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
-                  Powered by ProFixIQ
+                  <div>Powered by ProFixIQ</div>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                    <Link
+                      href="/legal/portal-terms"
+                      onClick={() => setMobileOpen(false)}
+                      className="hover:text-[var(--accent-copper)]"
+                    >
+                      Portal terms
+                    </Link>
+                    <Link
+                      href="/legal/privacy"
+                      onClick={() => setMobileOpen(false)}
+                      className="hover:text-[var(--accent-copper)]"
+                    >
+                      Privacy
+                    </Link>
+                    <Link
+                      href="/legal/support"
+                      onClick={() => setMobileOpen(false)}
+                      className="hover:text-[var(--accent-copper)]"
+                    >
+                      Support
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>
@@ -338,7 +384,9 @@ export default function PortalShell({
         )}
 
         <div className="min-w-0 flex-1">
-          <div className="desktop-panel-soft min-h-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur-md md:p-4">{children}</div>
+          <div className="desktop-panel-soft min-h-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur-md md:p-4">
+            {children}
+          </div>
         </div>
       </div>
     </div>
