@@ -7,7 +7,7 @@ import {
   getOfflineSyncSummary,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
-import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
 import {
   fetchMobileShiftState,
   type MobileShiftState,
@@ -45,7 +45,7 @@ export default function MobileShiftTracker({ userId }: Props) {
   }, [refreshOfflineSummary]);
 
   const replayOfflineMutations = useCallback(async () => {
-    const result = await replayAllOfflineMutations();
+    const result = await replayAndReconcileOfflineMutations();
 
     if (result.failed > 0) {
       setErr(`${result.failed} queued punch event(s) still failing to sync.`);

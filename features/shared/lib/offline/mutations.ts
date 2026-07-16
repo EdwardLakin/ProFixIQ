@@ -182,7 +182,7 @@ export async function resolveOfflineMutationScope(
   return scope;
 }
 
-function parseMutation(raw: unknown): PendingMutation | null {
+export function restoreOfflineMutation(raw: unknown): PendingMutation | null {
   if (!raw || typeof raw !== "object") return null;
   const item = raw as Partial<PendingMutation> & {
     id?: unknown;
@@ -229,7 +229,9 @@ function parseMutation(raw: unknown): PendingMutation | null {
   };
 }
 
-function normalizeQueue(queue: PendingMutation[]): PendingMutation[] {
+export function normalizeOfflineMutationQueue(
+  queue: PendingMutation[],
+): PendingMutation[] {
   const byId = new Map<string, PendingMutation>();
   for (const item of queue) byId.set(item.clientMutationId, item);
   const now = Date.now();
@@ -254,7 +256,7 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
   if (hydrationPromise) return hydrationPromise;
   hydrationPromise = (async () => {
     const stored = (await readStoredMutations())
-      .map(parseMutation)
+      .map(restoreOfflineMutation)
       .filter((item): item is PendingMutation => Boolean(item));
     const legacy: PendingMutation[] = [];
     for (const key of LEGACY_KEYS) {
@@ -263,7 +265,7 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
         if (Array.isArray(raw)) {
           legacy.push(
             ...raw
-              .map(parseMutation)
+              .map(restoreOfflineMutation)
               .filter((item): item is PendingMutation => Boolean(item)),
           );
         }
@@ -272,7 +274,7 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
       }
       localStorage.removeItem(key);
     }
-    queueCache = normalizeQueue([...stored, ...legacy]);
+    queueCache = normalizeOfflineMutationQueue([...stored, ...legacy]);
     await replaceStoredMutations(queueCache);
     emitQueueUpdate();
   })().catch((error) => {
@@ -283,12 +285,14 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
 }
 
 async function writeQueue(queue: PendingMutation[]): Promise<void> {
-  queueCache = normalizeQueue(queue);
+  queueCache = normalizeOfflineMutationQueue(queue);
   await replaceStoredMutations(queueCache);
   emitQueueUpdate();
 }
 
-function sortForReplay(queue: PendingMutation[]): PendingMutation[] {
+export function sortOfflineMutationsForReplay(
+  queue: PendingMutation[],
+): PendingMutation[] {
   return [...queue].sort((a, b) => {
     const time =
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
@@ -372,7 +376,9 @@ export function listOfflineMutations(
   scope: OfflineMutationScope | null = getOfflineMutationScope(),
 ): PendingMutation[] {
   void hydrateOfflineMutationQueue();
-  return sortForReplay(queueCache.filter((item) => scopeMatches(item, scope)));
+  return sortOfflineMutationsForReplay(
+    queueCache.filter((item) => scopeMatches(item, scope)),
+  );
 }
 
 export function getOfflineSyncSummary(
@@ -407,6 +413,7 @@ export function subscribeOfflineMutations(listener: () => void): () => void {
 
 export async function retryOfflineMutation(
   clientMutationId: string,
+  payloadPatch?: Record<string, unknown>,
 ): Promise<void> {
   await hydrateOfflineMutationQueue();
   const scope = getOfflineMutationScope();
@@ -422,6 +429,10 @@ export async function retryOfflineMutation(
     return;
   await upsertMutation({
     ...mutation,
+    payload:
+      payloadPatch && mutation.payload && typeof mutation.payload === "object"
+        ? { ...(mutation.payload as Record<string, unknown>), ...payloadPatch }
+        : mutation.payload,
     status: "queued",
     lastError: undefined,
     conflictReason: undefined,
@@ -544,7 +555,7 @@ export async function replayQueuedMutations(args: {
   const scope = args.scope ?? getOfflineMutationScope();
   if (!scope || !navigator.onLine)
     return { replayed: 0, failed: 0, conflicted: 0 };
-  const queue = sortForReplay(
+  const queue = sortOfflineMutationsForReplay(
     queueCache.filter(
       (item) =>
         ["queued", "failed"].includes(item.status) && scopeMatches(item, scope),

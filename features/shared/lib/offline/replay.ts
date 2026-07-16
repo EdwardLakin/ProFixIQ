@@ -6,11 +6,17 @@ import {
   removeOfflineBlob,
 } from "@/features/shared/lib/offline/database";
 import {
+  listPendingMutations,
   replayQueuedMutations,
   type OfflineMutationRunner,
+  type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
 import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { replayInspectionPhotoMutation } from "@inspections/lib/inspection/inspectionPhotoStaging";
+import {
+  reconcileOfflineTechnicianState,
+  type OfflineReconciliationResult,
+} from "@/features/shared/lib/offline/reconciliation";
 
 type ReplayPayload = Record<string, unknown>;
 
@@ -155,4 +161,33 @@ export function replayAllOfflineMutations() {
     replayPromise = null;
   });
   return replayPromise;
+}
+
+let replayAndReconcilePromise: Promise<{
+  replayed: number;
+  failed: number;
+  conflicted: number;
+  reconciliation: OfflineReconciliationResult;
+}> | null = null;
+
+export function replayAndReconcileOfflineMutations() {
+  replayAndReconcilePromise ??= (async () => {
+    const before = listPendingMutations();
+    const beforeById = new Map(
+      before.map((mutation) => [mutation.clientMutationId, mutation]),
+    );
+    const replay = await replayAllOfflineMutations();
+    const remaining = new Set(
+      listPendingMutations().map((mutation) => mutation.clientMutationId),
+    );
+    const synced: PendingMutation[] = [];
+    for (const [id, mutation] of beforeById) {
+      if (!remaining.has(id)) synced.push(mutation);
+    }
+    const reconciliation = await reconcileOfflineTechnicianState(synced);
+    return { ...replay, reconciliation };
+  })().finally(() => {
+    replayAndReconcilePromise = null;
+  });
+  return replayAndReconcilePromise;
 }

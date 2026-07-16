@@ -8,7 +8,7 @@ import {
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
 import { listOfflineSnapshots } from "@/features/shared/lib/offline/database";
-import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
 
 type WorkOrderSummary = {
   id?: string;
@@ -98,7 +98,7 @@ export default function OfflinePage() {
 
   const reconnect = async () => {
     if (!navigator.onLine) return;
-    await replayAllOfflineMutations();
+    await replayAndReconcileOfflineMutations();
     window.location.assign("/");
   };
 

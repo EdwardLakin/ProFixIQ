@@ -47,6 +47,7 @@ function statusFor(message: string): number {
     return 403;
   if (
     normalized.includes("idempotency_key_reuse") ||
+    normalized.includes("offline_version_conflict") ||
     normalized.includes("already completed") ||
     normalized.includes("approved job notes")
   ) {

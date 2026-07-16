@@ -9,7 +9,6 @@ import {
   hydrateOfflineMutationQueue,
   listOfflineMutations,
   pruneOfflineState,
-  retryOfflineMutation,
   subscribeOfflineMutations,
   type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
@@ -17,7 +16,13 @@ import {
   getOfflineDatabaseStats,
   type OfflineDatabaseStats,
 } from "@/features/shared/lib/offline/database";
-import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { reconcileOfflineTechnicianState } from "@/features/shared/lib/offline/reconciliation";
+import {
+  offlineMutationDeviceValue,
+  offlineMutationTarget,
+  prepareOfflineMutationRetry,
+} from "@/features/shared/lib/offline/conflicts";
 
 type BrowserStorage = {
   usage: number;
@@ -123,8 +128,13 @@ export default function OfflineSyncPage() {
 
   const syncNow = () =>
     run(async () => {
-      const result = await replayAllOfflineMutations();
-      return `Synced ${result.replayed}; ${result.failed} failed; ${result.conflicted} need review.`;
+      const result = await replayAndReconcileOfflineMutations();
+      const cacheWarning = Object.values(result.reconciliation).includes(
+        "failed",
+      )
+        ? " Server sync finished, but one saved view could not be refreshed."
+        : "";
+      return `Synced ${result.replayed}; ${result.failed} failed; ${result.conflicted} need review.${cacheWarning}`;
     }, "Sync complete.");
 
   const requestPersistence = () =>
@@ -212,68 +222,110 @@ export default function OfflineSyncPage() {
               No offline updates are stored for this user and shop.
             </div>
           ) : (
-            mutations.map((mutation) => (
-              <article
-                key={mutation.clientMutationId}
-                className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium">
-                      {ACTION_LABELS[mutation.actionType] ??
-                        mutation.actionType}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {new Date(mutation.createdAt).toLocaleString()} ·{" "}
-                      {mutation.retryCount} retries
-                    </p>
+            mutations.map((mutation) => {
+              const target = offlineMutationTarget(mutation);
+              const deviceValue = offlineMutationDeviceValue(mutation);
+              return (
+                <article
+                  key={mutation.clientMutationId}
+                  className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium">
+                        {ACTION_LABELS[mutation.actionType] ??
+                          mutation.actionType}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {new Date(mutation.createdAt).toLocaleString()} ·{" "}
+                        {mutation.retryCount} retries
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-xs uppercase tracking-wider ${statusTone(mutation.status)}`}
+                    >
+                      {mutation.status}
+                    </span>
                   </div>
-                  <span
-                    className={`rounded-full border px-2.5 py-1 text-xs uppercase tracking-wider ${statusTone(mutation.status)}`}
-                  >
-                    {mutation.status}
-                  </span>
-                </div>
-                {(mutation.conflictReason || mutation.lastError) && (
-                  <p className="mt-3 rounded-lg bg-slate-950/70 px-3 py-2 text-sm text-slate-300">
-                    {mutation.conflictReason || mutation.lastError}
-                  </p>
-                )}
-                <div className="mt-3 flex gap-2">
-                  {["failed", "conflicted"].includes(mutation.status) && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(
-                          () => retryOfflineMutation(mutation.clientMutationId),
-                          "Update queued for retry.",
-                        )
-                      }
-                      className="rounded-lg border border-sky-500/50 px-3 py-1.5 text-xs font-semibold text-sky-200 disabled:opacity-40"
-                    >
-                      Retry
-                    </button>
+                  {(mutation.conflictReason || mutation.lastError) && (
+                    <p className="mt-3 rounded-lg bg-slate-950/70 px-3 py-2 text-sm text-slate-300">
+                      {mutation.conflictReason || mutation.lastError}
+                    </p>
                   )}
-                  {mutation.status !== "syncing" && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(
-                          () =>
-                            dismissOfflineMutation(mutation.clientMutationId),
-                          "Update removed from this device.",
-                        )
-                      }
-                      className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 disabled:opacity-40"
-                    >
-                      Remove
-                    </button>
+                  {mutation.status === "conflicted" && deviceValue && (
+                    <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 text-sm text-slate-300">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">
+                        Saved on this device
+                      </p>
+                      <p className="mt-1 line-clamp-3 whitespace-pre-wrap">
+                        {deviceValue}
+                      </p>
+                    </div>
                   )}
-                </div>
-              </article>
-            ))
+                  <div className="mt-3 flex gap-2">
+                    {["failed", "conflicted"].includes(mutation.status) && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(async () => {
+                            await prepareOfflineMutationRetry(mutation);
+                            await replayAndReconcileOfflineMutations();
+                          }, "Device update retried and saved views refreshed.")
+                        }
+                        className="rounded-lg border border-sky-500/50 px-3 py-1.5 text-xs font-semibold text-sky-200 disabled:opacity-40"
+                      >
+                        Retry device update
+                      </button>
+                    )}
+                    {mutation.status === "conflicted" && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(async () => {
+                            await dismissOfflineMutation(
+                              mutation.clientMutationId,
+                            );
+                            await reconcileOfflineTechnicianState([mutation]);
+                          }, "Server state kept and this device's update removed.")
+                        }
+                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 disabled:opacity-40"
+                      >
+                        Use server state
+                      </button>
+                    )}
+                    {mutation.status !== "syncing" &&
+                      mutation.status !== "conflicted" && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void run(
+                              () =>
+                                dismissOfflineMutation(
+                                  mutation.clientMutationId,
+                                ),
+                              "Update removed from this device.",
+                            )
+                          }
+                          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 disabled:opacity-40"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    {target && (
+                      <Link
+                        href={target}
+                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
+                      >
+                        Open record
+                      </Link>
+                    )}
+                  </div>
+                </article>
+              );
+            })
           )}
         </section>
 
