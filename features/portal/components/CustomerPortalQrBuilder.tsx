@@ -674,7 +674,7 @@ export default function CustomerPortalQrBuilder() {
           </section>
         </aside>
 
-        <main className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-[var(--theme-shadow-soft)] print:border-0 print:bg-white print:p-0 print:shadow-none sm:p-6">
+        <main className="min-h-[760px] rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-[var(--theme-shadow-soft)] print:min-h-0 print:border-0 print:bg-white print:p-0 print:shadow-none sm:min-h-[880px] sm:p-6">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3 print:hidden">
             <div>
               <div className="flex items-center gap-2 font-semibold">
@@ -690,10 +690,10 @@ export default function CustomerPortalQrBuilder() {
             </span>
           </div>
 
-          <div className="grid place-items-center overflow-auto rounded-2xl bg-[color:var(--theme-surface-inset)] p-4 print:block print:bg-white print:p-0 sm:p-8">
+          <div className="grid min-h-[680px] place-items-center overflow-auto rounded-2xl bg-[color:var(--theme-surface-inset)] p-4 print:min-h-0 print:block print:bg-white print:p-0 sm:min-h-[800px] sm:p-8">
             <div
               ref={cardRef}
-              className="relative w-full max-w-[430px] overflow-hidden border border-black/15 text-center shadow-2xl transition-all print:max-w-none print:rounded-none print:border-0 print:shadow-none"
+              className="relative min-h-[640px] w-full max-w-[430px] overflow-hidden border border-black/15 text-center shadow-2xl transition-all print:min-h-0 print:max-w-none print:rounded-none print:border-0 print:shadow-none sm:min-h-[720px]"
               style={{
                 aspectRatio: printSize.ratio,
                 backgroundColor: paper.color,
