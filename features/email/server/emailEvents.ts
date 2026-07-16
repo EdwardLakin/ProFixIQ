@@ -11,6 +11,9 @@ export async function sendPortalInviteEmail(input: {
   brandSecondaryColor?: string | null;
   year?: number;
   createdBy?: string | null;
+  portalType?: "customer" | "fleet";
+  fleetName?: string | null;
+  fleetRole?: string | null;
 }) {
   return sendDynamicTemplateEmail({
     shopId: input.shopId,
@@ -19,6 +22,7 @@ export async function sendPortalInviteEmail(input: {
     createdBy: input.createdBy,
     metadata: {
       kind: "portal_invite",
+      portal_type: input.portalType ?? "customer",
     } as Json,
     dynamicTemplateData: {
       portal_link: input.portalLink,
@@ -27,6 +31,9 @@ export async function sendPortalInviteEmail(input: {
       brand_primary_color: input.brandPrimaryColor ?? "",
       brand_secondary_color: input.brandSecondaryColor ?? "",
       year: input.year ?? new Date().getFullYear(),
+      portal_type: input.portalType ?? "customer",
+      fleet_name: input.fleetName ?? "",
+      fleet_role: input.fleetRole ?? "",
     },
   });
 }

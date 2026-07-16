@@ -5,6 +5,7 @@ import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import {
   applyThemePreference,
   isThemePreference,
+  readThemePreference,
   THEME_CHANGE_EVENT,
   type ThemePreference,
 } from "@/features/shared/lib/theme";
@@ -404,12 +405,13 @@ export default function BrandThemeBoot() {
       userPrefs.shadow_style || profile.shadow_style || "medium",
     );
 
+    const suppliedThemePreference = userPrefs.theme_mode || profile.theme_mode;
     const rawThemePreference = String(
-      userPrefs.theme_mode || profile.theme_mode || "dark",
+      suppliedThemePreference || readThemePreference(),
     ).toLowerCase();
     const themePreference: ThemePreference = isThemePreference(rawThemePreference)
       ? rawThemePreference
-      : "dark";
+      : readThemePreference();
     applyThemePreference(themePreference, { notify: false });
 
     const onThemeChange = (event: Event) => {

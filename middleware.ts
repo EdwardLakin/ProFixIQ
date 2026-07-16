@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   hasSupabasePublicEnv,
   readSupabasePublicEnv,
@@ -26,7 +27,10 @@ function safeRedirectPath(v: string | null): string | null {
   return v;
 }
 
-type PortalMode = "customer" | "fleet";
+type PortalAccess = {
+  customer: boolean;
+  fleet: boolean;
+};
 
 function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
   const normalized = String(role ?? "")
@@ -53,31 +57,13 @@ function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
   });
 }
 
-function logMiddlewareAuthDiagnostics(args: {
-  pathname: string;
-  userId: string | null;
-  profile?: {
-    shop_id?: string | null;
-    role?: string | null;
-    completed_onboarding?: boolean | null;
-  } | null;
-  profileError?: string | null;
-}) {
-  console.info("[auth/middleware-post-login]", {
-    pathname: args.pathname,
-    userId: args.userId,
-    profileExists: Boolean(args.profile),
-    profileShopId: args.profile?.shop_id ?? null,
-    profileRole: args.profile?.role ?? null,
-    completedOnboarding: args.profile?.completed_onboarding ?? null,
-    profileError: args.profileError ?? null,
-  });
-}
-
-async function resolvePortalModeServer(
+async function resolvePortalAccessServer(
   supabase: SupabaseClient<Database>,
   userId: string,
-): Promise<PortalMode> {
+): Promise<PortalAccess> {
+  let customer = false;
+  let fleet = false;
+
   try {
     const { data: cust } = await supabase
       .from("customers")
@@ -86,19 +72,19 @@ async function resolvePortalModeServer(
       .limit(1)
       .maybeSingle();
 
-    if (cust?.id) return "customer";
+    customer = Boolean(cust?.id);
   } catch {
     // ignore
   }
 
   try {
     const actor = await resolveFleetActorContext(supabase, { userId });
-    if (actor.capabilities.canAccessPortalFleetWrappers) return "fleet";
+    fleet = actor.capabilities.canAccessPortalFleetWrappers;
   } catch {
     // ignore
   }
 
-  return "customer";
+  return { customer, fleet };
 }
 
 export async function middleware(req: NextRequest) {
@@ -118,10 +104,14 @@ export async function middleware(req: NextRequest) {
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
   const isPortalAuthPage = pathname.startsWith("/portal/auth/");
+  const isPortalActivationPage =
+    pathname === "/portal/auth/confirm" ||
+    pathname === "/portal/auth/fleet-invite";
   const isLegacyPortalConfirm =
     pathname === "/portal/confirm" ||
     pathname === "/portal/confirm/" ||
     pathname.startsWith("/portal/confirm");
+  const isPublicPortalEnrollment = pathname.startsWith("/portal/join/");
 
   const isPublic =
     pathname === "/" ||
@@ -136,7 +126,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/auth/set-password") ||
     pathname.startsWith("/demo") ||
     isPortalAuthPage ||
-    isLegacyPortalConfirm;
+    isLegacyPortalConfirm ||
+    isPublicPortalEnrollment;
 
   if (isPublic && !hasSupabasePublicEnv()) {
     console.info("[auth/middleware-public-skip]", {
@@ -166,23 +157,24 @@ export async function middleware(req: NextRequest) {
 
   let completed = false;
   let needsShopBoostIntake = false;
+  let canUseMobile = false;
+  const isPortalOnlyAccount =
+    user?.app_metadata?.profixiq_portal_only === true;
   if (user && !isPortal) {
     try {
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from("profiles")
         .select("completed_onboarding, shop_id, role")
         .eq("id", user.id)
         .limit(1)
         .maybeSingle();
 
-      logMiddlewareAuthDiagnostics({
-        pathname,
-        userId: user.id,
-        profile,
-        profileError: profileError?.message ?? null,
-      });
-
       completed = !!profile?.completed_onboarding || !!profile?.shop_id;
+      const capabilities = getActorCapabilities({ role: profile?.role });
+      canUseMobile =
+        capabilities.canRunInspections ||
+        capabilities.canManageWorkOrders ||
+        capabilities.canPerformAssignedWork;
 
       if (
         profile?.completed_onboarding &&
@@ -199,20 +191,22 @@ export async function middleware(req: NextRequest) {
 
         needsShopBoostIntake = !intake?.id;
       }
-    } catch (err) {
-      logMiddlewareAuthDiagnostics({
-        pathname,
-        userId: user.id,
-        profile: null,
-        profileError:
-          err instanceof Error ? err.message : "profile lookup failed",
-      });
+    } catch {
       completed = false;
       needsShopBoostIntake = false;
+      canUseMobile = false;
     }
   }
 
   if (pathname === "/" && user) {
+    if (isPortalOnlyAccount) {
+      const access = await resolvePortalAccessServer(supabase, user.id);
+      const target = new URL(
+        access.fleet && !access.customer ? "/portal/fleet" : "/portal",
+        req.url,
+      );
+      return NextResponse.redirect(target, { headers: res.headers });
+    }
     const target = new URL(
       !completed
         ? "/onboarding"
@@ -234,12 +228,22 @@ export async function middleware(req: NextRequest) {
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
 
     if (user && (isMainSignIn || isMobileSignIn)) {
+      if (isPortalOnlyAccount) {
+        const access = await resolvePortalAccessServer(supabase, user.id);
+        const target = new URL(
+          access.fleet && !access.customer ? "/portal/fleet" : "/portal",
+          req.url,
+        );
+        return NextResponse.redirect(target, { headers: res.headers });
+      }
       const to =
         redirectParam ??
         (isMobileSignIn
-          ? completed
+          ? completed && canUseMobile
             ? "/mobile"
-            : "/onboarding"
+            : completed
+              ? "/dashboard"
+              : "/onboarding"
           : !completed
             ? "/onboarding"
             : needsShopBoostIntake
@@ -250,22 +254,19 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(target, { headers: res.headers });
     }
 
-    if (isPortal && user && (isPortalAuthPage || isLegacyPortalConfirm)) {
-      const mode = await resolvePortalModeServer(supabase, user.id);
+    if (
+      isPortal &&
+      user &&
+      (isPortalAuthPage || isLegacyPortalConfirm) &&
+      !isPortalActivationPage
+    ) {
+      const access = await resolvePortalAccessServer(supabase, user.id);
+      const requestedFleet = redirectParam?.startsWith("/portal/fleet") ?? false;
 
-      let to =
-        redirectParam ?? (mode === "fleet" ? "/portal/fleet" : "/portal");
+      let to = redirectParam ?? (access.fleet && !access.customer ? "/portal/fleet" : "/portal");
 
-      if (
-        mode === "fleet" &&
-        to.startsWith("/portal") &&
-        !to.startsWith("/portal/fleet")
-      ) {
-        to = "/portal/fleet";
-      }
-      if (mode === "customer" && to.startsWith("/portal/fleet")) {
-        to = "/portal";
-      }
+      if (requestedFleet && !access.fleet) to = "/portal";
+      if (!requestedFleet && !access.customer && access.fleet) to = "/portal/fleet";
 
       const target = new URL(to, req.url);
       return NextResponse.redirect(target, { headers: res.headers });
@@ -289,18 +290,32 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(login, { headers: res.headers });
   }
 
+  if (isPortalOnlyAccount && !isPortal) {
+    const access = await resolvePortalAccessServer(supabase, user.id);
+    const target = new URL(
+      access.fleet && !access.customer ? "/portal/fleet" : "/portal",
+      req.url,
+    );
+    return NextResponse.redirect(target, { headers: res.headers });
+  }
+
+  if (pathname.startsWith("/mobile") && !canUseMobile) {
+    const target = new URL(completed ? "/dashboard" : "/onboarding", req.url);
+    return NextResponse.redirect(target, { headers: res.headers });
+  }
+
   if (isPortal) {
-    const mode = await resolvePortalModeServer(supabase, user.id);
+    const access = await resolvePortalAccessServer(supabase, user.id);
 
     const isFleetPortalPath =
       pathname === "/portal/fleet" || pathname.startsWith("/portal/fleet/");
 
-    if (mode === "fleet" && !isFleetPortalPath) {
+    if (!access.customer && access.fleet && !isFleetPortalPath) {
       const target = new URL("/portal/fleet", req.url);
       return NextResponse.redirect(target, { headers: res.headers });
     }
 
-    if (mode === "customer" && isFleetPortalPath) {
+    if (!access.fleet && isFleetPortalPath) {
       const target = new URL("/portal", req.url);
       return NextResponse.redirect(target, { headers: res.headers });
     }

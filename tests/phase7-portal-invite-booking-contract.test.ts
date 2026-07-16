@@ -11,6 +11,9 @@ const bookingSql = read(
 const confirmPage = read("app/portal/auth/confirm/page.tsx");
 const inviteRoute = read("app/api/portal/invites/accept/route.ts");
 const setupRoute = read("app/api/portal/qr/setup/route.ts");
+const canonicalInviteService = read(
+  "features/portal/server/customerPortalInvites.ts",
+);
 const staffBookingRoute = read("app/api/portal/bookings/[id]/route.ts");
 const customerBookingRoute = read(
   "app/api/portal/customer-bookings/[id]/route.ts",
@@ -25,8 +28,9 @@ describe("Phase 7 portal identity and booking lifecycle", () => {
     expect(inviteRoute).toContain(
       'rpc("accept_customer_portal_invite_atomic"',
     );
-    expect(setupRoute).toContain("const redirectParams = new URLSearchParams");
-    expect(setupRoute).toContain("invite: inviteId");
+    expect(setupRoute).toContain("issueCustomerPortalInvite");
+    expect(canonicalInviteService).toContain("new URLSearchParams({");
+    expect(canonicalInviteService).toContain("invite: inviteId");
     expect(confirmPage).toContain("/api/portal/invites/accept");
     expect(confirmPage).not.toContain('.from("customers")');
     expect(confirmPage).not.toContain('.from("customer_portal_invites")');

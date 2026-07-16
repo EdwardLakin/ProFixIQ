@@ -9,7 +9,7 @@ import { getDashboardIdentity } from "@/features/dashboard/server/dashboard-shel
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
 import BrandThemeBoot from "@/features/branding/components/BrandThemeBoot";
 
-import { Toaster } from "sonner";
+import ThemedToaster from "@/features/shared/components/ThemedToaster";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -51,6 +51,7 @@ export default async function RootLayout({
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/demo") ||
     pathname.startsWith("/portal/auth/") ||
+    pathname.startsWith("/portal/join/") ||
     pathname.startsWith("/portal/confirm");
 
   const useAppShell = !isPublicRoute;
@@ -83,7 +84,7 @@ export default async function RootLayout({
     >
       <head>
         <Script id="pfq-theme-preload" strategy="beforeInteractive">
-          {`(function(){try{var r=document.documentElement;var pref=localStorage.getItem('pfq-theme-mode')||localStorage.getItem('theme')||'dark';if(pref!=='light'&&pref!=='dark'&&pref!=='system'){pref='dark';}var resolved=pref==='system'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):pref;r.setAttribute('data-theme-preference',pref);r.setAttribute('data-theme-mode',resolved);r.classList.toggle('dark',resolved==='dark');r.style.colorScheme=resolved;}catch(_e){}})();`}
+          {`(function(){try{var r=document.documentElement;var pref=localStorage.getItem('pfq-theme-mode')||localStorage.getItem('theme')||'system';if(pref!=='light'&&pref!=='dark'&&pref!=='system'){pref='system';}var resolved=pref==='system'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):pref;r.setAttribute('data-theme-preference',pref);r.setAttribute('data-theme-mode',resolved);r.classList.toggle('dark',resolved==='dark');r.style.colorScheme=resolved;}catch(_e){}})();`}
         </Script>
       </head>
       <body
@@ -99,20 +100,7 @@ export default async function RootLayout({
           appContent
         )}
 
-        <Toaster
-          position="bottom-center"
-          theme="dark"
-          richColors
-          toastOptions={{
-            style: {
-              background:
-                "var(--theme-gradient-panel)",
-              border:
-                "1px solid var(--theme-card-border, rgba(148, 163, 184, 0.5))",
-              color: "var(--theme-text-primary, var(--theme-text-primary))",
-            },
-          }}
-        />
+        <ThemedToaster />
       </body>
     </html>
   );

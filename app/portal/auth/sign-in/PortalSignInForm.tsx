@@ -1,312 +1,194 @@
-// app/portal/auth/sign-in/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { Building2, CarFront, Eye, EyeOff, Loader2 } from "lucide-react";
 import AuthShell from "@/features/auth/components/AuthShell";
-import { getAuthIdentifierStrategy } from "@/features/users/lib/username";
-
-const COPPER = "#C57A4A";
+import AuthStatus from "@/features/auth/components/AuthStatus";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 
 type PortalType = "customer" | "fleet";
 
-function safeRedirectPath(v: string | null): string | null {
-  if (!v) return null;
-  if (!v.startsWith("/")) return null;
-  if (v.startsWith("//")) return null;
-  return v;
-}
+const inputClass =
+  "w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3.5 py-3 text-sm text-[color:var(--theme-input-text)] outline-none transition placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:ring-4 focus:ring-[color:color-mix(in_srgb,var(--accent-copper)_16%,transparent)]";
 
-function isAllowedRedirectForMode(path: string) {
-  return path.startsWith("/portal");
-}
-
-export default function PortalSignInPage() {
+export default function PortalSignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const [portalType, setPortalType] = useState<PortalType>("customer");
-  const [identifier, setIdentifier] = useState<string>(""); // ✅ email OR username
-  const [password, setPassword] = useState<string>("");
-  const [error, setError] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // Detect ?portal=fleet or ?portal=customer to pre-select mode
   useEffect(() => {
-    const portalParam = searchParams.get("portal");
-    if (portalParam === "fleet" || portalParam === "customer") {
-      setPortalType(portalParam);
-    }
+    const requested = searchParams.get("portal");
+    if (requested === "fleet" || requested === "customer") setPortalType(requested);
   }, [searchParams]);
 
-  const goLanding = () => {
-    const href = "/";
-    router.replace(href);
-    setTimeout(() => {
-      if (typeof window !== "undefined" && window.location.pathname !== href) {
-        window.location.assign(href);
-      }
-    }, 60);
-  };
-
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (loading) return;
-
     setLoading(true);
     setError("");
-
-    const initialAuthIdentifier = getAuthIdentifierStrategy(identifier);
-    let authEmail = initialAuthIdentifier.authEmail;
-
     try {
-      const resolveRes = await fetch("/api/auth/resolve-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier }),
+      const result = await signInWithIdentifier({
+        identifier,
+        password,
+        surface: portalType,
       });
-      const resolvePayload = (await resolveRes.json().catch(() => null)) as
-        | { authEmail?: string }
-        | null;
-      if (resolveRes.ok && resolvePayload?.authEmail) authEmail = resolvePayload.authEmail;
-    } catch {
-      // Fall back to local username/email normalization.
-    }
-
-    console.info("[auth/sign-in]", {
-      inputKind: initialAuthIdentifier.inputKind,
-      normalizedAuthEmail: authEmail,
-    });
-
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-      email: authEmail,
-      password,
-    });
-
-    console.info("[auth/sign-in-result]", {
-      inputKind: initialAuthIdentifier.inputKind,
-      normalizedAuthEmail: authEmail,
-      userId: signInData.user?.id ?? null,
-      hasAccessToken: Boolean(signInData.session?.access_token),
-      errorCode: signInError?.status ?? null,
-      errorMessage: signInError?.message ?? null,
-    });
-
-    if (signInError) {
-      setError(signInError.message || "Sign in failed.");
+      if (!result.ok) {
+        setError(
+          portalType === "fleet"
+            ? "We couldn't verify an invited fleet account with those details."
+            : "We couldn't verify an activated customer portal account with those details.",
+        );
+        return;
+      }
+      const allowedPrefixes = portalType === "fleet" ? ["/portal/fleet"] : ["/portal"];
+      const destination = safeInternalRedirect(
+        searchParams.get("redirect"),
+        result.destination,
+        allowedPrefixes,
+      );
+      router.replace(destination);
+      router.refresh();
+    } finally {
       setLoading(false);
-      return;
     }
+  }
 
-    // ✅ Determine actual portal mode for this account (source of truth = DB)
-
-    // If user selected Fleet but their account isn't fleet-enabled, block + sign out
-
-    // Respect middleware redirect param if it matches the resolved mode
-    const redirectParam = safeRedirectPath(searchParams.get("redirect"));
-    const fallback = "/portal";
-
-    const to =
-      redirectParam && isAllowedRedirectForMode(redirectParam)
-        ? redirectParam
-        : fallback;
-
-    router.replace(to);
-    setLoading(false);
-  };
-
-  const portalLabel =
-    portalType === "fleet" ? "Fleet Portal" : "Customer Portal";
-
-  const helperCopy =
-    portalType === "fleet"
-      ? "Use your fleet login (email or username) from the shop or dispatch to see assigned units, pre-trips, and service requests."
-      : "Use the email and password you created when you signed up.";
+  const isFleet = portalType === "fleet";
 
   return (
-    <AuthShell>
-      {/* Back to landing */}
-      <div className="mb-4 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={goLanding}
-          disabled={loading}
-          className="
-                inline-flex items-center gap-2 rounded-full border
-                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px]
-                uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)]
-                hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]
-                disabled:cursor-not-allowed disabled:opacity-60
-              "
-        >
-          <span aria-hidden className="text-base leading-none">
-            ←
-          </span>
-          Back
-        </button>
-
-        <div className="text-[10px] text-[color:var(--theme-text-muted)]">
-          {portalType === "fleet" ? "Fleet access" : "Customer access"}
+    <AuthShell
+      productLabel={isFleet ? "Fleet portal" : "Customer portal"}
+      heroTitle={isFleet ? "Keep every unit moving." : "Your service, all in one place."}
+      heroDescription={
+        isFleet
+          ? "Approvals, pre-trips, service requests, and shop visibility in one secure portal."
+          : "Approve work, follow progress, and keep every service record connected to your vehicle."
+      }
+      highlights={
+        isFleet
+          ? ["Invite-only access", "Fleet-scoped records", "Service visibility"]
+          : ["Secure approvals", "Live progress", "Service history"]
+      }
+    >
+      <div className="mb-6">
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
+          {isFleet ? "Fleet portal" : "Customer portal"}
         </div>
-      </div>
-
-      {/* Portal switcher */}
-      <div className="mb-4 flex items-center justify-center gap-2 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-1 text-[11px]">
-        <button
-          type="button"
-          onClick={() => setPortalType("customer")}
-          className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
-            portalType === "customer"
-              ? "bg-[color:var(--accent-copper)] text-[color:var(--theme-text-on-accent)] font-semibold shadow-[0_0_18px_rgba(197,122,74,0.85)]"
-              : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)]"
-          }`}
-        >
-          Customer
-        </button>
-        <button
-          type="button"
-          onClick={() => setPortalType("fleet")}
-          className={`flex-1 rounded-full px-3 py-1 uppercase tracking-[0.18em] transition ${
-            portalType === "fleet"
-              ? "bg-[color:var(--accent-copper)] text-[color:var(--theme-text-on-accent)] font-semibold shadow-[0_0_18px_rgba(197,122,74,0.85)]"
-              : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)]"
-          }`}
-        >
-          Fleet
-        </button>
-      </div>
-
-      {/* Brand / title */}
-      <div className="mb-6 space-y-2 text-center">
-        <div
-          className="
-                inline-flex items-center gap-1 rounded-full border
-                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                bg-[color:var(--theme-surface-overlay)]
-                px-3 py-1 text-[11px]
-                uppercase tracking-[0.22em]
-                text-[color:var(--theme-text-secondary)]
-              "
-          style={{ color: COPPER }}
-        >
-          {portalLabel}
-        </div>
-
-        <h1
-          className="mt-2 text-3xl sm:text-4xl font-semibold text-[color:var(--theme-text-primary)]"
-          style={{ fontFamily: "var(--font-blackops), system-ui" }}
-        >
+        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)] sm:text-4xl">
           Sign in
         </h1>
-
-        <p className="text-xs text-muted-foreground sm:text-sm">{helperCopy}</p>
+        <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
+          {isFleet
+            ? "Use the account activated from your fleet invitation."
+            : "Use the password created from your shop invitation or QR enrollment."}
+        </p>
       </div>
 
-      {/* Error */}
-      {error ? (
-        <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
-          {error}
-        </div>
-      ) : null}
+      <div className="mb-6 grid grid-cols-2 gap-2">
+        {(["customer", "fleet"] as const).map((value) => {
+          const Icon = value === "customer" ? CarFront : Building2;
+          const active = portalType === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setPortalType(value);
+                setError("");
+              }}
+              aria-pressed={active}
+              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-xs font-semibold transition ${
+                active
+                  ? "border-[var(--accent-copper)] bg-[color:color-mix(in_srgb,var(--accent-copper)_12%,transparent)] text-[color:var(--theme-text-primary)]"
+                  : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
+              }`}
+            >
+              <Icon className="h-4 w-4" aria-hidden />
+              {value === "customer" ? "Customer" : "Fleet"}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Form */}
-      <form onSubmit={handleSignIn} className="space-y-4">
-        <div className="space-y-1 text-sm">
-          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            {portalType === "fleet" ? "Email or username" : "Email"}
+      {error ? <AuthStatus tone="error">{error}</AuthStatus> : null}
+
+      <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="portal-identifier" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+            {isFleet ? "Email or fleet username" : "Email"}
           </label>
           <input
-            type={portalType === "fleet" ? "text" : "email"}
-            autoComplete={portalType === "fleet" ? "username" : "email"}
-            placeholder={
-              portalType === "fleet"
-                ? "dispatch@fleet.com or fleet username"
-                : "you@example.com"
-            }
+            id="portal-identifier"
+            className={inputClass}
+            type={isFleet ? "text" : "email"}
+            autoComplete="username"
+            placeholder={isFleet ? "dispatch@fleet.com or username" : "you@example.com"}
             value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            className="
-                  w-full rounded-lg border
-                  border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                  bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]
-                  placeholder:text-[color:var(--theme-text-muted)]
-                  focus:outline-none focus:ring-2
-                  focus:ring-[var(--accent-copper-soft)]
-                  focus:border-[var(--accent-copper-soft)]
-                "
+            onChange={(event) => setIdentifier(event.target.value)}
             required
           />
-          {portalType === "fleet" ? (
-            <p className="text-[11px] text-muted-foreground">
-              Fleet accounts can sign in using the username provided by your
-              shop/dispatch.
-            </p>
-          ) : null}
         </div>
 
-        <div className="space-y-1 text-sm">
-          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            Password
-          </label>
-          <input
-            type="password"
-            autoComplete="current-password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="
-                  w-full rounded-lg border
-                  border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                  bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]
-                  placeholder:text-[color:var(--theme-text-muted)]
-                  focus:outline-none focus:ring-2
-                  focus:ring-[var(--accent-copper-soft)]
-                  focus:border-[var(--accent-copper-soft)]
-                "
-            required
-            minLength={6}
-          />
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="portal-password" className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+              Password
+            </label>
+            <Link href="/forgot-password" className="text-xs font-semibold text-[var(--accent-copper)] hover:underline">
+              Forgot password?
+            </Link>
+          </div>
+          <div className="relative">
+            <input
+              id="portal-password"
+              className={`${inputClass} pr-11`}
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((current) => !current)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute inset-y-0 right-0 grid w-11 place-items-center text-[color:var(--theme-text-muted)]"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="
-                mt-3 w-full rounded-full
-                bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]
-                py-2.5 text-center text-sm
-                font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-on-accent)]
-                shadow-[0_0_26px_rgba(212,118,49,0.9)]
-                hover:brightness-110
-                disabled:cursor-not-allowed disabled:opacity-60
-              "
-          style={{ fontFamily: "var(--font-blackops), system-ui" }}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] transition hover:brightness-105 disabled:opacity-60"
         >
-          {loading ? "Signing in…" : "Sign in"}
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {loading ? "Verifying access…" : `Sign in to ${isFleet ? "fleet" : "customer"} portal`}
         </button>
       </form>
 
-      {/* Footer copy differs by portal type */}
-      <div className="mt-5 flex items-center justify-between text-sm text-[color:var(--theme-text-secondary)]">
-        {portalType === "customer" ? (
-          <>
-            <span>Need an account?</span>
-            <Link
-              href="/portal/auth/sign-up"
-              className="text-[11px] font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline underline-offset-2"
-            >
-              Sign up
-            </Link>
-          </>
+      <div className="mt-5 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3.5 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+        {isFleet ? (
+          <>Fleet access is invitation-only. Contact your shop or fleet administrator if you need an invitation.</>
         ) : (
-          <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
-            Fleet logins are created by your shop or dispatch. If you need
-            access, contact your shop administrator.
-          </p>
+          <>
+            Need access? Open the invitation from your shop or{" "}
+            <Link href="/portal/auth/sign-up" className="font-semibold text-[var(--accent-copper)] hover:underline">
+              learn how to enroll
+            </Link>
+            .
+          </>
         )}
       </div>
     </AuthShell>

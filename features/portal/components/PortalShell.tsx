@@ -99,7 +99,7 @@ export default function PortalShell({
   const [signingOut, setSigningOut] = useState(false);
 
   const hideNav =
-    isPortalAuth(pathname) || pathname.startsWith("/portal/shop/");
+    isPortalAuth(pathname) || pathname.startsWith("/portal/shop/") || pathname.startsWith("/portal/join/");
 
   const activeHref = useMemo(() => {
     const exact = NAV.find((x) => x.href === pathname);

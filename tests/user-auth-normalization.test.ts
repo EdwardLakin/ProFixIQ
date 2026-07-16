@@ -261,74 +261,14 @@ describe("shop user auth normalization", () => {
     );
   });
 
-  it("resolves a unique staff contact email to the username synthetic auth email", async () => {
+  it("retires the public login-resolution endpoint to prevent account enumeration", async () => {
     const { POST } = await import("../app/api/auth/resolve-login/route");
-    const adminClient = {
-      from: vi.fn((table: string) => {
-        expect(table).toBe("profiles");
-        return {
-          select: () => ({
-            ilike: () => ({
-              not: () => ({
-                limit: async () => ({
-                  data: [
-                    {
-                      id: "created-user-1",
-                      username: "downtowndiessamtech",
-                      shop_id: "shop-1",
-                    },
-                  ],
-                  error: null,
-                }),
-              }),
-            }),
-          }),
-        };
-      }),
-    };
-    mocks.createAdminSupabase.mockReturnValue(adminClient);
-
-    const response = await POST(jsonRequest({ identifier: " Sam.Tech@Example.COM " }));
+    const response = await POST();
     const payload = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(payload).toEqual(expect.objectContaining({
-      inputKind: "email",
-      authEmail: "downtowndiessamtech@local.profix-internal",
-      resolvedBy: "unique_contact_email_profile",
-    }));
-  });
-
-  it("does not resolve ambiguous contact emails across profiles", async () => {
-    const { POST } = await import("../app/api/auth/resolve-login/route");
-    const adminClient = {
-      from: vi.fn(() => ({
-        select: () => ({
-          ilike: () => ({
-            not: () => ({
-              limit: async () => ({
-                data: [
-                  { id: "user-1", username: "shoponeuser", shop_id: "shop-1" },
-                  { id: "user-2", username: "shoptwouser", shop_id: "shop-2" },
-                ],
-                error: null,
-              }),
-            }),
-          }),
-        }),
-      })),
-    };
-    mocks.createAdminSupabase.mockReturnValue(adminClient);
-
-    const response = await POST(jsonRequest({ identifier: "shared@example.com" }));
-    const payload = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(payload).toEqual(expect.objectContaining({
-      inputKind: "email",
-      authEmail: "shared@example.com",
-      resolvedBy: "email_auth_identity",
-    }));
+    expect(response.status).toBe(410);
+    expect(payload).not.toHaveProperty("authEmail");
+    expect(mocks.createAdminSupabase).not.toHaveBeenCalled();
   });
 
 });

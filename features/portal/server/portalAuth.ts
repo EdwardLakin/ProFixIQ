@@ -20,7 +20,7 @@ export type PortalCustomer = Pick<
 
 export type PortalInviteEvidence = Pick<
   CustomerPortalInviteRow,
-  "id" | "customer_id" | "email"
+  "id" | "customer_id" | "email" | "accepted_at" | "accepted_by_user_id" | "revoked_at"
 >;
 
 export class PortalAccessError extends Error {
@@ -85,15 +85,23 @@ export async function requirePortalCustomerAccess(
 
   const { data: invites, error: invitesErr } = await supabase
     .from("customer_portal_invites")
-    .select("id,customer_id,email")
+    .select("id,customer_id,email,accepted_at,accepted_by_user_id,revoked_at")
     .eq("customer_id", data.id)
+    .eq("accepted_by_user_id", userId)
+    .not("accepted_at", "is", null)
+    .is("revoked_at", null)
     .limit(20)
     .returns<PortalInviteEvidence[]>();
 
   if (invitesErr) throw new Error(invitesErr.message);
 
   const inviteEvidence = (invites ?? []).find(
-    (row) => row.customer_id === data.id && row.email.trim().toLowerCase() === userEmail,
+    (row) =>
+      row.customer_id === data.id &&
+      row.accepted_by_user_id === userId &&
+      Boolean(row.accepted_at) &&
+      !row.revoked_at &&
+      row.email.trim().toLowerCase() === userEmail,
   );
 
   if (!inviteEvidence) {

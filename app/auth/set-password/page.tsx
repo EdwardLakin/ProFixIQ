@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
@@ -97,9 +98,9 @@ export default function SetPasswordPage() {
       return;
     }
 
-    if (trimmedPassword.length < 8) {
+    if (trimmedPassword.length < 12) {
       setStatusTone("error");
-      setStatusMessage("Password must be at least 8 characters.");
+      setStatusMessage("Password must be at least 12 characters.");
       return;
     }
 
@@ -140,8 +141,11 @@ export default function SetPasswordPage() {
       setStatusTone("success");
       setStatusMessage("Password updated. Redirecting...");
 
-      const redirect =
-        searchParams.get("redirect")?.trim() || getReturnPath(nextRole);
+      const redirect = safeInternalRedirect(
+        searchParams.get("redirect"),
+        getReturnPath(nextRole),
+        ["/dashboard", "/onboarding", "/portal", "/fleet", "/mobile"],
+      );
 
       window.setTimeout(() => {
         router.replace(redirect);

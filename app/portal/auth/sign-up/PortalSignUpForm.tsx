@@ -1,217 +1,65 @@
-// app/portal/auth/sign-up/page.tsx
 "use client";
 
-import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { MailCheck, QrCode, Wrench } from "lucide-react";
 import AuthShell from "@/features/auth/components/AuthShell";
 
-const COPPER = "#C57A4A";
+const steps = [
+  {
+    icon: Wrench,
+    title: "From a work order",
+    body: "Your shop emails a secure invitation with your customer and vehicle details already linked.",
+  },
+  {
+    icon: QrCode,
+    title: "From a shop QR code",
+    body: "Scan the customer portal card at the shop and verify the email you want to use.",
+  },
+  {
+    icon: MailCheck,
+    title: "Create your password",
+    body: "Open the one-time email, set a password, and continue into your portal.",
+  },
+];
 
 export default function PortalSignUpForm() {
-  const router = useRouter();
-  const supabase = createBrowserSupabase();
-
-  const [email, setEmail] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
-
-  const [error, setError] = useState<string>("");
-  const [notice, setNotice] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
-
-  const goLanding = () => {
-    const href = "/";
-    router.replace(href);
-    setTimeout(() => {
-      if (typeof window !== "undefined" && window.location.pathname !== href) {
-        window.location.assign(href);
-      }
-    }, 60);
-  };
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setNotice("");
-    setLoading(true);
-
-    try {
-      const origin =
-        typeof window !== "undefined"
-          ? window.location.origin
-          : process.env.NEXT_PUBLIC_SITE_URL;
-
-      const safeOrigin = (origin ?? "").replace(/\/$/, "");
-      const emailRedirectTo = `${safeOrigin}/portal/auth/confirm`;
-
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password,
-        options: { emailRedirectTo },
-      });
-
-      if (signUpError) {
-        setError(signUpError.message);
-      } else if (!data.session) {
-        setNotice(
-          "Check your email to confirm your account. After confirming, you’ll be signed in automatically.",
-        );
-      } else {
-        router.replace("/portal");
-      }
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Unable to create your account right now.";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <AuthShell>
-      {/* Back to landing */}
-      <div className="mb-4 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={goLanding}
-          disabled={loading}
-          className="
-                inline-flex items-center gap-2 rounded-full border
-                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px]
-                uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)]
-                hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]
-                disabled:cursor-not-allowed disabled:opacity-60
-              "
-        >
-          <span aria-hidden className="text-base leading-none">
-            ←
-          </span>
-          Back
-        </button>
+    <AuthShell
+      productLabel="Customer portal"
+      heroTitle="Your service, all in one place."
+      heroDescription="Portal accounts stay connected to the right shop, customer, vehicles, and work orders from the moment they are activated."
+      highlights={["Invite protected", "Email verified", "Shop connected"]}
+    >
+      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
+        Customer portal
+      </div>
+      <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)]">
+        Activate portal access
+      </h1>
+      <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
+        Customer accounts are created from a shop invitation or a verified shop QR code. This keeps your records private and correctly linked.
+      </p>
 
-        <div className="text-[10px] text-[color:var(--theme-text-muted)]">Customer portal</div>
+      <div className="mt-6 space-y-3">
+        {steps.map(({ icon: Icon, title, body }) => (
+          <div key={title} className="flex gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3.5">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:color-mix(in_srgb,var(--accent-copper)_13%,transparent)] text-[var(--accent-copper)]">
+              <Icon className="h-4 w-4" aria-hidden />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+              <p className="mt-0.5 text-xs leading-5 text-[color:var(--theme-text-secondary)]">{body}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Brand / title */}
-      <div className="mb-6 space-y-2 text-center">
-        <div
-          className="
-                inline-flex items-center gap-1 rounded-full border
-                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                bg-[color:var(--theme-surface-overlay)]
-                px-3 py-1 text-[11px]
-                uppercase tracking-[0.22em]
-                text-[color:var(--theme-text-secondary)]
-              "
-          style={{ color: COPPER }}
-        >
-          Customer Portal
-        </div>
-
-        <h1
-          className="mt-2 text-3xl sm:text-4xl font-semibold text-[color:var(--theme-text-primary)]"
-          style={{ fontFamily: "var(--font-blackops), system-ui" }}
-        >
-          Sign up
-        </h1>
-
-        <p className="text-xs text-muted-foreground sm:text-sm">
-          Create your portal account to view service history and documents.
-        </p>
-      </div>
-
-      {/* Error / Notice */}
-      {error ? (
-        <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
-          {error}
-        </div>
-      ) : null}
-
-      {notice ? (
-        <div className="mb-3 rounded-lg border border-emerald-500/30 bg-emerald-950/25 px-3 py-2 text-xs text-emerald-100 shadow-[var(--theme-shadow-medium)]">
-          {notice}
-        </div>
-      ) : null}
-
-      {/* Form */}
-      <form onSubmit={handleSignUp} className="space-y-4">
-        <div className="space-y-1 text-sm">
-          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            Email
-          </label>
-          <input
-            type="email"
-            autoComplete="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="
-                  w-full rounded-lg border
-                  border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                  bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]
-                  placeholder:text-[color:var(--theme-text-muted)]
-                  focus:outline-none focus:ring-2
-                  focus:ring-[var(--accent-copper-soft)]
-                  focus:border-[var(--accent-copper-soft)]
-                "
-            required
-          />
-        </div>
-
-        <div className="space-y-1 text-sm">
-          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            Password
-          </label>
-          <input
-            type="password"
-            autoComplete="new-password"
-            placeholder="At least 6 characters"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="
-                  w-full rounded-lg border
-                  border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                  bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]
-                  placeholder:text-[color:var(--theme-text-muted)]
-                  focus:outline-none focus:ring-2
-                  focus:ring-[var(--accent-copper-soft)]
-                  focus:border-[var(--accent-copper-soft)]
-                "
-            required
-            minLength={6}
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="
-                mt-3 w-full rounded-full
-                bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]
-                py-2.5 text-center text-sm
-                font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-on-accent)]
-                shadow-[0_0_26px_rgba(212,118,49,0.9)]
-                hover:brightness-110
-                disabled:cursor-not-allowed disabled:opacity-60
-              "
-          style={{ fontFamily: "var(--font-blackops), system-ui" }}
-        >
-          {loading ? "Creating account…" : "Sign up"}
-        </button>
-      </form>
-
-      <div className="mt-5 flex items-center justify-between text-sm text-[color:var(--theme-text-secondary)]">
-        <span>Already have an account?</span>
-        <Link
-          href="/portal/auth/sign-in"
-          className="text-[11px] font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline underline-offset-2"
-        >
-          Sign in
+      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <Link href="/portal/auth/sign-in" className="rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-center text-sm font-bold text-[color:var(--theme-text-on-accent)]">
+          I already activated
+        </Link>
+        <Link href="/" className="rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-3 text-center text-sm font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">
+          Back to ProFixIQ
         </Link>
       </div>
     </AuthShell>

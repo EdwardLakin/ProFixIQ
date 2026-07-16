@@ -59,8 +59,11 @@ export default function PortalHomePage() {
       const normalizedUserEmail = (user.email ?? "").trim().toLowerCase();
       const { data: inviteEvidence, error: inviteErr } = await supabase
         .from("customer_portal_invites")
-        .select("id, customer_id, email")
+        .select("id, customer_id, email, accepted_at, accepted_by_user_id, revoked_at")
         .eq("customer_id", cust.id)
+        .eq("accepted_by_user_id", user.id)
+        .not("accepted_at", "is", null)
+        .is("revoked_at", null)
         .limit(10);
       if (!mounted) return;
 
@@ -70,10 +73,13 @@ export default function PortalHomePage() {
         inviteEvidence.some((row) => {
           const invite = row as Pick<
             CustomerPortalInviteRow,
-            "id" | "customer_id" | "email"
+            "id" | "customer_id" | "email" | "accepted_at" | "accepted_by_user_id" | "revoked_at"
           >;
           return (
             invite.customer_id === cust.id &&
+            invite.accepted_by_user_id === user.id &&
+            Boolean(invite.accepted_at) &&
+            !invite.revoked_at &&
             normalizedUserEmail.length > 0 &&
             invite.email.trim().toLowerCase() === normalizedUserEmail
           );

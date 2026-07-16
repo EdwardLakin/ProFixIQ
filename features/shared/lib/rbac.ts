@@ -107,6 +107,9 @@ export type ActorCapabilities = {
   canManageBranding: boolean;
   canManageBilling: boolean;
   canOverrideOperationalState: boolean;
+  canInvitePortalCustomers: boolean;
+  canManagePortalQr: boolean;
+  canInviteFleetMembers: boolean;
 };
 
 type RoleCapabilityMap = Record<CanonicalRole, ActorCapabilities>;
@@ -129,6 +132,9 @@ const NONE: ActorCapabilities = {
   canManageBranding: false,
   canManageBilling: false,
   canOverrideOperationalState: false,
+  canInvitePortalCustomers: false,
+  canManagePortalQr: false,
+  canInviteFleetMembers: false,
 };
 
 const CAPABILITY_MATRIX: RoleCapabilityMap = {
@@ -149,6 +155,9 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canManageBranding: true,
     canManageBilling: true,
     canOverrideOperationalState: true,
+    canInvitePortalCustomers: true,
+    canManagePortalQr: true,
+    canInviteFleetMembers: true,
   },
   admin: {
     ...NONE,
@@ -167,6 +176,9 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canManageBranding: true,
     canManageBilling: true,
     canOverrideOperationalState: true,
+    canInvitePortalCustomers: true,
+    canManagePortalQr: true,
+    canInviteFleetMembers: true,
   },
   manager: {
     ...NONE,
@@ -181,6 +193,9 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canViewShopWideData: true,
     canViewFinancials: true,
     canManageScheduling: true,
+    canInvitePortalCustomers: true,
+    canManagePortalQr: true,
+    canInviteFleetMembers: true,
   },
   advisor: {
     ...NONE,
@@ -190,12 +205,14 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canRunInspections: true,
     canViewShopWideData: true,
     canManageScheduling: true,
+    canInvitePortalCustomers: true,
   },
   service: {
     ...NONE,
     canAuthorizeQuotes: true,
     canManageWorkOrders: true,
     canRunInspections: true,
+    canInvitePortalCustomers: true,
   },
   parts: {
     ...NONE,
@@ -216,6 +233,7 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canRunInspections: true,
     canViewShopWideData: true,
     canManageScheduling: true,
+    canInvitePortalCustomers: true,
   },
   foreman: {
     ...NONE,
@@ -227,6 +245,7 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canRunInspections: true,
     canViewShopWideData: true,
     canManageScheduling: true,
+    canInvitePortalCustomers: true,
   },
   fleet_manager: {
     ...NONE,

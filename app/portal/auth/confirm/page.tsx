@@ -3,15 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 
 const COPPER = "#C57A4A";
-
-function safeInternalPath(value: string | null): string {
-  const path = value ?? "";
-  if (!path.startsWith("/") || path.startsWith("//")) return "/portal";
-  if (path.includes("\n") || path.includes("\r")) return "/portal";
-  return path;
-}
 
 function operationKey(inviteId: string, userId: string): string {
   return `portal-confirm:${inviteId}:${userId}`;
@@ -25,7 +19,10 @@ export default function PortalConfirmPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const safeNext = safeInternalPath(searchParams.get("next"));
+    const safeNext = safeInternalRedirect(searchParams.get("next"), "/portal", [
+      "/portal",
+      "/auth/set-password",
+    ]);
     const inviteId = searchParams.get("invite")?.trim() ?? "";
 
     void (async () => {

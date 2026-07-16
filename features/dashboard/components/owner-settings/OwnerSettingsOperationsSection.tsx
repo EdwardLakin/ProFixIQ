@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
 import { OwnerSettingsPanel } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
@@ -144,6 +145,20 @@ export default function OwnerSettingsOperationsSection({
             disabled={!isUnlocked}
           />
         </div>
+      </OwnerSettingsPanel>
+
+      <OwnerSettingsPanel
+        id="customer-portal-enrollment"
+        tone="primary"
+        title="Customer portal enrollment"
+        description="Create and print a secure QR campaign for your front desk."
+      >
+        <Link
+          href="/dashboard/settings/customer-portal"
+          className="inline-flex rounded-lg bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)]"
+        >
+          Open QR & print builder
+        </Link>
       </OwnerSettingsPanel>
 
       <OwnerSettingsPanel

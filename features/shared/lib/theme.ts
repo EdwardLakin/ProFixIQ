@@ -24,7 +24,7 @@ export function readThemePreference(): ThemePreference {
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
   if (isThemePreference(stored)) return stored;
   const legacy = window.localStorage.getItem("theme");
-  return legacy === "light" || legacy === "dark" ? legacy : "dark";
+  return legacy === "light" || legacy === "dark" ? legacy : "system";
 }
 
 export function applyThemePreference(

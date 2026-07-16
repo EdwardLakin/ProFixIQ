@@ -1,232 +1,154 @@
-// app/mobile/sign-in/page.tsx (FULL FILE REPLACEMENT)
-// ✅ Adds "Forgot password?" that routes to /forgot-password (preserves ?redirect=...)
-// ❗ No other behavior changes
-
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, EyeOff, Loader2, Smartphone, WifiOff } from "lucide-react";
+import AuthShell from "@/features/auth/components/AuthShell";
+import AuthStatus from "@/features/auth/components/AuthStatus";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { getAuthIdentifierStrategy } from "@/features/users/lib/username";
+
+const inputClass =
+  "w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3.5 py-3 text-base text-[color:var(--theme-input-text)] outline-none transition placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:ring-4 focus:ring-[color:color-mix(in_srgb,var(--accent-copper)_16%,transparent)]";
 
 export default function MobileSignInPage() {
   const router = useRouter();
-  const sp = useSearchParams();
-  const supabase = createBrowserSupabase();
-
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string>("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const goForgotPassword = () => {
-    const redirect = sp.get("redirect");
-    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
-    router.push(`/forgot-password${tail}`);
-  };
-
-  // If already signed in, send them into the mobile companion when a session exists
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-      if (!session?.user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("completed_onboarding, shop_id")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      router.replace(profile?.shop_id ? "/mobile/dashboard" : "/dashboard");
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!cancelled && data.user) router.replace("/mobile");
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [router, supabase]);
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError("");
-
-    const initialAuthIdentifier = getAuthIdentifierStrategy(identifier);
-    let authEmail = initialAuthIdentifier.authEmail;
-
     try {
-      const resolveRes = await fetch("/api/auth/resolve-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier }),
-      });
-      const resolvePayload = (await resolveRes.json().catch(() => null)) as
-        | { authEmail?: string }
-        | null;
-      if (resolveRes.ok && resolvePayload?.authEmail) authEmail = resolvePayload.authEmail;
-    } catch {
-      // Fall back to local username/email normalization.
-    }
-
-    console.info("[auth/sign-in]", {
-      inputKind: initialAuthIdentifier.inputKind,
-      normalizedAuthEmail: authEmail,
-    });
-
-    const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
-      email: authEmail,
-      password,
-    });
-
-    console.info("[auth/sign-in-result]", {
-      inputKind: initialAuthIdentifier.inputKind,
-      normalizedAuthEmail: authEmail,
-      userId: signInData.user?.id ?? null,
-      hasAccessToken: Boolean(signInData.session?.access_token),
-      errorCode: signInErr?.status ?? null,
-      errorMessage: signInErr?.message ?? null,
-    });
-
-    if (signInErr) {
-      setError(signInErr.message || "Sign in failed.");
+      const result = await signInWithIdentifier({ identifier, password, surface: "mobile" });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      const destination = safeInternalRedirect(
+        searchParams.get("redirect"),
+        result.destination,
+        ["/mobile"],
+      );
+      router.replace(destination);
+      router.refresh();
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) {
-      setError("Signed in, but no session is visible yet. Try again.");
-      setLoading(false);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("completed_onboarding, shop_id")
-      .eq("id", u.user.id)
-      .maybeSingle();
-
-    if (profile?.shop_id) {
-      router.replace("/mobile/dashboard");
-    } else {
-      router.replace("/dashboard");
-    }
-
-    setLoading(false);
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center">
-        <div className="w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-6 shadow-xl shadow-[var(--theme-shadow-medium)] sm:p-8">
-          {/* Brand / title */}
-          <div className="mb-6 space-y-2 text-center">
-            <div className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">
-              ProFixIQ Mobile Companion
-            </div>
-            <h1 className="mt-2 text-3xl font-blackops text-orange-500 sm:text-4xl">
-              Sign in
-            </h1>
-            <p className="text-xs text-[color:var(--theme-text-secondary)] sm:text-sm">
-              Use your shop username or email. Only onboarded users can use the
-              mobile companion.
-            </p>
+    <AuthShell
+      productLabel="Mobile companion"
+      heroTitle="The shop floor, in your pocket."
+      heroDescription="Capture inspections, evidence, time, and service progress from the bay without losing the thread of the work order."
+      highlights={["Touch-ready", "Role protected", "Offline resilient"]}
+    >
+      <div className="mb-6">
+        <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:color-mix(in_srgb,var(--accent-copper)_14%,transparent)] text-[var(--accent-copper)]">
+          <Smartphone className="h-5 w-5" aria-hidden />
+        </div>
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
+          Mobile companion
+        </div>
+        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)]">
+          Sign in for the shop floor
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
+          For authorized shop roles using a phone or tablet in the bay.
+        </p>
+      </div>
+
+      {error ? <AuthStatus tone="error">{error}</AuthStatus> : null}
+
+      <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="mobile-identifier" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+            Email or shop username
+          </label>
+          <input
+            id="mobile-identifier"
+            className={inputClass}
+            autoComplete="username"
+            placeholder="name@shop.com or username"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            required
+          />
+        </div>
+
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="mobile-password" className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+              Password
+            </label>
+            <Link href="/forgot-password?redirect=%2Fmobile" className="text-xs font-semibold text-[var(--accent-copper)] hover:underline">
+              Forgot password?
+            </Link>
           </div>
-
-          {/* Error */}
-          {error && (
-            <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/60 px-3 py-2 text-xs text-red-100">
-              {error}
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSignIn} className="space-y-4">
-            <div className="space-y-1 text-sm">
-              <label className="block text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                Email or username
-              </label>
-              <input
-                type="text"
-                placeholder="jane@shop.com or shop username"
-                autoComplete="username"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-0"
-                required
-              />
-              <p className="text-[11px] text-[color:var(--theme-text-muted)]">
-                Shop accounts can sign in using the username provided by your
-                admin.
-              </p>
-            </div>
-
-            <div className="space-y-1 text-sm">
-              <label className="block text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                Password
-              </label>
-              <input
-                type="password"
-                placeholder="••••••••"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-0"
-                required
-                minLength={6}
-              />
-            </div>
-
-            {/* Forgot password */}
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={goForgotPassword}
-                disabled={loading}
-                className="text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Forgot password?
-              </button>
-            </div>
-
-            <button
-              type="submit"
-              className="mt-2 w-full rounded-md bg-orange-500 py-2.5 text-center text-sm font-blackops text-[color:var(--theme-text-on-accent)] tracking-wide transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={loading}
-            >
-              {loading ? "Signing in…" : "Sign in"}
-            </button>
-          </form>
-
-          {/* Link back to full portal sign-in */}
-          <div className="mt-4 text-center text-[11px] text-[color:var(--theme-text-muted)]">
-            Need the full desktop portal?{" "}
+          <div className="relative">
+            <input
+              id="mobile-password"
+              className={`${inputClass} pr-12`}
+              type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
             <button
               type="button"
-              onClick={() => router.push("/sign-in")}
-              className="font-medium text-orange-400 hover:text-orange-300 hover:underline"
+              onClick={() => setShowPassword((current) => !current)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute inset-y-0 right-0 grid w-12 place-items-center text-[color:var(--theme-text-muted)]"
             >
-              Open portal sign in
+              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
-
-          <div className="mt-6 text-center text-[11px] text-[color:var(--theme-text-muted)]">
-            <p>
-              By continuing you agree to our{" "}
-              <a
-                href="/terms"
-                className="font-medium text-orange-400 hover:text-orange-300 hover:underline"
-              >
-                Terms
-              </a>{" "}
-              and{" "}
-              <a
-                href="/privacy"
-                className="font-medium text-orange-400 hover:text-orange-300 hover:underline"
-              >
-                Privacy Policy
-              </a>
-              .
-            </p>
-          </div>
         </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3.5 text-sm font-bold text-[color:var(--theme-text-on-accent)] transition hover:brightness-105 disabled:opacity-60"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {loading ? "Signing in…" : "Open mobile companion"}
+        </button>
+      </form>
+
+      <div className="mt-5 flex items-start gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+        <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-copper)]" aria-hidden />
+        Once signed in, supported inspection work can continue through brief connection drops.
       </div>
-    </div>
+
+      <div className="mt-5 text-center text-xs text-[color:var(--theme-text-muted)]">
+        Need the full dashboard?{" "}
+        <Link href="/sign-in" className="font-semibold text-[var(--accent-copper)] hover:underline">
+          Shop sign in
+        </Link>
+      </div>
+    </AuthShell>
   );
 }
