@@ -401,7 +401,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       const linkedWorkOrderId = requestById?.work_order_id
         ? String(requestById.work_order_id)
         : "";
-      if (linkedWorkOrderId) {
+      if (linkedWorkOrderId && requestById) {
         woRow = await resolveWorkOrder(linkedWorkOrderId);
         requestIdFilter = String(requestById.id);
       }
