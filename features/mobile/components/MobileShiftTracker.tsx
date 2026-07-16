@@ -4,22 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
   getOfflineSyncSummary,
-  replayQueuedMutations,
   subscribeOfflineMutations,
-  type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
+import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
 import {
   fetchMobileShiftState,
   type MobileShiftState,
 } from "@/features/mobile/shifts/client";
-
-type PunchEventType =
-  | "start_shift"
-  | "end_shift"
-  | "break_start"
-  | "break_end"
-  | "lunch_start"
-  | "lunch_end";
 
 type Props = { userId: string };
 
@@ -48,37 +39,7 @@ export default function MobileShiftTracker({ userId }: Props) {
   }, [refreshOfflineSummary]);
 
   const replayOfflineMutations = useCallback(async () => {
-    const result = await replayQueuedMutations({
-      handlers: {
-        "shift:punch-event": async (mutation: PendingMutation) => {
-          const payload = mutation.payload as
-            | {
-                shift_id?: string;
-                user_id?: string;
-                profile_id?: string;
-                event_type?: PunchEventType;
-                timestamp?: string;
-              }
-            | undefined;
-          if (!payload?.shift_id || !payload?.user_id || !payload?.event_type || !payload?.timestamp) {
-            return { conflicted: "Queued shift punch payload is incomplete." };
-          }
-          const res = await fetch("/api/scheduling/punches", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              shift_id: payload.shift_id,
-              event_type: payload.event_type,
-              timestamp: payload.timestamp,
-            }),
-          });
-          if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as { error?: string } | null;
-            throw new Error(body?.error ?? "Failed to replay punch event");
-          }
-        },
-      },
-    });
+    const result = await replayAllOfflineMutations();
 
     if (result.failed > 0) {
       setErr(`${result.failed} queued punch event(s) still failing to sync.`);

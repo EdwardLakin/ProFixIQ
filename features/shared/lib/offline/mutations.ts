@@ -1,31 +1,19 @@
 "use client";
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  clearOfflineDatabase,
+  readStoredMutations,
+  replaceStoredMutations,
+  type StoredOfflineMutation,
+} from "@/features/shared/lib/offline/database";
 
-export type OfflineMutationStatus =
-  | "queued"
-  | "syncing"
-  | "failed"
-  | "synced"
-  | "conflicted";
-
+export type OfflineMutationStatus = StoredOfflineMutation["status"];
 export type OfflineMutationScope = { userId: string; shopId: string };
-
-export type PendingMutation<T = unknown> = {
-  clientMutationId: string;
-  actionType: string;
-  payload: T;
-  createdAt: string;
-  retryCount: number;
-  userId: string;
-  shopId: string;
-  dependsOn?: string[];
-  orderKey?: string;
-  status: OfflineMutationStatus;
-  lastError?: string;
-  conflictReason?: string;
-  syncedAt?: string;
-};
+export type PendingMutation<T = unknown> = Omit<
+  StoredOfflineMutation,
+  "payload"
+> & { payload: T };
 
 type ErrorLike = {
   message?: unknown;
@@ -50,14 +38,20 @@ export type OfflineMutationRunner = (
   mutation: PendingMutation,
 ) => Promise<{ conflicted?: string | null } | void>;
 
-const KEY = "profixiq.pending_mutations.v3";
-const PREVIOUS_KEYS = ["profixiq.pending_mutations.v2", "profixiq.pending_mutations.v1"];
+const LEGACY_KEYS = [
+  "profixiq.pending_mutations.v3",
+  "profixiq.pending_mutations.v2",
+  "profixiq.pending_mutations.v1",
+];
 const SCOPE_KEY = "profixiq.pending_mutations.scope.v1";
 const EVENT_NAME = "offline-mutations:updated";
 const MAX_HISTORY = 300;
 const TERMINAL_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const PERMANENT_STATUS_CODES = new Set([400, 401, 403, 404, 409, 410, 412, 422]);
+
+let queueCache: PendingMutation[] = [];
+let hydrationPromise: Promise<void> | null = null;
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -140,7 +134,7 @@ async function resolveMutationScope(
     clean(candidate.work_order_line_id);
   const workOrderId = clean(candidate.workOrderId) || clean(candidate.work_order_id);
 
-  if (!shopId && workOrderLineId && typeof navigator !== "undefined" && navigator.onLine) {
+  if (!shopId && workOrderLineId && navigator.onLine) {
     const { data } = await supabase
       .from("work_order_lines")
       .select("shop_id")
@@ -148,8 +142,7 @@ async function resolveMutationScope(
       .maybeSingle<{ shop_id: string | null }>();
     shopId = clean(data?.shop_id);
   }
-
-  if (!shopId && workOrderId && typeof navigator !== "undefined" && navigator.onLine) {
+  if (!shopId && workOrderId && navigator.onLine) {
     const { data } = await supabase
       .from("work_orders")
       .select("shop_id")
@@ -157,8 +150,7 @@ async function resolveMutationScope(
       .maybeSingle<{ shop_id: string | null }>();
     shopId = clean(data?.shop_id);
   }
-
-  if (!shopId && typeof navigator !== "undefined" && navigator.onLine) {
+  if (!shopId && navigator.onLine) {
     const { data } = await supabase
       .from("profiles")
       .select("shop_id")
@@ -175,10 +167,7 @@ async function resolveMutationScope(
 
 function parseMutation(raw: unknown): PendingMutation | null {
   if (!raw || typeof raw !== "object") return null;
-  const item = raw as Partial<PendingMutation> & {
-    id?: unknown;
-    action?: unknown;
-  };
+  const item = raw as Partial<PendingMutation> & { id?: unknown; action?: unknown };
   const clientMutationId = clean(item.clientMutationId) || clean(item.id);
   const actionType = clean(item.actionType) || clean(item.action);
   const createdAt = clean(item.createdAt);
@@ -189,7 +178,8 @@ function parseMutation(raw: unknown): PendingMutation | null {
   const validStatus = ["queued", "syncing", "failed", "synced", "conflicted"].includes(
     String(item.status),
   );
-  const status = (validStatus ? item.status : "queued") as OfflineMutationStatus;
+  const parsedStatus = (validStatus ? item.status : "queued") as OfflineMutationStatus;
+  const status = parsedStatus === "syncing" ? "failed" : parsedStatus;
   const missingScope = !userId || !shopId;
 
   return {
@@ -212,51 +202,55 @@ function parseMutation(raw: unknown): PendingMutation | null {
 }
 
 function normalizeQueue(queue: PendingMutation[]): PendingMutation[] {
+  const byId = new Map<string, PendingMutation>();
+  for (const item of queue) byId.set(item.clientMutationId, item);
   const now = Date.now();
-  const retained = queue.filter((item) => {
+  const retained = [...byId.values()].filter((item) => {
     if (item.status !== "synced") return true;
     return Boolean(
-      item.syncedAt &&
-        now - new Date(item.syncedAt).getTime() < TERMINAL_RETENTION_MS,
+      item.syncedAt && now - new Date(item.syncedAt).getTime() < TERMINAL_RETENTION_MS,
     );
   });
   if (retained.length <= MAX_HISTORY) return retained;
   return retained
-    .sort(
-      (a, b) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    )
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     .slice(retained.length - MAX_HISTORY);
 }
 
-function readQueue(): PendingMutation[] {
-  if (!browserReady()) return [];
-  try {
-    const currentRaw = JSON.parse(localStorage.getItem(KEY) ?? "[]") as unknown;
-    const current = Array.isArray(currentRaw)
-      ? currentRaw.map(parseMutation).filter((item): item is PendingMutation => !!item)
-      : [];
-    const migrated: PendingMutation[] = [];
-    for (const oldKey of PREVIOUS_KEYS) {
-      const oldRaw = JSON.parse(localStorage.getItem(oldKey) ?? "[]") as unknown;
-      if (Array.isArray(oldRaw)) {
-        migrated.push(
-          ...oldRaw.map(parseMutation).filter((item): item is PendingMutation => !!item),
-        );
+export async function hydrateOfflineMutationQueue(): Promise<void> {
+  if (!browserReady()) return;
+  if (hydrationPromise) return hydrationPromise;
+  hydrationPromise = (async () => {
+    const stored = (await readStoredMutations())
+      .map(parseMutation)
+      .filter((item): item is PendingMutation => Boolean(item));
+    const legacy: PendingMutation[] = [];
+    for (const key of LEGACY_KEYS) {
+      try {
+        const raw = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
+        if (Array.isArray(raw)) {
+          legacy.push(
+            ...raw.map(parseMutation).filter((item): item is PendingMutation => Boolean(item)),
+          );
+        }
+      } catch {
+        // Invalid legacy data is ignored and removed below.
       }
-      localStorage.removeItem(oldKey);
+      localStorage.removeItem(key);
     }
-    const combined = normalizeQueue([...current, ...migrated]);
-    if (migrated.length) localStorage.setItem(KEY, JSON.stringify(combined));
-    return combined;
-  } catch {
-    return [];
-  }
+    queueCache = normalizeQueue([...stored, ...legacy]);
+    await replaceStoredMutations(queueCache);
+    emitQueueUpdate();
+  })().catch((error) => {
+    hydrationPromise = null;
+    console.warn("[offline] Unable to hydrate mutation queue", error);
+  });
+  return hydrationPromise;
 }
 
-function writeQueue(queue: PendingMutation[]): void {
-  if (!browserReady()) return;
-  localStorage.setItem(KEY, JSON.stringify(normalizeQueue(queue)));
+async function writeQueue(queue: PendingMutation[]): Promise<void> {
+  queueCache = normalizeQueue(queue);
+  await replaceStoredMutations(queueCache);
   emitQueueUpdate();
 }
 
@@ -269,23 +263,26 @@ function sortForReplay(queue: PendingMutation[]): PendingMutation[] {
   });
 }
 
-function upsertMutation(next: PendingMutation): void {
-  const queue = readQueue();
+async function upsertMutation(next: PendingMutation): Promise<void> {
+  const queue = [...queueCache];
   const index = queue.findIndex((item) => item.clientMutationId === next.clientMutationId);
   if (index >= 0) queue[index] = next;
   else queue.push(next);
-  writeQueue(queue);
+  await writeQueue(queue);
 }
 
-export function enqueueMutation<T>(
+export async function enqueueMutation<T>(
   entry: Omit<PendingMutation<T>, "createdAt" | "retryCount" | "status"> & {
     status?: OfflineMutationStatus;
   },
-): PendingMutation<T> {
+): Promise<PendingMutation<T>> {
+  await hydrateOfflineMutationQueue();
   if (!entry.userId.trim() || !entry.shopId.trim()) {
     throw new Error("Offline mutation scope requires userId and shopId.");
   }
-  const existing = getMutation(entry.clientMutationId);
+  const existing = queueCache.find(
+    (item) => item.clientMutationId === entry.clientMutationId,
+  );
   const next: PendingMutation<T> = {
     ...entry,
     userId: entry.userId.trim(),
@@ -297,24 +294,22 @@ export function enqueueMutation<T>(
     conflictReason: existing?.conflictReason,
     syncedAt: existing?.syncedAt,
   };
-  upsertMutation(next);
+  await upsertMutation(next);
   return next;
 }
 
-export function getMutation(clientMutationId: string): PendingMutation | null {
-  return readQueue().find((item) => item.clientMutationId === clientMutationId) ?? null;
-}
-
-export function markMutationStatus(args: {
+async function markMutationStatus(args: {
   clientMutationId: string;
   status: OfflineMutationStatus;
   error?: string;
   conflictReason?: string;
   incrementRetry?: boolean;
-}): void {
-  const existing = getMutation(args.clientMutationId);
+}): Promise<void> {
+  const existing = queueCache.find(
+    (item) => item.clientMutationId === args.clientMutationId,
+  );
   if (!existing) return;
-  upsertMutation({
+  await upsertMutation({
     ...existing,
     retryCount: args.incrementRetry ? existing.retryCount + 1 : existing.retryCount,
     status: args.status,
@@ -327,32 +322,32 @@ export function markMutationStatus(args: {
 export function listPendingMutations(
   scope: OfflineMutationScope | null = getOfflineMutationScope(),
 ): PendingMutation[] {
-  return readQueue().filter((item) => item.status !== "synced" && scopeMatches(item, scope));
+  void hydrateOfflineMutationQueue();
+  return queueCache.filter((item) => item.status !== "synced" && scopeMatches(item, scope));
 }
 
 export function listOfflineMutations(
   scope: OfflineMutationScope | null = getOfflineMutationScope(),
 ): PendingMutation[] {
-  return sortForReplay(readQueue().filter((item) => scopeMatches(item, scope)));
+  void hydrateOfflineMutationQueue();
+  return sortForReplay(queueCache.filter((item) => scopeMatches(item, scope)));
 }
 
 export function getOfflineSyncSummary(
   scope: OfflineMutationScope | null = getOfflineMutationScope(),
 ) {
+  void hydrateOfflineMutationQueue();
   const summary = { queued: 0, syncing: 0, failed: 0, conflicted: 0, synced: 0, total: 0 };
-  for (const item of readQueue().filter((entry) => scopeMatches(entry, scope))) {
+  for (const item of queueCache.filter((entry) => scopeMatches(entry, scope))) {
     summary[item.status] += 1;
     summary.total += 1;
   }
   return summary;
 }
 
-export function removeMutation(clientMutationId: string): void {
-  writeQueue(readQueue().filter((item) => item.clientMutationId !== clientMutationId));
-}
-
 export function subscribeOfflineMutations(listener: () => void): () => void {
   if (typeof window === "undefined") return () => undefined;
+  void hydrateOfflineMutationQueue();
   window.addEventListener(EVENT_NAME, listener);
   window.addEventListener("storage", listener);
   return () => {
@@ -399,12 +394,12 @@ export async function replayQueuedMutations(args: {
   handlers: Record<string, OfflineMutationRunner>;
   scope?: OfflineMutationScope | null;
 }): Promise<{ replayed: number; failed: number; conflicted: number }> {
+  await hydrateOfflineMutationQueue();
   const scope = args.scope ?? getOfflineMutationScope();
-  if (!scope) return { replayed: 0, failed: 0, conflicted: 0 };
+  if (!scope || !navigator.onLine) return { replayed: 0, failed: 0, conflicted: 0 };
   const queue = sortForReplay(
-    readQueue().filter(
-      (item) =>
-        ["queued", "failed"].includes(item.status) && scopeMatches(item, scope),
+    queueCache.filter(
+      (item) => ["queued", "failed"].includes(item.status) && scopeMatches(item, scope),
     ),
   );
   let replayed = 0;
@@ -413,11 +408,13 @@ export async function replayQueuedMutations(args: {
 
   for (const mutation of queue) {
     const dependencyPending =
-      mutation.dependsOn?.some((id) => getMutation(id)?.status !== "synced") ?? false;
+      mutation.dependsOn?.some(
+        (id) => queueCache.find((item) => item.clientMutationId === id)?.status !== "synced",
+      ) ?? false;
     if (dependencyPending) continue;
     const handler = args.handlers[mutation.actionType];
     if (!handler) {
-      markMutationStatus({
+      await markMutationStatus({
         clientMutationId: mutation.clientMutationId,
         status: "conflicted",
         conflictReason: `No replay handler registered for ${mutation.actionType}`,
@@ -425,11 +422,14 @@ export async function replayQueuedMutations(args: {
       conflicted += 1;
       continue;
     }
-    markMutationStatus({ clientMutationId: mutation.clientMutationId, status: "syncing" });
+    await markMutationStatus({
+      clientMutationId: mutation.clientMutationId,
+      status: "syncing",
+    });
     try {
       const result = await handler(mutation);
       if (result?.conflicted) {
-        markMutationStatus({
+        await markMutationStatus({
           clientMutationId: mutation.clientMutationId,
           status: "conflicted",
           conflictReason: result.conflicted,
@@ -437,12 +437,15 @@ export async function replayQueuedMutations(args: {
         });
         conflicted += 1;
       } else {
-        markMutationStatus({ clientMutationId: mutation.clientMutationId, status: "synced" });
+        await markMutationStatus({
+          clientMutationId: mutation.clientMutationId,
+          status: "synced",
+        });
         replayed += 1;
       }
     } catch (error) {
       const retryable = isRetryableOfflineError(error);
-      markMutationStatus({
+      await markMutationStatus({
         clientMutationId: mutation.clientMutationId,
         status: retryable ? "failed" : "conflicted",
         error: error instanceof Error ? error.message : "Replay failed",
@@ -469,6 +472,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
   orderKey?: string;
   conflictCheck?: () => Promise<string | null>;
 }): Promise<{ queued: boolean; conflicted: boolean }> {
+  await hydrateOfflineMutationQueue();
   const queueOnOffline = args.queueOnOffline !== false;
   const scope = await resolveMutationScope(args.payload, args.scope);
   if (!scope) {
@@ -476,7 +480,9 @@ export async function runMutationWithOfflineQueue<T>(args: {
       "Authenticated user and shop scope could not be resolved for offline sync.",
     );
   }
-  const existing = getMutation(args.clientMutationId);
+  const existing = queueCache.find(
+    (item) => item.clientMutationId === args.clientMutationId,
+  );
   if (existing?.status === "synced" && scopeMatches(existing, scope)) {
     return { queued: false, conflicted: false };
   }
@@ -493,8 +499,8 @@ export async function runMutationWithOfflineQueue<T>(args: {
       status,
     });
 
-  if (queueOnOffline && typeof navigator !== "undefined" && !navigator.onLine) {
-    queueEntry();
+  if (queueOnOffline && !navigator.onLine) {
+    await queueEntry();
     return { queued: true, conflicted: false };
   }
 
@@ -502,8 +508,8 @@ export async function runMutationWithOfflineQueue<T>(args: {
     if (args.conflictCheck) {
       const conflict = await args.conflictCheck();
       if (conflict) {
-        queueEntry("conflicted");
-        markMutationStatus({
+        await queueEntry("conflicted");
+        await markMutationStatus({
           clientMutationId: args.clientMutationId,
           status: "conflicted",
           conflictReason: conflict,
@@ -512,13 +518,22 @@ export async function runMutationWithOfflineQueue<T>(args: {
       }
     }
     await args.runner();
-    queueEntry("synced");
+    await queueEntry("synced");
     return { queued: false, conflicted: false };
   } catch (error) {
     if (queueOnOffline && isRetryableOfflineError(error)) {
-      queueEntry();
+      await queueEntry();
       return { queued: true, conflicted: false };
     }
     throw error;
   }
+}
+
+export async function clearOfflineState(): Promise<void> {
+  queueCache = [];
+  hydrationPromise = null;
+  setOfflineMutationScope(null);
+  for (const key of LEGACY_KEYS) localStorage.removeItem(key);
+  await clearOfflineDatabase();
+  emitQueueUpdate();
 }

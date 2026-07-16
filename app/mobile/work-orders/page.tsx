@@ -6,6 +6,14 @@ import { format } from "date-fns";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  getOfflineSnapshot,
+  saveOfflineSnapshot,
+} from "@/features/shared/lib/offline/database";
+import {
+  getOfflineMutationScope,
+  setOfflineMutationScope,
+} from "@/features/shared/lib/offline/mutations";
 
 type DB = Database;
 
@@ -27,6 +35,7 @@ type WorkOrderSignal = {
   unassigned: number;
   waitingParts: number;
 };
+type WorkOrderListSnapshot = { rows: Row[]; signals: Record<string, WorkOrderSignal> };
 
 type StatusKey =
   | "awaiting_approval"
@@ -143,6 +152,25 @@ export default function MobileWorkOrdersListPage() {
     setErr(null);
     setForbidden(false);
 
+    const cachedScope = getOfflineMutationScope();
+    if (!navigator.onLine && cachedScope) {
+      const cached = await getOfflineSnapshot<WorkOrderListSnapshot>({
+        scope: cachedScope,
+        kind: "mobile-work-order-list",
+        entityId: status || "active",
+      });
+      if (cached) {
+        setRows(cached.data.rows);
+        setLineSignals(cached.data.signals);
+        setLoading(false);
+        return;
+      }
+      setErr("No saved work orders are available on this device yet.");
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) {
       setErr("Unauthorized");
@@ -153,7 +181,7 @@ export default function MobileWorkOrdersListPage() {
 
     const { data: me } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, shop_id")
       .eq("id", auth.user.id)
       .maybeSingle();
 
@@ -165,6 +193,14 @@ export default function MobileWorkOrdersListPage() {
       setLoading(false);
       return;
     }
+    if (!me?.shop_id) {
+      setErr("Your shop scope could not be resolved.");
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+    const scope = { userId: auth.user.id, shopId: me.shop_id };
+    setOfflineMutationScope(scope);
 
     let query = supabase
       .from("work_orders")
@@ -195,13 +231,13 @@ export default function MobileWorkOrdersListPage() {
 
     const list = (data ?? []) as Row[];
     const workOrderIds = list.map((item) => item.id);
+    const signals: Record<string, WorkOrderSignal> = {};
     if (workOrderIds.length > 0) {
       const { data: linesData } = await supabase
         .from("work_order_lines")
         .select("work_order_id, status, approval_state, assigned_tech_id, hold_reason")
         .in("work_order_id", workOrderIds);
 
-      const signals: Record<string, WorkOrderSignal> = {};
       (linesData ?? []).forEach((line) => {
         const ln = line as WorkOrderLineSummary;
         const woId = ln.work_order_id;
@@ -262,6 +298,12 @@ export default function MobileWorkOrdersListPage() {
           });
 
     setRows(filtered);
+    await saveOfflineSnapshot({
+      scope,
+      kind: "mobile-work-order-list",
+      entityId: status || "active",
+      data: { rows: list, signals },
+    });
     setLoading(false);
   }, [q, status, supabase]);
 
