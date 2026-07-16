@@ -8,7 +8,6 @@ import {
   applyWorkOrderQuoteLineDecision,
   type QuoteApprovalDecision,
 } from "@/features/work-orders/server/workOrderQuoteLineApproval";
-import { LEGAL_DOCUMENTS } from "@/features/legal/lib/config";
 
 export const runtime = "nodejs";
 
@@ -21,8 +20,6 @@ type Body = {
   declineRemaining?: boolean;
   operationKey?: string;
   idempotencyKey?: string;
-  legalAccepted?: boolean;
-  repairAuthorizationVersion?: string;
 };
 
 function safeTrim(value: unknown): string {
@@ -47,10 +44,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   } = await routeSupabase.auth.getUser();
 
   if (userError || !user) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
   const body = (await req.json().catch(() => null)) as Body | null;
@@ -67,7 +61,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
     body?.operationKey?.trim() ||
     body?.idempotencyKey?.trim() ||
     "";
-  const repairAuthorizationVersion = safeTrim(body?.repairAuthorizationVersion);
 
   if (
     !workOrderId ||
@@ -82,21 +75,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (!operationKey) {
     return NextResponse.json(
       { ok: false, error: "A stable Idempotency-Key is required." },
-      { status: 400 },
-    );
-  }
-  if (
-    decision === "approve" &&
-    (body?.legalAccepted !== true ||
-      repairAuthorizationVersion !==
-        LEGAL_DOCUMENTS.repairAuthorization.version)
-  ) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Current electronic repair authorization terms must be accepted.",
-      },
       { status: 400 },
     );
   }
@@ -138,10 +116,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     !workOrder.shop_id ||
     workOrder.customer_id !== customer.id
   ) {
-    return NextResponse.json(
-      { ok: false, error: "Quote not found" },
-      { status: 404 },
-    );
+    return NextResponse.json({ ok: false, error: "Quote not found" }, { status: 404 });
   }
 
   const result = await applyWorkOrderQuoteLineDecision({
@@ -154,10 +129,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
     decision,
     declineRemaining: body?.declineRemaining === true,
     operationKey,
-    legalAuthorization:
-      decision === "approve"
-        ? { documentVersion: repairAuthorizationVersion }
-        : undefined,
   });
 
   if (!result.ok) {

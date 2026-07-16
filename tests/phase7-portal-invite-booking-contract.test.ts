@@ -26,7 +26,7 @@ describe("Phase 7 portal identity and booking lifecycle", () => {
     expect(inviteSql).toContain("accepted_by_user_id");
     expect(inviteSql).toContain("portal_lifecycle_operation_keys");
     expect(inviteRoute).toContain(
-      "accept_customer_portal_invite_with_legal_atomic",
+      'rpc("accept_customer_portal_invite_atomic"',
     );
     expect(setupRoute).toContain("issueCustomerPortalInvite");
     expect(canonicalInviteService).toContain("new URLSearchParams({");
