@@ -35,6 +35,23 @@ import { MobileJobLineAdd } from "@/features/work-orders/mobile/MobileJobLineAdd
 import NewWorkOrderLineForm from "@/features/work-orders/components/NewWorkOrderLineForm";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
+import {
+  getOfflineMutationScope,
+  setOfflineMutationScope,
+} from "@/features/shared/lib/offline/mutations";
+import {
+  createAdvisorDraftId,
+  getCurrentAdvisorWorkOrderDraft,
+  getLatestCachedAdvisorDay,
+  materializeAdvisorWorkOrderDraft,
+  removeCurrentAdvisorWorkOrderDraft,
+  saveCurrentAdvisorWorkOrderDraft,
+} from "@/features/work-orders/mobile/advisorOffline";
+import type {
+  AdvisorWorkOrderDraft,
+  AdvisorWorkOrderDraftLine,
+} from "@/features/work-orders/mobile/advisorOfflineTypes";
+import { AdvisorDraftLines } from "@/features/work-orders/mobile/AdvisorDraftLines";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -90,11 +107,7 @@ function toNumberOrNull(v: unknown): number | null {
 
 function numStringOrNull(v: unknown): string | null {
   const s =
-    typeof v === "string"
-      ? v.trim()
-      : typeof v === "number"
-        ? String(v)
-        : "";
+    typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "";
   if (!s) return null;
   return s;
 }
@@ -189,11 +202,13 @@ function CustomerSearch({
   shopId,
   value,
   onPick,
+  offlineRows = [],
 }: {
   supabase: ReturnType<typeof createBrowserSupabase>;
   shopId: string | null;
   value: string;
   onPick: (c: CustomerPick) => void;
+  offlineRows?: CustomerPick[];
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -215,10 +230,35 @@ function CustomerSearch({
     const t = window.setTimeout(async () => {
       setBusy(true);
       try {
+        if (!navigator.onLine) {
+          const normalized = term.toLowerCase();
+          setRows(
+            offlineRows
+              .filter((row) =>
+                [
+                  row.business_name,
+                  row.first_name,
+                  row.last_name,
+                  row.name,
+                  row.phone,
+                  row.phone_number,
+                  row.email,
+                ]
+                  .filter(Boolean)
+                  .some((value) =>
+                    String(value).toLowerCase().includes(normalized),
+                  ),
+              )
+              .slice(0, 12),
+          );
+          return;
+        }
         const like = `%${term}%`;
         const { data, error } = await supabase
           .from("customers")
-          .select("id,business_name,first_name,last_name,name,phone,phone_number,email,created_at")
+          .select(
+            "id,business_name,first_name,last_name,name,phone,phone_number,email,created_at",
+          )
           .eq("shop_id", shopId)
           .or(
             [
@@ -246,8 +286,7 @@ function CustomerSearch({
     }, 150);
 
     return () => window.clearTimeout(t);
-
-  }, [value, shopId, supabase]);
+  }, [value, shopId, supabase, offlineRows]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -264,7 +303,9 @@ function CustomerSearch({
     <div ref={wrapRef} className="relative">
       <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] backdrop-blur-xl shadow-lg shadow-[var(--theme-shadow-medium)]">
         {busy && (
-          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">Searching…</div>
+          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
+            Searching…
+          </div>
         )}
         {rows.map((c) => (
           <button
@@ -287,7 +328,9 @@ function CustomerSearch({
           </button>
         ))}
         {!busy && rows.length === 0 && (
-          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">No matches</div>
+          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
+            No matches
+          </div>
         )}
       </div>
     </div>
@@ -300,6 +343,7 @@ function CustomerSearch({
 
 type VehiclePick = {
   id: string;
+  customer_id?: string | null;
   unit_number: string | null;
   license_plate: string | null;
   vin: string | null;
@@ -342,12 +386,14 @@ function VehicleSearch({
   customerId,
   value,
   onPick,
+  offlineRows = [],
 }: {
   supabase: ReturnType<typeof createBrowserSupabase>;
   shopId: string | null;
   customerId: string | null;
   value: string;
   onPick: (v: VehiclePick) => void;
+  offlineRows?: VehiclePick[];
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -369,6 +415,30 @@ function VehicleSearch({
     const t = window.setTimeout(async () => {
       setBusy(true);
       try {
+        if (!navigator.onLine) {
+          const normalized = term.toLowerCase();
+          setRows(
+            offlineRows
+              .filter(
+                (row) => !row.customer_id || row.customer_id === customerId,
+              )
+              .filter((row) =>
+                [
+                  row.unit_number,
+                  row.license_plate,
+                  row.vin,
+                  row.make,
+                  row.model,
+                ]
+                  .filter(Boolean)
+                  .some((value) =>
+                    String(value).toLowerCase().includes(normalized),
+                  ),
+              )
+              .slice(0, 12),
+          );
+          return;
+        }
         const like = `%${term}%`;
         const { data, error } = await supabase
           .from("vehicles")
@@ -401,7 +471,7 @@ function VehicleSearch({
     }, 150);
 
     return () => window.clearTimeout(t);
-  }, [value, shopId, customerId, supabase]);
+  }, [value, shopId, customerId, supabase, offlineRows]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -418,7 +488,9 @@ function VehicleSearch({
     <div ref={wrapRef} className="relative">
       <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] backdrop-blur-xl shadow-lg shadow-[var(--theme-shadow-medium)]">
         {busy && (
-          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">Searching…</div>
+          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
+            Searching…
+          </div>
         )}
         {rows.map((v) => (
           <button
@@ -432,14 +504,18 @@ function VehicleSearch({
               setOpen(false);
             }}
           >
-            <div className="truncate text-[color:var(--theme-text-primary)]">{formatVehicleTitle(v)}</div>
+            <div className="truncate text-[color:var(--theme-text-primary)]">
+              {formatVehicleTitle(v)}
+            </div>
             <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">
               {formatVehicleSub(v) || "—"}
             </div>
           </button>
         ))}
         {!busy && rows.length === 0 && (
-          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">No matches</div>
+          <div className="px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
+            No matches
+          </div>
         )}
       </div>
     </div>
@@ -492,6 +568,16 @@ export default function MobileCreateWorkOrderPage() {
   // lightweight search inputs (keep UI small)
   const [customerSearch, setCustomerSearch] = useState("");
   const [vehicleSearch, setVehicleSearch] = useState("");
+  const [draftLines, setDraftLines] = useState<AdvisorWorkOrderDraftLine[]>([]);
+  const [offlineCustomers, setOfflineCustomers] = useState<CustomerPick[]>([]);
+  const [offlineVehicles, setOfflineVehicles] = useState<VehiclePick[]>([]);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [online, setOnline] = useState(
+    () => typeof navigator !== "undefined" && navigator.onLine,
+  );
+  const draftIdentityRef = useRef<{ id: string; operationKey: string } | null>(
+    null,
+  );
 
   /* ------------------------------------------------------------------------ */
   /* Resolve current user + shop id                                           */
@@ -508,12 +594,125 @@ export default function MobileCreateWorkOrderPage() {
         try {
           const sid = await getOrLinkShopId(supabase, uid);
           setShopId(sid);
+          if (sid) {
+            const scope = { userId: uid, shopId: sid };
+            setOfflineMutationScope(scope);
+            const [bundle, storedDraft] = await Promise.all([
+              getLatestCachedAdvisorDay(scope),
+              getCurrentAdvisorWorkOrderDraft(scope),
+            ]);
+            if (bundle) {
+              setOfflineCustomers(bundle.customers as CustomerPick[]);
+              setOfflineVehicles(bundle.vehicles as VehiclePick[]);
+            }
+            if (storedDraft) {
+              draftIdentityRef.current = {
+                id: storedDraft.id,
+                operationKey: storedDraft.operationKey,
+              };
+              setDraftLines(storedDraft.lines);
+              setIsWaiter(storedDraft.isWaiter);
+              const savedCustomer = bundle?.customers.find(
+                (item) => item.id === storedDraft.customerId,
+              );
+              const savedVehicle = bundle?.vehicles.find(
+                (item) => item.id === storedDraft.vehicleId,
+              );
+              if (savedCustomer) {
+                setCustomer({
+                  id: savedCustomer.id,
+                  first_name: savedCustomer.first_name,
+                  last_name: savedCustomer.last_name,
+                  phone: savedCustomer.phone,
+                  email: savedCustomer.email,
+                  business_name: savedCustomer.business_name,
+                });
+              }
+              if (!savedCustomer && storedDraft.customer) {
+                setCustomer(storedDraft.customer);
+              }
+              if (savedVehicle) {
+                setVehicle({
+                  id: savedVehicle.id,
+                  vin: savedVehicle.vin,
+                  year: savedVehicle.year,
+                  make: savedVehicle.make,
+                  model: savedVehicle.model,
+                  license_plate: savedVehicle.license_plate,
+                  mileage: savedVehicle.mileage,
+                  color: savedVehicle.color,
+                  unit_number: savedVehicle.unit_number,
+                  engine_hours: savedVehicle.engine_hours,
+                  engine: savedVehicle.engine,
+                  transmission: savedVehicle.transmission,
+                  fuel_type: savedVehicle.fuel_type,
+                  drivetrain: savedVehicle.drivetrain,
+                });
+              }
+              if (!savedVehicle && storedDraft.vehicle) {
+                setVehicle(storedDraft.vehicle);
+              }
+              setDraftRestored(true);
+            }
+          }
         } catch (e) {
           setError(e instanceof Error ? e.message : "Failed to load shop.");
         }
       }
     })();
   }, [supabase]);
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  const buildAdvisorDraft = useCallback((): AdvisorWorkOrderDraft | null => {
+    if (!currentUserId || !shopId) return null;
+    draftIdentityRef.current ??= (() => {
+      const id = createAdvisorDraftId();
+      return { id, operationKey: `${id}:materialize` };
+    })();
+    return {
+      ...draftIdentityRef.current,
+      userId: currentUserId,
+      shopId,
+      customerId: customer.id,
+      vehicleId: vehicle.id,
+      customer,
+      vehicle,
+      isWaiter,
+      notes: "",
+      priority: 3,
+      lines: draftLines,
+      updatedAt: new Date().toISOString(),
+    };
+  }, [currentUserId, shopId, customer, vehicle, isWaiter, draftLines]);
+
+  useEffect(() => {
+    if (wo?.id || creatingWo || !currentUserId || !shopId) return;
+    if (!customer.id && !vehicle.id && draftLines.length === 0) return;
+    const timer = window.setTimeout(() => {
+      const current = buildAdvisorDraft();
+      if (current) void saveCurrentAdvisorWorkOrderDraft(current);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    wo?.id,
+    creatingWo,
+    currentUserId,
+    shopId,
+    customer.id,
+    vehicle.id,
+    draftLines,
+    isWaiter,
+    buildAdvisorDraft,
+  ]);
 
   /* ------------------------------------------------------------------------ */
   /* Hydrate from shared VIN / OCR draft (desktop + mobile shared store)      */
@@ -812,6 +1011,22 @@ export default function MobileCreateWorkOrderPage() {
       if (!currentUserId) throw new Error("Not signed in.");
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
+      const deviceDraft = buildAdvisorDraft();
+      if (!navigator.onLine) {
+        if (!deviceDraft || deviceDraft.lines.length === 0) {
+          throw new Error(
+            "Add at least one temporary job line to save this draft.",
+          );
+        }
+        await saveCurrentAdvisorWorkOrderDraft(deviceDraft);
+        setError(
+          customer.id && vehicle.id
+            ? "Draft saved on this device. Create it after reconnecting."
+            : "Draft saved. A connection is required to create the new customer or vehicle before submission.",
+        );
+        return;
+      }
+
       if (
         !customer.first_name &&
         !customer.last_name &&
@@ -823,6 +1038,36 @@ export default function MobileCreateWorkOrderPage() {
 
       const cust = await ensureCustomer();
       const veh = await ensureVehicle(cust);
+
+      if (draftLines.length > 0) {
+        const prepared = buildAdvisorDraft();
+        if (!prepared) throw new Error("Draft scope is unavailable.");
+        const submissionDraft: AdvisorWorkOrderDraft = {
+          ...prepared,
+          customerId: cust.id,
+          vehicleId: veh.id,
+        };
+        await saveCurrentAdvisorWorkOrderDraft(submissionDraft);
+        const materialization =
+          await materializeAdvisorWorkOrderDraft(submissionDraft);
+        const { data: createdRow, error: createdError } = await supabase
+          .from("work_orders")
+          .select("*")
+          .eq("id", materialization.workOrderId)
+          .eq("shop_id", shopId)
+          .single();
+        if (createdError || !createdRow) {
+          throw new Error(
+            createdError?.message ?? "Created work order could not be loaded.",
+          );
+        }
+        setWo(createdRow as WorkOrderRow);
+        setDraftLines([]);
+        const scope = getOfflineMutationScope();
+        if (scope) await removeCurrentAdvisorWorkOrderDraft(scope);
+        draftIdentityRef.current = null;
+        return;
+      }
 
       const { data: created, error: rpcErr } = await supabase.rpc(
         "create_work_order_with_custom_id",
@@ -858,6 +1103,9 @@ export default function MobileCreateWorkOrderPage() {
     currentUserId,
     shopId,
     customer,
+    vehicle.id,
+    draftLines,
+    buildAdvisorDraft,
     ensureCustomer,
     ensureVehicle,
     isWaiter,
@@ -920,7 +1168,9 @@ export default function MobileCreateWorkOrderPage() {
                 type="button"
                 onClick={() => void handleWaiterChange(false)}
                 className={`px-3 py-1.5 font-medium transition ${
-                  !isWaiter ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]" : "text-[color:var(--theme-text-secondary)]"
+                  !isWaiter
+                    ? "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]"
+                    : "text-[color:var(--theme-text-secondary)]"
                 }`}
               >
                 Drop-off
@@ -971,6 +1221,7 @@ export default function MobileCreateWorkOrderPage() {
                 supabase={supabase}
                 shopId={shopId}
                 value={customerSearch}
+                offlineRows={offlineCustomers}
                 onPick={(c) => {
                   setCustomer({
                     id: c.id,
@@ -1060,6 +1311,7 @@ export default function MobileCreateWorkOrderPage() {
                 shopId={shopId}
                 customerId={customer.id}
                 value={vehicleSearch}
+                offlineRows={offlineVehicles}
                 onPick={(v) => {
                   setVehicle({
                     id: v.id,
@@ -1266,26 +1518,32 @@ export default function MobileCreateWorkOrderPage() {
                 onDecoded={(decoded) => {
                   const v: DraftVehicleShape = {
                     vin: decoded.vin ?? null,
-                    year: (decoded as unknown as { year?: string | number | null })
-                      .year
+                    year: (
+                      decoded as unknown as { year?: string | number | null }
+                    ).year
                       ? String(
-                          (decoded as unknown as { year?: string | number | null })
-                            .year,
+                          (
+                            decoded as unknown as {
+                              year?: string | number | null;
+                            }
+                          ).year,
                         )
                       : null,
-                    make: (decoded as unknown as { make?: string | null }).make ?? null,
+                    make:
+                      (decoded as unknown as { make?: string | null }).make ??
+                      null,
                     model:
                       (decoded as unknown as { model?: string | null }).model ??
                       null,
                     engine:
-                      (decoded as unknown as { engine?: string | null }).engine ??
-                      null,
+                      (decoded as unknown as { engine?: string | null })
+                        .engine ?? null,
                     fuel_type:
-                      (decoded as unknown as { fuelType?: string | null }).fuelType ??
-                      null,
+                      (decoded as unknown as { fuelType?: string | null })
+                        .fuelType ?? null,
                     drivetrain:
-                      (decoded as unknown as { driveType?: string | null }).driveType ??
-                      null,
+                      (decoded as unknown as { driveType?: string | null })
+                        .driveType ?? null,
                     transmission:
                       (decoded as unknown as { transmission?: string | null })
                         .transmission ?? null,
@@ -1313,6 +1571,22 @@ export default function MobileCreateWorkOrderPage() {
             </div>
           </div>
 
+          {draftRestored && !wo?.id && (
+            <p className="mt-3 rounded-lg border border-sky-500/30 bg-sky-950/30 px-3 py-2 text-[0.7rem] text-sky-100">
+              Restored the unfinished work-order draft saved on this device.
+            </p>
+          )}
+
+          {!wo?.id && (
+            <div className="mt-4">
+              <AdvisorDraftLines
+                lines={draftLines}
+                onChange={setDraftLines}
+                disabled={creatingWo}
+              />
+            </div>
+          )}
+
           {/* Create WO button */}
           {!wo?.id ? (
             <button
@@ -1321,7 +1595,13 @@ export default function MobileCreateWorkOrderPage() {
               onClick={() => void handleCreateWorkOrder()}
               className="mt-4 w-full rounded-full bg-[var(--accent-copper)] py-3 text-sm font-semibold text-[color:var(--theme-text-on-accent)] shadow-[var(--theme-shadow-medium)] transition active:opacity-85 disabled:opacity-60"
             >
-              {creatingWo ? "Creating…" : "Create Work Order"}
+              {creatingWo
+                ? "Creating…"
+                : !online
+                  ? "Save offline draft"
+                  : draftLines.length > 0
+                    ? `Create Work Order + ${draftLines.length} line${draftLines.length === 1 ? "" : "s"}`
+                    : "Create Work Order"}
             </button>
           ) : (
             <p className="mt-4 text-center text-[0.7rem] text-[color:var(--theme-text-secondary)]">
@@ -1363,8 +1643,6 @@ export default function MobileCreateWorkOrderPage() {
                   onCreated={fetchLines}
                 />
               </div>
-
-
             </div>
 
             <button
