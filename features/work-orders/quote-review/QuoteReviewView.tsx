@@ -1,7 +1,7 @@
 // features/work-orders/quote-review/QuoteReviewView.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
@@ -337,6 +337,7 @@ export default function QuoteReviewView(props: {
 
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
+  const loadedOnceRef = useRef(false);
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -370,7 +371,7 @@ export default function QuoteReviewView(props: {
 
     if (woErr) {
       toast.error(woErr.message);
-      if (!loadedOnce) {
+      if (!loadedOnceRef.current) {
         setWo(null);
         setShop(null);
         setCustomer(null);
@@ -489,10 +490,13 @@ export default function QuoteReviewView(props: {
     }
 
     setLoading(false);
+    loadedOnceRef.current = true;
     setLoadedOnce(true);
-  }, [loadedOnce, supabase, woId]);
+  }, [supabase, woId]);
 
   useEffect(() => {
+    loadedOnceRef.current = false;
+    setLoadedOnce(false);
     void reload();
   }, [reload]);
 
