@@ -17,7 +17,7 @@ import {
   runMutationWithOfflineQueue,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
-import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
 import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import {
   removeOfflineBlob,
@@ -445,7 +445,7 @@ export default function MobileFocusedJob(props: {
   }, [workOrderLineId, loadLine, onChanged, loadAllocations]);
 
   const replayOfflineMutations = useCallback(async () => {
-    const result = await replayAllOfflineMutations();
+    const result = await replayAndReconcileOfflineMutations();
     refreshSyncState();
     setStagedPhotos((prev) =>
       prev.filter((photo) => {
@@ -779,17 +779,22 @@ export default function MobileFocusedJob(props: {
     setSavingNotes(true);
     try {
       const mutationId = `${workOrderLineId}:notes:${Date.now()}`;
+      const payload = {
+        workOrderLineId,
+        notes: techNotes,
+        baseUpdatedAt: line?.updated_at ?? null,
+      };
       const result = await runMutationWithOfflineQueue({
         clientMutationId: mutationId,
         actionType: "update_work_order_line_notes",
-        payload: { workOrderLineId, notes: techNotes },
+        payload,
         orderKey: `${workOrderLineId}:001:notes`,
         conflictCheck: () => getLineConflict(workOrderLineId, "notes"),
         runner: async () => {
           await postOfflineServerMutation({
             actionType: "update_work_order_line_notes",
             operationKey: mutationId,
-            payload: { workOrderLineId, notes: techNotes },
+            payload,
           });
         },
       });
@@ -1501,17 +1506,23 @@ export default function MobileFocusedJob(props: {
           }}
           onSaveDraft={async (cause: string, correction: string) => {
             const mutationId = `${line.id}:story:${Date.now()}`;
+            const payload = {
+              lineId: line.id,
+              cause,
+              correction,
+              baseUpdatedAt: line.updated_at,
+            };
             const result = await runMutationWithOfflineQueue({
               clientMutationId: mutationId,
               actionType: "save_story_draft",
-              payload: { lineId: line.id, cause, correction },
+              payload,
               orderKey: `${line.id}:002:story`,
               conflictCheck: () => getLineConflict(line.id, "story"),
               runner: async () => {
                 await postOfflineServerMutation({
                   actionType: "save_story_draft",
                   operationKey: mutationId,
-                  payload: { lineId: line.id, cause, correction },
+                  payload,
                 });
               },
             });
