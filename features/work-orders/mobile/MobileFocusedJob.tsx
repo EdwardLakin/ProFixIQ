@@ -43,6 +43,12 @@ import {
 } from "@/features/work-orders/lib/display/workOrderParts";
 
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
+import {
+  clearTechnicianJobEditorDraftFields,
+  findProjectedTechnicianJob,
+  getTechnicianJobEditorDraft,
+  saveTechnicianJobEditorDraft,
+} from "@/features/work-orders/mobile/technicianOfflineExecution";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -301,14 +307,54 @@ export default function MobileFocusedJob(props: {
     [supabase, loadVehicle, loadCustomer],
   );
 
+  const loadOfflineJob = useCallback(
+    async (id: string): Promise<boolean> => {
+      const scope = getOfflineMutationScope();
+      if (!scope) return false;
+      const cached = await findProjectedTechnicianJob({ scope, lineId: id });
+      if (!cached) return false;
+
+      setLine(cached.line);
+      setWorkOrder(cached.snapshot.workOrder);
+      setVehicle(cached.snapshot.vehicle);
+      setCustomer(cached.snapshot.customer);
+      const editorDraft = await getTechnicianJobEditorDraft({
+        scope,
+        lineId: id,
+      });
+      if (editorDraft?.notes != null) {
+        setTechNotes(editorDraft.notes);
+        setNotesDirty(true);
+      } else if (!notesDirty) {
+        setTechNotes(cached.line.notes ?? "");
+      }
+      if (editorDraft?.cause != null) setPrefillCause(editorDraft.cause);
+      else setPrefillCause(cached.line.cause ?? "");
+      if (editorDraft?.correction != null)
+        setPrefillCorrection(editorDraft.correction);
+      else setPrefillCorrection(cached.line.correction ?? "");
+      return true;
+    },
+    [notesDirty],
+  );
+
   const loadLine = useCallback(
     async (id: string) => {
+      if (!navigator.onLine) {
+        if (!(await loadOfflineJob(id))) {
+          throw new Error("No downloaded copy of this job is available.");
+        }
+        return;
+      }
       const { data: l, error: le } = await supabase
         .from("work_order_lines")
         .select("*")
         .eq("id", id)
         .maybeSingle<WorkOrderLine>();
-      if (le) throw le;
+      if (le) {
+        if (await loadOfflineJob(id)) return;
+        throw le;
+      }
 
       setLine(l ?? null);
 
@@ -319,11 +365,16 @@ export default function MobileFocusedJob(props: {
 
       await loadWorkOrder(l?.work_order_id ?? null);
     },
-    [supabase, loadWorkOrder, notesDirty],
+    [supabase, loadWorkOrder, loadOfflineJob, notesDirty],
   );
 
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
+    if (!navigator.onLine) {
+      setAllocs([]);
+      setRequiredParts([]);
+      return;
+    }
     setAllocsLoading(true);
     try {
       let allocBuilder = supabase
@@ -359,6 +410,27 @@ export default function MobileFocusedJob(props: {
       setAllocsLoading(false);
     }
   }, [supabase, workOrder?.id, workOrder?.shop_id, workOrderLineId]);
+
+  useEffect(() => {
+    if (!notesDirty || !workOrderLineId) return;
+    const scope = getOfflineMutationScope();
+    if (!scope) return;
+    const timer = window.setTimeout(() => {
+      void getTechnicianJobEditorDraft({ scope, lineId: workOrderLineId }).then(
+        (existing) =>
+          saveTechnicianJobEditorDraft({
+            scope,
+            draft: {
+              ...existing,
+              lineId: workOrderLineId,
+              notes: techNotes,
+              updatedAt: new Date().toISOString(),
+            },
+          }),
+      );
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [notesDirty, techNotes, workOrderLineId]);
 
   const refresh = useCallback(async () => {
     if (!workOrderLineId) return;
@@ -728,11 +800,27 @@ export default function MobileFocusedJob(props: {
         return;
       }
       if (result.queued) {
+        const scope = getOfflineMutationScope();
+        if (scope)
+          await clearTechnicianJobEditorDraftFields({
+            scope,
+            lineId: workOrderLineId,
+            fields: ["notes"],
+          });
+        setNotesDirty(false);
+        await loadOfflineJob(workOrderLineId);
         toast.warning("Notes queued for retry when back online.");
         return;
       }
 
       toast.success("Notes saved");
+      const scope = getOfflineMutationScope();
+      if (scope)
+        await clearTechnicianJobEditorDraftFields({
+          scope,
+          lineId: workOrderLineId,
+          fields: ["notes"],
+        });
       setNotesDirty(false);
       await refresh();
     } catch (error) {
@@ -1357,9 +1445,30 @@ export default function MobileFocusedJob(props: {
           lineLabel={lineLabel}
           initialCause={prefillCause}
           initialCorrection={prefillCorrection}
+          onDraftChange={(cause, correction) => {
+            const scope = getOfflineMutationScope();
+            if (!scope) return;
+            void getTechnicianJobEditorDraft({
+              scope,
+              lineId: line.id,
+            }).then((existing) =>
+              saveTechnicianJobEditorDraft({
+                scope,
+                draft: {
+                  ...existing,
+                  lineId: line.id,
+                  cause,
+                  correction,
+                  updatedAt: new Date().toISOString(),
+                },
+              }),
+            );
+          }}
           onSubmit={async (cause: string, correction: string) => {
             try {
-              const conflict = await getLineConflict(line.id, "finish");
+              const conflict = navigator.onLine
+                ? await getLineConflict(line.id, "finish")
+                : null;
               if (conflict) {
                 toast.error(conflict);
                 return;
@@ -1368,6 +1477,13 @@ export default function MobileFocusedJob(props: {
                 cause,
                 correction,
               });
+              const scope = getOfflineMutationScope();
+              if (scope)
+                await clearTechnicianJobEditorDraftFields({
+                  scope,
+                  lineId: line.id,
+                  fields: ["cause", "correction"],
+                });
             } catch (error) {
               return showErr("Complete job failed", error as { message?: string });
             }
@@ -1406,10 +1522,25 @@ export default function MobileFocusedJob(props: {
               return;
             }
             if (result.queued) {
+              const scope = getOfflineMutationScope();
+              if (scope)
+                await clearTechnicianJobEditorDraftFields({
+                  scope,
+                  lineId: line.id,
+                  fields: ["cause", "correction"],
+                });
+              await loadOfflineJob(line.id);
               toast.warning("Story queued for sync when back online.");
               return;
             }
 
+            const scope = getOfflineMutationScope();
+            if (scope)
+              await clearTechnicianJobEditorDraftFields({
+                scope,
+                lineId: line.id,
+                fields: ["cause", "correction"],
+              });
             toast.success("Story saved");
             await refresh();
           }}

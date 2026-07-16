@@ -39,10 +39,11 @@ import {
   setOfflineMutationScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
+import { saveOfflineSnapshot } from "@/features/shared/lib/offline/database";
 import {
-  getOfflineSnapshot,
-  saveOfflineSnapshot,
-} from "@/features/shared/lib/offline/database";
+  loadProjectedWorkOrderSnapshot,
+  type MobileWorkOrderSnapshot,
+} from "@/features/work-orders/mobile/technicianOfflineExecution";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -54,15 +55,6 @@ type WorkOrderQuoteLine =
 type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
 };
-type MobileWorkOrderSnapshot = {
-  workOrder: WorkOrder;
-  lines: WorkOrderLine[];
-  quoteLines: WorkOrderQuoteLine[];
-  vehicle: Vehicle | null;
-  customer: Customer | null;
-  techNamesById: Record<string, string>;
-};
-
 // 🔹 Extra metadata shape for inspection template ids (mirrors desktop logic)
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   inspection_template_id?: string | null;
@@ -334,18 +326,17 @@ export default function MobileWorkOrderClient({
       const scope = currentUserId && shopId ? { userId: currentUserId, shopId } : null;
       const loadCached = async (): Promise<boolean> => {
         if (!scope) return false;
-        const cached = await getOfflineSnapshot<MobileWorkOrderSnapshot>({
+        const cached = await loadProjectedWorkOrderSnapshot({
           scope,
-          kind: "mobile-work-order-detail",
           entityId: routeId,
         });
         if (!cached) return false;
-        setWo(cached.data.workOrder);
-        setLines(cached.data.lines);
-        setQuoteLines(cached.data.quoteLines);
-        setVehicle(cached.data.vehicle);
-        setCustomer(cached.data.customer);
-        setTechNamesById(cached.data.techNamesById);
+        setWo(cached.workOrder);
+        setLines(cached.lines);
+        setQuoteLines(cached.quoteLines);
+        setVehicle(cached.vehicle);
+        setCustomer(cached.customer);
+        setTechNamesById(cached.techNamesById);
         setViewError("Offline copy · changes may be newer on the server.");
         return true;
       };
@@ -492,7 +483,7 @@ export default function MobileWorkOrderClient({
           ),
         );
 
-        let techMap: Record<string, string> = {};
+        const techMap: Record<string, string> = {};
         if (techIds.length > 0) {
           const { data: techProfiles, error: techErr } = await supabase
             .from("profiles")
@@ -578,6 +569,11 @@ export default function MobileWorkOrderClient({
   useEffect(() => {
     if (!routeId || !currentUserId) return;
     void fetchAll();
+  }, [fetchAll, routeId, currentUserId]);
+
+  useEffect(() => {
+    if (!routeId || !currentUserId) return;
+    return subscribeOfflineMutations(() => void fetchAll());
   }, [fetchAll, routeId, currentUserId]);
 
   /* ---------------------- REALTIME ---------------------- */

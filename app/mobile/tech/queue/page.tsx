@@ -668,7 +668,9 @@ export default function MobileTechQueuePage() {
 
             // ✅ always use UUID route (mobile expects UUID)
             const woId = wo?.id ?? line.work_order_id ?? "";
-            const href = woId ? `/mobile/work-orders/${woId}?mode=tech` : "";
+            const href = woId
+              ? `/mobile/work-orders/${woId}?mode=tech&focus=${line.id}`
+              : "";
 
             return (
               <button

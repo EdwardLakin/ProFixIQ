@@ -11,6 +11,32 @@ import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/tech
 
 const BUNDLE_KIND = "technician-assigned-work";
 const BUNDLE_ID = "current";
+const TECHNICIAN_SHELL_CACHE = "profixiq-technician-shell-v1";
+
+async function cacheTechnicianRouteShells(
+  bundle: TechnicianOfflineBundle,
+): Promise<void> {
+  if (typeof caches === "undefined" || !navigator.serviceWorker?.controller)
+    return;
+  const cache = await caches.open(TECHNICIAN_SHELL_CACHE);
+  const urls = bundle.workOrders.flatMap((item) => [
+    `/mobile/work-orders/${item.workOrder.id}?mode=tech`,
+    ...item.assignedLineIds.map(
+      (lineId) =>
+        `/mobile/work-orders/${item.workOrder.id}?mode=tech&focus=${lineId}`,
+    ),
+    ...item.assignedLineIds.map((lineId) => `/mobile/jobs/${lineId}`),
+  ]);
+  await Promise.all(
+    urls.map(async (url) => {
+      const response = await fetch(url, {
+        credentials: "include",
+        headers: { Accept: "text/html" },
+      });
+      if (response.ok) await cache.put(url, response.clone());
+    }),
+  );
+}
 
 export async function cacheTechnicianOfflineBundle(
   bundle: TechnicianOfflineBundle,
@@ -90,6 +116,7 @@ export async function downloadAssignedTechnicianWork(args: {
     throw new Error("Downloaded work does not match the active user and shop.");
   }
   await cacheTechnicianOfflineBundle(result);
+  await cacheTechnicianRouteShells(result);
   return result;
 }
 
