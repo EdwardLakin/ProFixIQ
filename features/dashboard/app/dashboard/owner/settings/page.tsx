@@ -3,7 +3,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
@@ -26,7 +25,14 @@ import OwnerSettingsOperationsSection from "@/features/dashboard/components/owne
 import OwnerAiAutomationSection from "@/features/dashboard/components/owner-settings/OwnerAiAutomationSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
-import { OwnerSettingsPanel, OwnerSettingsSectionIntro, OwnerSettingsStat } from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
+import OwnerSettingsNavigation, {
+  ownerSettingsSectionLabel,
+  type OwnerSettingsSectionId,
+} from "@/features/dashboard/components/owner-settings/OwnerSettingsNavigation";
+import {
+  OwnerSettingsPanel,
+  OwnerSettingsStat,
+} from "@/features/dashboard/components/owner-settings/OwnerSettingsPanels";
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
@@ -35,7 +41,10 @@ import {
   parseStripeSubscriptionStatus,
   type StripeSubscriptionStatusWithUnknown,
 } from "@/features/stripe/lib/stripe/subscriptionStatus";
-import { normalizeCanonicalPlan, type CanonicalPlan } from "@/features/stripe/lib/stripe/plan-normalization";
+import {
+  normalizeCanonicalPlan,
+  type CanonicalPlan,
+} from "@/features/stripe/lib/stripe/plan-normalization";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { applyThemePreference } from "@/features/shared/lib/theme";
 
@@ -78,7 +87,10 @@ type StripeSubStatus = StripeSubscriptionStatusWithUnknown;
 
 type ShopBillingScope = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
-  "stripe_subscription_status" | "stripe_trial_end" | "stripe_current_period_end" | "stripe_account_id"
+  | "stripe_subscription_status"
+  | "stripe_trial_end"
+  | "stripe_current_period_end"
+  | "stripe_account_id"
 >;
 
 type StripeSubscriptionApiResponse = {
@@ -123,7 +135,12 @@ type OrgScope = Pick<
 
 type ShopLocationRow = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
-  "id" | "shop_name" | "name" | "city" | "province" | "stripe_subscription_status"
+  | "id"
+  | "shop_name"
+  | "name"
+  | "city"
+  | "province"
+  | "stripe_subscription_status"
 > & {
   organization_id?: string | null;
 };
@@ -137,9 +154,6 @@ const PLAN_LIMITS: Record<Exclude<PlanName, "unknown">, number | null> = {
   pro: 50,
   unlimited: null,
 };
-
-
-
 
 function parsePlan(v: unknown): PlanName {
   const canonical = normalizeCanonicalPlan(v);
@@ -171,7 +185,10 @@ function formatDate(iso: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function formatLocationLine(s: { city: string | null; province: string | null }) {
+function formatLocationLine(s: {
+  city: string | null;
+  province: string | null;
+}) {
   const city = (s.city ?? "").trim();
   const prov = (s.province ?? "").trim();
   if (!city && !prov) return "—";
@@ -183,6 +200,35 @@ function locationName(s: { shop_name?: string | null; name?: string | null }) {
   return (s.shop_name ?? s.name ?? "").trim() || "Untitled location";
 }
 
+const SETTINGS_HASH_MAP: Record<string, OwnerSettingsSectionId> = {
+  "settings-overview": "overview",
+  "settings-business": "business",
+  "settings-operations": "operations",
+  "settings-automation": "automation",
+  "settings-scheduling": "scheduling",
+  "settings-communications": "communications",
+  "settings-integrations": "integrations",
+  "settings-organization": "organization",
+  "settings-billing": "billing",
+  "shop-info": "business",
+  "operations-defaults": "operations",
+  "workflow-automation": "operations",
+  "customer-portal-enrollment": "operations",
+  "appearance-mode": "operations",
+  "pricing-validity": "operations",
+  "ai-automation-controls": "automation",
+  "hours-settings": "scheduling",
+  "timeoff-settings": "scheduling",
+  "payroll-timekeeping": "scheduling",
+  "communication-branding": "communications",
+  "email-activity": "communications",
+  "quickbooks-integration": "integrations",
+  "billing-stripe": "billing",
+};
+
+function sectionFromHash(hash: string): OwnerSettingsSectionId {
+  return SETTINGS_HASH_MAP[hash.replace(/^#/, "")] ?? "overview";
+}
 
 export default function OwnerSettingsPage() {
   const router = useRouter();
@@ -194,6 +240,10 @@ export default function OwnerSettingsPage() {
   const [ownerName, setOwnerName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerAvatarUrl, setOwnerAvatarUrl] = useState<string | null>(null);
+  const [ownerRole, setOwnerRole] = useState("owner");
+  const [activeSection, setActiveSection] =
+    useState<OwnerSettingsSectionId>("overview");
+  const [coreDirty, setCoreDirty] = useState(false);
 
   // Current active shop
   const [shopId, setShopId] = useState<string | null>(null);
@@ -205,7 +255,8 @@ export default function OwnerSettingsPage() {
 
   // Billing status (for badge deep-link)
   const [subStatus, setSubStatus] = useState<StripeSubStatus>("unknown");
-  const [billingDisplayStatus, setBillingDisplayStatus] = useState<BillingDisplayStatus>("unknown");
+  const [billingDisplayStatus, setBillingDisplayStatus] =
+    useState<BillingDisplayStatus>("unknown");
   const [trialEndIso, setTrialEndIso] = useState<string | null>(null);
   const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
   const [stripeAccountId, setStripeAccountId] = useState<string | null>(null);
@@ -223,7 +274,9 @@ export default function OwnerSettingsPage() {
   // ✅ Plan + seats (Starter/Pro limited)
   const [plan, setPlan] = useState<PlanName>("unknown");
   const [seatsUsed, setSeatsUsed] = useState<number>(0);
-  const [seatsLimit, setSeatsLimit] = useState<number | null>(planSeatLimit("unknown"));
+  const [seatsLimit, setSeatsLimit] = useState<number | null>(
+    planSeatLimit("unknown"),
+  );
 
   // PIN modal + timer
   const [pinModalOpen, setPinModalOpen] = useState(false);
@@ -247,7 +300,9 @@ export default function OwnerSettingsPage() {
   // Money / defaults
   const [laborRate, setLaborRate] = useState("");
   const [suppliesEnabled, setSuppliesEnabled] = useState(false);
-  const [suppliesType, setSuppliesType] = useState<"percentage" | "flat">("percentage");
+  const [suppliesType, setSuppliesType] = useState<"percentage" | "flat">(
+    "percentage",
+  );
   const [suppliesPercent, setSuppliesPercent] = useState("");
   const [suppliesFlatAmount, setSuppliesFlatAmount] = useState("");
   const [suppliesCapAmount, setSuppliesCapAmount] = useState("");
@@ -266,7 +321,9 @@ export default function OwnerSettingsPage() {
   // Automation
   const [autoGeneratePdf, setAutoGeneratePdf] = useState(false);
   const [autoSendQuoteEmail, setAutoSendQuoteEmail] = useState(false);
-  const [appearanceMode, setAppearanceMode] = useState<"dark" | "light" | "system">("dark");
+  const [appearanceMode, setAppearanceMode] = useState<
+    "dark" | "light" | "system"
+  >("dark");
   const [appearanceSaving, setAppearanceSaving] = useState(false);
 
   // Pricing validity
@@ -287,6 +344,7 @@ export default function OwnerSettingsPage() {
   const [newOffStart, setNewOffStart] = useState("");
   const [newOffEnd, setNewOffEnd] = useState("");
   const [newOffReason, setNewOffReason] = useState("");
+  const [hoursDirty, setHoursDirty] = useState(false);
 
   const [payrollSettings, setPayrollSettings] = useState({
     paid_breaks_per_day: 2,
@@ -301,6 +359,7 @@ export default function OwnerSettingsPage() {
     week_starts_on: 1,
   });
   const [payrollSettingsSaving, setPayrollSettingsSaving] = useState(false);
+  const [payrollDirty, setPayrollDirty] = useState(false);
 
   const [emailLogs, setEmailLogs] = useState<EmailLogRow[]>([]);
   const [emailLogsLoading, setEmailLogsLoading] = useState(false);
@@ -308,7 +367,9 @@ export default function OwnerSettingsPage() {
   const fetchEmailLogs = useCallback(async () => {
     try {
       setEmailLogsLoading(true);
-      const res = await fetch("/api/email/logs?limit=25", { cache: "no-store" });
+      const res = await fetch("/api/email/logs?limit=25", {
+        cache: "no-store",
+      });
       if (!res.ok) return;
 
       const j = await res.json();
@@ -326,13 +387,40 @@ export default function OwnerSettingsPage() {
   const selectClass =
     "w-full rounded-md border border-border bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] shadow-inner outline-none transition focus:border-[color:var(--theme-border-soft)] focus:ring-1 focus:ring-[color:var(--theme-border-strong)] disabled:opacity-50";
   const labelClass = "text-xs text-[color:var(--theme-text-secondary)]";
-  const navChipClass =
-    "inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-inset)] hover:text-[color:var(--theme-text-primary)]";
+
+  useEffect(() => {
+    const syncHash = () =>
+      setActiveSection(sectionFromHash(window.location.hash));
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+
+  const changeSection = useCallback((section: OwnerSettingsSectionId) => {
+    setActiveSection(section);
+    window.history.replaceState(null, "", `#settings-${section}`);
+    window.requestAnimationFrame(() => {
+      document.getElementById("owner-settings-content")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      if (!coreDirty && !hoursDirty && !payrollDirty) return;
+      event.preventDefault();
+    };
+
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [coreDirty, hoursDirty, payrollDirty]);
 
   const isUnlocked = useMemo(() => {
     if (!pinExpiresAt) return false;
@@ -354,6 +442,19 @@ export default function OwnerSettingsPage() {
     return true;
   };
 
+  const updatePayrollSettings = (update: Partial<typeof payrollSettings>) => {
+    setPayrollSettings((previous) => ({ ...previous, ...update }));
+    setPayrollDirty(true);
+  };
+
+  const updateHours = useCallback(
+    (updater: (previous: HourRow[]) => HourRow[]) => {
+      setHours((previous) => updater(previous));
+      setHoursDirty(true);
+    },
+    [],
+  );
+
   async function savePayrollSettings() {
     if (!guardUnlock()) return;
     setPayrollSettingsSaving(true);
@@ -369,10 +470,15 @@ export default function OwnerSettingsPage() {
       return;
     }
     setPayrollSettings((prev) => ({ ...prev, ...(body?.settings ?? {}) }));
+    setPayrollDirty(false);
     toast.success("Payroll & timekeeping settings saved.");
   }
 
-  const maybeToastSeatInfo = (used: number, limit: number | null, p: PlanName) => {
+  const maybeToastSeatInfo = (
+    used: number,
+    limit: number | null,
+    p: PlanName,
+  ) => {
     if (limit == null) return;
 
     if (used >= limit) {
@@ -384,7 +490,9 @@ export default function OwnerSettingsPage() {
 
     const pct = limit > 0 ? used / limit : 0;
     if (pct >= 0.9) {
-      toast.warning(`Approaching user limit (${used}/${limit}) on ${planLabel(p)}.`);
+      toast.warning(
+        `Approaching user limit (${used}/${limit}) on ${planLabel(p)}.`,
+      );
     }
   };
 
@@ -392,30 +500,42 @@ export default function OwnerSettingsPage() {
     async (sid: string) => {
       const { data: billing } = await supabase
         .from("shops")
-        .select("plan, stripe_subscription_status, stripe_trial_end, stripe_current_period_end, stripe_account_id")
+        .select(
+          "plan, stripe_subscription_status, stripe_trial_end, stripe_current_period_end, stripe_account_id",
+        )
         .eq("id", sid)
         .maybeSingle<
-          ShopBillingScope & Pick<Database["public"]["Tables"]["shops"]["Row"], "plan">
+          ShopBillingScope &
+            Pick<Database["public"]["Tables"]["shops"]["Row"], "plan">
         >();
 
       setStripeAccountId((billing?.stripe_account_id as string | null) ?? null);
       const planSignal = parsePlan((billing?.plan as string | null) ?? null);
-      const shopStatus = parseStripeSubscriptionStatus(billing?.stripe_subscription_status);
+      const shopStatus = parseStripeSubscriptionStatus(
+        billing?.stripe_subscription_status,
+      );
       const shopTrialEnd = (billing?.stripe_trial_end as string | null) ?? null;
-      const shopPeriodEnd = (billing?.stripe_current_period_end as string | null) ?? null;
+      const shopPeriodEnd =
+        (billing?.stripe_current_period_end as string | null) ?? null;
 
       try {
         const res = await fetch("/api/stripe/subscription", {
           method: "GET",
           cache: "no-store",
         });
-        const j = (await res.json().catch(() => ({}))) as StripeSubscriptionApiResponse;
+        const j = (await res
+          .json()
+          .catch(() => ({}))) as StripeSubscriptionApiResponse;
 
         if (!res.ok) {
           setSubStatus(shopStatus);
           setTrialEndIso(shopTrialEnd);
           setPeriodEndIso(shopPeriodEnd);
-          setBillingDisplayStatus(planSignal !== "unknown" && shopStatus === "unknown" ? "sync_needed" : shopStatus);
+          setBillingDisplayStatus(
+            planSignal !== "unknown" && shopStatus === "unknown"
+              ? "sync_needed"
+              : shopStatus,
+          );
           setCancelAtPeriodEnd(false);
           return;
         }
@@ -465,7 +585,11 @@ export default function OwnerSettingsPage() {
         setSubStatus(shopStatus);
         setTrialEndIso(shopTrialEnd);
         setPeriodEndIso(shopPeriodEnd);
-        setBillingDisplayStatus(planSignal !== "unknown" && shopStatus === "unknown" ? "sync_needed" : shopStatus);
+        setBillingDisplayStatus(
+          planSignal !== "unknown" && shopStatus === "unknown"
+            ? "sync_needed"
+            : shopStatus,
+        );
         setCancelAtPeriodEnd(false);
       }
     },
@@ -514,7 +638,10 @@ export default function OwnerSettingsPage() {
     setOwnerName(profile.full_name ?? "");
     setOwnerEmail(profile.email ?? "");
     setOwnerAvatarUrl(profile.avatar_url ?? null);
-    setCanManageBilling(getActorCapabilities({ role: profile.role }).canManageBilling);
+    setOwnerRole(profile.role?.trim().toLowerCase() || "owner");
+    setCanManageBilling(
+      getActorCapabilities({ role: profile.role }).canManageBilling,
+    );
 
     const sid = profile.shop_id;
     setShopId(sid);
@@ -535,21 +662,21 @@ export default function OwnerSettingsPage() {
 
     // Seats used = # of profiles in this shop
     // Seats used = # of profiles in this shop (use server route so RLS doesn't force 1)
-try {
-  const res = await fetch("/api/admin/user-count", { cache: "no-store" });
+    try {
+      const res = await fetch("/api/admin/user-count", { cache: "no-store" });
 
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    console.warn("[OwnerSettings] user-count failed", res.status, t);
-  } else {
-    const j = (await res.json()) as { count?: number };
-    const used = typeof j.count === "number" ? j.count : 0;
-    setSeatsUsed(used);
-    maybeToastSeatInfo(used, planSeatLimit(resolvedPlan), resolvedPlan);
-  }
-} catch (e) {
-  console.warn("[OwnerSettings] user-count exception", e);
-}
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        console.warn("[OwnerSettings] user-count failed", res.status, t);
+      } else {
+        const j = (await res.json()) as { count?: number };
+        const used = typeof j.count === "number" ? j.count : 0;
+        setSeatsUsed(used);
+        maybeToastSeatInfo(used, planSeatLimit(resolvedPlan), resolvedPlan);
+      }
+    } catch (e) {
+      console.warn("[OwnerSettings] user-count exception", e);
+    }
 
     if (shop) {
       const resolvedShopName =
@@ -575,22 +702,60 @@ try {
 
       setTimezone((shop.timezone as string | null) || "America/New_York");
 
-      setLaborRate(typeof shop.labor_rate === "number" ? String(shop.labor_rate) : "");
-      setSuppliesEnabled(Boolean((shop as { shop_supplies_enabled?: boolean | null }).shop_supplies_enabled ?? (typeof shop.supplies_percent === "number" && shop.supplies_percent > 0)));
-      setSuppliesType((shop as { shop_supplies_type?: string | null }).shop_supplies_type === "flat" ? "flat" : "percentage");
+      setLaborRate(
+        typeof shop.labor_rate === "number" ? String(shop.labor_rate) : "",
+      );
+      setSuppliesEnabled(
+        Boolean(
+          (shop as { shop_supplies_enabled?: boolean | null })
+            .shop_supplies_enabled ??
+          (typeof shop.supplies_percent === "number" &&
+            shop.supplies_percent > 0),
+        ),
+      );
+      setSuppliesType(
+        (shop as { shop_supplies_type?: string | null }).shop_supplies_type ===
+          "flat"
+          ? "flat"
+          : "percentage",
+      );
       setSuppliesPercent(
-        typeof (shop as { shop_supplies_percent?: number | null }).shop_supplies_percent === "number"
-          ? String((shop as { shop_supplies_percent?: number }).shop_supplies_percent)
+        typeof (shop as { shop_supplies_percent?: number | null })
+          .shop_supplies_percent === "number"
+          ? String(
+              (shop as { shop_supplies_percent?: number })
+                .shop_supplies_percent,
+            )
           : typeof shop.supplies_percent === "number"
             ? String(shop.supplies_percent)
             : "",
       );
-      setSuppliesFlatAmount(typeof (shop as { shop_supplies_flat_amount?: number | null }).shop_supplies_flat_amount === "number" ? String((shop as { shop_supplies_flat_amount?: number }).shop_supplies_flat_amount) : "");
-      setSuppliesCapAmount(typeof (shop as { shop_supplies_cap_amount?: number | null }).shop_supplies_cap_amount === "number" ? String((shop as { shop_supplies_cap_amount?: number }).shop_supplies_cap_amount) : "");
-      setDiagnosticFee(
-        typeof shop.diagnostic_fee === "number" ? String(shop.diagnostic_fee) : "",
+      setSuppliesFlatAmount(
+        typeof (shop as { shop_supplies_flat_amount?: number | null })
+          .shop_supplies_flat_amount === "number"
+          ? String(
+              (shop as { shop_supplies_flat_amount?: number })
+                .shop_supplies_flat_amount,
+            )
+          : "",
       );
-      setTaxRate(typeof shop.tax_rate === "number" ? String(shop.tax_rate) : "");
+      setSuppliesCapAmount(
+        typeof (shop as { shop_supplies_cap_amount?: number | null })
+          .shop_supplies_cap_amount === "number"
+          ? String(
+              (shop as { shop_supplies_cap_amount?: number })
+                .shop_supplies_cap_amount,
+            )
+          : "",
+      );
+      setDiagnosticFee(
+        typeof shop.diagnostic_fee === "number"
+          ? String(shop.diagnostic_fee)
+          : "",
+      );
+      setTaxRate(
+        typeof shop.tax_rate === "number" ? String(shop.tax_rate) : "",
+      );
 
       setRequireCauseCorrection(!!shop.require_cause_correction);
       setRequireAuthorization(!!shop.require_authorization);
@@ -612,7 +777,10 @@ try {
         cache: "no-store",
       });
       if (pricingRes.ok) {
-        const pricingJson = (await pricingRes.json()) as { ok?: boolean; days?: number };
+        const pricingJson = (await pricingRes.json()) as {
+          ok?: boolean;
+          days?: number;
+        };
         if (pricingJson?.ok && typeof pricingJson.days === "number") {
           setPricingValidDays(pricingJson.days);
         }
@@ -624,10 +792,14 @@ try {
     }
 
     try {
-      const payrollRes = await fetch("/api/payroll-time/settings", { cache: "no-store" });
+      const payrollRes = await fetch("/api/payroll-time/settings", {
+        cache: "no-store",
+      });
       if (payrollRes.ok) {
         const payrollJson = await payrollRes.json();
-        if (payrollJson?.settings) setPayrollSettings((prev) => ({ ...prev, ...payrollJson.settings }));
+        if (payrollJson?.settings)
+          setPayrollSettings((prev) => ({ ...prev, ...payrollJson.settings }));
+        setPayrollDirty(false);
       }
     } catch {
       // ignore payroll settings bootstrap failures; section can be reloaded independently
@@ -635,7 +807,9 @@ try {
 
     // Organization + Locations
     const resolvedOrgId =
-      (shop?.organization_id as string | null) ?? profile.organization_id ?? null;
+      (shop?.organization_id as string | null) ??
+      profile.organization_id ??
+      null;
 
     setOrgId(resolvedOrgId);
 
@@ -665,7 +839,9 @@ try {
 
     // hours
     try {
-      const res = await fetch(`/api/settings/hours?shopId=${sid}`, { cache: "no-store" });
+      const res = await fetch(`/api/settings/hours?shopId=${sid}`, {
+        cache: "no-store",
+      });
       if (res.ok) {
         const j = await res.json();
         if (Array.isArray(j?.hours)) {
@@ -676,9 +852,15 @@ try {
           const normalized = Array.from({ length: 7 }, (_, i) => {
             const existing = byDay.get(i);
             if (existing) return existing;
-            return { weekday: i, open_time: "08:00", close_time: "17:00", closed: true };
+            return {
+              weekday: i,
+              open_time: "08:00",
+              close_time: "17:00",
+              closed: true,
+            };
           });
           setHours(normalized);
+          setHoursDirty(false);
         }
       }
     } catch {
@@ -687,7 +869,9 @@ try {
 
     // time off
     try {
-      const res = await fetch(`/api/settings/time-off?shopId=${sid}`, { cache: "no-store" });
+      const res = await fetch(`/api/settings/time-off?shopId=${sid}`, {
+        cache: "no-store",
+      });
       if (res.ok) {
         const j = await res.json();
         if (Array.isArray(j?.items)) setTimeOff(j.items);
@@ -700,13 +884,21 @@ try {
     await fetchEmailLogs();
 
     try {
-      const prefRes = await fetch("/api/branding/user-preferences", { cache: "no-store" });
+      const prefRes = await fetch("/api/branding/user-preferences", {
+        cache: "no-store",
+      });
       if (prefRes.ok) {
         const prefJson = (await prefRes.json().catch(() => ({}))) as {
           preferences?: { theme_mode?: string | null } | null;
         };
-        const nextMode = String(prefJson?.preferences?.theme_mode ?? "dark").toLowerCase();
-        if (nextMode === "light" || nextMode === "system" || nextMode === "dark") {
+        const nextMode = String(
+          prefJson?.preferences?.theme_mode ?? "dark",
+        ).toLowerCase();
+        if (
+          nextMode === "light" ||
+          nextMode === "system" ||
+          nextMode === "dark"
+        ) {
           setAppearanceMode(nextMode);
         }
       }
@@ -714,6 +906,7 @@ try {
       // ignore
     }
 
+    setCoreDirty(false);
     setLoading(false);
   }, [supabase, fetchEmailLogs, refreshBillingState]);
 
@@ -722,7 +915,7 @@ try {
     void fetchSettings();
   }, [fetchSettings]);
 
-    const handleSave = async () => {
+  const handleSave = async () => {
     if (!shopId) return;
     if (!guardUnlock()) return;
 
@@ -744,12 +937,21 @@ try {
         logo_url: logoUrl,
 
         labor_rate: laborRate ? parseFloat(laborRate) : null,
-        supplies_percent: suppliesType === "percentage" && suppliesPercent ? parseFloat(suppliesPercent) : null,
+        supplies_percent:
+          suppliesType === "percentage" && suppliesPercent
+            ? parseFloat(suppliesPercent)
+            : null,
         shop_supplies_enabled: suppliesEnabled,
         shop_supplies_type: suppliesType,
-        shop_supplies_percent: suppliesPercent ? parseFloat(suppliesPercent) : null,
-        shop_supplies_flat_amount: suppliesFlatAmount ? parseFloat(suppliesFlatAmount) : null,
-        shop_supplies_cap_amount: suppliesCapAmount ? parseFloat(suppliesCapAmount) : null,
+        shop_supplies_percent: suppliesPercent
+          ? parseFloat(suppliesPercent)
+          : null,
+        shop_supplies_flat_amount: suppliesFlatAmount
+          ? parseFloat(suppliesFlatAmount)
+          : null,
+        shop_supplies_cap_amount: suppliesCapAmount
+          ? parseFloat(suppliesCapAmount)
+          : null,
         diagnostic_fee: diagnosticFee ? parseFloat(diagnosticFee) : null,
         tax_rate: taxRate ? parseFloat(taxRate) : null,
 
@@ -777,7 +979,8 @@ try {
       return;
     }
 
-    toast.success("Settings saved.");
+    setCoreDirty(false);
+    toast.success("Core shop settings saved.");
   };
 
   const handleLogoUpload = async (e: FileInputChangeEvent) => {
@@ -796,11 +999,8 @@ try {
 
     const { data } = supabase.storage.from("logos").getPublicUrl(filePath);
     setLogoUrl(data.publicUrl);
+    setCoreDirty(true);
     toast.success("Logo uploaded.");
-  };
-
-  const handleGenerateLogo = () => {
-    toast.info("AI Logo generation coming soon…");
   };
 
   const savePricingValidDays = async () => {
@@ -814,7 +1014,9 @@ try {
         body: JSON.stringify({ days: pricingValidDays }),
       });
 
-      const j = await res.json().catch(() => ({} as { ok?: boolean; days?: number; error?: string }));
+      const j = await res
+        .json()
+        .catch(() => ({}) as { ok?: boolean; days?: number; error?: string });
       if (!res.ok || !j?.ok) {
         toast.error(j?.error || "Failed to save pricing validity window");
         return;
@@ -839,7 +1041,10 @@ try {
         body: JSON.stringify({ themeMode: nextMode }),
       });
 
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
       if (!res.ok || !json?.ok) {
         toast.error(json?.error || "Failed to save appearance mode");
         return;
@@ -871,6 +1076,7 @@ try {
       toast.error(j?.error || "Failed to save hours");
       return;
     }
+    setHoursDirty(false);
     toast.success("Hours updated.");
   };
 
@@ -961,9 +1167,12 @@ try {
         headers: { "Content-Type": "application/json" },
       });
 
-      const j = await res.json().catch(
-        () => ({} as { ok?: boolean; error?: string; onboardingUrl?: string }),
-      );
+      const j = await res
+        .json()
+        .catch(
+          () =>
+            ({}) as { ok?: boolean; error?: string; onboardingUrl?: string },
+        );
 
       if (res.ok && j?.ok && j?.onboardingUrl) {
         window.location.href = j.onboardingUrl;
@@ -977,7 +1186,11 @@ try {
         message.toLowerCase().includes("dashboard.stripe.com/connect")
       ) {
         toast.info("Opening Stripe Connect setup…");
-        window.open("https://dashboard.stripe.com/connect", "_blank", "noopener,noreferrer");
+        window.open(
+          "https://dashboard.stripe.com/connect",
+          "_blank",
+          "noopener,noreferrer",
+        );
         return;
       }
 
@@ -998,9 +1211,9 @@ try {
         headers: { "Content-Type": "application/json" },
       });
 
-      const j = await res.json().catch(
-        () => ({} as { ok?: boolean; error?: string; url?: string }),
-      );
+      const j = await res
+        .json()
+        .catch(() => ({}) as { ok?: boolean; error?: string; url?: string });
 
       if (res.ok && j?.ok && j?.url) {
         window.location.href = j.url;
@@ -1014,7 +1227,9 @@ try {
         message.toLowerCase().includes("no billing portal") ||
         message.toLowerCase().includes("not configured")
       ) {
-        toast.error("Billing portal is not available yet. Complete subscription checkout first.");
+        toast.error(
+          "Billing portal is not available yet. Complete subscription checkout first.",
+        );
         return;
       }
 
@@ -1038,22 +1253,32 @@ try {
         body: JSON.stringify({
           planKey: selectedPlan,
           shopId,
-          successPath: "/dashboard/owner/settings#billing",
-          cancelPath: "/dashboard/owner/settings#billing",
+          successPath: "/dashboard/owner/settings#billing-stripe",
+          cancelPath: "/dashboard/owner/settings#billing-stripe",
           enableTrial: subStatus !== "active" && subStatus !== "trialing",
         }),
       });
 
-      const j = await res.json().catch(
-        () => ({} as { ok?: boolean; error?: string; details?: string; url?: string }),
-      );
+      const j = await res
+        .json()
+        .catch(
+          () =>
+            ({}) as {
+              ok?: boolean;
+              error?: string;
+              details?: string;
+              url?: string;
+            },
+        );
 
       if (res.ok && j?.ok && j?.url) {
         window.location.href = j.url;
         return;
       }
 
-      const message = String(j?.error ?? j?.details ?? "Failed to start checkout");
+      const message = String(
+        j?.error ?? j?.details ?? "Failed to start checkout",
+      );
 
       if (message.toLowerCase().includes("no active stripe price found")) {
         toast.error(
@@ -1129,7 +1354,9 @@ try {
         headers: { "Content-Type": "application/json" },
       });
 
-      const j = (await res.json().catch(() => ({}))) as StripeSubscriptionApiResponse;
+      const j = (await res
+        .json()
+        .catch(() => ({}))) as StripeSubscriptionApiResponse;
 
       if (!res.ok) {
         toast.error(j?.error || "Failed to schedule cancellation.");
@@ -1146,16 +1373,17 @@ try {
       setCancelDialogOpen(false);
 
       await refreshBillingState(shopId);
-      toast.success("Cancellation scheduled for the end of the current billing period.");
+      toast.success(
+        "Cancellation scheduled for the end of the current billing period.",
+      );
     } finally {
       setCancelLoading(false);
     }
   };
 
-
   const lockOwnerSettings = async () => {
     const res = await fetch("/api/shop/owner-pin/clear", { method: "POST" });
-    const j = await res.json().catch(() => ({} as { error?: string }));
+    const j = await res.json().catch(() => ({}) as { error?: string });
     if (!res.ok) {
       toast.error(j?.error || "Failed to lock owner settings");
       return;
@@ -1164,10 +1392,24 @@ try {
     toast.success("Owner settings locked.");
   };
 
-
   if (loading) {
     return (
-      <div className="p-6 text-muted-foreground">Loading shop settings…</div>
+      <div
+        className="mx-auto max-w-[1600px] animate-pulse space-y-5 p-4 sm:p-5 lg:p-6"
+        aria-label="Loading shop settings"
+      >
+        <div className="h-28 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+        <div className="grid gap-5 xl:grid-cols-[230px_minmax(0,1fr)_340px]">
+          <div className="h-[520px] rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+          <div className="space-y-4">
+            <div className="h-16 rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
+            <div className="h-56 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+            <div className="h-48 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+          </div>
+          <div className="h-72 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+        </div>
+        <span className="sr-only">Loading shop settings…</span>
+      </div>
     );
   }
 
@@ -1177,7 +1419,9 @@ try {
 
     if (billingDisplayStatus === "linkage_needed") {
       return (
-        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+        <span
+          className={`${base} border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-200`}
+        >
           Linkage needed
         </span>
       );
@@ -1185,7 +1429,9 @@ try {
 
     if (billingDisplayStatus === "subscription_found_not_linked") {
       return (
-        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+        <span
+          className={`${base} border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-200`}
+        >
           Subscription found, link required
         </span>
       );
@@ -1193,7 +1439,9 @@ try {
 
     if (billingDisplayStatus === "ambiguous_customer_subscriptions") {
       return (
-        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+        <span
+          className={`${base} border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-200`}
+        >
           Ambiguous subscriptions
         </span>
       );
@@ -1201,7 +1449,9 @@ try {
 
     if (billingDisplayStatus === "no_subscription_found") {
       return (
-        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+        <span
+          className={`${base} border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-200`}
+        >
           No subscription found
         </span>
       );
@@ -1209,7 +1459,9 @@ try {
 
     if (billingDisplayStatus === "metadata_mismatch") {
       return (
-        <span className={`${base} border-emerald-500/30 bg-emerald-950/20 text-emerald-100`}>
+        <span
+          className={`${base} border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200`}
+        >
           Reconciled from customer
         </span>
       );
@@ -1217,7 +1469,9 @@ try {
 
     if (billingDisplayStatus === "sync_needed") {
       return (
-        <span className={`${base} border-amber-500/30 bg-amber-950/20 text-amber-100`}>
+        <span
+          className={`${base} border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-200`}
+        >
           Sync needed
         </span>
       );
@@ -1231,22 +1485,32 @@ try {
             : `${trialDaysLeft} days left`
           : "Active";
       return (
-        <span className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}>
+        <span
+          className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}
+        >
           <span className="text-[color:var(--accent-copper-light)]">Trial</span>
-          <span className="text-[color:var(--theme-text-secondary)]">{label}</span>
+          <span className="text-[color:var(--theme-text-secondary)]">
+            {label}
+          </span>
         </span>
       );
     }
 
     if (subStatus === "active") {
       return (
-        <span className={`${base} border-emerald-500/20 bg-emerald-950/20 text-emerald-100`}>
+        <span
+          className={`${base} border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200`}
+        >
           Active
         </span>
       );
     }
 
-    if (subStatus === "past_due" || subStatus === "unpaid" || subStatus === "incomplete") {
+    if (
+      subStatus === "past_due" ||
+      subStatus === "unpaid" ||
+      subStatus === "incomplete"
+    ) {
       const due =
         typeof periodDaysLeft === "number"
           ? periodDaysLeft <= 0
@@ -1254,7 +1518,9 @@ try {
             : `Due in ${periodDaysLeft} days`
           : "Action needed";
       return (
-        <span className={`${base} border-red-500/25 bg-red-950/25 text-red-100`}>
+        <span
+          className={`${base} border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-200`}
+        >
           Billing issue • {due}
         </span>
       );
@@ -1262,119 +1528,595 @@ try {
 
     if (subStatus === "canceled") {
       return (
-        <span className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}>
+        <span
+          className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}
+        >
           Canceled
         </span>
       );
     }
 
     return (
-      <span className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}>
-        Status: {String(billingDisplayStatus).replaceAll("_", " ").toUpperCase()}
+      <span
+        className={`${base} border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]`}
+      >
+        Status:{" "}
+        {String(billingDisplayStatus).replaceAll("_", " ").toUpperCase()}
       </span>
     );
   })();
 
-  const seatLimitLabel = seatsLimit == null ? "Unlimited" : `${seatsUsed}/${seatsLimit}`;
+  const seatLimitLabel =
+    seatsLimit == null ? "Unlimited" : `${seatsUsed}/${seatsLimit}`;
+  const contextualSections: Array<
+    "billing" | "plan" | "organization" | "public-profile" | "preview" | "email"
+  > =
+    activeSection === "overview"
+      ? ["plan"]
+      : activeSection === "business"
+        ? ["public-profile", "preview"]
+        : activeSection === "communications"
+          ? ["email", "preview"]
+          : activeSection === "organization"
+            ? ["organization"]
+            : activeSection === "billing"
+              ? ["billing", "plan"]
+              : [];
 
-    return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 text-foreground lg:p-6">
+  return (
+    <div className="mx-auto flex max-w-[1600px] flex-col gap-5 p-4 text-foreground sm:p-5 lg:p-6">
       <OwnerSettingsHeader
+        shopName={shopName}
+        roleLabel={ownerRole === "admin" ? "Admin" : "Owner"}
+        sectionLabel={ownerSettingsSectionLabel(activeSection)}
         isUnlocked={isUnlocked}
+        isDirty={coreDirty}
+        showSave={
+          coreDirty ||
+          activeSection === "business" ||
+          activeSection === "operations" ||
+          activeSection === "communications"
+        }
         pinExpiresAt={pinExpiresAt}
         onUnlock={() => setPinModalOpen(true)}
         onLock={() => void lockOwnerSettings()}
         onSave={handleSave}
+        onDiscard={() => void fetchSettings()}
       />
 
-      <GuidedPageStepPanel />
+      {activeSection === "overview" ? <GuidedPageStepPanel /> : null}
 
-      <OwnerSettingsPanel
-        tone="passive"
-        title="System summary"
-        description="Current plan, seat utilization, and organization scope."
-      >
-        <div className="grid gap-3 md:grid-cols-4">
-          <OwnerSettingsStat label="Plan" value={planLabel(plan)} />
-          <OwnerSettingsStat label="Seats" value={seatLimitLabel} />
-          <OwnerSettingsStat
-            label="Billing"
-            value={String(billingDisplayStatus).replaceAll("_", " ").toUpperCase()}
-          />
-          <OwnerSettingsStat
-            label="Stripe"
-            value={stripeAccountId ? "Connected" : "Not connected"}
-          />
-        </div>
-      </OwnerSettingsPanel>
-
-      {userId ? (
-        <ProfileIdentityCard
-          supabase={supabase}
-          userId={userId}
-          shopId={shopId}
-          fullName={ownerName || "Owner"}
-          email={ownerEmail}
-          roleLabel="Owner"
-          avatarUrl={ownerAvatarUrl}
-          onAvatarChange={setOwnerAvatarUrl}
-          title="Owner identity"
-          subtitle="Shown in owner/admin identity surfaces, chat, and collaborative workflow views."
+      <div className="grid gap-5 xl:grid-cols-[230px_minmax(0,1fr)_340px] xl:items-start">
+        <OwnerSettingsNavigation
+          activeSection={activeSection}
+          onSectionChange={changeSection}
         />
-      ) : null}
 
-
-      <div className="sticky top-2 z-10 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 backdrop-blur">
-        <div className="flex flex-wrap gap-2">
-          <a href="#shop-info" className={navChipClass}>General</a>
-          <a href="#operations-defaults" className={navChipClass}>Defaults</a>
-          <a href="#workflow-automation" className={navChipClass}>Workflow</a>
-          <a href="#hours-settings" className={navChipClass}>Hours</a>
-          <a href="#timeoff-settings" className={navChipClass}>Time off</a>
-          <a href="#payroll-timekeeping" className={navChipClass}>Payroll</a>
-          <a href="#billing-stripe" className={navChipClass}>Billing</a>
-          <Link href="/dashboard/owner/branding" className={navChipClass}>Brand Studio</Link>
-          <a href="#quickbooks-integration" className={navChipClass}>QuickBooks</a>
-          <a href="#email-activity" className={navChipClass}>Activity</a>
-        </div>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-[1.7fr_0.95fr] lg:items-start">
-        <div className="space-y-5">
-
-          <OwnerSettingsPanel
-            id="payroll-timekeeping"
-            title="Payroll & Timekeeping"
-            description="Owner-controlled payroll attendance policy. Regular break counts are compliance expectations; payroll calculations use actual punches."
-          >
-            <div className="grid gap-4 p-4 md:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                <span className={labelClass}>Paid breaks per day</span>
-                <select className={selectClass} value={payrollSettings.paid_breaks_per_day} onChange={(e) => setPayrollSettings((p) => ({ ...p, paid_breaks_per_day: Number(e.target.value) }))}>
-                  <option value={0}>0</option><option value={1}>1</option><option value={2}>2</option>
-                </select>
-              </label>
-              <label className="space-y-1 text-sm"><span className={labelClass}>Paid break duration (minutes)</span><Input type="number" min={0} max={120} value={payrollSettings.paid_break_duration_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, paid_break_duration_minutes: Number(e.target.value) }))} /></label>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payrollSettings.breaks_are_paid} onChange={(e) => setPayrollSettings((p) => ({ ...p, breaks_are_paid: e.target.checked }))} /> Breaks are paid</label>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={payrollSettings.lunch_is_paid} onChange={(e) => setPayrollSettings((p) => ({ ...p, lunch_is_paid: e.target.checked }))} /> Lunch is paid</label>
-              <label className="space-y-1 text-sm"><span className={labelClass}>Expected lunch duration (minutes)</span><Input type="number" min={0} max={240} value={payrollSettings.default_lunch_duration_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, default_lunch_duration_minutes: Number(e.target.value) }))} /></label>
-              <label className="space-y-1 text-sm"><span className={labelClass}>Lunch required after shift length (minutes)</span><Input type="number" min={0} max={1440} value={payrollSettings.lunch_required_after_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, lunch_required_after_minutes: Number(e.target.value) }))} /></label>
-              <label className="space-y-1 text-sm"><span className={labelClass}>Daily overtime threshold (minutes)</span><Input type="number" min={0} max={1440} value={payrollSettings.daily_overtime_after_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, daily_overtime_after_minutes: Number(e.target.value) }))} /></label>
-              <label className="space-y-1 text-sm"><span className={labelClass}>Suspicious shift threshold (minutes)</span><Input type="number" min={60} max={2880} value={payrollSettings.suspicious_shift_minutes} onChange={(e) => setPayrollSettings((p) => ({ ...p, suspicious_shift_minutes: Number(e.target.value) }))} /></label>
-              <label className="space-y-1 text-sm"><span className={labelClass}>Pay cadence</span><select className={selectClass} value={payrollSettings.cadence} onChange={(e) => setPayrollSettings((p) => ({ ...p, cadence: e.target.value }))}><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="semimonthly">Semi-monthly</option></select></label>
-              <label className="space-y-1 text-sm"><span className={labelClass}>Week starts on</span><select className={selectClass} value={payrollSettings.week_starts_on} onChange={(e) => setPayrollSettings((p) => ({ ...p, week_starts_on: Number(e.target.value) }))}><option value={0}>Sunday</option><option value={1}>Monday</option><option value={2}>Tuesday</option><option value={3}>Wednesday</option><option value={4}>Thursday</option><option value={5}>Friday</option><option value={6}>Saturday</option></select></label>
+        <main
+          id="owner-settings-content"
+          className={`min-w-0 scroll-mt-24 space-y-5 ${contextualSections.length === 0 ? "xl:col-span-2" : ""}`}
+        >
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[color:var(--theme-border-soft)] pb-4">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
+                Settings category
+              </p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-[-0.025em] text-[color:var(--theme-text-primary)]">
+                {ownerSettingsSectionLabel(activeSection)}
+              </h2>
             </div>
-            <div className="border-t border-[color:var(--theme-border-soft)] p-4"><Button onClick={() => void savePayrollSettings()} disabled={payrollSettingsSaving || !isUnlocked}>{payrollSettingsSaving ? "Saving…" : "Save payroll settings"}</Button></div>
-          </OwnerSettingsPanel>
+            <div className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+              {isUnlocked ? "Editing unlocked" : "Read-only until unlocked"}
+            </div>
+          </div>
 
-          <OwnerSettingsSectionIntro
-            title="Primary configuration"
-            description="Core identity and experience controls for your operational cockpit."
-          />
-          <OwnerSettingsBusinessSection
+          {activeSection === "overview" ? (
+            <>
+              <OwnerSettingsPanel
+                tone="passive"
+                title="System summary"
+                description="Current plan, seat utilization, and organization scope."
+              >
+                <div className="grid gap-3 md:grid-cols-4">
+                  <OwnerSettingsStat label="Plan" value={planLabel(plan)} />
+                  <OwnerSettingsStat label="Seats" value={seatLimitLabel} />
+                  <OwnerSettingsStat
+                    label="Billing"
+                    value={String(billingDisplayStatus)
+                      .replaceAll("_", " ")
+                      .toUpperCase()}
+                  />
+                  <OwnerSettingsStat
+                    label="Stripe"
+                    value={stripeAccountId ? "Connected" : "Not connected"}
+                  />
+                </div>
+              </OwnerSettingsPanel>
+
+              {userId ? (
+                <ProfileIdentityCard
+                  supabase={supabase}
+                  userId={userId}
+                  shopId={shopId}
+                  fullName={ownerName || "Owner"}
+                  email={ownerEmail}
+                  roleLabel={ownerRole === "admin" ? "Admin" : "Owner"}
+                  avatarUrl={ownerAvatarUrl}
+                  onAvatarChange={setOwnerAvatarUrl}
+                  title="Owner identity"
+                  subtitle="Shown in owner/admin identity surfaces, chat, and collaborative workflow views."
+                />
+              ) : null}
+            </>
+          ) : null}
+
+          {activeSection === "scheduling" ? (
+            <OwnerSettingsPanel
+              id="payroll-timekeeping"
+              title="Payroll & Timekeeping"
+              description="Owner-controlled payroll attendance policy. Regular break counts are compliance expectations; payroll calculations use actual punches."
+            >
+              <div className="grid gap-4 p-4 md:grid-cols-2">
+                <label className="space-y-1 text-sm">
+                  <span className={labelClass}>Paid breaks per day</span>
+                  <select
+                    className={selectClass}
+                    value={payrollSettings.paid_breaks_per_day}
+                    onChange={(e) =>
+                      updatePayrollSettings({
+                        paid_breaks_per_day: Number(e.target.value),
+                      })
+                    }
+                  >
+                    <option value={0}>0</option>
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className={labelClass}>
+                    Paid break duration (minutes)
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={120}
+                    value={payrollSettings.paid_break_duration_minutes}
+                    onChange={(e) =>
+                      updatePayrollSettings({
+                        paid_break_duration_minutes: Number(e.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={payrollSettings.breaks_are_paid}
+                    onChange={(e) =>
+                      updatePayrollSettings({
+                        breaks_are_paid: e.target.checked,
+                      })
+                    }
+                  />{" "}
+                  Breaks are paid
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={payrollSettings.lunch_is_paid}
+                    onChange={(e) =>
+                      updatePayrollSettings({ lunch_is_paid: e.target.checked })
+                    }
+                  />{" "}
+                  Lunch is paid
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className={labelClass}>
+                    Expected lunch duration (minutes)
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={240}
+                    value={payrollSettings.default_lunch_duration_minutes}
+                    onChange={(e) =>
+                      updatePayrollSettings({
+                        default_lunch_duration_minutes: Number(e.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className={labelClass}>
+                    Lunch required after shift length (minutes)
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    value={payrollSettings.lunch_required_after_minutes}
+                    onChange={(e) =>
+                      updatePayrollSettings({
+                        lunch_required_after_minutes: Number(e.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className={labelClass}>
+                    Daily overtime threshold (minutes)
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    value={payrollSettings.daily_overtime_after_minutes}
+                    onChange={(e) =>
+                      updatePayrollSettings({
+                        daily_overtime_after_minutes: Number(e.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className={labelClass}>
+                    Suspicious shift threshold (minutes)
+                  </span>
+                  <Input
+                    type="number"
+                    min={60}
+                    max={2880}
+                    value={payrollSettings.suspicious_shift_minutes}
+                    onChange={(e) =>
+                      updatePayrollSettings({
+                        suspicious_shift_minutes: Number(e.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className={labelClass}>Pay cadence</span>
+                  <select
+                    className={selectClass}
+                    value={payrollSettings.cadence}
+                    onChange={(e) =>
+                      updatePayrollSettings({ cadence: e.target.value })
+                    }
+                  >
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly">Biweekly</option>
+                    <option value="semimonthly">Semi-monthly</option>
+                  </select>
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className={labelClass}>Week starts on</span>
+                  <select
+                    className={selectClass}
+                    value={payrollSettings.week_starts_on}
+                    onChange={(e) =>
+                      updatePayrollSettings({
+                        week_starts_on: Number(e.target.value),
+                      })
+                    }
+                  >
+                    <option value={0}>Sunday</option>
+                    <option value={1}>Monday</option>
+                    <option value={2}>Tuesday</option>
+                    <option value={3}>Wednesday</option>
+                    <option value={4}>Thursday</option>
+                    <option value={5}>Friday</option>
+                    <option value={6}>Saturday</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] p-4">
+                <span className="text-xs text-[color:var(--theme-text-muted)]">
+                  {payrollDirty
+                    ? "Unsaved payroll changes"
+                    : "Payroll settings are up to date"}
+                </span>
+                <Button
+                  onClick={() => void savePayrollSettings()}
+                  disabled={
+                    payrollSettingsSaving || !isUnlocked || !payrollDirty
+                  }
+                >
+                  {payrollSettingsSaving
+                    ? "Saving…"
+                    : payrollDirty
+                      ? "Save payroll settings"
+                      : "Payroll saved"}
+                </Button>
+              </div>
+            </OwnerSettingsPanel>
+          ) : null}
+
+          {activeSection === "business" ? (
+            <OwnerSettingsBusinessSection
+              isUnlocked={isUnlocked}
+              country={country}
+              timezone={timezone}
+              shopName={shopName}
+              address={address}
+              city={city}
+              province={province}
+              postalCode={postalCode}
+              phone={phone}
+              email={email}
+              logoUrl={logoUrl}
+              provinceLabel={provinceLabel}
+              postalLabel={postalLabel}
+              selectClass={selectClass}
+              labelClass={labelClass}
+              onCountryChange={(value) => {
+                setCountry(value);
+                setCoreDirty(true);
+              }}
+              onTimezoneChange={(value) => {
+                setTimezone(value);
+                setCoreDirty(true);
+              }}
+              onShopNameChange={(value) => {
+                setShopName(value);
+                setCoreDirty(true);
+              }}
+              onAddressChange={(value) => {
+                setAddress(value);
+                setCoreDirty(true);
+              }}
+              onCityChange={(value) => {
+                setCity(value);
+                setCoreDirty(true);
+              }}
+              onProvinceChange={(value) => {
+                setProvince(value);
+                setCoreDirty(true);
+              }}
+              onPostalCodeChange={(value) => {
+                setPostalCode(value);
+                setCoreDirty(true);
+              }}
+              onPhoneChange={(value) => {
+                setPhone(value);
+                setCoreDirty(true);
+              }}
+              onEmailChange={(value) => {
+                setEmail(value);
+                setCoreDirty(true);
+              }}
+              onLogoUrlChange={(value) => {
+                setLogoUrl(value);
+                setCoreDirty(true);
+              }}
+              onLogoUpload={handleLogoUpload}
+            />
+          ) : null}
+          {activeSection === "operations" ? (
+            <OwnerSettingsOperationsSection
+              isUnlocked={isUnlocked}
+              currency={currency}
+              taxLabel={taxLabel}
+              laborRate={laborRate}
+              suppliesEnabled={suppliesEnabled}
+              suppliesType={suppliesType}
+              suppliesPercent={suppliesPercent}
+              suppliesFlatAmount={suppliesFlatAmount}
+              suppliesCapAmount={suppliesCapAmount}
+              diagnosticFee={diagnosticFee}
+              taxRate={taxRate}
+              pricingValidDays={pricingValidDays}
+              pricingValidDaysLoading={pricingValidDaysLoading}
+              pricingValidDaysSaving={pricingValidDaysSaving}
+              requireCauseCorrection={requireCauseCorrection}
+              requireAuthorization={requireAuthorization}
+              autoGeneratePdf={autoGeneratePdf}
+              autoSendQuoteEmail={autoSendQuoteEmail}
+              appearanceMode={appearanceMode}
+              appearanceSaving={appearanceSaving}
+              onLaborRateChange={(value) => {
+                setLaborRate(value);
+                setCoreDirty(true);
+              }}
+              onSuppliesEnabledChange={(value) => {
+                setSuppliesEnabled(value);
+                setCoreDirty(true);
+              }}
+              onSuppliesTypeChange={(value) => {
+                setSuppliesType(value);
+                setCoreDirty(true);
+              }}
+              onSuppliesPercentChange={(value) => {
+                setSuppliesPercent(value);
+                setCoreDirty(true);
+              }}
+              onSuppliesFlatAmountChange={(value) => {
+                setSuppliesFlatAmount(value);
+                setCoreDirty(true);
+              }}
+              onSuppliesCapAmountChange={(value) => {
+                setSuppliesCapAmount(value);
+                setCoreDirty(true);
+              }}
+              onDiagnosticFeeChange={(value) => {
+                setDiagnosticFee(value);
+                setCoreDirty(true);
+              }}
+              onTaxRateChange={(value) => {
+                setTaxRate(value);
+                setCoreDirty(true);
+              }}
+              onPricingValidDaysChange={setPricingValidDays}
+              onSavePricingValidDays={savePricingValidDays}
+              onRequireCauseCorrectionChange={(value) => {
+                setRequireCauseCorrection(value);
+                setCoreDirty(true);
+              }}
+              onRequireAuthorizationChange={(value) => {
+                setRequireAuthorization(value);
+                setCoreDirty(true);
+              }}
+              onAutoGeneratePdfChange={(value) => {
+                setAutoGeneratePdf(value);
+                setCoreDirty(true);
+              }}
+              onAutoSendQuoteEmailChange={(value) => {
+                setAutoSendQuoteEmail(value);
+                setCoreDirty(true);
+              }}
+              onAppearanceModeChange={(value) => void saveAppearanceMode(value)}
+            />
+          ) : null}
+          {activeSection === "automation" ? (
+            <OwnerAiAutomationSection isUnlocked={isUnlocked} />
+          ) : null}
+          {activeSection === "integrations" ? <BrandStudioSummaryCard /> : null}
+
+          {activeSection === "integrations" ? (
+            <OwnerSettingsPanel
+              id="quickbooks-integration"
+              tone="secondary"
+              title="Accounting integration"
+              description="Connect financial workflows without mixing them into daily shop defaults."
+            >
+              <QuickBooksConnectCard />
+            </OwnerSettingsPanel>
+          ) : null}
+
+          {activeSection === "communications" ? (
+            <OwnerSettingsPanel
+              id="communication-branding"
+              tone="secondary"
+              title="Communication"
+              description="Invoice defaults and completion messaging."
+            >
+              <label className="block space-y-1.5 text-sm">
+                <span className={labelClass}>Invoice terms</span>
+                <Input
+                  value={invoiceTerms}
+                  onChange={(e) => {
+                    setInvoiceTerms(e.target.value);
+                    setCoreDirty(true);
+                  }}
+                  placeholder="Payment due on receipt"
+                  disabled={!isUnlocked}
+                />
+              </label>
+              <label className="block space-y-1.5 text-sm">
+                <span className={labelClass}>Invoice footer</span>
+                <Input
+                  value={invoiceFooter}
+                  onChange={(e) => {
+                    setInvoiceFooter(e.target.value);
+                    setCoreDirty(true);
+                  }}
+                  placeholder="Thank you for trusting our shop"
+                  disabled={!isUnlocked}
+                />
+              </label>
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]">
+                <input
+                  type="checkbox"
+                  checked={emailOnComplete}
+                  onChange={(e) => {
+                    setEmailOnComplete(e.target.checked);
+                    setCoreDirty(true);
+                  }}
+                  disabled={!isUnlocked}
+                  className="h-4 w-4 accent-[var(--accent-copper)]"
+                />
+                <span>
+                  <span className="block font-semibold">Completion email</span>
+                  <span className="mt-0.5 block text-xs text-[color:var(--theme-text-muted)]">
+                    Notify the customer automatically when the work order is
+                    completed.
+                  </span>
+                </span>
+              </label>
+            </OwnerSettingsPanel>
+          ) : null}
+
+          {activeSection === "scheduling" ? (
+            <OwnerSettingsSchedulingSection
+              isUnlocked={isUnlocked}
+              timezone={timezone}
+              hours={hours}
+              hoursDirty={hoursDirty}
+              timeOff={timeOff}
+              newOffStart={newOffStart}
+              newOffEnd={newOffEnd}
+              newOffReason={newOffReason}
+              onHoursChange={updateHours}
+              onNewOffStartChange={setNewOffStart}
+              onNewOffEndChange={setNewOffEnd}
+              onNewOffReasonChange={setNewOffReason}
+              onSaveHours={saveHours}
+              onAddTimeOff={addTimeOff}
+              onDeleteTimeOff={deleteTimeOff}
+            />
+          ) : null}
+
+          {activeSection === "organization" ? (
+            <OwnerSettingsPanel
+              title="Location scope"
+              description="Review the organization connected to this shop, then switch locations from the context panel."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <OwnerSettingsStat
+                  label="Organization"
+                  value={orgName || "Not connected"}
+                />
+                <OwnerSettingsStat
+                  label="Locations"
+                  value={locations.length || 1}
+                />
+              </div>
+            </OwnerSettingsPanel>
+          ) : null}
+
+          {activeSection === "billing" ? (
+            <OwnerSettingsPanel
+              title="Billing overview"
+              description="Subscription and payout status for the current location."
+            >
+              <div className="grid gap-3 sm:grid-cols-3">
+                <OwnerSettingsStat label="Plan" value={planLabel(plan)} />
+                <OwnerSettingsStat
+                  label="Subscription"
+                  value={String(billingDisplayStatus).replaceAll("_", " ")}
+                />
+                <OwnerSettingsStat
+                  label="Payouts"
+                  value={stripeAccountId ? "Connected" : "Not connected"}
+                />
+              </div>
+            </OwnerSettingsPanel>
+          ) : null}
+        </main>
+
+        {contextualSections.length > 0 ? (
+          <OwnerSettingsSidebar
+            sections={contextualSections}
+            shopId={shopId}
             isUnlocked={isUnlocked}
-            country={country}
-            timezone={timezone}
+            canManageBilling={canManageBilling}
+            billingPill={billingPill}
+            subStatus={subStatus}
+            billingDisplayStatus={billingDisplayStatus}
+            stripeAccountId={stripeAccountId}
+            trialEndIso={trialEndIso}
+            periodEndIso={periodEndIso}
+            cancelAtPeriodEnd={cancelAtPeriodEnd}
+            connectLoading={connectLoading}
+            checkoutLoading={checkoutLoading}
+            portalLoading={portalLoading}
+            cancelLoading={cancelLoading}
+            plan={plan}
+            seatsUsed={seatsUsed}
+            seatsLimit={seatsLimit}
+            orgId={orgId}
+            orgName={orgName}
+            locations={locations}
             shopName={shopName}
             address={address}
             city={city}
@@ -1383,169 +2125,25 @@ try {
             phone={phone}
             email={email}
             logoUrl={logoUrl}
-            provinceLabel={provinceLabel}
-            postalLabel={postalLabel}
-            selectClass={selectClass}
-            labelClass={labelClass}
-            onCountryChange={setCountry}
-            onTimezoneChange={setTimezone}
-            onShopNameChange={setShopName}
-            onAddressChange={setAddress}
-            onCityChange={setCity}
-            onProvinceChange={setProvince}
-            onPostalCodeChange={setPostalCode}
-            onPhoneChange={setPhone}
-            onEmailChange={setEmail}
-            onLogoUrlChange={setLogoUrl}
-            onLogoUpload={handleLogoUpload}
-            onGenerateLogo={handleGenerateLogo}
+            invoiceTerms={invoiceTerms}
+            invoiceFooter={invoiceFooter}
+            emailLogs={emailLogs}
+            emailLogsLoading={emailLogsLoading}
+            onOpenStripeConnect={openStripeConnect}
+            onStartSubscriptionCheckout={manageSubscription}
+            onRequestCancelSubscription={() => setCancelDialogOpen(true)}
+            onCreateOrganization={() =>
+              router.push("/dashboard/owner/organization/create")
+            }
+            onSwitchLocation={(id) => void switchLocation(id)}
+            onRefreshEmailLogs={() => void fetchEmailLogs()}
+            planLabel={planLabel}
+            parseStripeStatus={parseStripeSubscriptionStatus}
+            formatDate={formatDate}
+            formatLocationLine={formatLocationLine}
+            locationName={locationName}
           />
-          <OwnerSettingsOperationsSection
-            isUnlocked={isUnlocked}
-            currency={currency}
-            taxLabel={taxLabel}
-            laborRate={laborRate}
-            suppliesEnabled={suppliesEnabled}
-            suppliesType={suppliesType}
-            suppliesPercent={suppliesPercent}
-            suppliesFlatAmount={suppliesFlatAmount}
-            suppliesCapAmount={suppliesCapAmount}
-            diagnosticFee={diagnosticFee}
-            taxRate={taxRate}
-            pricingValidDays={pricingValidDays}
-            pricingValidDaysLoading={pricingValidDaysLoading}
-            pricingValidDaysSaving={pricingValidDaysSaving}
-            requireCauseCorrection={requireCauseCorrection}
-            requireAuthorization={requireAuthorization}
-            autoGeneratePdf={autoGeneratePdf}
-            autoSendQuoteEmail={autoSendQuoteEmail}
-            appearanceMode={appearanceMode}
-            appearanceSaving={appearanceSaving}
-            onLaborRateChange={setLaborRate}
-            onSuppliesEnabledChange={setSuppliesEnabled}
-            onSuppliesTypeChange={setSuppliesType}
-            onSuppliesPercentChange={setSuppliesPercent}
-            onSuppliesFlatAmountChange={setSuppliesFlatAmount}
-            onSuppliesCapAmountChange={setSuppliesCapAmount}
-            onDiagnosticFeeChange={setDiagnosticFee}
-            onTaxRateChange={setTaxRate}
-            onPricingValidDaysChange={setPricingValidDays}
-            onSavePricingValidDays={savePricingValidDays}
-            onRequireCauseCorrectionChange={setRequireCauseCorrection}
-            onRequireAuthorizationChange={setRequireAuthorization}
-            onAutoGeneratePdfChange={setAutoGeneratePdf}
-            onAutoSendQuoteEmailChange={setAutoSendQuoteEmail}
-            onAppearanceModeChange={(value) => void saveAppearanceMode(value)}
-          />
-          <OwnerAiAutomationSection isUnlocked={isUnlocked} />
-          <BrandStudioSummaryCard />
-
-          <OwnerSettingsSectionIntro
-            title="Secondary configuration"
-            description="Operational defaults, communication, and integrations."
-          />
-
-          <OwnerSettingsPanel id="quickbooks-integration" tone="secondary" title="Accounting integration">
-            <QuickBooksConnectCard />
-          </OwnerSettingsPanel>
-
-          <OwnerSettingsPanel
-            id="communication-branding"
-            tone="secondary"
-            title="Communication"
-            description="Invoice defaults and completion messaging."
-          >
-            <Input
-              value={invoiceTerms}
-              onChange={(e) => setInvoiceTerms(e.target.value)}
-              placeholder="Invoice terms"
-              disabled={!isUnlocked}
-            />
-            <Input
-              value={invoiceFooter}
-              onChange={(e) => setInvoiceFooter(e.target.value)}
-              placeholder="Invoice footer note"
-              disabled={!isUnlocked}
-            />
-            <label className="flex items-center gap-2 text-sm text-[color:var(--theme-text-primary)]">
-              <input
-                type="checkbox"
-                checked={emailOnComplete}
-                onChange={(e) => setEmailOnComplete(e.target.checked)}
-                disabled={!isUnlocked}
-              />
-              Email customer when job is complete
-            </label>
-          </OwnerSettingsPanel>
-
-          <OwnerSettingsSectionIntro
-            title="Passive controls"
-            description="Scheduling and calendar constraints that support shop operations."
-          />
-
-          <OwnerSettingsSchedulingSection
-            isUnlocked={isUnlocked}
-            hours={hours}
-            timeOff={timeOff}
-            newOffStart={newOffStart}
-            newOffEnd={newOffEnd}
-            newOffReason={newOffReason}
-            onHoursChange={setHours}
-            onNewOffStartChange={setNewOffStart}
-            onNewOffEndChange={setNewOffEnd}
-            onNewOffReasonChange={setNewOffReason}
-            onSaveHours={saveHours}
-            onAddTimeOff={addTimeOff}
-            onDeleteTimeOff={deleteTimeOff}
-          />
-        </div>
-
-        <OwnerSettingsSidebar
-          shopId={shopId}
-          isUnlocked={isUnlocked}
-          canManageBilling={canManageBilling}
-          billingPill={billingPill}
-          subStatus={subStatus}
-          billingDisplayStatus={billingDisplayStatus}
-          stripeAccountId={stripeAccountId}
-          trialEndIso={trialEndIso}
-          periodEndIso={periodEndIso}
-          cancelAtPeriodEnd={cancelAtPeriodEnd}
-          connectLoading={connectLoading}
-          checkoutLoading={checkoutLoading}
-          portalLoading={portalLoading}
-          cancelLoading={cancelLoading}
-          plan={plan}
-          seatsUsed={seatsUsed}
-          seatsLimit={seatsLimit}
-          orgId={orgId}
-          orgName={orgName}
-          locations={locations}
-          shopName={shopName}
-          address={address}
-          city={city}
-          province={province}
-          postalCode={postalCode}
-          phone={phone}
-          email={email}
-          logoUrl={logoUrl}
-          invoiceTerms={invoiceTerms}
-          invoiceFooter={invoiceFooter}
-          emailLogs={emailLogs}
-          emailLogsLoading={emailLogsLoading}
-          onOpenStripeConnect={openStripeConnect}
-          onStartSubscriptionCheckout={manageSubscription}
-          onOpenStripePortal={openStripePortal}
-          onRequestCancelSubscription={() => setCancelDialogOpen(true)}
-          onCreateOrganization={() => router.push("/dashboard/owner/organization/create")}
-          onSwitchLocation={(id) => void switchLocation(id)}
-          onRefreshEmailLogs={() => void fetchEmailLogs()}
-          planLabel={planLabel}
-          parseStripeStatus={parseStripeSubscriptionStatus}
-          formatDate={formatDate}
-          formatLocationLine={formatLocationLine}
-          locationName={locationName}
-        />
+        ) : null}
       </div>
 
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
@@ -1553,16 +2151,18 @@ try {
           <DialogHeader>
             <DialogTitle>Cancel subscription</DialogTitle>
             <DialogDescription className="text-[color:var(--theme-text-secondary)]">
-              You are currently on the {planLabel(plan)} plan.
-              {" "}Cancellation is scheduled for the end of your current billing period by default.
-              {" "}Your access and seats remain active until that date.
+              You are currently on the {planLabel(plan)} plan. Cancellation is
+              scheduled for the end of your current billing period by default.{" "}
+              Your access and seats remain active until that date.
             </DialogDescription>
           </DialogHeader>
 
           <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)]">
-            After the period ends, paid subscription features stop renewing for this location
-            until you subscribe again.
-            {periodEndIso ? ` Current period end: ${formatDate(periodEndIso)}.` : ""}
+            After the period ends, paid subscription features stop renewing for
+            this location until you subscribe again.
+            {periodEndIso
+              ? ` Current period end: ${formatDate(periodEndIso)}.`
+              : ""}
           </div>
 
           <DialogFooter>
