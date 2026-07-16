@@ -10875,6 +10875,7 @@ export type Database = {
           created_by: string | null
           id: string
           name: string
+          print_settings: Json
           rotated_at: string | null
           scan_count: number
           shop_id: string
@@ -10889,6 +10890,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           name?: string
+          print_settings?: Json
           rotated_at?: string | null
           scan_count?: number
           shop_id: string
@@ -10903,6 +10905,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           name?: string
+          print_settings?: Json
           rotated_at?: string | null
           scan_count?: number
           shop_id?: string
