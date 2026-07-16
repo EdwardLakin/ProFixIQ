@@ -42,11 +42,14 @@ export async function runJobPunchTransition(
   options?: JobPunchTransitionOptions,
 ): Promise<void> {
   const suppliedKey = options?.operationKey?.trim();
-  const operationKey = suppliedKey || createJobPunchOperationKey(lineId, action);
+  const operationKey =
+    suppliedKey || createJobPunchOperationKey(lineId, action);
+  const occurredAt = new Date().toISOString();
   const payload = {
     ...(body ?? {}),
     operationKey,
     idempotencyKey: operationKey,
+    occurredAt,
   };
 
   const post = async () => {
@@ -59,8 +62,12 @@ export async function runJobPunchTransition(
       body: JSON.stringify(payload),
     });
     if (res.ok) return;
-    const responsePayload = (await res.json().catch(() => null)) as ApiError | null;
-    const error = new Error(responsePayload?.error ?? `Failed to ${action} job`) as Error & {
+    const responsePayload = (await res
+      .json()
+      .catch(() => null)) as ApiError | null;
+    const error = new Error(
+      responsePayload?.error ?? `Failed to ${action} job`,
+    ) as Error & {
       status?: number;
     };
     error.status = res.status;
@@ -75,7 +82,7 @@ export async function runJobPunchTransition(
   await runMutationWithOfflineQueue({
     clientMutationId: operationKey,
     actionType: "job:punch-transition",
-    payload: { lineId, action, body: payload, operationKey },
+    payload: { lineId, action, body: payload, operationKey, occurredAt },
     orderKey: `${lineId}:job-punch:${operationKey}`,
     scope,
     runner: post,

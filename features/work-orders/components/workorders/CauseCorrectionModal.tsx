@@ -18,6 +18,7 @@ interface CauseCorrectionModalProps {
 
   /** ✅ Draft save (cause/correction can be partial) */
   onSaveDraft?: (cause: string, correction: string) => Promise<void>;
+  onDraftChange?: (cause: string, correction: string) => void;
 
   initialCause?: string;
   initialCorrection?: string;
@@ -30,6 +31,7 @@ export default function CauseCorrectionModal({
   lineLabel,
   onSubmit,
   onSaveDraft,
+  onDraftChange,
   initialCause = "",
   initialCorrection = "",
 }: CauseCorrectionModalProps) {
@@ -124,7 +126,8 @@ export default function CauseCorrectionModal({
             Job completion story
           </div>
           <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Capture what failed and exactly what was done so this line is complete, searchable, and useful later.
+            Capture what failed and exactly what was done so this line is
+            complete, searchable, and useful later.
           </div>
         </div>
         <div className="flex items-center justify-between text-[0.7rem] text-[color:var(--theme-text-secondary)]">
@@ -177,7 +180,9 @@ export default function CauseCorrectionModal({
             className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={cause}
             onChange={(e) => {
-              setCause(e.target.value);
+              const next = e.target.value;
+              setCause(next);
+              onDraftChange?.(next, correction);
               if (error) setError(null);
               if (ok) setOk(null);
             }}
@@ -194,7 +199,9 @@ export default function CauseCorrectionModal({
             className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
             value={correction}
             onChange={(e) => {
-              setCorrection(e.target.value);
+              const next = e.target.value;
+              setCorrection(next);
+              onDraftChange?.(cause, next);
               if (error) setError(null);
               if (ok) setOk(null);
             }}

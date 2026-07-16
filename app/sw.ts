@@ -26,13 +26,16 @@ const serwist = new Serwist({
     },
     {
       matcher: ({ request, url }) =>
-        request.mode === "navigate" && url.pathname === "/mobile/tech/queue",
+        request.mode === "navigate" &&
+        (url.pathname === "/mobile/tech/queue" ||
+          url.pathname.startsWith("/mobile/work-orders/") ||
+          url.pathname.startsWith("/mobile/jobs/")),
       handler: new NetworkFirst({
         cacheName: "profixiq-technician-shell-v1",
         networkTimeoutSeconds: 4,
         plugins: [
           new ExpirationPlugin({
-            maxEntries: 4,
+            maxEntries: 120,
             maxAgeSeconds: 60 * 60 * 24 * 14,
           }),
         ],
