@@ -71,6 +71,9 @@ describe("customer portal QR print editor", () => {
     expect(builder).toContain("Download preview");
     expect(builder).toContain('import("html2canvas")');
     expect(builder).toContain("beforeunload");
+    expect(builder).toContain("sm:min-h-[800px]");
+    expect(builder).toContain("sm:min-h-[720px]");
+    expect(builder).toContain("print:min-h-0");
   });
 
   it("persists validated settings in a tenant-scoped campaign update", () => {
