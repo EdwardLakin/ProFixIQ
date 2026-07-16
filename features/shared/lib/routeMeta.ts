@@ -103,6 +103,14 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager", "advisor"],
   },
 
+  "/quote-review/[id]": {
+    title: (href) =>
+      `Quote Review · ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
+    icon: "✅",
+    persist: { keyParams: ["id"] },
+    roles: ["owner", "admin", "manager", "advisor"],
+  },
+
   "/work-orders/[id]": {
     title: (href) => `WO #${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
     icon: "🔧",
