@@ -841,10 +841,10 @@ type SmartMatchRow = {
     useState<InspectionDraftRecoveryState>("editing");
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
   const recoveryOperationKeyRef = useRef<string | undefined>(undefined);
+  const queuedSessionRef = useRef<InspectionSession | null>(null);
+  const skipNextQueuedEditCheckRef = useRef(false);
   const inspectionCompletedRef = useRef(false);
-  const localDraftUpdatedAtRef = useRef(
-    inspectionDraftTimestamp(persistedSession),
-  );
+  const localDraftUpdatedAtRef = useRef(0);
   const serverStartedRef = useRef<string | null>(null);
 
   const triggerVoicePulse = (): void => {
@@ -915,6 +915,10 @@ type SmartMatchRow = {
           }
           setRecoveryState(recovered.state);
           recoveryOperationKeyRef.current = recovered.operationKey;
+          queuedSessionRef.current = null;
+          skipNextQueuedEditCheckRef.current = Boolean(
+            recovered.operationKey && recovered.state !== "editing",
+          );
           setRecoveryMessage(
             recovered.state === "queued"
               ? "Recovered inspection · server save is queued."
@@ -922,16 +926,6 @@ type SmartMatchRow = {
                 ? "Recovered inspection · sync needs review."
                 : `Recovered inspection saved ${new Date(recovered.savedAt).toLocaleString()}.`,
           );
-        } else if (persistedSession) {
-          const migrated = await saveInspectionOfflineDraft({
-            draftKey,
-            session: persistedSession,
-          });
-          if (!cancelled && migrated) {
-            setRecoveryMessage(
-              "Existing inspection draft moved into offline recovery.",
-            );
-          }
         }
       } catch (error) {
         console.warn("[inspection] offline recovery unavailable", error);
@@ -1480,7 +1474,33 @@ type SmartMatchRow = {
   }, [session, bootSections, updateInspection]);
 
   useEffect(() => {
-    if (!session || !draftBootLoaded || inspectionCompletedRef.current) return;
+    if (
+      !session ||
+      !draftBootLoaded ||
+      !serverBootLoaded ||
+      inspectionCompletedRef.current
+    )
+      return;
+
+    let draftState = recoveryState;
+    let operationKey = recoveryOperationKeyRef.current;
+    let skipDraftWrite = false;
+    if (operationKey && recoveryState !== "editing") {
+      if (skipNextQueuedEditCheckRef.current) {
+        skipNextQueuedEditCheckRef.current = false;
+        queuedSessionRef.current = session;
+        skipDraftWrite = true;
+      } else if (queuedSessionRef.current !== session) {
+        draftState = "editing";
+        operationKey = undefined;
+        recoveryOperationKeyRef.current = undefined;
+        queuedSessionRef.current = null;
+        setRecoveryState("editing");
+        setRecoveryMessage(
+          "Newer edits are safe on this device. Save Progress again to queue them for server sync.",
+        );
+      }
+    }
 
     localDraftUpdatedAtRef.current = inspectionDraftTimestamp(session);
     try {
@@ -1492,21 +1512,23 @@ type SmartMatchRow = {
       );
     } catch {}
 
+    if (skipDraftWrite) return;
+
     const timer = window.setTimeout(() => {
       if (inspectionCompletedRef.current) return;
       void saveInspectionOfflineDraft({
         draftKey,
         session,
-        state: recoveryState,
-        operationKey: recoveryOperationKeyRef.current,
+        state: draftState,
+        operationKey,
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [session, draftKey, draftBootLoaded, recoveryState]);
+  }, [session, draftKey, draftBootLoaded, serverBootLoaded, recoveryState]);
 
   useEffect(() => {
     const persistNow = () => {
-      if (inspectionCompletedRef.current) return;
+      if (inspectionCompletedRef.current || !serverBootLoaded) return;
       try {
         const payload = {
           ...(session ?? initialSession),
@@ -1536,7 +1558,14 @@ type SmartMatchRow = {
       window.removeEventListener("pagehide", persistNow);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [session, draftKey, initialSession, workOrderId, workOrderLineId]);
+  }, [
+    session,
+    draftKey,
+    initialSession,
+    workOrderId,
+    workOrderLineId,
+    serverBootLoaded,
+  ]);
 
   useEffect(() => {
     const handler = (evt: Event) => {
@@ -2678,6 +2707,8 @@ type SmartMatchRow = {
         onRecoveryState={(state, operationKey) => {
           setRecoveryState(state);
           recoveryOperationKeyRef.current = operationKey;
+          queuedSessionRef.current = operationKey ? session : null;
+          skipNextQueuedEditCheckRef.current = false;
           setRecoveryMessage(
             state === "queued"
               ? "Inspection is safe on this device and queued for server sync."

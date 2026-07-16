@@ -2,6 +2,7 @@
 
 import {
   getOfflineSnapshot,
+  listOfflineSnapshots,
   removeOfflineSnapshots,
   saveOfflineSnapshot,
   type OfflineSnapshot,
@@ -14,7 +15,10 @@ const BUNDLE_ID = "current";
 export async function cacheTechnicianOfflineBundle(
   bundle: TechnicianOfflineBundle,
 ): Promise<void> {
-  const previous = await getCachedTechnicianWork({ scope: bundle.scope });
+  const existingDetails = await listOfflineSnapshots({
+    scope: bundle.scope,
+    kind: "mobile-work-order-detail",
+  });
   const currentAliases = new Set(
     bundle.workOrders.flatMap((item) =>
       [item.workOrder.id, item.workOrder.custom_id].filter((id): id is string =>
@@ -22,11 +26,9 @@ export async function cacheTechnicianOfflineBundle(
       ),
     ),
   );
-  const staleAliases = (previous?.data.workOrders ?? [])
-    .flatMap((item) => [item.workOrder.id, item.workOrder.custom_id])
-    .filter(
-      (id): id is string => Boolean(id) && !currentAliases.has(id as string),
-    );
+  const staleAliases = existingDetails
+    .map((snapshot) => snapshot.entityId)
+    .filter((entityId) => !currentAliases.has(entityId));
   const detailWrites = bundle.workOrders.flatMap((item) => {
     const ids = new Set(
       [item.workOrder.id, item.workOrder.custom_id].filter(Boolean),

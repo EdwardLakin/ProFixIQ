@@ -8,6 +8,7 @@ const saveButton = read(
   "features/inspections/components/inspection/SaveInspectionButton.tsx",
 );
 const save = read("features/inspections/lib/inspection/save.ts");
+const findings = read("features/inspections/lib/inspection/findings/page.tsx");
 
 describe("technician inspection offline recovery", () => {
   it("stores expiring drafts under the authenticated user and shop scope", () => {
@@ -35,15 +36,33 @@ describe("technician inspection offline recovery", () => {
     );
     expect(screen).toContain("the older server copy was not applied");
     expect(screen).toContain("!draftBootLoaded ||");
+    expect(screen).toContain("!serverBootLoaded ||");
+    expect(screen).toContain("const localDraftUpdatedAtRef = useRef(0)");
+    expect(screen).toContain(
+      "inspectionCompletedRef.current || !serverBootLoaded",
+    );
   });
 
-  it("persists edits, surfaces queued saves, and clears only on completion", () => {
+  it("detaches newer edits from an older queued save", () => {
     expect(screen).toContain("saveInspectionOfflineDraft");
-    expect(screen).toContain("state: recoveryState");
-    expect(screen).toContain("operationKey: recoveryOperationKeyRef.current");
+    expect(screen).toContain("queuedSessionRef.current !== session");
+    expect(screen).toContain('draftState = "editing"');
+    expect(screen).toContain("operationKey = undefined");
+    expect(screen).toContain("state: draftState");
+    expect(drafts).toContain(
+      "sessionTimestamp(draft.session) > sessionTimestamp(queuedSession)",
+    );
+    expect(drafts).toContain('state: "editing" as const');
+  });
+
+  it("clears durable and legacy drafts from the mounted findings flow", () => {
     expect(screen).toContain('window.addEventListener("inspection:completed"');
     expect(screen).toContain("inspectionCompletedRef.current = true");
-    expect(screen).toContain("removeInspectionOfflineDraft");
+    expect(findings).toContain("await removeInspectionOfflineDraft");
+    expect(findings).toContain("localStorage.removeItem(draftKey)");
+    expect(findings.indexOf("await removeInspectionOfflineDraft")).toBeLessThan(
+      findings.indexOf('new CustomEvent("inspection:completed"'),
+    );
     expect(saveButton).toContain("? result.operationKey");
     expect(save).toContain("return { ...result, operationKey }");
   });

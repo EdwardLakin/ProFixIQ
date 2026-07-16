@@ -23,10 +23,16 @@ describe("technician assigned-work offline download", () => {
     expect(route).toContain(
       "normal table policies remain the final authorization boundary",
     );
-    expect(route).toContain("const { data: workOrdersData");
+    expect(route).toContain('authClient.rpc(\n    "set_current_shop_id"');
+    expect(route.indexOf('"set_current_shop_id"')).toBeLessThan(
+      route.indexOf('.from("work_orders")'),
+    );
+    expect(route).toContain("chunks(workOrderIds)");
+    expect(route).not.toContain(".limit(50)");
     expect(route).toContain("await authClient");
     expect(route).toMatch(/authClient\s*\.from\("work_order_lines"\)/);
     expect(route).toMatch(/authClient\s*\.from\("work_order_quote_lines"\)/);
+    expect(route).toContain("quotesResult.error");
     expect(route).toContain('"Cache-Control": "private, no-store"');
   });
 
@@ -37,6 +43,8 @@ describe("technician assigned-work offline download", () => {
     expect(download).toContain('kind: "mobile-work-order-detail"');
     expect(download).toContain("item.workOrder.custom_id");
     expect(download).toContain("await cacheTechnicianOfflineBundle(result)");
+    expect(download).toContain("listOfflineSnapshots");
+    expect(download).toContain("existingDetails");
     expect(download).toContain("staleAliases");
     expect(download).toContain("removeOfflineSnapshots");
   });

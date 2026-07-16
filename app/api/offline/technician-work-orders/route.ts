@@ -19,6 +19,14 @@ type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
+function chunks<T>(items: T[], size = 100): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    result.push(items.slice(index, index + size));
+  }
+  return result;
+}
+
 export async function GET() {
   const authClient = createServerSupabaseRoute();
   const {
@@ -41,6 +49,17 @@ export async function GET() {
     return NextResponse.json(
       { error: "Assigned technician work is not available for this role." },
       { status: 403 },
+    );
+  }
+
+  const { error: shopContextError } = await authClient.rpc(
+    "set_current_shop_id",
+    { p_shop_id: profile.shop_id },
+  );
+  if (shopContextError) {
+    return NextResponse.json(
+      { error: "Shop security context could not be initialized." },
+      { status: 500 },
     );
   }
 
@@ -108,14 +127,19 @@ export async function GET() {
 
   // Use the authenticated client for every downloaded business record so the
   // normal table policies remain the final authorization boundary.
-  const { data: workOrdersData, error: workOrdersError } = await authClient
-    .from("work_orders")
-    .select("*")
-    .eq("shop_id", profile.shop_id)
-    .in("id", workOrderIds)
-    .neq("type", "historical_import")
-    .order("created_at", { ascending: false })
-    .limit(50);
+  const workOrderResults = await Promise.all(
+    chunks(workOrderIds).map((ids) =>
+      authClient
+        .from("work_orders")
+        .select("*")
+        .eq("shop_id", profile.shop_id)
+        .in("id", ids)
+        .neq("type", "historical_import"),
+    ),
+  );
+  const workOrdersError = workOrderResults.find(
+    (result) => result.error,
+  )?.error;
   if (workOrdersError) {
     return NextResponse.json(
       { error: workOrdersError.message },
@@ -123,7 +147,13 @@ export async function GET() {
     );
   }
 
-  const workOrders = (workOrdersData ?? []) as WorkOrder[];
+  const workOrders = workOrderResults
+    .flatMap((result) => (result.data ?? []) as WorkOrder[])
+    .sort(
+      (a, b) =>
+        new Date(b.created_at ?? 0).getTime() -
+        new Date(a.created_at ?? 0).getTime(),
+    );
   if (workOrders.length === 0) {
     const empty: TechnicianOfflineBundle = {
       scope: { userId: user.id, shopId: profile.shop_id },
@@ -169,33 +199,38 @@ export async function GET() {
             .in("id", customerIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
-  if (linesResult.error) {
+  const supportingReadError =
+    linesResult.error ??
+    quotesResult.error ??
+    vehiclesResult.error ??
+    customersResult.error;
+  if (supportingReadError) {
     return NextResponse.json(
-      { error: linesResult.error.message },
+      { error: supportingReadError.message },
       { status: 500 },
     );
   }
 
   const lines = (linesResult.data ?? []) as WorkOrderLine[];
-  const quoteLines = (
-    quotesResult.error ? [] : (quotesResult.data ?? [])
-  ) as QuoteLine[];
-  const vehicles = (
-    vehiclesResult.error ? [] : (vehiclesResult.data ?? [])
-  ) as Vehicle[];
-  const customers = (
-    customersResult.error ? [] : (customersResult.data ?? [])
-  ) as Customer[];
+  const quoteLines = (quotesResult.data ?? []) as QuoteLine[];
+  const vehicles = (vehiclesResult.data ?? []) as Vehicle[];
+  const customers = (customersResult.data ?? []) as Customer[];
   const techIds = [
     ...new Set(lines.map((line) => line.assigned_tech_id).filter(Boolean)),
   ] as string[];
-  const { data: technicians } = techIds.length
+  const { data: technicians, error: techniciansError } = techIds.length
     ? await authClient
         .from("profiles")
         .select("id, full_name")
         .eq("shop_id", profile.shop_id)
         .in("id", techIds)
-    : { data: [] };
+    : { data: [], error: null };
+  if (techniciansError) {
+    return NextResponse.json(
+      { error: techniciansError.message },
+      { status: 500 },
+    );
+  }
   const techNamesById = Object.fromEntries(
     (technicians ?? []).map((technician) => [
       technician.id,
