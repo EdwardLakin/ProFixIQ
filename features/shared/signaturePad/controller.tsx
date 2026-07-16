@@ -3,6 +3,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+const SIGNATURE_INK_COLOR = "#0f172a";
+const SIGNATURE_CANVAS_COLOR = "#ffffff";
+
 type SigCanvasInstance = {
   clear: () => void;
   isEmpty: () => boolean;
@@ -200,17 +203,21 @@ function SignaturePadHost() {
               ref={(inst: SigCanvasInstance | null) => {
                 sigRef.current = inst;
               }}
-              penColor="white"
+              penColor={SIGNATURE_INK_COLOR}
               canvasProps={{
                 width: size.w,
                 height: size.h,
-                className: "w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]",
+                className: "w-full rounded-md border border-[color:var(--theme-border-soft)]",
+                style: { backgroundColor: SIGNATURE_CANVAS_COLOR },
                 role: "img",
                 "aria-label": "Signature input area",
               }}
             />
           ) : (
-            <div className="h-[220px] w-full animate-pulse rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]" />
+            <div
+              className="h-[220px] w-full animate-pulse rounded-md border border-[color:var(--theme-border-soft)]"
+              style={{ backgroundColor: SIGNATURE_CANVAS_COLOR }}
+            />
           )}
         </div>
 
@@ -219,8 +226,12 @@ function SignaturePadHost() {
             type="button"
             onClick={handleClear}
             disabled={saving}
-            className="rounded px-4 py-2 text-[color:var(--theme-text-primary)] hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: "var(--theme-text-primary)", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
+            className="rounded px-4 py-2 hover:opacity-90 disabled:opacity-50"
+            style={{
+              backgroundColor: SIGNATURE_INK_COLOR,
+              color: SIGNATURE_CANVAS_COLOR,
+              fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui",
+            }}
           >
             Clear
           </button>
