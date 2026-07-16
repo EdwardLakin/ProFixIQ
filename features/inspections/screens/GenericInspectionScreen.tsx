@@ -50,6 +50,12 @@ import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
 import { cn } from "@shared/lib/utils";
+import {
+  getInspectionOfflineDraft,
+  removeInspectionOfflineDraft,
+  saveInspectionOfflineDraft,
+  type InspectionDraftRecoveryState,
+} from "@inspections/lib/inspection/offlineDrafts";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -320,6 +326,14 @@ function inspectionDraftKey(args: {
     return `inspection-draft:line:${args.workOrderLineId}`;
   if (args.workOrderId) return `inspection-draft:wo:${args.workOrderId}:${t}`;
   return `inspection-draft:template:${t}:${args.inspectionId}`;
+}
+
+function inspectionDraftTimestamp(
+  session: Partial<InspectionSession> | null,
+): number {
+  const value = session?.lastUpdated;
+  const parsed = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function buildCauseCorrectionFromSession(s: unknown): {
@@ -822,6 +836,15 @@ type SmartMatchRow = {
   const [voicePulse, setVoicePulse] = useState(false);
   const pulseTimerRef = useRef<number | null>(null);
   const [serverBootLoaded, setServerBootLoaded] = useState(false);
+  const [draftBootLoaded, setDraftBootLoaded] = useState(false);
+  const [recoveryState, setRecoveryState] =
+    useState<InspectionDraftRecoveryState>("editing");
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  const recoveryOperationKeyRef = useRef<string | undefined>(undefined);
+  const inspectionCompletedRef = useRef(false);
+  const localDraftUpdatedAtRef = useRef(
+    inspectionDraftTimestamp(persistedSession),
+  );
   const serverStartedRef = useRef<string | null>(null);
 
   const triggerVoicePulse = (): void => {
@@ -870,6 +893,60 @@ type SmartMatchRow = {
     addQuoteLine,
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
+
+  useEffect(() => {
+    let cancelled = false;
+    inspectionCompletedRef.current = false;
+    const recoverDraft = async () => {
+      try {
+        const recovered = await getInspectionOfflineDraft({
+          draftKey,
+          sessionHint: persistedSession ?? initialSession,
+        });
+        if (cancelled) return;
+        if (recovered) {
+          const recoveredAt = inspectionDraftTimestamp(recovered.session);
+          const legacyAt = inspectionDraftTimestamp(persistedSession);
+          const preferred =
+            recoveredAt >= legacyAt ? recovered.session : persistedSession;
+          if (preferred) {
+            startSession(preferred);
+            localDraftUpdatedAtRef.current = inspectionDraftTimestamp(preferred);
+          }
+          setRecoveryState(recovered.state);
+          recoveryOperationKeyRef.current = recovered.operationKey;
+          setRecoveryMessage(
+            recovered.state === "queued"
+              ? "Recovered inspection · server save is queued."
+              : recovered.state === "conflicted"
+                ? "Recovered inspection · sync needs review."
+                : `Recovered inspection saved ${new Date(recovered.savedAt).toLocaleString()}.`,
+          );
+        } else if (persistedSession) {
+          const migrated = await saveInspectionOfflineDraft({
+            draftKey,
+            session: persistedSession,
+          });
+          if (!cancelled && migrated) {
+            setRecoveryMessage(
+              "Existing inspection draft moved into offline recovery.",
+            );
+          }
+        }
+      } catch (error) {
+        console.warn("[inspection] offline recovery unavailable", error);
+      } finally {
+        if (!cancelled) setDraftBootLoaded(true);
+      }
+    };
+    void recoverDraft();
+    return () => {
+      cancelled = true;
+    };
+    // Recovery is intentionally keyed to the draft identity. Including startSession
+    // would restart this effect on every render because the hook returns a new function.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
 
   const fetchSmartMatch = async (
     sectionIndex: number,
@@ -1324,6 +1401,7 @@ type SmartMatchRow = {
     let cancelled = false;
 
     const loadSavedInspection = async () => {
+      if (!draftBootLoaded) return;
       if (!inspectionId && !workOrderLineId) {
         setServerBootLoaded(true);
         return;
@@ -1356,17 +1434,25 @@ type SmartMatchRow = {
           Array.isArray(loaded.sections) &&
           loaded.sections.length > 0
         ) {
-          startSession(loaded);
+          const serverUpdatedAt = inspectionDraftTimestamp(loaded);
+          if (serverUpdatedAt >= localDraftUpdatedAtRef.current) {
+            startSession(loaded);
+            localDraftUpdatedAtRef.current = serverUpdatedAt;
 
-          try {
-            localStorage.setItem(draftKey, JSON.stringify(loaded));
-          } catch {
-            // noop
+            try {
+              localStorage.setItem(draftKey, JSON.stringify(loaded));
+            } catch {
+              // noop
+            }
+
+            serverStartedRef.current = String(
+              loaded.id ?? inspectionId ?? workOrderLineId ?? "loaded",
+            );
+          } else {
+            setRecoveryMessage(
+              "Recovered a newer device draft; the older server copy was not applied.",
+            );
           }
-
-          serverStartedRef.current = String(
-            loaded.id ?? inspectionId ?? workOrderLineId ?? "loaded",
-          );
         }
         setIsLocked(Boolean(data?.inspectionMeta?.locked));
       } catch (err) {
@@ -1383,7 +1469,9 @@ type SmartMatchRow = {
     return () => {
       cancelled = true;
     };
-  }, [inspectionId, workOrderLineId, draftKey, startSession]);
+    // startSession is intentionally omitted; this fetch should run once per identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inspectionId, workOrderLineId, draftKey, draftBootLoaded]);
 
   useEffect(() => {
     if (session && (session.sections?.length ?? 0) === 0) {
@@ -1392,24 +1480,33 @@ type SmartMatchRow = {
   }, [session, bootSections, updateInspection]);
 
   useEffect(() => {
-  if (!session) return;
+    if (!session || !draftBootLoaded || inspectionCompletedRef.current) return;
 
-  try {
-    localStorage.setItem(draftKey, JSON.stringify(session));
-
-    // ✅ ADD THIS — broadcast update to findings page
-    if (typeof window !== "undefined") {
+    localDraftUpdatedAtRef.current = inspectionDraftTimestamp(session);
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(session));
       window.dispatchEvent(
         new CustomEvent("inspection:draft-updated", {
           detail: { draftKey },
         }),
       );
-    }
-  } catch {}
-}, [session, draftKey]);
+    } catch {}
+
+    const timer = window.setTimeout(() => {
+      if (inspectionCompletedRef.current) return;
+      void saveInspectionOfflineDraft({
+        draftKey,
+        session,
+        state: recoveryState,
+        operationKey: recoveryOperationKeyRef.current,
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [session, draftKey, draftBootLoaded, recoveryState]);
 
   useEffect(() => {
     const persistNow = () => {
+      if (inspectionCompletedRef.current) return;
       try {
         const payload = {
           ...(session ?? initialSession),
@@ -1439,7 +1536,7 @@ type SmartMatchRow = {
       window.removeEventListener("pagehide", persistNow);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [session, draftKey, initialSession]);
+  }, [session, draftKey, initialSession, workOrderId, workOrderLineId]);
 
   useEffect(() => {
     const handler = (evt: Event) => {
@@ -1475,6 +1572,13 @@ type SmartMatchRow = {
         localStorage.removeItem(draftKey);
         localStorage.removeItem(lockKey);
       } catch {}
+      inspectionCompletedRef.current = true;
+      void removeInspectionOfflineDraft({
+        draftKey,
+        session: session ?? initialSession,
+      });
+      recoveryOperationKeyRef.current = undefined;
+      setRecoveryMessage(null);
     };
 
     window.addEventListener("inspection:completed", handler as EventListener);
@@ -1483,7 +1587,7 @@ type SmartMatchRow = {
         "inspection:completed",
         handler as EventListener,
       );
-  }, [session, draftKey, lockKey]);
+  }, [session, draftKey, lockKey, initialSession]);
 
   // ✅ TS-safe label for ParsedCommand (no ".command" assumption)
   const commandLabel = (c: ParsedCommand): string => {
@@ -2570,6 +2674,18 @@ type SmartMatchRow = {
         session={session}
         workOrderLineId={workOrderLineId}
         disabled={isLocked}
+        draftKey={draftKey}
+        onRecoveryState={(state, operationKey) => {
+          setRecoveryState(state);
+          recoveryOperationKeyRef.current = operationKey;
+          setRecoveryMessage(
+            state === "queued"
+              ? "Inspection is safe on this device and queued for server sync."
+              : state === "conflicted"
+                ? "Inspection is safe on this device, but sync needs review."
+                : "Inspection progress is saved on this device and the server.",
+          );
+        }}
       />
 
       <Button
@@ -2606,6 +2722,7 @@ type SmartMatchRow = {
   );
 
   if (
+    !draftBootLoaded ||
     !serverBootLoaded ||
     !session ||
     (session.sections?.length ?? 0) === 0
@@ -2634,6 +2751,21 @@ type SmartMatchRow = {
       )}
 
       <div className="relative space-y-3">
+        {recoveryMessage && (
+          <div
+            role="status"
+            className={cn(
+              "rounded-xl border px-3 py-2 text-xs",
+              recoveryState === "conflicted"
+                ? "border-red-400/40 bg-red-950/20 text-red-100"
+                : recoveryState === "queued"
+                  ? "border-amber-400/40 bg-amber-950/20 text-amber-100"
+                  : "border-emerald-400/40 bg-emerald-950/20 text-emerald-100",
+            )}
+          >
+            {recoveryMessage}
+          </div>
+        )}
         <div className={headerCard}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-2">
             <div>

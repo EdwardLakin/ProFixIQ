@@ -7,12 +7,24 @@ import { toast } from "sonner";
 import { saveInspectionSession } from "@inspections/lib/inspection/save";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import { Button } from "@shared/components/ui/Button";
-import { getOfflineSyncSummary, subscribeOfflineMutations } from "@/features/shared/lib/offline/mutations";
+import {
+  getOfflineSyncSummary,
+  subscribeOfflineMutations,
+} from "@/features/shared/lib/offline/mutations";
+import {
+  saveInspectionOfflineDraft,
+  type InspectionDraftRecoveryState,
+} from "@inspections/lib/inspection/offlineDrafts";
 
 type Props = {
   session: InspectionSession;
   workOrderLineId: string;
   disabled?: boolean;
+  draftKey?: string;
+  onRecoveryState?: (
+    state: InspectionDraftRecoveryState,
+    operationKey?: string,
+  ) => void;
 };
 
 function errorMessage(err: unknown): string {
@@ -21,7 +33,13 @@ function errorMessage(err: unknown): string {
   return "Failed to save inspection.";
 }
 
-export function SaveInspectionButton({ session, workOrderLineId, disabled = false }: Props) {
+export function SaveInspectionButton({
+  session,
+  workOrderLineId,
+  disabled = false,
+  draftKey,
+  onRecoveryState,
+}: Props) {
   const [syncSummary, setSyncSummary] = useState(() => getOfflineSyncSummary());
 
   useEffect(() => {
@@ -40,6 +58,26 @@ export function SaveInspectionButton({ session, workOrderLineId, disabled = fals
     try {
       if (!workOrderLineId) throw new Error("Missing workOrderLineId");
       const result = await saveInspectionSession(session, workOrderLineId);
+      const recoveryState: InspectionDraftRecoveryState = result.conflicted
+        ? "conflicted"
+        : result.queued
+          ? "queued"
+          : "editing";
+      if (draftKey) {
+        await saveInspectionOfflineDraft({
+          draftKey,
+          session,
+          state: recoveryState,
+          operationKey:
+            result.queued || result.conflicted
+              ? result.operationKey
+              : undefined,
+        });
+      }
+      onRecoveryState?.(
+        recoveryState,
+        result.queued || result.conflicted ? result.operationKey : undefined,
+      );
       if (result.conflicted) {
         toast.error("Inspection save conflicted. Review sync queue status.");
       } else if (result.queued) {
@@ -66,9 +104,13 @@ export function SaveInspectionButton({ session, workOrderLineId, disabled = fals
       >
         Save Progress
       </Button>
-      {(syncSummary.queued > 0 || syncSummary.syncing > 0 || syncSummary.failed > 0 || syncSummary.conflicted > 0) && (
+      {(syncSummary.queued > 0 ||
+        syncSummary.syncing > 0 ||
+        syncSummary.failed > 0 ||
+        syncSummary.conflicted > 0) && (
         <p className="text-[10px] text-[color:var(--theme-text-secondary)]">
-          Sync queue: pending {syncSummary.queued + syncSummary.syncing} • failed {syncSummary.failed} • conflicted {syncSummary.conflicted}
+          Sync queue: pending {syncSummary.queued + syncSummary.syncing} •
+          failed {syncSummary.failed} • conflicted {syncSummary.conflicted}
         </p>
       )}
     </div>

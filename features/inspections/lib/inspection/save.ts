@@ -2,9 +2,7 @@
 "use client";
 
 import type { InspectionSession } from "@inspections/lib/inspection/types";
-import {
-  runMutationWithOfflineQueue,
-} from "@/features/shared/lib/offline/mutations";
+import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
 import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
 
 const ACTION_SAVE_INSPECTION = "inspection:save-session";
@@ -30,9 +28,9 @@ async function postInspectionSave(payload: InspectionSavePayload) {
   });
 
   if (!res.ok) {
-    const json = (await res.json().catch(() => null)) as
-      | { error?: string }
-      | null;
+    const json = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
     const error = new Error(json?.error || "Save failed") as Error & {
       status?: number;
     };
@@ -48,7 +46,7 @@ export async function replayQueuedInspectionSaves(): Promise<void> {
 export async function saveInspectionSession(
   session: InspectionSession,
   workOrderLineId: string,
-): Promise<{ queued: boolean; conflicted: boolean }> {
+): Promise<{ queued: boolean; conflicted: boolean; operationKey: string }> {
   if (!workOrderLineId) {
     throw new Error("Missing workOrderLineId");
   }
@@ -75,5 +73,5 @@ export async function saveInspectionSession(
     await replayQueuedInspectionSaves();
   }
 
-  return result;
+  return { ...result, operationKey };
 }

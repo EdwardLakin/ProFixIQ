@@ -114,7 +114,7 @@ function scopeMatches(
   );
 }
 
-async function resolveMutationScope(
+export async function resolveOfflineMutationScope(
   payload: unknown,
   supplied?: OfflineMutationScope | null,
 ): Promise<OfflineMutationScope | null> {
@@ -620,7 +620,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
 }): Promise<{ queued: boolean; conflicted: boolean }> {
   await hydrateOfflineMutationQueue();
   const queueOnOffline = args.queueOnOffline !== false;
-  const scope = await resolveMutationScope(args.payload, args.scope);
+  const scope = await resolveOfflineMutationScope(args.payload, args.scope);
   if (!scope) {
     throw new Error(
       "Authenticated user and shop scope could not be resolved for offline sync.",
