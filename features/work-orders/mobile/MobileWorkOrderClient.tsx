@@ -34,9 +34,15 @@ import {
   deriveMobileDetailOperationalState,
 } from "@/features/work-orders/mobile/detailOperationalState";
 import {
+  getOfflineMutationScope,
   getOfflineSyncSummary,
+  setOfflineMutationScope,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
+import {
+  getOfflineSnapshot,
+  saveOfflineSnapshot,
+} from "@/features/shared/lib/offline/database";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -47,6 +53,14 @@ type WorkOrderQuoteLine =
   DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
   work_order_line_id?: string | null;
+};
+type MobileWorkOrderSnapshot = {
+  workOrder: WorkOrder;
+  lines: WorkOrderLine[];
+  quoteLines: WorkOrderQuoteLine[];
+  vehicle: Vehicle | null;
+  customer: Customer | null;
+  techNamesById: Record<string, string>;
 };
 
 // 🔹 Extra metadata shape for inspection template ids (mirrors desktop logic)
@@ -252,11 +266,18 @@ export default function MobileWorkOrderClient({
 
       if (!mounted) return;
 
-      const uid = user?.id ?? null;
+      const uid = user?.id ?? session?.user.id ?? null;
       setCurrentUserId(uid);
       setUserId(uid);
 
       if (uid) {
+        const cachedScope = getOfflineMutationScope();
+        if (!navigator.onLine && cachedScope?.userId === uid) {
+          setCurrentUserRole(session?.user.user_metadata?.role ?? null);
+          setShopId(cachedScope.shopId);
+          setLoading(false);
+          return;
+        }
         const { data: prof, error: profErr } = await supabase
           .from("profiles")
           .select("role, shop_id")
@@ -266,6 +287,7 @@ export default function MobileWorkOrderClient({
         if (!profErr) {
           setCurrentUserRole(prof?.role ?? null);
           setShopId((prof?.shop_id as string | null) ?? null);
+          if (prof?.shop_id) setOfflineMutationScope({ userId: uid, shopId: prof.shop_id });
         } else {
           setCurrentUserRole(null);
           setShopId(null);
@@ -308,6 +330,31 @@ export default function MobileWorkOrderClient({
       if (!routeId) return;
       setLoading(true);
       setViewError(null);
+
+      const scope = currentUserId && shopId ? { userId: currentUserId, shopId } : null;
+      const loadCached = async (): Promise<boolean> => {
+        if (!scope) return false;
+        const cached = await getOfflineSnapshot<MobileWorkOrderSnapshot>({
+          scope,
+          kind: "mobile-work-order-detail",
+          entityId: routeId,
+        });
+        if (!cached) return false;
+        setWo(cached.data.workOrder);
+        setLines(cached.data.lines);
+        setQuoteLines(cached.data.quoteLines);
+        setVehicle(cached.data.vehicle);
+        setCustomer(cached.data.customer);
+        setTechNamesById(cached.data.techNamesById);
+        setViewError("Offline copy · changes may be newer on the server.");
+        return true;
+      };
+
+      if (!navigator.onLine) {
+        if (!(await loadCached())) setViewError("No saved copy of this work order is available.");
+        setLoading(false);
+        return;
+      }
 
       try {
         let woRow: WorkOrder | null = null;
@@ -445,6 +492,7 @@ export default function MobileWorkOrderClient({
           ),
         );
 
+        let techMap: Record<string, string> = {};
         if (techIds.length > 0) {
           const { data: techProfiles, error: techErr } = await supabase
             .from("profiles")
@@ -452,17 +500,22 @@ export default function MobileWorkOrderClient({
             .in("id", techIds);
 
           if (!techErr && techProfiles) {
-            const map: Record<string, string> = {};
             techProfiles.forEach((p) => {
-              map[p.id] = p.full_name ?? "Technician";
+              techMap[p.id] = p.full_name ?? "Technician";
             });
-            setTechNamesById(map);
+            setTechNamesById(techMap);
           } else {
             setTechNamesById({});
           }
         } else {
           setTechNamesById({});
         }
+
+        const freshQuoteLines = quotesRes.error
+          ? []
+          : ((quotesRes.data as WorkOrderQuoteLine[] | null) ?? []);
+        const freshVehicle = vehRes?.error ? null : ((vehRes?.data as Vehicle | null) ?? null);
+        const freshCustomer = custRes?.error ? null : ((custRes?.data as Customer | null) ?? null);
 
         if (quotesRes.error) {
           setQuoteLines([]);
@@ -484,10 +537,25 @@ export default function MobileWorkOrderClient({
         } else {
           setCustomer((custRes?.data as Customer | null) ?? null);
         }
+        if (scope) {
+          const snapshot: MobileWorkOrderSnapshot = {
+            workOrder: freshCore.workOrder,
+            lines: freshCore.lines,
+            quoteLines: freshQuoteLines,
+            vehicle: freshVehicle,
+            customer: freshCustomer,
+            techNamesById: techMap,
+          };
+          await Promise.all([
+            saveOfflineSnapshot({ scope, kind: "mobile-work-order-detail", entityId: routeId, data: snapshot }),
+            saveOfflineSnapshot({ scope, kind: "mobile-work-order-detail", entityId: woRow.id, data: snapshot }),
+          ]);
+        }
       } catch (e: unknown) {
         const msg =
           e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
+        await loadCached();
         // eslint-disable-next-line no-console
         console.error("[Mobile WO id page] load error:", e);
       } finally {
@@ -497,6 +565,7 @@ export default function MobileWorkOrderClient({
     [
       routeId,
       shopId,
+      currentUserId,
       warnedMissing,
       setWo,
       setLines,

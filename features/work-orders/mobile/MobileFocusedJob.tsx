@@ -11,13 +11,17 @@ import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import {
   getOfflineSyncSummary,
+  getOfflineMutationScope,
   listOfflineMutations,
   listPendingMutations,
-  replayQueuedMutations,
   runMutationWithOfflineQueue,
   subscribeOfflineMutations,
-  type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
+import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
+import {
+  removeOfflineBlob,
+  saveOfflineBlob,
+} from "@/features/shared/lib/offline/database";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
@@ -368,60 +372,7 @@ export default function MobileFocusedJob(props: {
   }, [workOrderLineId, loadLine, onChanged, loadAllocations]);
 
   const replayOfflineMutations = useCallback(async () => {
-    const handlers: Record<string, (mutation: PendingMutation) => Promise<{ conflicted?: string | null } | void>> = {
-      update_work_order_line_notes: async (mutation) => {
-        const payload = mutation.payload as { workOrderLineId?: string; notes?: string };
-        const workLineId = payload.workOrderLineId;
-        if (!workLineId) return { conflicted: "Missing target line for notes sync." };
-
-        const conflict = await getLineConflict(workLineId, "notes");
-        if (conflict) return { conflicted: conflict };
-
-        const { error } = await supabase
-          .from("work_order_lines")
-          .update({
-            notes: payload.notes ?? "",
-          } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-          .eq("id", workLineId);
-        if (error) throw error;
-      },
-      upload_job_photo: async (mutation) => {
-        const payload = mutation.payload as {
-          path?: string;
-          fileName?: string;
-          mimeType?: string;
-          dataUrl?: string;
-        };
-        if (!payload.path || !payload.dataUrl) {
-          return { conflicted: "Missing local photo data. Please recapture and retry." };
-        }
-
-        const response = await fetch(payload.dataUrl);
-        const blob = await response.blob();
-        const { error } = await supabase.storage.from("job-photos").upload(payload.path, blob, {
-          contentType: payload.mimeType || "image/jpeg",
-          upsert: true,
-        });
-        if (error) throw error;
-      },
-      save_story_draft: async (mutation) => {
-        const payload = mutation.payload as { lineId?: string; cause?: string; correction?: string };
-        if (!payload.lineId) return { conflicted: "Missing job line for story draft." };
-        const conflict = await getLineConflict(payload.lineId, "story");
-        if (conflict) return { conflicted: conflict };
-
-        const { error } = await supabase
-          .from("work_order_lines")
-          .update({
-            cause: payload.cause ?? "",
-            correction: payload.correction ?? "",
-          } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-          .eq("id", payload.lineId);
-        if (error) throw error;
-      },
-    };
-
-    const result = await replayQueuedMutations({ handlers });
+    const result = await replayAllOfflineMutations();
     refreshSyncState();
     setStagedPhotos((prev) =>
       prev.filter((photo) => {
@@ -440,7 +391,7 @@ export default function MobileFocusedJob(props: {
     if (result.conflicted > 0) {
       toast.warning(`${result.conflicted} update${result.conflicted === 1 ? "" : "s"} need manual resolution.`);
     }
-  }, [getLineConflict, supabase, refreshSyncState, refresh]);
+  }, [refreshSyncState, refresh]);
 
   // initial load (page behavior)
   useEffect(() => {
@@ -678,32 +629,44 @@ export default function MobileFocusedJob(props: {
     const clientMutationId = uuidv4();
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${clientMutationId}_${file.name}`;
     const previewUrl = URL.createObjectURL(file);
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(new Error("Unable to stage photo for offline upload."));
-      reader.readAsDataURL(file);
+    const scope = getOfflineMutationScope();
+    if (!scope) throw new Error("Offline shop scope is unavailable. Reconnect and try again.");
+    await saveOfflineBlob({
+      id: clientMutationId,
+      userId: scope.userId,
+      shopId: scope.shopId,
+      createdAt: new Date().toISOString(),
+      fileName: file.name,
+      mimeType: file.type || "image/jpeg",
+      blob: file,
     });
 
-    const result = await runMutationWithOfflineQueue({
-      clientMutationId,
-      actionType: "upload_job_photo",
-      payload: {
-        workOrderLineId,
-        path,
-        fileName: file.name,
-        mimeType: file.type || "image/jpeg",
-        dataUrl,
-      },
-      orderKey: `${workOrderLineId}:photo:${clientMutationId}`,
-      runner: async () => {
-        const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-          contentType: file.type || "image/jpeg",
-          upsert: true,
-        });
-        if (error) throw error;
-      },
-    });
+    let result: { queued: boolean; conflicted: boolean };
+    try {
+      result = await runMutationWithOfflineQueue({
+        clientMutationId,
+        actionType: "upload_job_photo",
+        payload: {
+          workOrderLineId,
+          path,
+          fileName: file.name,
+          mimeType: file.type || "image/jpeg",
+          blobId: clientMutationId,
+        },
+        orderKey: `${workOrderLineId}:photo:${clientMutationId}`,
+        runner: async () => {
+          const { error } = await supabase.storage.from("job-photos").upload(path, file, {
+            contentType: file.type || "image/jpeg",
+            upsert: true,
+          });
+          if (error) throw error;
+        },
+      });
+    } catch (error) {
+      URL.revokeObjectURL(previewUrl);
+      await removeOfflineBlob(clientMutationId);
+      throw error;
+    }
 
     refreshSyncState();
     if (result.queued) {
@@ -716,6 +679,7 @@ export default function MobileFocusedJob(props: {
     }
 
     URL.revokeObjectURL(previewUrl);
+    await removeOfflineBlob(clientMutationId);
     toast.success("Photo attached");
     window.dispatchEvent(new CustomEvent("wol:refresh"));
   };

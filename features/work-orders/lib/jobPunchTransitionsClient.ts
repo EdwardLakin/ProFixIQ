@@ -1,3 +1,8 @@
+import {
+  getOfflineMutationScope,
+  runMutationWithOfflineQueue,
+} from "@/features/shared/lib/offline/mutations";
+
 export type JobPunchAction = "start" | "pause" | "resume" | "finish";
 
 type TransitionBody = {
@@ -44,17 +49,35 @@ export async function runJobPunchTransition(
     idempotencyKey: operationKey,
   };
 
-  const res = await fetch(buildTransitionPath(lineId, action), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": operationKey,
-    },
-    body: JSON.stringify(payload),
+  const post = async () => {
+    const res = await fetch(buildTransitionPath(lineId, action), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": operationKey,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) return;
+    const responsePayload = (await res.json().catch(() => null)) as ApiError | null;
+    const error = new Error(responsePayload?.error ?? `Failed to ${action} job`) as Error & {
+      status?: number;
+    };
+    error.status = res.status;
+    throw error;
+  };
+
+  const scope = getOfflineMutationScope();
+  if (!scope) {
+    await post();
+    return;
+  }
+  await runMutationWithOfflineQueue({
+    clientMutationId: operationKey,
+    actionType: "job:punch-transition",
+    payload: { lineId, action, body: payload, operationKey },
+    orderKey: `${lineId}:job-punch:${operationKey}`,
+    scope,
+    runner: post,
   });
-
-  if (res.ok) return;
-
-  const responsePayload = (await res.json().catch(() => null)) as ApiError | null;
-  throw new Error(responsePayload?.error ?? `Failed to ${action} job`);
 }

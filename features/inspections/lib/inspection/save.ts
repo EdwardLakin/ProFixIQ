@@ -4,9 +4,8 @@
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import {
   runMutationWithOfflineQueue,
-  replayQueuedMutations,
-  type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
+import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
 
 const ACTION_SAVE_INSPECTION = "inspection:save-session";
 
@@ -43,24 +42,7 @@ async function postInspectionSave(payload: InspectionSavePayload) {
 }
 
 export async function replayQueuedInspectionSaves(): Promise<void> {
-  await replayQueuedMutations({
-    handlers: {
-      [ACTION_SAVE_INSPECTION]: async (mutation: PendingMutation) => {
-        const payload = mutation.payload as Partial<InspectionSavePayload> | undefined;
-        if (
-          !payload?.workOrderLineId ||
-          !payload.session ||
-          !payload.operationKey
-        ) {
-          return {
-            conflicted:
-              "Inspection save mutation is missing its target, session, or operation key.",
-          };
-        }
-        await postInspectionSave(payload as InspectionSavePayload);
-      },
-    },
-  });
+  await replayAllOfflineMutations();
 }
 
 export async function saveInspectionSession(

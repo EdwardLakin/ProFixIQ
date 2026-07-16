@@ -1,13 +1,18 @@
 // next.config.ts
 import path from "path";
+import withSerwistInit from "@serwist/next";
+import type { NextConfig } from "next";
 
-const nextConfig = {
+const withSerwist = withSerwistInit({
+  swSrc: "app/sw.ts",
+  swDest: "public/sw.js",
+  register: false,
+  disable: process.env.NODE_ENV !== "production",
+  additionalPrecacheEntries: [{ url: "/offline", revision: null }],
+});
+
+const nextConfig: NextConfig = {
   reactStrictMode: true,
-
-  // 👇 Turn OFF Turbopack so we can keep using this webpack config
-  experimental: {
-    turbo: false,
-  },
 
   images: {
     remotePatterns: [
@@ -17,6 +22,18 @@ const nextConfig = {
         pathname: "/storage/v1/object/public/**",
       },
     ],
+  },
+
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=0, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+    ];
   },
 
   webpack(config: any) {
@@ -32,4 +49,4 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

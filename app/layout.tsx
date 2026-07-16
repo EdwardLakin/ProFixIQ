@@ -8,6 +8,8 @@ import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { getDashboardIdentity } from "@/features/dashboard/server/dashboard-shell-data";
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
 import BrandThemeBoot from "@/features/branding/components/BrandThemeBoot";
+import PwaRuntime from "@/features/shared/components/pwa/PwaRuntime";
+import type { Metadata, Viewport } from "next";
 
 import ThemedToaster from "@/features/shared/components/ThemedToaster";
 
@@ -24,10 +26,27 @@ const blackOps = Black_Ops_One({
   display: "swap",
 });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "ProFixIQ | The operating system for modern repair shops",
   description:
     "Voice inspections, technician-built repairs, approvals, parts workflows, workforce operations, and fleet transparency—connected in one repair shop operating system.",
+  applicationName: "ProFixIQ",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "ProFixIQ", statusBarStyle: "black-translucent" },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0b1729",
 };
 
 export default async function RootLayout({
@@ -40,6 +59,8 @@ export default async function RootLayout({
 
   const isPublicRoute =
     pathname === "/" ||
+    pathname.startsWith("/launch") ||
+    pathname.startsWith("/offline") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/mobile/sign-in") ||
@@ -100,6 +121,7 @@ export default async function RootLayout({
           appContent
         )}
 
+        <PwaRuntime />
         <ThemedToaster />
       </body>
     </html>
