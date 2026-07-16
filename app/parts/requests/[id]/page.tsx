@@ -383,7 +383,30 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const preserveContent = options.preserveContent === true;
     if (!preserveContent) setLoading(true);
 
-    const woRow = await resolveWorkOrder(routeId);
+    let requestIdFilter: string | null = null;
+    let woRow = await resolveWorkOrder(routeId);
+
+    // Quote Review links to the canonical request id. Keep supporting the
+    // older work-order id/custom-id route while resolving a request id to its
+    // owning work order and limiting the page to that request.
+    if (!woRow && isUuid(routeId)) {
+      const { data: requestById, error: requestLookupError } = await supabase
+        .from("part_requests")
+        .select("id, work_order_id")
+        .eq("id", routeId)
+        .maybeSingle();
+
+      if (requestLookupError) toast.error(requestLookupError.message);
+
+      const linkedWorkOrderId = requestById?.work_order_id
+        ? String(requestById.work_order_id)
+        : "";
+      if (linkedWorkOrderId) {
+        woRow = await resolveWorkOrder(linkedWorkOrderId);
+        requestIdFilter = String(requestById.id);
+      }
+    }
+
     if (!woRow) {
       setWo(null);
       setLineById(new Map());
@@ -405,11 +428,16 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     setWo(woRow);
 
-    const { data: reqs, error: reqErr } = await supabase
+    const requestsForWorkOrder = supabase
       .from("part_requests")
       .select("*")
-      .eq("work_order_id", woRow.id)
-      .order("created_at", { ascending: false });
+      .eq("work_order_id", woRow.id);
+    const requestQuery = requestIdFilter
+      ? requestsForWorkOrder.eq("id", requestIdFilter)
+      : requestsForWorkOrder;
+    const { data: reqs, error: reqErr } = await requestQuery.order("created_at", {
+      ascending: false,
+    });
 
     if (reqErr) toast.error(reqErr.message);
 
@@ -1730,7 +1758,26 @@ if (!lineId || !isUuid(lineId)) {
   async function commitPartsPackage(requestId: string): Promise<void> {
     setSavingReqId(requestId);
     try {
-      const res = await fetch(`/api/parts/requests/${requestId}/commit-package`, { method: "POST" });
+      const request = requests.find((candidate) => candidate.req.id === requestId);
+      const packageFingerprint = (request?.items ?? [])
+        .slice()
+        .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+        .map((item) =>
+          [
+            item.id,
+            item.part_id ?? "",
+            item.work_order_line_id ?? "",
+            item.qty ?? "",
+            item.quoted_price ?? "",
+          ].join(":"),
+        )
+        .join("|");
+      const idempotencyKey = `parts-package:${requestId}:${packageFingerprint}`;
+      const res = await fetch(`/api/parts/requests/${requestId}/commit-package`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idempotencyKey }),
+      });
       const body = (await res.json().catch(() => null)) as {
         ok?: boolean;
         committedCount?: number;
