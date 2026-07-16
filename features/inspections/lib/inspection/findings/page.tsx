@@ -25,6 +25,7 @@ import { deriveEventsFromFindings } from "@/features/shared/lib/decisionEvents";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { cn } from "@shared/lib/utils";
 import { getPendingInspectionPhotoCount } from "@inspections/lib/inspection/inspectionPhotoStaging";
+import { removeInspectionOfflineDraft } from "@inspections/lib/inspection/offlineDrafts";
 
 type FindingRow = {
   sectionIndex: number;
@@ -957,6 +958,17 @@ export default function InspectionFindingsPage(): JSX.Element {
         bestEffortWarning =
           bestEffortWarning ??
           (pdfJson?.error || "Findings submitted, but PDF finalize failed.");
+      }
+
+      await removeInspectionOfflineDraft({
+        draftKey,
+        session: nextSession,
+      });
+      try {
+        localStorage.removeItem(draftKey);
+        localStorage.removeItem(`${draftKey}:locked`);
+      } catch {
+        // IndexedDB is authoritative; localStorage cleanup is best effort.
       }
 
       window.dispatchEvent(

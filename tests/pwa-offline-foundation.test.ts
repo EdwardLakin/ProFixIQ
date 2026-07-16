@@ -18,6 +18,21 @@ describe("installable offline foundation", () => {
     expect(source).not.toContain("profixiq-api");
   });
 
+  it("keeps the downloaded technician queue reachable after an offline restart", () => {
+    const serviceWorker = read("app/sw.ts");
+    const config = read("next.config.ts");
+    expect(serviceWorker).toContain('url.pathname === "/mobile/tech/queue"');
+    expect(serviceWorker).toContain("handler: new NetworkFirst");
+    expect(
+      serviceWorker.indexOf('url.pathname === "/mobile/tech/queue"'),
+    ).toBeLessThan(
+      serviceWorker.indexOf(
+        'request.mode === "navigate",\n      handler: new NetworkOnly()',
+      ),
+    );
+    expect(config).toContain('{ url: "/mobile/tech/queue", revision: null }');
+  });
+
   it("stores queues, snapshots, and blobs in shop-scoped IndexedDB stores", () => {
     const source = read("features/shared/lib/offline/database.ts");
     expect(source).toContain("[userId+shopId]");

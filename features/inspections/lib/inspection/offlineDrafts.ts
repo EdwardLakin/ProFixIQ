@@ -16,6 +16,13 @@ import {
 const KIND = "inspection-draft";
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 14;
 
+function sessionTimestamp(session: Partial<InspectionSession> | null): number {
+  const parsed = session?.lastUpdated
+    ? new Date(session.lastUpdated).getTime()
+    : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export type InspectionDraftRecoveryState = "editing" | "queued" | "conflicted";
 
 export type InspectionOfflineDraft = {
@@ -82,6 +89,19 @@ export async function getInspectionOfflineDraft(args: {
       (mutation) => mutation.clientMutationId === draft.operationKey,
     );
     if (!queued || queued.status === "synced") {
+      const reconciled = {
+        ...draft,
+        state: "editing" as const,
+        operationKey: undefined,
+      };
+      await saveInspectionOfflineDraft(reconciled);
+      return reconciled;
+    }
+    const queuedSession =
+      (queued.payload && typeof queued.payload === "object"
+        ? (queued.payload as { session?: Partial<InspectionSession> }).session
+        : null) ?? null;
+    if (sessionTimestamp(draft.session) > sessionTimestamp(queuedSession)) {
       const reconciled = {
         ...draft,
         state: "editing" as const,

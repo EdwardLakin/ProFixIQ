@@ -1,6 +1,7 @@
 import {
   CacheFirst,
   ExpirationPlugin,
+  NetworkFirst,
   NetworkOnly,
   Serwist,
   StaleWhileRevalidate,
@@ -19,8 +20,23 @@ const serwist = new Serwist({
   disableDevLogs: true,
   runtimeCaching: [
     {
-      matcher: ({ url }) => url.origin === self.location.origin && url.pathname.startsWith("/api/"),
+      matcher: ({ url }) =>
+        url.origin === self.location.origin && url.pathname.startsWith("/api/"),
       handler: new NetworkOnly(),
+    },
+    {
+      matcher: ({ request, url }) =>
+        request.mode === "navigate" && url.pathname === "/mobile/tech/queue",
+      handler: new NetworkFirst({
+        cacheName: "profixiq-technician-shell-v1",
+        networkTimeoutSeconds: 4,
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 4,
+            maxAgeSeconds: 60 * 60 * 24 * 14,
+          }),
+        ],
+      }),
     },
     {
       matcher: ({ request }) => request.mode === "navigate",
@@ -28,10 +44,16 @@ const serwist = new Serwist({
     },
     {
       matcher: ({ url }) =>
-        url.origin === self.location.origin && url.pathname.startsWith("/_next/static/"),
+        url.origin === self.location.origin &&
+        url.pathname.startsWith("/_next/static/"),
       handler: new CacheFirst({
         cacheName: "profixiq-static-v1",
-        plugins: [new ExpirationPlugin({ maxEntries: 160, maxAgeSeconds: 60 * 60 * 24 * 30 })],
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 160,
+            maxAgeSeconds: 60 * 60 * 24 * 30,
+          }),
+        ],
       }),
     },
     {
@@ -40,7 +62,12 @@ const serwist = new Serwist({
         ["style", "script", "font", "image"].includes(request.destination),
       handler: new StaleWhileRevalidate({
         cacheName: "profixiq-assets-v1",
-        plugins: [new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 14 })],
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 100,
+            maxAgeSeconds: 60 * 60 * 24 * 14,
+          }),
+        ],
       }),
     },
   ],
