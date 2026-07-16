@@ -8,8 +8,8 @@ import {
 import {
   replayQueuedMutations,
   type OfflineMutationRunner,
-  type PendingMutation,
 } from "@/features/shared/lib/offline/mutations";
+import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 
 type ReplayPayload = Record<string, unknown>;
 
@@ -28,33 +28,16 @@ async function apiPost(path: string, body: unknown, operationKey?: string) {
     body: JSON.stringify(body),
   });
   if (response.ok) return;
-  const json = (await response.json().catch(() => null)) as { error?: string } | null;
-  const error = new Error(json?.error ?? "Offline update was rejected") as Error & {
+  const json = (await response.json().catch(() => null)) as {
+    error?: string;
+  } | null;
+  const error = new Error(
+    json?.error ?? "Offline update was rejected",
+  ) as Error & {
     status?: number;
   };
   error.status = response.status;
   throw error;
-}
-
-async function lineConflict(
-  mutation: PendingMutation,
-  lineId: string,
-  action: "notes" | "story",
-): Promise<string | null> {
-  const supabase = createBrowserSupabase();
-  const { data, error } = await supabase
-    .from("work_order_lines")
-    .select("status, approval_state")
-    .eq("id", lineId)
-    .eq("shop_id", mutation.shopId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return "The target job is no longer available in this shop.";
-  if (data.status === "completed") return "The job is already completed.";
-  if (action === "notes" && data.approval_state === "approved") {
-    return "Approved job notes must be reviewed before they can be changed.";
-  }
-  return null;
 }
 
 const handlers: Record<string, OfflineMutationRunner> = {
@@ -63,7 +46,9 @@ const handlers: Record<string, OfflineMutationRunner> = {
     const workOrderLineId = text(payload.workOrderLineId);
     const operationKey = text(payload.operationKey);
     if (!workOrderLineId || !operationKey || !payload.session) {
-      return { conflicted: "Inspection save is missing required offline data." };
+      return {
+        conflicted: "Inspection save is missing required offline data.",
+      };
     }
     await apiPost(
       "/api/inspections/save",
@@ -79,37 +64,36 @@ const handlers: Record<string, OfflineMutationRunner> = {
     if (!shiftId || !eventType || !timestamp) {
       return { conflicted: "Shift punch is missing required offline data." };
     }
-    await apiPost("/api/scheduling/punches", {
-      shift_id: shiftId,
-      event_type: eventType,
-      timestamp,
-    });
+    await apiPost(
+      "/api/scheduling/punches",
+      {
+        shift_id: shiftId,
+        event_type: eventType,
+        timestamp,
+        note: text(payload.note) || undefined,
+      },
+      mutation.clientMutationId,
+    );
   },
   update_work_order_line_notes: async (mutation) => {
     const payload = mutation.payload as ReplayPayload;
     const lineId = text(payload.workOrderLineId);
     if (!lineId) return { conflicted: "Notes update is missing its job." };
-    const conflict = await lineConflict(mutation, lineId, "notes");
-    if (conflict) return { conflicted: conflict };
-    const { error } = await createBrowserSupabase()
-      .from("work_order_lines")
-      .update({ notes: text(payload.notes) })
-      .eq("id", lineId)
-      .eq("shop_id", mutation.shopId);
-    if (error) throw error;
+    await postOfflineServerMutation({
+      actionType: "update_work_order_line_notes",
+      operationKey: mutation.clientMutationId,
+      payload,
+    });
   },
   save_story_draft: async (mutation) => {
     const payload = mutation.payload as ReplayPayload;
     const lineId = text(payload.lineId);
     if (!lineId) return { conflicted: "Story draft is missing its job." };
-    const conflict = await lineConflict(mutation, lineId, "story");
-    if (conflict) return { conflicted: conflict };
-    const { error } = await createBrowserSupabase()
-      .from("work_order_lines")
-      .update({ cause: text(payload.cause), correction: text(payload.correction) })
-      .eq("id", lineId)
-      .eq("shop_id", mutation.shopId);
-    if (error) throw error;
+    await postOfflineServerMutation({
+      actionType: "save_story_draft",
+      operationKey: mutation.clientMutationId,
+      payload,
+    });
   },
   upload_job_photo: async (mutation) => {
     const payload = mutation.payload as ReplayPayload;
@@ -119,16 +103,27 @@ const handlers: Record<string, OfflineMutationRunner> = {
       return { conflicted: "Photo upload is missing its staged file." };
     }
     const record = await getOfflineBlob(blobId);
-    if (!record || record.userId !== mutation.userId || record.shopId !== mutation.shopId) {
-      return { conflicted: "The staged photo is no longer available on this device." };
+    if (
+      !record ||
+      record.userId !== mutation.userId ||
+      record.shopId !== mutation.shopId
+    ) {
+      return {
+        conflicted: "The staged photo is no longer available on this device.",
+      };
     }
-    const { error } = await createBrowserSupabase().storage
-      .from("job-photos")
+    const { error } = await createBrowserSupabase()
+      .storage.from("job-photos")
       .upload(path, record.blob, {
         contentType: record.mimeType || "image/jpeg",
         upsert: true,
       });
     if (error) throw error;
+    await postOfflineServerMutation({
+      actionType: "upload_job_photo",
+      operationKey: mutation.clientMutationId,
+      payload,
+    });
     await removeOfflineBlob(blobId);
   },
   "job:punch-transition": async (mutation) => {
@@ -136,7 +131,11 @@ const handlers: Record<string, OfflineMutationRunner> = {
     const lineId = text(payload.lineId);
     const action = text(payload.action);
     const operationKey = text(payload.operationKey);
-    if (!lineId || !["start", "pause", "resume", "finish"].includes(action) || !operationKey) {
+    if (
+      !lineId ||
+      !["start", "pause", "resume", "finish"].includes(action) ||
+      !operationKey
+    ) {
       return { conflicted: "Job transition is missing required offline data." };
     }
     await apiPost(

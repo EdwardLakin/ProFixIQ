@@ -1,14 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  createAdminSupabase,
-  createServerSupabaseRoute,
-} from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
   isPunchEventType,
   type PunchEventType,
 } from "@/features/workforce/lib/shift-status";
-import { closeAllActiveTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
 
 type Caller = {
   id: string;
@@ -56,9 +51,7 @@ async function authz() {
     };
   }
 
-  const actor = getActorCapabilities({ role: me.role });
-  const isAdmin = actor.isKnownRole && actor.canManageScheduling;
-  return { ok: true as const, me, isAdmin };
+  return { ok: true as const, me };
 }
 
 type PunchCreateBody = {
@@ -69,6 +62,13 @@ type PunchCreateBody = {
 };
 
 export async function POST(req: NextRequest) {
+  const operationKey = req.headers.get("Idempotency-Key")?.trim() ?? "";
+  if (!operationKey) {
+    return NextResponse.json(
+      { error: "A stable Idempotency-Key is required." },
+      { status: 400 },
+    );
+  }
   const a = await authz();
   if (!a.ok) return a.res;
 
@@ -86,80 +86,48 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid timestamp" }, { status: 400 });
   }
 
-  const admin = createAdminSupabase();
-
-  // Verify shift exists + belongs to caller shop
-  const { data: shift, error: sErr } = await admin
-    .from("tech_shifts")
-    .select("id, shop_id, user_id")
-    .eq("id", body.shift_id)
-    .maybeSingle<{
-      id: string;
-      shop_id: string | null;
-      user_id: string | null;
-    }>();
-
-  if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 });
-  if (!shift)
-    return NextResponse.json({ error: "Shift not found" }, { status: 404 });
-  if (shift.shop_id !== a.me.shop_id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  // Rule A: punches belong to the shift owner unless admin
-  if (!a.isAdmin && shift.user_id !== a.me.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  if (body.event_type === "end_shift" && shift.user_id) {
-    const closed = await closeAllActiveTechnicianJobLabor({
-      supabase: admin,
-      shopId: a.me.shop_id as string,
-      technicianId: shift.user_id,
-      endedAtIso: body.timestamp,
-      reason: "shift_end",
-      event: "job_stopped_at_end_day",
-    });
-
-    if (!closed.ok) {
-      return NextResponse.json(
-        {
-          error: `Unable to stop active job timers before ending shift: ${closed.error}`,
-        },
-        { status: closed.status },
-      );
-    }
-  }
-
   const note =
     typeof body.note === "string" && body.note.trim().length > 0
       ? body.note.trim()
       : null;
 
-  const payload = {
-    shop_id: a.me.shop_id,
-    shift_id: body.shift_id,
-    user_id: shift.user_id ?? a.me.id,
-    profile_id: shift.user_id ?? a.me.id,
-    event_type: body.event_type,
-    timestamp: body.timestamp,
-    note,
+  const rpc = createServerSupabaseRoute() as unknown as {
+    rpc: (
+      name: string,
+      args: Record<string, unknown>,
+    ) => PromiseLike<{
+      data: unknown;
+      error: {
+        message: string;
+        details?: string | null;
+        hint?: string | null;
+      } | null;
+    }>;
   };
-  const { error } = await admin.from("punch_events").insert(payload as never);
-  if (error && error.message.includes("shop_id")) {
-    const withoutShopId = { ...payload };
-    delete (withoutShopId as { shop_id?: string | null }).shop_id;
-    const retry = await admin
-      .from("punch_events")
-      .insert(withoutShopId as never);
-    if (retry.error)
-      return NextResponse.json({ error: retry.error.message }, { status: 500 });
-    return NextResponse.json({ ok: true });
-  }
-
+  const { data, error } = await rpc.rpc("apply_offline_shift_punch_atomic", {
+    p_shop_id: a.me.shop_id,
+    p_actor_user_id: a.me.id,
+    p_operation_key: operationKey,
+    p_shift_id: body.shift_id,
+    p_event_type: body.event_type,
+    p_timestamp: body.timestamp,
+    p_note: note,
+  });
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = [error.message, error.details, error.hint]
+      .filter(Boolean)
+      .join(" — ");
+    const normalized = message.toLowerCase();
+    const status = normalized.includes("not found")
+      ? 404
+      : normalized.includes("cannot add") ||
+          normalized.includes("not available") ||
+          normalized.includes("authenticated actor")
+        ? 403
+        : normalized.includes("idempotency_key_reuse")
+          ? 409
+          : 400;
+    return NextResponse.json({ error: message }, { status });
   }
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(data ?? { ok: true });
 }
