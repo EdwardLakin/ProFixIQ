@@ -96,10 +96,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname.startsWith("/work-orders/quote-review")) {
-    return NextResponse.next();
-  }
-
   const res = NextResponse.next({ request: { headers: requestHeaders } });
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
@@ -346,6 +342,7 @@ export const config = {
     "/dashboard/:path*",
     "/fleet/:path*",
     "/work-orders/:path*",
+    "/quote-review/:path*",
     "/inspections/:path*",
     "/mobile/:path*",
     "/parts/:path*",
