@@ -447,7 +447,10 @@ export async function dismissOfflineMutation(
   if (dependent) {
     throw new Error("Remove the dependent offline update first.");
   }
-  if (mutation.actionType === "upload_job_photo") {
+  if (
+    mutation.actionType === "upload_job_photo" ||
+    mutation.actionType === "inspection:upload-photo"
+  ) {
     const payload = mutation.payload as { blobId?: unknown } | null;
     if (typeof payload?.blobId === "string")
       await removeOfflineBlob(payload.blobId);
@@ -482,7 +485,8 @@ export async function pruneOfflineState(): Promise<{
       .filter(
         (item) =>
           scopeMatches(item, scope) &&
-          item.actionType === "upload_job_photo" &&
+          (item.actionType === "upload_job_photo" ||
+            item.actionType === "inspection:upload-photo") &&
           item.status !== "synced",
       )
       .map((item) => (item.payload as { blobId?: unknown } | null)?.blobId)

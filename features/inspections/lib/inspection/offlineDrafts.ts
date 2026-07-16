@@ -109,3 +109,41 @@ export async function removeInspectionOfflineDraft(args: {
     entityIds: [args.draftKey],
   });
 }
+
+export async function appendInspectionPhotoToOfflineDraft(args: {
+  scope: OfflineMutationScope;
+  draftKey: string;
+  sectionIndex: number;
+  itemIndex: number;
+  url: string;
+}): Promise<boolean> {
+  const snapshot = await getOfflineSnapshot<InspectionOfflineDraft>({
+    scope: args.scope,
+    kind: KIND,
+    entityId: args.draftKey,
+  });
+  if (!snapshot) return false;
+
+  const sections = [...(snapshot.data.session.sections ?? [])];
+  const section = sections[args.sectionIndex];
+  const item = section?.items?.[args.itemIndex];
+  if (!section || !item) return false;
+  const photoUrls = Array.isArray(item.photoUrls) ? item.photoUrls : [];
+  if (photoUrls.includes(args.url)) return true;
+  const items = [...section.items];
+  items[args.itemIndex] = { ...item, photoUrls: [...photoUrls, args.url] };
+  sections[args.sectionIndex] = { ...section, items };
+  const session = {
+    ...snapshot.data.session,
+    sections,
+    lastUpdated: new Date().toISOString(),
+  };
+  await saveOfflineSnapshot({
+    scope: args.scope,
+    kind: KIND,
+    entityId: args.draftKey,
+    data: { ...snapshot.data, session, savedAt: new Date().toISOString() },
+    maxAgeMs: MAX_AGE_MS,
+  });
+  return true;
+}

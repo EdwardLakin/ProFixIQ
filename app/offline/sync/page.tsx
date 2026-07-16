@@ -37,6 +37,7 @@ const ACTION_LABELS: Record<string, string> = {
   "shift:punch-event": "Shift punch",
   update_work_order_line_notes: "Job notes",
   upload_job_photo: "Job photo",
+  "inspection:upload-photo": "Inspection photo",
   save_story_draft: "Cause and correction",
   "job:punch-transition": "Job status",
 };

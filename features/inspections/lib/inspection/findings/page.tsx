@@ -24,6 +24,7 @@ import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromFindings } from "@/features/shared/lib/decisionEvents";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { cn } from "@shared/lib/utils";
+import { getPendingInspectionPhotoCount } from "@inspections/lib/inspection/inspectionPhotoStaging";
 
 type FindingRow = {
   sectionIndex: number;
@@ -546,6 +547,22 @@ export default function InspectionFindingsPage(): JSX.Element {
 
   const handleSubmitReviewed = async (): Promise<void> => {
     if (!session) return;
+
+    let pendingPhotoCount: number;
+    try {
+      pendingPhotoCount = await getPendingInspectionPhotoCount(draftKey);
+    } catch {
+      toast.error(
+        "Unable to verify staged inspection photos. Open Sync Center and try again.",
+      );
+      return;
+    }
+    if (pendingPhotoCount > 0) {
+      toast.error(
+        `${pendingPhotoCount} inspection photo${pendingPhotoCount === 1 ? " is" : "s are"} still waiting to sync. Upload or remove them before submitting.`,
+      );
+      return;
+    }
 
     if (!resolvedWorkOrderId) {
       toast.error("Missing work order id.");

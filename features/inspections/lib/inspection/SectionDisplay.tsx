@@ -11,7 +11,10 @@ import type {
 import InspectionItemCard from "./InspectionItemCard";
 import { Button } from "@shared/components/ui/Button";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
-import { pricingStatusClass, pricingStatusText } from "@/features/menu-repair-items/lib/pricingStatus";
+import {
+  pricingStatusClass,
+  pricingStatusText,
+} from "@/features/menu-repair-items/lib/pricingStatus";
 
 interface SectionDisplayProps {
   title: string;
@@ -24,6 +27,7 @@ interface SectionDisplayProps {
   inspectionId: string;
   workOrderId?: string | null;
   workOrderLineId?: string | null;
+  draftKey?: string;
 
   onUpdateStatus: (
     sectionIndex: number,
@@ -61,7 +65,6 @@ interface SectionDisplayProps {
 }
 
 type PartRow = { description: string; qty: number };
-
 
 type SmartInspectionMatch = {
   id: string;
@@ -108,14 +111,16 @@ function getNote(item: ItemExtended): string {
 function getParts(item: ItemExtended): PartRow[] {
   const v = item.parts;
   if (!Array.isArray(v)) return [];
-  return v
-    .map((p) => ({
-      description: typeof p?.description === "string" ? p.description : "",
-      // ✅ allow "blank" qty behavior by storing 0 (UI will render as empty)
-      qty: typeof p?.qty === "number" && Number.isFinite(p.qty) ? p.qty : 0,
-    }))
-    // ✅ keep draft rows even if qty is 0
-    .filter((p) => p.description.length > 0 || p.qty >= 0);
+  return (
+    v
+      .map((p) => ({
+        description: typeof p?.description === "string" ? p.description : "",
+        // ✅ allow "blank" qty behavior by storing 0 (UI will render as empty)
+        qty: typeof p?.qty === "number" && Number.isFinite(p.qty) ? p.qty : 0,
+      }))
+      // ✅ keep draft rows even if qty is 0
+      .filter((p) => p.description.length > 0 || p.qty >= 0)
+  );
 }
 
 function getLaborHours(item: ItemExtended): number | null {
@@ -136,7 +141,8 @@ function smartPricingText(
   status: "fresh" | "stale" | "expired" | undefined,
 ): string {
   if (status === "fresh") return "Fresh pricing — ready to apply.";
-  if (status === "stale") return "Stale pricing — pricing review required after apply.";
+  if (status === "stale")
+    return "Stale pricing — pricing review required after apply.";
   return "Expired pricing — pricing review required after apply.";
 }
 
@@ -153,7 +159,7 @@ function smartPricingBadgeClass(
 }
 
 export default function SectionDisplay(props: SectionDisplayProps) {
-    const {
+  const {
     title,
     section,
     sectionIndex,
@@ -162,6 +168,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     inspectionId,
     workOrderId,
     workOrderLineId,
+    draftKey,
     onUpdateStatus,
     onUpdateNote,
     onUpload,
@@ -388,12 +395,11 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   const submitting =
                     isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
 
-                  const rail =
-                    isFail
-                      ? "before:bg-red-500/70"
-                      : isRec
-                        ? "before:bg-orange-500/70"
-                        : "before:bg-[color:var(--theme-surface-subtle)]";
+                  const rail = isFail
+                    ? "before:bg-red-500/70"
+                    : isRec
+                      ? "before:bg-orange-500/70"
+                      : "before:bg-[color:var(--theme-surface-subtle)]";
 
                   const submitted = isSubmittedItem(item);
                   const k = `${sectionIndex}:${itemIndex}`;
@@ -437,6 +443,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         inspectionId={inspectionId}
                         workOrderId={workOrderId}
                         workOrderLineId={workOrderLineId}
+                        draftKey={draftKey}
                         onUpdateStatus={onUpdateStatus}
                         onUpdateNote={onUpdateNote}
                         onUpload={onUpload}
@@ -446,7 +453,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                       {(() => {
                         const smartKey = `${sectionIndex}:${itemIndex}`;
                         const match = smartMatchByKey?.[smartKey] ?? null;
-                        const loadingMatch = smartMatchLoadingByKey?.[smartKey] ?? false;
+                        const loadingMatch =
+                          smartMatchLoadingByKey?.[smartKey] ?? false;
 
                         if (!isFailOrRec) return null;
                         if (loadingMatch) {
@@ -460,7 +468,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         if (!match) return null;
 
                         const canApplyRepair = Boolean(onAcceptSmartMatch);
-                        const statusText = pricingStatusText(match.pricingStatus);
+                        const statusText = pricingStatusText(
+                          match.pricingStatus,
+                        );
                         const actionText =
                           match.pricingStatus === "fresh"
                             ? "Ready to apply"
@@ -486,7 +496,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   </span>
                                   {match.pricingValidUntil ? (
                                     <span className="text-[10px] text-[color:var(--theme-text-muted)]">
-                                      Valid until {new Date(match.pricingValidUntil).toLocaleDateString()}
+                                      Valid until{" "}
+                                      {new Date(
+                                        match.pricingValidUntil,
+                                      ).toLocaleDateString()}
                                     </span>
                                   ) : null}
                                 </div>
@@ -501,7 +514,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 <button
                                   type="button"
                                   className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
-                                  onClick={() => onDismissSmartMatch?.(sectionIndex, itemIndex)}
+                                  onClick={() =>
+                                    onDismissSmartMatch?.(
+                                      sectionIndex,
+                                      itemIndex,
+                                    )
+                                  }
                                 >
                                   Dismiss
                                 </button>
@@ -515,7 +533,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                       : "cursor-not-allowed border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-secondary)]",
                                   ].join(" ")}
                                   onClick={() => {
-                                    onAcceptSmartMatch?.(sectionIndex, itemIndex);
+                                    onAcceptSmartMatch?.(
+                                      sectionIndex,
+                                      itemIndex,
+                                    );
                                   }}
                                 >
                                   Apply repair
@@ -546,10 +567,16 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                           const nextIdx = currentParts.length;
                           const draftKey = `${k}:part:${nextIdx}:qty`;
                           setQtyDraft(draftKey, ""); // ✅ blank filler
-                          handlePartsChange([...currentParts, { description: "", qty: 0 }]);
+                          handlePartsChange([
+                            ...currentParts,
+                            { description: "", qty: 0 },
+                          ]);
                         };
 
-                        const updatePart = (idx: number, patch: Partial<PartRow>) => {
+                        const updatePart = (
+                          idx: number,
+                          patch: Partial<PartRow>,
+                        ) => {
                           const next = currentParts.map((p, i) =>
                             i === idx ? { ...p, ...patch } : p,
                           );
@@ -592,7 +619,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     <button
                                       type="button"
                                       className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
-                                      onClick={() => setPartsOpen(k, !partsOpen)}
+                                      onClick={() =>
+                                        setPartsOpen(k, !partsOpen)
+                                      }
                                     >
                                       {partsOpen ? "Collapse" : "Expand"}
                                     </button>
@@ -784,7 +813,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         );
                       })()}
 
-                      {(smartMatchLoading || smartMatch) && isFailOrRec && note.length > 0 ? (
+                      {(smartMatchLoading || smartMatch) &&
+                      isFailOrRec &&
+                      note.length > 0 ? (
                         <div className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                           {smartMatchLoading ? (
                             <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
@@ -799,19 +830,27 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     : "Smart match"}
                                 </span>
 
-                                {typeof smartMatch.acceptanceRate === "number" ? (
+                                {typeof smartMatch.acceptanceRate ===
+                                "number" ? (
                                   <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-                                    Win rate {Math.round(smartMatch.acceptanceRate * 100)}%
+                                    Win rate{" "}
+                                    {Math.round(
+                                      smartMatch.acceptanceRate * 100,
+                                    )}
+                                    %
                                   </span>
                                 ) : null}
 
-                                {typeof smartMatch.acceptedCount === "number" ? (
+                                {typeof smartMatch.acceptedCount ===
+                                "number" ? (
                                   <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                                     Accepted {smartMatch.acceptedCount}
                                   </span>
                                 ) : null}
 
-                                <span className={`rounded-full border px-2 py-0.5 text-[11px] ${pricingBadgeClass}`}>
+                                <span
+                                  className={`rounded-full border px-2 py-0.5 text-[11px] ${pricingBadgeClass}`}
+                                >
                                   {smartMatch.pricingStatus ?? "expired"}
                                 </span>
                               </div>
@@ -831,7 +870,9 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                               </div>
 
                               <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                                Pricing valid until: {smartMatch.pricingValidUntil ?? "No active pricing snapshot"}
+                                Pricing valid until:{" "}
+                                {smartMatch.pricingValidUntil ??
+                                  "No active pricing snapshot"}
                               </div>
 
                               <div className="mt-3 flex items-center justify-end gap-2">
@@ -841,7 +882,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   size="sm"
                                   className="px-3"
                                   onClick={() =>
-                                    props.onDismissSmartMatch?.(sectionIndex, itemIndex)
+                                    props.onDismissSmartMatch?.(
+                                      sectionIndex,
+                                      itemIndex,
+                                    )
                                   }
                                 >
                                   Dismiss
@@ -854,7 +898,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                   className="px-3"
                                   disabled={!props.onAcceptSmartMatch}
                                   onClick={() =>
-                                    props.onAcceptSmartMatch?.(sectionIndex, itemIndex)
+                                    props.onAcceptSmartMatch?.(
+                                      sectionIndex,
+                                      itemIndex,
+                                    )
                                   }
                                 >
                                   Apply repair
