@@ -28,18 +28,8 @@ type Body = {
 
 const PRIVILEGED_ROLES = new Set(["owner", "admin"]);
 const PROVISIONABLE_ROLES = new Set([
-  "owner",
-  "admin",
-  "manager",
-  "foreman",
-  "lead_hand",
-  "advisor",
-  "service",
-  "dispatcher",
-  "parts",
-  "mechanic",
-  "fleet_manager",
-  "driver",
+  "owner", "admin", "manager", "foreman", "lead_hand", "advisor", "service",
+  "dispatcher", "parts", "mechanic", "fleet_manager", "driver",
 ]);
 
 function isValidContactEmail(value: string): boolean {
@@ -85,10 +75,7 @@ async function rollbackCreatedAuthUser(args: {
   adminId: string;
   shopId: string;
 }): Promise<boolean> {
-  const { error } = await args.serviceSupabase.auth.admin.deleteUser(
-    args.authUserId,
-  );
-
+  const { error } = await args.serviceSupabase.auth.admin.deleteUser(args.authUserId);
   if (error) {
     logCreateUserError("rollback_auth_user_failed", {
       adminId: args.adminId,
@@ -124,31 +111,21 @@ export async function POST(req: Request) {
           error:
             "Invalid staff role. Allowed roles: owner, admin, manager, foreman, lead_hand, advisor, service, dispatcher, parts, mechanic, fleet_manager, driver.",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     if (!PROVISIONABLE_ROLES.has(canonicalRole)) {
       return NextResponse.json(
-        {
-          error:
-            "This account type must be created through its dedicated portal or invitation flow.",
-        },
+        { error: "This account type must be created through its dedicated portal or invitation flow." },
         { status: 400 },
       );
     }
-
     if (!full_name) {
-      return NextResponse.json(
-        { error: "Full name is required." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Full name is required." }, { status: 400 });
     }
     if (full_name.length > 120) {
-      return NextResponse.json(
-        { error: "Full name is too long." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Full name is too long." }, { status: 400 });
     }
     if (password.trim().length < 8) {
       return NextResponse.json(
@@ -157,16 +134,10 @@ export async function POST(req: Request) {
       );
     }
     if (inputEmail && !isValidContactEmail(inputEmail)) {
-      return NextResponse.json(
-        { error: "Enter a valid contact email." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Enter a valid contact email." }, { status: 400 });
     }
     if (phone && phone.length > 40) {
-      return NextResponse.json(
-        { error: "Phone number is too long." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Phone number is too long." }, { status: 400 });
     }
 
     const access = await requireShopScopedApiAccess({
@@ -175,10 +146,7 @@ export async function POST(req: Request) {
     });
     if (!access.ok) return access.response;
 
-    if (
-      PRIVILEGED_ROLES.has(canonicalRole) &&
-      access.canonicalRole !== "owner"
-    ) {
+    if (PRIVILEGED_ROLES.has(canonicalRole) && access.canonicalRole !== "owner") {
       return NextResponse.json(
         { error: "Only an owner can create owner or admin accounts." },
         { status: 403 },
@@ -188,10 +156,7 @@ export async function POST(req: Request) {
     // Always force the creator's shop_id to preserve tenant boundaries.
     const effectiveShopId = access.profile.shop_id;
     if (!effectiveShopId) {
-      return NextResponse.json(
-        { error: "Profile for current user not found." },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: "Profile for current user not found." }, { status: 403 });
     }
 
     logCreateUserStep("access_authorized", {
@@ -209,31 +174,22 @@ export async function POST(req: Request) {
       .eq("id", effectiveShopId)
       .maybeSingle<{ name: string | null; shop_name: string | null }>();
 
-    const shopDisplayName =
-      (shop?.shop_name ?? "").trim() || (shop?.name ?? "").trim() || "shop";
+    const shopDisplayName = (shop?.shop_name ?? "").trim() || (shop?.name ?? "").trim() || "shop";
     const shopNamespace = buildShopUsernameNamespace(shopDisplayName);
     const requestedUsername = String(raw.username ?? "").trim();
 
     if (!requestedUsername) {
-      return NextResponse.json(
-        { error: "Username is required." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Username is required." }, { status: 400 });
     }
 
-    const normalizedInputUsername = requestedUsername
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "");
+    const normalizedInputUsername = requestedUsername.toLowerCase().replace(/[^a-z0-9]+/g, "");
     if (normalizedInputUsername.length < 2) {
       return NextResponse.json(
         { error: "Username must include at least 2 letters or numbers." },
         { status: 400 },
       );
     }
-    const username = normalizeProvisioningUsername(
-      requestedUsername,
-      shopNamespace,
-    );
+    const username = normalizeProvisioningUsername(requestedUsername, shopNamespace);
 
     // ensure username is unique inside the current shop only
     const { data: sameShopProfiles, error: existingErr } = await serviceSupabase
@@ -251,28 +207,22 @@ export async function POST(req: Request) {
         error: existingErr.message,
       });
       return NextResponse.json(
-        {
-          error: "Failed to check existing usernames.",
-          code: "username_lookup_failed",
-        },
-        { status: 500 },
+        { error: "Failed to check existing usernames.", code: "username_lookup_failed" },
+        { status: 500 }
       );
     }
 
     if ((sameShopProfiles ?? []).length > 0) {
       return NextResponse.json(
         { error: "A user with this username already exists in this shop." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
     try {
       await assertShopHasAvailableSeat(serviceSupabase, effectiveShopId);
     } catch (seatErr) {
-      const msg =
-        seatErr instanceof Error
-          ? seatErr.message
-          : "Shop user limit reached for your current plan.";
+      const msg = seatErr instanceof Error ? seatErr.message : "Shop user limit reached for your current plan.";
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
@@ -291,20 +241,19 @@ export async function POST(req: Request) {
     });
 
     // create auth user with service client
-    const { data: created, error: createErr } =
-      await serviceSupabase.auth.admin.createUser({
-        email: syntheticEmail,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name,
-          role: canonicalRole,
-          shop_id: effectiveShopId, // force caller's shop
-          phone,
-          username,
-          contact_email: contactEmail,
-        },
-      });
+    const { data: created, error: createErr } = await serviceSupabase.auth.admin.createUser({
+      email: syntheticEmail,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name,
+        role: canonicalRole,
+        shop_id: effectiveShopId, // force caller's shop
+        phone,
+        username,
+        contact_email: contactEmail,
+      },
+    });
 
     if (createErr || !created?.user) {
       logCreateUserError("auth_user_create_failed", {
@@ -313,16 +262,11 @@ export async function POST(req: Request) {
         role: canonicalRole,
         error: createErr?.message ?? "No auth user returned",
       });
-      const safeMessage = createErr?.message
-        ?.toLowerCase()
-        .includes("already been registered")
+      const safeMessage = createErr?.message?.toLowerCase().includes("already been registered")
         ? "Unable to provision this username. Try the suggested shop-prefixed username."
         : (createErr?.message ?? "Failed to create user.");
 
-      return NextResponse.json(
-        { error: safeMessage, code: "auth_user_create_failed" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: safeMessage, code: "auth_user_create_failed" }, { status: 400 });
     }
 
     const newUserId = created.user.id;
@@ -333,29 +277,29 @@ export async function POST(req: Request) {
       authUserId: newUserId,
       normalizedUsername: username,
       hasContactEmail: Boolean(contactEmail),
-      emailConfirmed: Boolean(
-        created.user.email_confirmed_at ?? created.user.confirmed_at,
-      ),
+      emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
     });
 
     // upsert profile for the new user
-    const { error: profileErr } = await serviceSupabase.from("profiles").upsert(
-      {
-        id: newUserId,
-        email: contactEmail,
-        full_name,
-        phone,
-        role: canonicalRole,
-        shop_id: effectiveShopId,
-        shop_name: null,
-        username,
-        must_change_password: true,
-        updated_at: new Date().toISOString(),
-      } as Database["public"]["Tables"]["profiles"]["Insert"],
-      {
-        onConflict: "id",
-      },
-    );
+    const { error: profileErr } = await serviceSupabase
+      .from("profiles")
+      .upsert(
+        {
+          id: newUserId,
+          email: contactEmail,
+          full_name,
+          phone,
+          role: canonicalRole,
+          shop_id: effectiveShopId,
+          shop_name: null,
+          username,
+          must_change_password: true,
+          updated_at: new Date().toISOString(),
+        } as Database["public"]["Tables"]["profiles"]["Insert"],
+        {
+          onConflict: "id",
+        }
+      );
 
     if (profileErr) {
       const rolledBack = await rollbackCreatedAuthUser({
@@ -364,21 +308,15 @@ export async function POST(req: Request) {
         adminId: access.profile.id,
         shopId: effectiveShopId,
       });
-      if (
-        String(profileErr.message ?? "")
-          .toLowerCase()
-          .includes("shop user limit reached")
-      ) {
+      if (String(profileErr.message ?? "").toLowerCase().includes("shop user limit reached")) {
         return NextResponse.json(
           {
             error: rolledBack
               ? "Shop user limit reached for your current plan. No account was created."
               : "Shop user limit reached, and automatic account cleanup failed. Contact support before retrying.",
-            code: rolledBack
-              ? "shop_user_limit_reached"
-              : "provisioning_rollback_failed",
+            code: rolledBack ? "shop_user_limit_reached" : "provisioning_rollback_failed",
           },
-          { status: 400 },
+          { status: 400 }
         );
       }
       logCreateUserError("profile_upsert_failed", {
@@ -393,11 +331,9 @@ export async function POST(req: Request) {
           error: rolledBack
             ? "User setup could not be completed. No account was created; you can try again."
             : "User setup could not be completed, and automatic cleanup failed. Contact support before retrying.",
-          code: rolledBack
-            ? "profile_upsert_failed"
-            : "provisioning_rollback_failed",
+          code: rolledBack ? "profile_upsert_failed" : "provisioning_rollback_failed",
         },
-        { status: 500 },
+        { status: 500 }
       );
     }
 
@@ -410,10 +346,9 @@ export async function POST(req: Request) {
           user_id: newUserId,
           employment_status: "active",
           payroll_ready: false,
-          notes:
-            "Seeded during account provisioning; complete in People detail.",
+          notes: "Seeded during account provisioning; complete in People detail.",
         },
-        { onConflict: "shop_id,user_id" },
+        { onConflict: "shop_id,user_id" }
       );
 
     if (workforceErr) {
@@ -435,11 +370,9 @@ export async function POST(req: Request) {
           error: rolledBack
             ? "User setup could not be completed. No account was created; you can try again."
             : "User setup could not be completed, and automatic cleanup failed. Contact support before retrying.",
-          code: rolledBack
-            ? "workforce_profile_seed_failed"
-            : "provisioning_rollback_failed",
+          code: rolledBack ? "workforce_profile_seed_failed" : "provisioning_rollback_failed",
         },
-        { status: 500 },
+        { status: 500 }
       );
     }
 
@@ -451,9 +384,7 @@ export async function POST(req: Request) {
       profileId: newUserId,
       normalizedUsername: username,
       hasContactEmail: Boolean(contactEmail),
-      emailConfirmed: Boolean(
-        created.user.email_confirmed_at ?? created.user.confirmed_at,
-      ),
+      emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
     });
 
     return NextResponse.json({
@@ -470,9 +401,7 @@ export async function POST(req: Request) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error.";
     logCreateUserError("unexpected_error", { error: msg });
-    return NextResponse.json(
-      { error: msg, code: "unexpected_error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: msg, code: "unexpected_error" }, { status: 500 });
   }
 }
+
