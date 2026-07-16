@@ -929,9 +929,13 @@ export default function SchedulingClient(): JSX.Element {
 
     setErr(null);
     try {
+      const operationKey = `schedule-punch:${shiftId}:${crypto.randomUUID()}`;
       await fetchJson<{ ok: true }>("/api/scheduling/punches", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
+        },
         body: JSON.stringify({
           shift_id: shiftId,
           event_type: toDbPunchType(event_type),

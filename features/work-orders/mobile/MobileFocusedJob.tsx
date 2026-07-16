@@ -18,6 +18,7 @@ import {
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
 import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import {
   removeOfflineBlob,
   saveOfflineBlob,
@@ -660,6 +661,17 @@ export default function MobileFocusedJob(props: {
             upsert: true,
           });
           if (error) throw error;
+          await postOfflineServerMutation({
+            actionType: "upload_job_photo",
+            operationKey: clientMutationId,
+            payload: {
+              workOrderLineId,
+              path,
+              fileName: file.name,
+              mimeType: file.type || "image/jpeg",
+              blobId: clientMutationId,
+            },
+          });
         },
       });
     } catch (error) {
@@ -702,13 +714,11 @@ export default function MobileFocusedJob(props: {
         orderKey: `${workOrderLineId}:001:notes`,
         conflictCheck: () => getLineConflict(workOrderLineId, "notes"),
         runner: async () => {
-          const { error } = await supabase
-            .from("work_order_lines")
-            .update({
-              notes: techNotes,
-            } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-            .eq("id", workOrderLineId);
-          if (error) throw error;
+          await postOfflineServerMutation({
+            actionType: "update_work_order_line_notes",
+            operationKey: mutationId,
+            payload: { workOrderLineId, notes: techNotes },
+          });
         },
       });
 
@@ -1382,15 +1392,11 @@ export default function MobileFocusedJob(props: {
               orderKey: `${line.id}:002:story`,
               conflictCheck: () => getLineConflict(line.id, "story"),
               runner: async () => {
-                const { error } = await supabase
-                  .from("work_order_lines")
-                  .update({
-                    cause,
-                    correction,
-                  } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-                  .eq("id", line.id);
-
-                if (error) throw error;
+                await postOfflineServerMutation({
+                  actionType: "save_story_draft",
+                  operationKey: mutationId,
+                  payload: { lineId: line.id, cause, correction },
+                });
               },
             });
 
