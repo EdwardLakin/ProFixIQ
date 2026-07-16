@@ -2,6 +2,7 @@ import "server-only";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 
 type RpcError = { message: string; details?: string | null; hint?: string | null };
 type RpcClient = {
@@ -49,7 +50,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const rpc = supabase as unknown as RpcClient;
+  const rpc = supabaseAdmin as unknown as RpcClient;
+  const { data: existingProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", user.id)
+    .maybeSingle();
   const { data, error } = await rpc.rpc("accept_customer_portal_invite_atomic", {
     p_invite_id: inviteId,
     p_actor_user_id: user.id,
@@ -72,6 +78,24 @@ export async function POST(req: NextRequest) {
         ? 403
         : 400;
     return NextResponse.json({ error: message }, { status });
+  }
+
+  if (!existingProfile?.shop_id) {
+    const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
+      user.id,
+      {
+        app_metadata: {
+          ...user.app_metadata,
+          profixiq_portal_only: true,
+        },
+      },
+    );
+    if (metadataError) {
+      return NextResponse.json(
+        { error: "Portal access was linked, but account routing could not be finalized. Retry this link." },
+        { status: 500 },
+      );
+    }
   }
 
   return NextResponse.json(data ?? { ok: true });

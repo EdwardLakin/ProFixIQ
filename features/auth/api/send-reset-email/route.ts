@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -27,10 +28,10 @@ type Body = {
 };
 
 function buildRedirectPath(input: string | null | undefined): string {
-  const value = String(input ?? "").trim();
-  if (!value) return "/auth/reset";
-  if (value.startsWith("/")) return value;
-  return "/auth/reset";
+  return safeInternalRedirect(input, "/auth/reset", [
+    "/auth/reset",
+    "/auth/set-password",
+  ]);
 }
 
 export async function POST(req: Request) {

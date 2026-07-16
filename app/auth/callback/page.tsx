@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 
 const OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -49,7 +50,7 @@ export default function AuthCallbackPage() {
 
       if (!session?.user) {
         const passthrough = new URLSearchParams();
-        const redirect = sp.get("redirect")?.trim();
+        const redirect = safeInternalRedirect(sp.get("redirect"), "");
         const mode = sp.get("mode")?.trim();
         const sessionId = sp.get("session_id")?.trim();
         const flow = sp.get("flow")?.trim();

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 
 
 function parseHashParams(hash: string): URLSearchParams {
@@ -24,7 +25,11 @@ export default function AuthResetPage() {
     async function run() {
       try {
         const code = searchParams.get("code")?.trim() ?? "";
-        const next = searchParams.get("redirect")?.trim() || "/auth/set-password";
+        const next = safeInternalRedirect(
+          searchParams.get("redirect"),
+          "/auth/set-password",
+          ["/auth/set-password"],
+        );
 
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);

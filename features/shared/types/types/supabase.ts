@@ -3161,25 +3161,55 @@ export type Database = {
       }
       customer_portal_invites: {
         Row: {
+          acceptance_metadata: Json
+          accepted_at: string | null
+          accepted_by_user_id: string | null
           created_at: string | null
+          created_by: string | null
           customer_id: string
           email: string
+          enrollment_campaign_id: string | null
+          expires_at: string | null
           id: string
+          revoked_at: string | null
+          shop_id: string | null
+          source: string
           token: string
+          work_order_id: string | null
         }
         Insert: {
+          acceptance_metadata?: Json
+          accepted_at?: string | null
+          accepted_by_user_id?: string | null
           created_at?: string | null
+          created_by?: string | null
           customer_id: string
           email: string
+          enrollment_campaign_id?: string | null
+          expires_at?: string | null
           id?: string
+          revoked_at?: string | null
+          shop_id?: string | null
+          source?: string
           token: string
+          work_order_id?: string | null
         }
         Update: {
+          acceptance_metadata?: Json
+          accepted_at?: string | null
+          accepted_by_user_id?: string | null
           created_at?: string | null
+          created_by?: string | null
           customer_id?: string
           email?: string
+          enrollment_campaign_id?: string | null
+          expires_at?: string | null
           id?: string
+          revoked_at?: string | null
+          shop_id?: string | null
+          source?: string
           token?: string
+          work_order_id?: string | null
         }
         Relationships: [
           {
@@ -3187,6 +3217,27 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_invites_enrollment_campaign_id_fkey"
+            columns: ["enrollment_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "portal_enrollment_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_invites_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_invites_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -4393,6 +4444,66 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_portal_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_by_user_id: string | null
+          created_at: string
+          created_by: string | null
+          email: string
+          expires_at: string
+          fleet_id: string
+          id: string
+          revoked_at: string | null
+          role: string
+          shop_id: string
+          token_hash: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by_user_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          email: string
+          expires_at: string
+          fleet_id: string
+          id?: string
+          revoked_at?: string | null
+          role?: string
+          shop_id: string
+          token_hash: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by_user_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          expires_at?: string
+          fleet_id?: string
+          id?: string
+          revoked_at?: string | null
+          role?: string
+          shop_id?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_portal_invites_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_portal_invites_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -10755,6 +10866,59 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      portal_enrollment_campaigns: {
+        Row: {
+          active: boolean
+          allow_booking: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          rotated_at: string | null
+          scan_count: number
+          shop_id: string
+          slug: string
+          updated_at: string
+          verified_count: number
+        }
+        Insert: {
+          active?: boolean
+          allow_booking?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          rotated_at?: string | null
+          scan_count?: number
+          shop_id: string
+          slug: string
+          updated_at?: string
+          verified_count?: number
+        }
+        Update: {
+          active?: boolean
+          allow_booking?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          rotated_at?: string | null
+          scan_count?: number
+          shop_id?: string
+          slug?: string
+          updated_at?: string
+          verified_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_enrollment_campaigns_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       portal_notifications: {
         Row: {

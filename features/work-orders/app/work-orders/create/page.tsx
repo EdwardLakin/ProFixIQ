@@ -588,7 +588,7 @@ export default function CreateWorkOrderPage() {
   const [inviteNotice, setInviteNotice] =
     useTabState<string>("inviteNotice", "");
   const [bookingPrefill, setBookingPrefill] = useState<BookingConversionRow | null>(null);
-  const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
+  const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", true);
   const [selectedMaintenanceCodes, setSelectedMaintenanceCodes] = useState<string[]>([]);
 
   // Current user id (for VIN modal)
@@ -1698,7 +1698,7 @@ useEffect(() => {
     setDocFiles([]);
     setUploadSummary(null);
     setInviteNotice("");
-    setSendInvite(false);
+    setSendInvite(true);
     setSelectedMaintenanceCodes([]);
     setIsWaiter(false);
     cvDraft.reset();
@@ -1965,7 +1965,8 @@ useEffect(() => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               email: customer.email,
-              next: "/portal",
+              customerId: latest.customer_id,
+              workOrderId: latest.id,
             }),
           });
 

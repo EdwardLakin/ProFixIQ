@@ -1,205 +1,76 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import type { Database } from "@shared/types/types/supabase";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
-import { sendPortalInviteEmail } from "@/features/email/server";
-import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
+import { enforceAuthRateLimit } from "@/features/auth/server/authRateLimit";
+import { issueCustomerPortalInvite } from "@/features/portal/server/customerPortalInvites";
 
-type Body = {
-  shopSlug?: string;
-  email?: string;
-  name?: string;
-  phone?: string;
-  notes?: string;
-  next?: string;
-};
-
-type CustomersInsert = Database["public"]["Tables"]["customers"]["Insert"];
-
-type ShopRow = {
-  id: string;
-  slug: string | null;
-  name: string | null;
-  shop_name: string | null;
-  accepts_online_booking: boolean | null;
-};
-
-const MAX_FIELD = 256;
-const MAX_NOTES = 2000;
-
-function trimField(value: unknown, max = MAX_FIELD): string {
-  if (typeof value !== "string") return "";
-  return value.trim().slice(0, max);
-}
-
-function normalizeEmail(value: unknown): string {
-  return trimField(value).toLowerCase();
-}
-
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function isSafeInternalNextPath(next: string): boolean {
-  if (!next.startsWith("/")) return false;
-  if (next.startsWith("//")) return false;
-  if (next.includes("\n") || next.includes("\r")) return false;
-  return true;
-}
-
-function normalizeSiteUrl(raw: string): string {
-  const trimmed = String(raw || "").trim().replace(/\/$/, "");
-  if (!trimmed) return "https://profixiq.com";
-  const lower = trimmed.toLowerCase();
-  if (!/^https?:\/\//i.test(lower)) return `https://${lower}`;
-  return lower;
-}
+type Body = { campaignSlug?: string; email?: string };
+const GENERIC_MESSAGE = "If the details are valid, we sent a portal activation email.";
 
 export async function POST(req: Request) {
-  try {
-    const body = (await req.json().catch(() => ({}))) as Body;
-    const shopSlug = trimField(body.shopSlug);
-    const email = normalizeEmail(body.email);
-    const name = trimField(body.name);
-    const phone = trimField(body.phone);
-    const notes = trimField(body.notes, MAX_NOTES);
-    const nextPath = trimField(body.next);
+  const body = (await req.json().catch(() => null)) as Body | null;
+  const campaignSlug = String(body?.campaignSlug ?? "").trim();
+  const email = String(body?.email ?? "").trim().toLowerCase();
+  if (!campaignSlug || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ ok: true, message: GENERIC_MESSAGE });
+  }
 
-    if (!shopSlug || !email) {
-      return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
-    }
-    if (!isValidEmail(email)) {
-      return NextResponse.json({ ok: false, error: "Invalid email" }, { status: 400 });
-    }
+  const rateLimit = enforceAuthRateLimit(req, `portal-enrollment:${campaignSlug}`, email, {
+    max: 3,
+    windowMs: 15 * 60_000,
+  });
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Please wait before requesting another activation email." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
+    );
+  }
 
-    const safeNext = isSafeInternalNextPath(nextPath) ? nextPath : "/portal";
-    const { data: shop, error: shopError } = await supabaseAdmin
-      .from("shops")
-      .select("id,slug,name,shop_name,accepts_online_booking")
-      .eq("slug", shopSlug)
-      .eq("accepts_online_booking", true)
-      .maybeSingle<ShopRow>();
+  const { data: campaign } = await supabaseAdmin
+    .from("portal_enrollment_campaigns")
+    .select("id, shop_id")
+    .eq("slug", campaignSlug)
+    .eq("active", true)
+    .maybeSingle();
+  if (!campaign?.id || !campaign.shop_id) {
+    return NextResponse.json({ ok: true, message: GENERIC_MESSAGE });
+  }
 
-    if (shopError) {
-      return NextResponse.json({ ok: false, error: "Shop lookup failed" }, { status: 500 });
-    }
-    if (!shop?.id) {
-      return NextResponse.json({ ok: false, error: "Shop not found" }, { status: 404 });
-    }
+  const { data: existingCustomer } = await supabaseAdmin
+    .from("customers")
+    .select("id")
+    .eq("shop_id", campaign.shop_id)
+    .ilike("email", email)
+    .limit(1)
+    .maybeSingle();
 
-    const shopId = shop.id;
-    const { data: existingCustomer } = await supabaseAdmin
+  let customerId = existingCustomer?.id ?? null;
+  if (!customerId) {
+    const { data: createdCustomer, error } = await supabaseAdmin
       .from("customers")
-      .select("id, name, phone, phone_number")
-      .eq("shop_id", shopId)
-      .eq("email", email)
-      .limit(1)
-      .maybeSingle<{
-        id: string;
-        name: string | null;
-        phone: string | null;
-        phone_number: string | null;
-      }>();
-
-    let customerId = existingCustomer?.id ?? null;
-    if (!customerId) {
-      const insertPayload: CustomersInsert = {
-        shop_id: shopId,
-        email,
-        user_id: null,
-        name: name || null,
-        phone: phone || null,
-        notes: notes || null,
-      };
-      const { data: createdCustomer, error: createError } = await supabaseAdmin
-        .from("customers")
-        .insert(insertPayload)
-        .select("id")
-        .single<{ id: string }>();
-      if (createError || !createdCustomer?.id) {
-        return NextResponse.json({ ok: false, error: "Unable to process request" }, { status: 500 });
-      }
-      customerId = createdCustomer.id;
-    } else if (existingCustomer) {
-      const patch: Database["public"]["Tables"]["customers"]["Update"] = {};
-      if (!existingCustomer.name && name) patch.name = name;
-      if (!existingCustomer.phone && !existingCustomer.phone_number && phone) patch.phone = phone;
-      if (Object.keys(patch).length > 0) {
-        await supabaseAdmin.from("customers").update(patch).eq("id", customerId);
-      }
-    }
-
-    const { data: existingInvite } = await supabaseAdmin
-      .from("customer_portal_invites")
+      .insert({ shop_id: campaign.shop_id, email, user_id: null })
       .select("id")
-      .eq("customer_id", customerId)
-      .eq("email", email)
-      .is("revoked_at", null)
-      .limit(1)
-      .maybeSingle<{ id: string }>();
-
-    let inviteId = existingInvite?.id ?? null;
-    if (!inviteId) {
-      const { data: createdInvite, error: inviteError } = await supabaseAdmin
-        .from("customer_portal_invites")
-        .insert({
-          customer_id: customerId,
-          email,
-          token: crypto.randomUUID(),
-          expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString(),
-        })
-        .select("id")
-        .single<{ id: string }>();
-      if (inviteError || !createdInvite?.id) {
-        return NextResponse.json({ ok: false, error: "Unable to process request" }, { status: 500 });
-      }
-      inviteId = createdInvite.id;
+      .single();
+    if (error || !createdCustomer?.id) {
+      return NextResponse.json({ ok: true, message: GENERIC_MESSAGE });
     }
+    customerId = createdCustomer.id;
+  }
 
-    const siteUrl = normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL || "");
-    const redirectParams = new URLSearchParams({
-      next: safeNext,
-      invite: inviteId,
-    });
-    const redirectTo = `${siteUrl}/portal/auth/confirm?${redirectParams.toString()}`;
-
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
+  try {
+    await issueCustomerPortalInvite({
+      shopId: campaign.shop_id,
+      customerId,
       email,
-      options: { redirectTo },
-    });
-    if (linkError) {
-      return NextResponse.json({ ok: false, error: "Unable to process request" }, { status: 500 });
-    }
-
-    const portalLink = linkData?.properties?.action_link || null;
-    if (!portalLink || typeof portalLink !== "string") {
-      return NextResponse.json({ ok: false, error: "Unable to process request" }, { status: 500 });
-    }
-
-    const brand = await getActiveBrandForRender(shopId);
-    const shopName =
-      (shop.shop_name ?? "").trim() || (shop.name ?? "").trim() || "ProFixIQ";
-
-    await sendPortalInviteEmail({
-      shopId,
-      to: email,
-      portalLink,
-      shopName,
-      brandLogoUrl: brand?.logoUrl ?? null,
-      brandPrimaryColor: brand?.colors.primary ?? null,
-      brandSecondaryColor: brand?.colors.secondary ?? null,
-      createdBy: null,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      message: "If the email is valid, we sent a portal access link.",
+      source: "qr",
+      enrollmentCampaignId: campaign.id,
     });
   } catch {
-    return NextResponse.json({ ok: false, error: "Unexpected error" }, { status: 500 });
+    // Public enrollment deliberately returns the same response for existing,
+    // missing, suppressed, and temporarily unavailable identities.
   }
+
+  return NextResponse.json({ ok: true, message: GENERIC_MESSAGE });
 }

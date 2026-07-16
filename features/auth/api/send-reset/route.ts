@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -23,7 +24,11 @@ function getBaseUrl(): string {
 
 function buildRedirectTo(req: Request): string {
   const url = new URL(req.url);
-  const requestedRedirect = url.searchParams.get("redirect")?.trim() ?? "";
+  const requestedRedirect = safeInternalRedirect(
+    url.searchParams.get("redirect"),
+    "",
+    ["/auth/set-password"],
+  );
   const baseUrl = getBaseUrl();
 
   if (!requestedRedirect) {

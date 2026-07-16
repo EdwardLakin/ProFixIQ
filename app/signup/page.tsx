@@ -1,9 +1,5 @@
-"use client";
-
-
-// app/signup/page.tsx
 import { Suspense } from "react";
-import SignUpClient from "@/features/auth/app/signup/SignUpClient";
+import AuthPage from "@/features/auth/components/SignIn";
 
 export default function SignupPage() {
   return (
@@ -17,7 +13,7 @@ export default function SignupPage() {
         </div>
       }
     >
-      <SignUpClient />
+      <AuthPage initialMode="sign-up" />
     </Suspense>
   );
 }

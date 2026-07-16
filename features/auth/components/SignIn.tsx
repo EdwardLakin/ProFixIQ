@@ -1,516 +1,242 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import AuthShell from "@/features/auth/components/AuthShell";
+import AuthStatus from "@/features/auth/components/AuthStatus";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
-import { getAuthIdentifierStrategy } from "@/features/users/lib/username";
+import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type Mode = "sign-in" | "sign-up";
 
+type AuthPageProps = {
+  initialMode?: Mode;
+};
 
-export default function AuthPage() {
+const inputClass =
+  "w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3.5 py-3 text-sm text-[color:var(--theme-input-text)] outline-none transition placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:ring-4 focus:ring-[color:color-mix(in_srgb,var(--accent-copper)_16%,transparent)]";
+
+export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
   const router = useRouter();
-  const sp = useSearchParams();
-  const supabase = createBrowserSupabase();
-
-  const [mode, setMode] = useState<Mode>("sign-in");
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createBrowserSupabase(), []);
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string>("");
-  const [notice, setNotice] = useState<string>("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
 
-  // Are we in "mobile companion" sign-in mode?
-  const isMobileMode =
-    (sp.get("mode") || "").toLowerCase() === "mobile" ||
-    (sp.get("redirect") || "") === "/mobile";
-
-  const origin = useMemo(() => {
-    if (typeof window !== "undefined") return window.location.origin;
-    if (process.env.NEXT_PUBLIC_SITE_URL)
-      return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
-    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-    return "http://localhost:3000";
-  }, []);
+  const origin = useMemo(
+    () =>
+      typeof window !== "undefined"
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://profixiq.com",
+    [],
+  );
 
   const emailRedirectTo = useMemo(() => {
     const params = new URLSearchParams();
-    const redirect = sp.get("redirect");
-    const sessionId = sp.get("session_id");
-    const flow = sp.get("flow");
+    const redirect = safeInternalRedirect(searchParams.get("redirect"), "");
+    const sessionId = searchParams.get("session_id")?.trim();
+    const flow = searchParams.get("flow")?.trim();
     if (redirect) params.set("redirect", redirect);
     if (sessionId) params.set("session_id", sessionId);
     if (flow) params.set("flow", flow);
-    const tail = params.toString();
-    return `${origin}/auth/callback${tail ? `?${tail}` : ""}`;
-  }, [origin, sp]);
+    return `${origin}/auth/callback${params.size ? `?${params.toString()}` : ""}`;
+  }, [origin, searchParams]);
 
-  const goLanding = () => {
-    const href = "/";
-    router.replace(href);
-    setTimeout(() => {
-      if (typeof window !== "undefined" && window.location.pathname !== href) {
-        window.location.assign(href);
-      }
-    }, 60);
-  };
-
-  // shared helper to push a route after auth
-  const go = async (href: string) => {
-    await supabase.auth.getSession();
-    router.refresh();
-    router.replace(href);
-    setTimeout(() => {
-      if (
-        typeof window !== "undefined" &&
-        window.location.pathname + window.location.search !== href
-      ) {
-        window.location.assign(href);
-      }
-    }, 60);
-  };
-
-  // If already signed in, route through canonical post-auth recovery logic.
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-      if (!session?.user) return;
-
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (cancelled || !data.user) return;
       const destination = await resolvePostAuthDestination({
         supabase,
-        searchParams: sp,
-        isMobileMode,
+        searchParams,
       });
-      await go(destination);
+      router.replace(destination);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [router, searchParams, supabase]);
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError("");
     setNotice("");
-
-    const initialAuthIdentifier = getAuthIdentifierStrategy(identifier);
-    let authEmail = initialAuthIdentifier.authEmail;
 
     try {
-      const resolveRes = await fetch("/api/auth/resolve-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier }),
-      });
-      const resolvePayload = (await resolveRes.json().catch(() => null)) as
-        | { authEmail?: string; inputKind?: "email" | "username" }
-        | null;
-      if (resolveRes.ok && resolvePayload?.authEmail) {
-        authEmail = resolvePayload.authEmail;
+      if (mode === "sign-in") {
+        const result = await signInWithIdentifier({
+          identifier,
+          password,
+          surface: "shop",
+        });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        const requested = safeInternalRedirect(searchParams.get("redirect"), result.destination);
+        router.replace(requested);
+        router.refresh();
+        return;
       }
-    } catch (resolveErr) {
-      console.info("[auth/sign-in-resolve]", {
-        inputKind: initialAuthIdentifier.inputKind,
-        resolved: false,
-        error: resolveErr instanceof Error ? resolveErr.message : "resolve failed",
+
+      const email = identifier.trim().toLowerCase();
+      if (!email.includes("@")) {
+        setError("Use a valid email address to create a shop account.");
+        return;
+      }
+      if (password.length < 12) {
+        setError("Use at least 12 characters for your password.");
+        return;
+      }
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo },
       });
-    }
-
-    console.info("[auth/sign-in]", {
-      inputKind: initialAuthIdentifier.inputKind,
-      normalizedAuthEmail: authEmail,
-    });
-
-    const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
-      email: authEmail,
-      password,
-    });
-
-    console.info("[auth/sign-in-result]", {
-      inputKind: initialAuthIdentifier.inputKind,
-      normalizedAuthEmail: authEmail,
-      userId: signInData.user?.id ?? null,
-      hasAccessToken: Boolean(signInData.session?.access_token),
-      errorCode: signInErr?.status ?? null,
-      errorMessage: signInErr?.message ?? null,
-    });
-
-    if (signInErr) {
-      setError(signInErr.message || "Sign in failed.");
+      if (signUpError) {
+        setError("We couldn't create the account. Check your details and try again.");
+        return;
+      }
+      if (!data.session) {
+        setNotice("Check your email to verify the account, then continue into shop setup.");
+        return;
+      }
+      router.replace("/onboarding");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) {
-      setError("Signed in, but no session is visible yet. Try again.");
-      setLoading(false);
-      return;
-    }
-
-    const destination = await resolvePostAuthDestination({
-      supabase,
-      searchParams: sp,
-      isMobileMode,
-    });
-    await go(destination);
-
-    setLoading(false);
-  };
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    setNotice("");
-
-    const { data, error: signUpErr } = await supabase.auth.signUp({
-      email: identifier,
-      password,
-      options: { emailRedirectTo },
-    });
-
-    if (signUpErr) {
-      setError(signUpErr.message || "Sign up failed.");
-      setLoading(false);
-      return;
-    }
-
-    if (!data.session) {
-      setNotice(
-        "Check your inbox to confirm your email. We’ll continue after that.",
-      );
-      setLoading(false);
-      return;
-    }
-
-    const destination = await resolvePostAuthDestination({
-      supabase,
-      searchParams: sp,
-      isMobileMode,
-    });
-    await go(destination);
-    setLoading(false);
-  };
-
-  const handleResendVerification = async () => {
-    setError("");
-    setNotice("");
-    const email = identifier.trim().toLowerCase();
-    if (!email.includes("@")) {
-      setError("Enter your full email address to resend verification.");
-      return;
-    }
-
-    setResendLoading(true);
-    const { error: resendErr } = await supabase.auth.resend({
-      type: "signup",
-      email,
-      options: { emailRedirectTo },
-    });
-
-    if (resendErr) {
-      setError(resendErr.message || "Failed to resend verification email.");
-      setResendLoading(false);
-      return;
-    }
-
-    setNotice("Verification email sent. Check your inbox and spam folder.");
-    setResendLoading(false);
-  };
+  }
 
   const isSignIn = mode === "sign-in";
 
-  const goForgotPassword = () => {
-    const redirect = sp.get("redirect");
-    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
-    router.push(`/forgot-password${tail}`);
-  };
-
   return (
     <AuthShell
-      viewportClassName="bg-[var(--theme-gradient-panel)]"
-      cardClassName="bg-[var(--theme-gradient-panel)]"
+      productLabel="Shop dashboard"
+      heroTitle="The operating system for modern repair shops."
+      heroDescription="Move from intake to invoice with every role, approval, and service record connected to the right shop."
+      highlights={["Role-aware access", "Live work visibility", "Secure approvals"]}
     >
-      {/* Back to landing */}
-      <div className="mb-4 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={goLanding}
-          disabled={loading}
-          className="
-                inline-flex items-center gap-2 rounded-full border
-                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px]
-                uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)]
-                hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]
-                disabled:cursor-not-allowed disabled:opacity-60
-              "
-        >
-          <span aria-hidden className="text-base leading-none">
-            ←
-          </span>
-          Back
-        </button>
-
-        <div className="text-[10px] text-[color:var(--theme-text-muted)]">
-          {isMobileMode ? "Mobile companion" : "Shop access"}
+      <div className="mb-6">
+        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
+          Shop dashboard
         </div>
-      </div>
-
-      {/* Brand / title */}
-      <div className="mb-6 space-y-2 text-center">
-        <div
-          className="
-                inline-flex items-center gap-1 rounded-full border
-                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                bg-[color:var(--theme-surface-overlay)]
-                px-3 py-1 text-[11px]
-                uppercase tracking-[0.22em]
-                text-[color:var(--theme-text-secondary)]
-              "
-        >
-          <span
-            className="text-[10px] font-semibold text-[var(--accent-copper-light)]"
-            style={{ fontFamily: "var(--font-blackops), system-ui" }}
-          >
-            ProFixIQ
-          </span>
-          <span className="h-1 w-1 rounded-full bg-[var(--accent-copper-light)]" />
-          <span>{isMobileMode ? "Shop • Mobile" : "Shop Dashboard"}</span>
-        </div>
-
-        <h1
-          className="mt-2 text-3xl sm:text-4xl font-semibold text-[color:var(--theme-text-primary)]"
-          style={{ fontFamily: "var(--font-blackops), system-ui" }}
-        >
-          {isSignIn ? "Sign in" : "Create your account"}
+        <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)] sm:text-4xl">
+          {isSignIn ? "Welcome back" : "Create your shop account"}
         </h1>
-
-        <p className="text-xs text-muted-foreground sm:text-sm">
+        <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
           {isSignIn
-            ? "Use your shop username or email to access the ProFixIQ dashboard."
-            : "Create a shop account with your email to get started."}
+            ? "Use your shop username or account email."
+            : "Start with the owner account; invite the rest of your team after setup."}
         </p>
       </div>
 
-      {/* Mode switch */}
-      <div className="mb-5 flex items-center justify-center">
-        <div
-          className="
-                inline-flex rounded-full border
-                border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                bg-[color:var(--theme-surface-overlay)] p-1 text-xs
-                shadow-[var(--theme-shadow-medium)]
-              "
-        >
+      <div className="mb-6 grid grid-cols-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-1">
+        {(["sign-in", "sign-up"] as const).map((value) => (
           <button
+            key={value}
             type="button"
-            className={`px-3 py-1 rounded-full transition-all ${
-              isSignIn
-                ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] font-semibold shadow-[0_0_18px_rgba(212,118,49,0.7)]"
-                : "text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+            onClick={() => {
+              setMode(value);
+              setError("");
+              setNotice("");
+            }}
+            className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+              mode === value
+                ? "bg-[color:var(--theme-surface-overlay)] text-[color:var(--theme-text-primary)] shadow-sm"
+                : "text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
             }`}
-            onClick={() => setMode("sign-in")}
-            disabled={loading}
           >
-            Sign in
+            {value === "sign-in" ? "Sign in" : "Create owner account"}
           </button>
-          <button
-            type="button"
-            className={`px-3 py-1 rounded-full transition-all ${
-              !isSignIn
-                ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] font-semibold shadow-[0_0_18px_rgba(212,118,49,0.7)]"
-                : "text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
-            }`}
-            onClick={() => setMode("sign-up")}
-            disabled={loading}
-          >
-            Sign up
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* Error / notice */}
-      {error && (
-        <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/70 px-3 py-2 text-xs text-red-100 shadow-[0_0_18px_rgba(127,29,29,0.5)]">
-          {error}
-        </div>
-      )}
-      {notice && (
-        <div className="mb-3 rounded-lg border border-emerald-500/60 bg-emerald-950/70 px-3 py-2 text-xs text-emerald-100 shadow-[var(--theme-shadow-medium)]">
-          {notice}
-        </div>
-      )}
+      <div className="space-y-3">
+        {error ? <AuthStatus tone="error">{error}</AuthStatus> : null}
+        {notice ? <AuthStatus tone="success">{notice}</AuthStatus> : null}
+      </div>
 
-      {/* Form */}
-      <form
-        onSubmit={isSignIn ? handleSignIn : handleSignUp}
-        className="space-y-4"
-      >
-        <div className="space-y-1 text-sm">
-          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            {isSignIn ? "Email or username" : "Email"}
+      <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="shop-identifier" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+            {isSignIn ? "Email or username" : "Owner email"}
           </label>
           <input
+            id="shop-identifier"
+            className={inputClass}
             type={isSignIn ? "text" : "email"}
-            placeholder={
-              isSignIn ? "jane@shop.com or shop username" : "you@example.com"
-            }
             autoComplete={isSignIn ? "username" : "email"}
+            placeholder={isSignIn ? "name@shop.com or username" : "owner@shop.com"}
             value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            className="
-                  w-full rounded-lg border
-                  border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                  bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]
-                  placeholder:text-[color:var(--theme-text-muted)]
-                  focus:outline-none focus:ring-2
-                  focus:ring-[var(--accent-copper-soft)]
-                  focus:border-[var(--accent-copper-soft)]
-                "
+            onChange={(event) => setIdentifier(event.target.value)}
             required
-          />
-          {isSignIn && (
-            <p className="text-[11px] text-muted-foreground">
-              Shop accounts can sign in using the username provided by your
-              admin.
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-1 text-sm">
-          <label className="block text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            Password
-          </label>
-          <input
-            type="password"
-            placeholder="••••••••"
-            autoComplete={isSignIn ? "current-password" : "new-password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="
-                  w-full rounded-lg border
-                  border-[color:var(--metal-border-soft,var(--theme-border-soft))]
-                  bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]
-                  placeholder:text-[color:var(--theme-text-muted)]
-                  focus:outline-none focus:ring-2
-                  focus:ring-[var(--accent-copper-soft)]
-                  focus:border-[var(--accent-copper-soft)]
-                "
-            required
-            minLength={6}
           />
         </div>
 
-        {/* Forgot password */}
-        {isSignIn && (
-          <div className="flex items-center justify-end">
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label htmlFor="shop-password" className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+              Password
+            </label>
+            {isSignIn ? (
+              <Link href="/forgot-password" className="text-xs font-semibold text-[var(--accent-copper)] hover:underline">
+                Forgot password?
+              </Link>
+            ) : null}
+          </div>
+          <div className="relative">
+            <input
+              id="shop-password"
+              className={`${inputClass} pr-11`}
+              type={showPassword ? "text" : "password"}
+              autoComplete={isSignIn ? "current-password" : "new-password"}
+              placeholder={isSignIn ? "Enter your password" : "At least 12 characters"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              minLength={isSignIn ? 6 : 12}
+              required
+            />
             <button
               type="button"
-              onClick={goForgotPassword}
-              disabled={loading}
-              className="
-                    text-[11px] font-medium
-                    text-[var(--accent-copper-light)]
-                    hover:text-[var(--accent-copper)]
-                    hover:underline underline-offset-2
-                    disabled:cursor-not-allowed disabled:opacity-60
-                  "
+              onClick={() => setShowPassword((current) => !current)}
+              className="absolute inset-y-0 right-0 grid w-11 place-items-center text-[color:var(--theme-text-muted)] hover:text-[color:var(--theme-text-primary)]"
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
-              Forgot password?
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-        )}
+        </div>
 
         <button
           type="submit"
-          className="
-                mt-3 w-full rounded-full
-                bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))]
-                py-2.5 text-center text-sm
-                font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-on-accent)]
-                shadow-[0_0_26px_rgba(212,118,49,0.9)]
-                hover:brightness-110
-                disabled:cursor-not-allowed disabled:opacity-60
-              "
-          style={{ fontFamily: "var(--font-blackops), system-ui" }}
           disabled={loading}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] shadow-[0_14px_32px_color-mix(in_srgb,var(--accent-copper)_25%,transparent)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading
-            ? isSignIn
-              ? "Signing in…"
-              : "Creating account…"
-            : isSignIn
-              ? "Sign in"
-              : "Sign up"}
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {loading ? "Please wait…" : isSignIn ? "Sign in to ProFixIQ" : "Create owner account"}
         </button>
-
-        {!isSignIn ? (
-          <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            <button
-              type="button"
-              onClick={handleResendVerification}
-              disabled={loading || resendLoading}
-              className="underline underline-offset-2 disabled:opacity-60"
-            >
-              {resendLoading ? "Resending..." : "Resend verification"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("sign-in")}
-              disabled={loading || resendLoading}
-              className="underline underline-offset-2 disabled:opacity-60"
-            >
-              Already confirmed? Continue to sign in
-            </button>
-          </div>
-        ) : null}
       </form>
 
-      {/* Mobile companion deep link */}
-      {isSignIn && !isMobileMode && (
-        <div className="mt-4 text-center">
-          <button
-            type="button"
-            onClick={() => router.push("/sign-in?mode=mobile")}
-            className="
-                  text-[11px] font-medium
-                  text-[var(--accent-copper-light)]
-                  hover:text-[var(--accent-copper)]
-                  hover:underline underline-offset-2
-                "
-            disabled={loading}
-          >
-            Sign in to mobile companion
-          </button>
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            Opens the tech-friendly mobile layout for phones and tablets.
-          </p>
-        </div>
-      )}
-
-      <div className="mt-6 text-center text-[11px] text-muted-foreground">
-        <p>
-          By continuing you agree to our{" "}
-          <a
-            href="/terms"
-            className="font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline"
-          >
-            Terms
-          </a>{" "}
-          and{" "}
-          <a
-            href="/privacy"
-            className="font-medium text-[var(--accent-copper-light)] hover:text-[var(--accent-copper)] hover:underline"
-          >
-            Privacy Policy
-          </a>
-          .
-        </p>
+      <div className="mt-6 grid gap-2 border-t border-[color:var(--theme-border-soft)] pt-5 sm:grid-cols-2">
+        <Link href="/mobile/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+          Mobile companion
+        </Link>
+        <Link href="/portal/auth/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+          Customer & fleet portals
+        </Link>
       </div>
     </AuthShell>
   );

@@ -356,6 +356,14 @@ export const TILES: Tile[] = [
     scopes: ["management", "settings", "all"],
     section: "Fleet",
   },
+  {
+    href: "/fleet/portal-access",
+    title: "Fleet Portal Access",
+    subtitle: "Invite fleet portal members",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["management", "all"],
+    section: "Fleet",
+  },
 
   /* ---------------------------------------------------------------------- */
   /* PROPERTY                                                                */

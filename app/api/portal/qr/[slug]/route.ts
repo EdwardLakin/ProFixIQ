@@ -5,16 +5,16 @@ export async function GET(_: Request, ctx: unknown) {
   const { params } = ctx as { params: { slug: string } };
   const { slug } = params;
 
-  const base = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-  const url = `${base}/portal/booking?shop=${encodeURIComponent(slug)}`;
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
+  const url = `${base}/portal/join/${encodeURIComponent(slug)}`;
 
   const dataUrl = await QRCode.toDataURL(url, {
     margin: 1,
     errorCorrectionLevel: "H",
     width: 512,
     color: {
-      dark: "#f60a00",
-      light: "#00000000",
+      dark: "#111827",
+      light: "#ffffff",
     },
   });
 
