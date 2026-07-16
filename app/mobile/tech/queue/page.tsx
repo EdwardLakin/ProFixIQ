@@ -7,11 +7,21 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
-import { getOfflineSyncSummary, subscribeOfflineMutations } from "@/features/shared/lib/offline/mutations";
+import {
+  getOfflineMutationScope,
+  getOfflineSyncSummary,
+  setOfflineMutationScope,
+  subscribeOfflineMutations,
+} from "@/features/shared/lib/offline/mutations";
+import {
+  downloadAssignedTechnicianWork,
+  getCachedTechnicianWork,
+} from "@/features/work-orders/mobile/technicianOfflineDownload";
+import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/technicianOfflineTypes";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -66,7 +76,8 @@ function toBucket(line: Line): RollupStatus {
   if (punchedIn) return "in_progress";
 
   const s = (line.status ?? "").toLowerCase().replaceAll(" ", "_");
-  if (s === "in_progress" || s === "in-progress" || s === "active") return "in_progress";
+  if (s === "in_progress" || s === "in-progress" || s === "active")
+    return "in_progress";
   if (s === "on_hold") return "on_hold";
   if (s === "completed") return "completed";
   return "awaiting";
@@ -81,15 +92,20 @@ const STATUS_RANK: Record<RollupStatus, number> = {
 };
 
 function toPriority(line: Line): JobPriority {
-  const raw = String((line as Line & { job_priority?: string | null }).job_priority ?? "normal")
+  const raw = String(
+    (line as Line & { job_priority?: string | null }).job_priority ?? "normal",
+  )
     .toLowerCase()
     .trim();
-  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low") return raw;
+  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low")
+    return raw;
   return "normal";
 }
 
 function cleanText(v: string | null | undefined): string {
-  return String(v ?? "").trim().replace(/\s+/g, " ");
+  return String(v ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
 }
 
 function nextActionLabel(status: RollupStatus): string {
@@ -122,15 +138,66 @@ type WorkOrderMapRow = {
   vehicleLabel: string | null;
 };
 
+function queueViewFromBundle(bundle: TechnicianOfflineBundle): {
+  lines: Line[];
+  workOrderMap: Record<string, WorkOrderMapRow>;
+  lineNumberMap: Record<string, number>;
+} {
+  const assignedIds = new Set(
+    bundle.workOrders.flatMap((item) => item.assignedLineIds),
+  );
+  const lines = bundle.workOrders
+    .flatMap((item) => item.lines)
+    .filter((line) => assignedIds.has(line.id));
+  const workOrderMap: Record<string, WorkOrderMapRow> = {};
+  const lineNumberMap: Record<string, number> = {};
+  const jobTypePriority: Record<string, number> = {
+    diagnosis: 1,
+    inspection: 2,
+    maintenance: 3,
+    repair: 4,
+  };
+
+  for (const item of bundle.workOrders) {
+    workOrderMap[item.workOrder.id] = {
+      id: item.workOrder.id,
+      custom_id: item.workOrder.custom_id,
+      vehicle_id: item.workOrder.vehicle_id,
+      vehicleLabel: formatVehicle(item.vehicle),
+    };
+    item.lines
+      .filter(
+        (line) =>
+          (line.line_type ?? "job") === "job" &&
+          (line.approval_state ?? "").toLowerCase() !== "pending",
+      )
+      .sort((a, b) => {
+        const priority =
+          (jobTypePriority[String(a.job_type ?? "repair")] ?? 999) -
+          (jobTypePriority[String(b.job_type ?? "repair")] ?? 999);
+        if (priority) return priority;
+        return (
+          new Date(a.created_at ?? 0).getTime() -
+          new Date(b.created_at ?? 0).getTime()
+        );
+      })
+      .forEach((line, index) => {
+        lineNumberMap[line.id] = index + 1;
+      });
+  }
+
+  return { lines, workOrderMap, lineNumberMap };
+}
+
 export default function MobileTechQueuePage() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
 
   const [lines, setLines] = useState<Line[]>([]);
 
-  const [workOrderMap, setWorkOrderMap] = useState<Record<string, WorkOrderMapRow>>(
-    {},
-  );
+  const [workOrderMap, setWorkOrderMap] = useState<
+    Record<string, WorkOrderMapRow>
+  >({});
 
   // line.id -> 1-based “client view” line number
   const [lineNumberMap, setLineNumberMap] = useState<Record<string, number>>(
@@ -141,7 +208,20 @@ export default function MobileTechQueuePage() {
   const [err, setErr] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<RollupStatus | null>(null);
   const [syncSummary, setSyncSummary] = useState(() => getOfflineSyncSummary());
+  const [scope, setScope] = useState<{ userId: string; shopId: string } | null>(
+    null,
+  );
+  const [downloading, setDownloading] = useState(false);
+  const [offlineMessage, setOfflineMessage] = useState<string | null>(null);
+  const [offlineUpdatedAt, setOfflineUpdatedAt] = useState<string | null>(null);
+  const [online, setOnline] = useState(true);
 
+  const applyOfflineBundle = useCallback((bundle: TechnicianOfflineBundle) => {
+    const view = queueViewFromBundle(bundle);
+    setLines(view.lines);
+    setWorkOrderMap(view.workOrderMap);
+    setLineNumberMap(view.lineNumberMap);
+  }, []);
 
   useEffect(() => {
     const refresh = () => setSyncSummary(getOfflineSyncSummary());
@@ -150,9 +230,41 @@ export default function MobileTechQueuePage() {
   }, []);
 
   useEffect(() => {
+    const refresh = () => setOnline(navigator.onLine);
+    refresh();
+    window.addEventListener("online", refresh);
+    window.addEventListener("offline", refresh);
+    return () => {
+      window.removeEventListener("online", refresh);
+      window.removeEventListener("offline", refresh);
+    };
+  }, []);
+
+  useEffect(() => {
     (async () => {
       setLoading(true);
       setErr(null);
+
+      if (!navigator.onLine) {
+        const cachedScope = getOfflineMutationScope();
+        if (!cachedScope) {
+          setErr("No offline user and shop scope is available on this device.");
+          setLoading(false);
+          return;
+        }
+        setScope(cachedScope);
+        const cached = await getCachedTechnicianWork({ scope: cachedScope });
+        if (!cached) {
+          setErr("No assigned work has been downloaded to this device yet.");
+          setLoading(false);
+          return;
+        }
+        applyOfflineBundle(cached.data);
+        setOfflineUpdatedAt(cached.updatedAt);
+        setOfflineMessage("Showing the assigned work saved on this device.");
+        setLoading(false);
+        return;
+      }
 
       // 1) auth
       const {
@@ -182,6 +294,11 @@ export default function MobileTechQueuePage() {
         setLoading(false);
         return;
       }
+      const activeScope = { userId: user.id, shopId: prof.shop_id };
+      setScope(activeScope);
+      setOfflineMutationScope(activeScope);
+      const cached = await getCachedTechnicianWork({ scope: activeScope });
+      setOfflineUpdatedAt(cached?.updatedAt ?? null);
 
       // 3) lines assigned to this tech
       const { data: techLines, error: linesErr } = await supabase
@@ -216,14 +333,21 @@ export default function MobileTechQueuePage() {
             .neq("type", "historical_import"),
           supabase
             .from("work_order_lines")
-            .select("id, work_order_id, created_at, job_type, approval_state, line_type")
+            .select(
+              "id, work_order_id, created_at, job_type, approval_state, line_type",
+            )
             .eq("line_type", "job")
             .in("work_order_id", woIds),
         ]);
 
         const wos = (wosRes.data ?? []) as WorkOrderPick[];
         const allowedWorkOrderIds = new Set(wos.map((wo) => wo.id));
-        setLines(assignedLines.filter((line) => line.work_order_id && allowedWorkOrderIds.has(line.work_order_id)));
+        setLines(
+          assignedLines.filter(
+            (line) =>
+              line.work_order_id && allowedWorkOrderIds.has(line.work_order_id),
+          ),
+        );
 
         // vehicles lookup (batch)
         const vehicleIds = Array.from(
@@ -315,7 +439,30 @@ export default function MobileTechQueuePage() {
 
       setLoading(false);
     })();
-  }, [supabase]);
+  }, [supabase, applyOfflineBundle]);
+
+  const downloadForOffline = useCallback(async () => {
+    if (!scope || !navigator.onLine) return;
+    setDownloading(true);
+    setOfflineMessage(null);
+    try {
+      const bundle = await downloadAssignedTechnicianWork({ scope });
+      applyOfflineBundle(bundle);
+      setOfflineUpdatedAt(bundle.downloadedAt);
+      await navigator.storage?.persist?.();
+      setOfflineMessage(
+        `${bundle.workOrders.length} assigned work order${bundle.workOrders.length === 1 ? " is" : "s are"} available offline.`,
+      );
+    } catch (error) {
+      setOfflineMessage(
+        error instanceof Error
+          ? error.message
+          : "Assigned work could not be downloaded.",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }, [scope, applyOfflineBundle]);
 
   // counts per bucket
   const counts = useMemo(() => {
@@ -388,11 +535,42 @@ export default function MobileTechQueuePage() {
   return (
     <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
-        {(syncSummary.queued > 0 || syncSummary.syncing > 0 || syncSummary.failed > 0 || syncSummary.conflicted > 0) && (
+        {(syncSummary.queued > 0 ||
+          syncSummary.syncing > 0 ||
+          syncSummary.failed > 0 ||
+          syncSummary.conflicted > 0) && (
           <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">
-            Sync status: pending {syncSummary.queued + syncSummary.syncing} • failed {syncSummary.failed} • conflicted {syncSummary.conflicted}
+            Sync status: pending {syncSummary.queued + syncSummary.syncing} •
+            failed {syncSummary.failed} • conflicted {syncSummary.conflicted}
           </div>
         )}
+        <section className="metal-card rounded-2xl border border-[var(--metal-border-soft)] p-4 shadow-[var(--theme-shadow-medium)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Offline availability
+              </h2>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                {offlineUpdatedAt
+                  ? `Saved ${new Date(offlineUpdatedAt).toLocaleString()}`
+                  : "Assigned work has not been downloaded on this device."}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={downloading || !scope || !online}
+              onClick={() => void downloadForOffline()}
+              className="rounded-xl border border-[var(--accent-copper-soft)]/70 bg-[rgba(212,118,49,0.18)] px-4 py-2 text-xs font-semibold text-[var(--accent-copper-soft)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {downloading ? "Downloading…" : "Download assigned work"}
+            </button>
+          </div>
+          {offlineMessage ? (
+            <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
+              {offlineMessage}
+            </p>
+          ) : null}
+        </section>
         {/* HERO (match MobileTechHome vibe) */}
         <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[var(--theme-shadow-medium)]">
           <div className="space-y-1">
@@ -417,7 +595,12 @@ export default function MobileTechQueuePage() {
         {/* FILTER CARDS (desktop-style vibes) */}
         <section className="grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
           {(
-            ["awaiting", "in_progress", "on_hold", "completed"] as RollupStatus[]
+            [
+              "awaiting",
+              "in_progress",
+              "on_hold",
+              "completed",
+            ] as RollupStatus[]
           ).map((s) => {
             const isActive = activeFilter === s;
 
@@ -455,7 +638,9 @@ export default function MobileTechQueuePage() {
           {filteredLines.map((line) => {
             const bucket = toBucket(line);
 
-            const wo = line.work_order_id ? workOrderMap[line.work_order_id] : null;
+            const wo = line.work_order_id
+              ? workOrderMap[line.work_order_id]
+              : null;
 
             const woLabel = wo?.custom_id
               ? wo.custom_id
@@ -473,8 +658,11 @@ export default function MobileTechQueuePage() {
             );
 
             const vehicleLabel = wo?.vehicleLabel ?? null;
-            const approvalState = (line.approval_state ?? "approved").replaceAll("_", " ");
-            const isAwaitingApproval = (line.approval_state ?? "").toLowerCase() === "pending";
+            const approvalState = (
+              line.approval_state ?? "approved"
+            ).replaceAll("_", " ");
+            const isAwaitingApproval =
+              (line.approval_state ?? "").toLowerCase() === "pending";
             const isPunchedIn = !!line.punched_in_at && !line.punched_out_at;
             const priority = toPriority(line);
 
@@ -584,7 +772,9 @@ function MiniStat({
       <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
         {label}
       </div>
-      <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
+      <div className="mt-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
+        {value}
+      </div>
     </div>
   );
 }
