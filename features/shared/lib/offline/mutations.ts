@@ -3,7 +3,9 @@
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   clearOfflineDatabase,
+  pruneOfflineDatabase,
   readStoredMutations,
+  removeOfflineBlob,
   replaceStoredMutations,
   type StoredOfflineMutation,
 } from "@/features/shared/lib/offline/database";
@@ -48,7 +50,9 @@ const EVENT_NAME = "offline-mutations:updated";
 const MAX_HISTORY = 300;
 const TERMINAL_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
-const PERMANENT_STATUS_CODES = new Set([400, 401, 403, 404, 409, 410, 412, 422]);
+const PERMANENT_STATUS_CODES = new Set([
+  400, 401, 403, 404, 409, 410, 412, 422,
+]);
 
 let queueCache: PendingMutation[] = [];
 let hydrationPromise: Promise<void> | null = null;
@@ -67,14 +71,19 @@ function emitQueueUpdate(): void {
   }
 }
 
-export function setOfflineMutationScope(scope: OfflineMutationScope | null): void {
+export function setOfflineMutationScope(
+  scope: OfflineMutationScope | null,
+): void {
   if (!browserReady()) return;
   if (!scope?.userId.trim() || !scope.shopId.trim()) {
     localStorage.removeItem(SCOPE_KEY);
   } else {
     localStorage.setItem(
       SCOPE_KEY,
-      JSON.stringify({ userId: scope.userId.trim(), shopId: scope.shopId.trim() }),
+      JSON.stringify({
+        userId: scope.userId.trim(),
+        shopId: scope.shopId.trim(),
+      }),
     );
   }
   emitQueueUpdate();
@@ -83,9 +92,9 @@ export function setOfflineMutationScope(scope: OfflineMutationScope | null): voi
 export function getOfflineMutationScope(): OfflineMutationScope | null {
   if (!browserReady()) return null;
   try {
-    const value = JSON.parse(localStorage.getItem(SCOPE_KEY) ?? "null") as
-      | Partial<OfflineMutationScope>
-      | null;
+    const value = JSON.parse(
+      localStorage.getItem(SCOPE_KEY) ?? "null",
+    ) as Partial<OfflineMutationScope> | null;
     const userId = clean(value?.userId);
     const shopId = clean(value?.shopId);
     return userId && shopId ? { userId, shopId } : null;
@@ -99,7 +108,9 @@ function scopeMatches(
   scope: OfflineMutationScope | null,
 ): boolean {
   return Boolean(
-    scope && mutation.userId === scope.userId && mutation.shopId === scope.shopId,
+    scope &&
+    mutation.userId === scope.userId &&
+    mutation.shopId === scope.shopId,
   );
 }
 
@@ -108,13 +119,18 @@ async function resolveMutationScope(
   supplied?: OfflineMutationScope | null,
 ): Promise<OfflineMutationScope | null> {
   if (supplied?.userId.trim() && supplied.shopId.trim()) {
-    const scope = { userId: supplied.userId.trim(), shopId: supplied.shopId.trim() };
+    const scope = {
+      userId: supplied.userId.trim(),
+      shopId: supplied.shopId.trim(),
+    };
     setOfflineMutationScope(scope);
     return scope;
   }
 
   const cached = getOfflineMutationScope();
-  const candidate = (payload && typeof payload === "object" ? payload : {}) as ScopePayload;
+  const candidate = (
+    payload && typeof payload === "object" ? payload : {}
+  ) as ScopePayload;
   const explicitUserId = clean(candidate.userId) || clean(candidate.user_id);
   const explicitShopId = clean(candidate.shopId) || clean(candidate.shop_id);
 
@@ -132,7 +148,8 @@ async function resolveMutationScope(
     clean(candidate.workOrderLineId) ||
     clean(candidate.lineId) ||
     clean(candidate.work_order_line_id);
-  const workOrderId = clean(candidate.workOrderId) || clean(candidate.work_order_id);
+  const workOrderId =
+    clean(candidate.workOrderId) || clean(candidate.work_order_id);
 
   if (!shopId && workOrderLineId && navigator.onLine) {
     const { data } = await supabase
@@ -167,7 +184,10 @@ async function resolveMutationScope(
 
 function parseMutation(raw: unknown): PendingMutation | null {
   if (!raw || typeof raw !== "object") return null;
-  const item = raw as Partial<PendingMutation> & { id?: unknown; action?: unknown };
+  const item = raw as Partial<PendingMutation> & {
+    id?: unknown;
+    action?: unknown;
+  };
   const clientMutationId = clean(item.clientMutationId) || clean(item.id);
   const actionType = clean(item.actionType) || clean(item.action);
   const createdAt = clean(item.createdAt);
@@ -175,10 +195,16 @@ function parseMutation(raw: unknown): PendingMutation | null {
 
   const userId = clean(item.userId);
   const shopId = clean(item.shopId);
-  const validStatus = ["queued", "syncing", "failed", "synced", "conflicted"].includes(
-    String(item.status),
-  );
-  const parsedStatus = (validStatus ? item.status : "queued") as OfflineMutationStatus;
+  const validStatus = [
+    "queued",
+    "syncing",
+    "failed",
+    "synced",
+    "conflicted",
+  ].includes(String(item.status));
+  const parsedStatus = (
+    validStatus ? item.status : "queued"
+  ) as OfflineMutationStatus;
   const status = parsedStatus === "syncing" ? "failed" : parsedStatus;
   const missingScope = !userId || !shopId;
 
@@ -190,7 +216,9 @@ function parseMutation(raw: unknown): PendingMutation | null {
     retryCount: typeof item.retryCount === "number" ? item.retryCount : 0,
     userId,
     shopId,
-    dependsOn: Array.isArray(item.dependsOn) ? item.dependsOn.map(String) : undefined,
+    dependsOn: Array.isArray(item.dependsOn)
+      ? item.dependsOn.map(String)
+      : undefined,
     orderKey: clean(item.orderKey) || undefined,
     status: missingScope && status !== "synced" ? "conflicted" : status,
     lastError: clean(item.lastError) || undefined,
@@ -208,12 +236,16 @@ function normalizeQueue(queue: PendingMutation[]): PendingMutation[] {
   const retained = [...byId.values()].filter((item) => {
     if (item.status !== "synced") return true;
     return Boolean(
-      item.syncedAt && now - new Date(item.syncedAt).getTime() < TERMINAL_RETENTION_MS,
+      item.syncedAt &&
+      now - new Date(item.syncedAt).getTime() < TERMINAL_RETENTION_MS,
     );
   });
   if (retained.length <= MAX_HISTORY) return retained;
   return retained
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    )
     .slice(retained.length - MAX_HISTORY);
 }
 
@@ -230,7 +262,9 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
         const raw = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
         if (Array.isArray(raw)) {
           legacy.push(
-            ...raw.map(parseMutation).filter((item): item is PendingMutation => Boolean(item)),
+            ...raw
+              .map(parseMutation)
+              .filter((item): item is PendingMutation => Boolean(item)),
           );
         }
       } catch {
@@ -256,7 +290,8 @@ async function writeQueue(queue: PendingMutation[]): Promise<void> {
 
 function sortForReplay(queue: PendingMutation[]): PendingMutation[] {
   return [...queue].sort((a, b) => {
-    const time = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    const time =
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     if (time) return time;
     const order = (a.orderKey ?? "").localeCompare(b.orderKey ?? "");
     return order || a.clientMutationId.localeCompare(b.clientMutationId);
@@ -265,7 +300,9 @@ function sortForReplay(queue: PendingMutation[]): PendingMutation[] {
 
 async function upsertMutation(next: PendingMutation): Promise<void> {
   const queue = [...queueCache];
-  const index = queue.findIndex((item) => item.clientMutationId === next.clientMutationId);
+  const index = queue.findIndex(
+    (item) => item.clientMutationId === next.clientMutationId,
+  );
   if (index >= 0) queue[index] = next;
   else queue.push(next);
   await writeQueue(queue);
@@ -311,11 +348,14 @@ async function markMutationStatus(args: {
   if (!existing) return;
   await upsertMutation({
     ...existing,
-    retryCount: args.incrementRetry ? existing.retryCount + 1 : existing.retryCount,
+    retryCount: args.incrementRetry
+      ? existing.retryCount + 1
+      : existing.retryCount,
     status: args.status,
     lastError: args.error,
     conflictReason: args.conflictReason,
-    syncedAt: args.status === "synced" ? new Date().toISOString() : existing.syncedAt,
+    syncedAt:
+      args.status === "synced" ? new Date().toISOString() : existing.syncedAt,
   });
 }
 
@@ -323,7 +363,9 @@ export function listPendingMutations(
   scope: OfflineMutationScope | null = getOfflineMutationScope(),
 ): PendingMutation[] {
   void hydrateOfflineMutationQueue();
-  return queueCache.filter((item) => item.status !== "synced" && scopeMatches(item, scope));
+  return queueCache.filter(
+    (item) => item.status !== "synced" && scopeMatches(item, scope),
+  );
 }
 
 export function listOfflineMutations(
@@ -337,7 +379,14 @@ export function getOfflineSyncSummary(
   scope: OfflineMutationScope | null = getOfflineMutationScope(),
 ) {
   void hydrateOfflineMutationQueue();
-  const summary = { queued: 0, syncing: 0, failed: 0, conflicted: 0, synced: 0, total: 0 };
+  const summary = {
+    queued: 0,
+    syncing: 0,
+    failed: 0,
+    conflicted: 0,
+    synced: 0,
+    total: 0,
+  };
   for (const item of queueCache.filter((entry) => scopeMatches(entry, scope))) {
     summary[item.status] += 1;
     summary.total += 1;
@@ -353,6 +402,98 @@ export function subscribeOfflineMutations(listener: () => void): () => void {
   return () => {
     window.removeEventListener(EVENT_NAME, listener);
     window.removeEventListener("storage", listener);
+  };
+}
+
+export async function retryOfflineMutation(
+  clientMutationId: string,
+): Promise<void> {
+  await hydrateOfflineMutationQueue();
+  const scope = getOfflineMutationScope();
+  const mutation = queueCache.find(
+    (item) =>
+      item.clientMutationId === clientMutationId && scopeMatches(item, scope),
+  );
+  if (
+    !mutation ||
+    mutation.status === "syncing" ||
+    mutation.status === "synced"
+  )
+    return;
+  await upsertMutation({
+    ...mutation,
+    status: "queued",
+    lastError: undefined,
+    conflictReason: undefined,
+  });
+}
+
+export async function dismissOfflineMutation(
+  clientMutationId: string,
+): Promise<void> {
+  await hydrateOfflineMutationQueue();
+  const scope = getOfflineMutationScope();
+  const mutation = queueCache.find(
+    (item) =>
+      item.clientMutationId === clientMutationId && scopeMatches(item, scope),
+  );
+  if (!mutation || mutation.status === "syncing") return;
+  const dependent = queueCache.find(
+    (item) =>
+      scopeMatches(item, scope) &&
+      item.status !== "synced" &&
+      item.dependsOn?.includes(clientMutationId),
+  );
+  if (dependent) {
+    throw new Error("Remove the dependent offline update first.");
+  }
+  if (mutation.actionType === "upload_job_photo") {
+    const payload = mutation.payload as { blobId?: unknown } | null;
+    if (typeof payload?.blobId === "string")
+      await removeOfflineBlob(payload.blobId);
+  }
+  await writeQueue(
+    queueCache.filter((item) => item.clientMutationId !== clientMutationId),
+  );
+}
+
+export async function clearSyncedOfflineMutations(): Promise<void> {
+  await hydrateOfflineMutationQueue();
+  const scope = getOfflineMutationScope();
+  await writeQueue(
+    queueCache.filter(
+      (item) => item.status !== "synced" || !scopeMatches(item, scope),
+    ),
+  );
+}
+
+export async function pruneOfflineState(): Promise<{
+  mutationsRemoved: number;
+  snapshotsRemoved: number;
+  blobsRemoved: number;
+}> {
+  await hydrateOfflineMutationQueue();
+  const scope = getOfflineMutationScope();
+  if (!scope)
+    return { mutationsRemoved: 0, snapshotsRemoved: 0, blobsRemoved: 0 };
+  const before = queueCache.length;
+  const retainedBlobIds = new Set(
+    queueCache
+      .filter(
+        (item) =>
+          scopeMatches(item, scope) &&
+          item.actionType === "upload_job_photo" &&
+          item.status !== "synced",
+      )
+      .map((item) => (item.payload as { blobId?: unknown } | null)?.blobId)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  await clearSyncedOfflineMutations();
+  const removed = await pruneOfflineDatabase({ scope, retainedBlobIds });
+  return {
+    mutationsRemoved: before - queueCache.length,
+    snapshotsRemoved: removed.snapshotsRemoved,
+    blobsRemoved: removed.blobsRemoved,
   };
 }
 
@@ -373,7 +514,8 @@ export function isRetryableOfflineError(error: unknown): boolean {
   }
   const source = (error && typeof error === "object" ? error : {}) as ErrorLike;
   const code = clean(source.code).toUpperCase();
-  if (["PGRST301", "42501", "23503", "23505", "22P02"].includes(code)) return false;
+  if (["PGRST301", "42501", "23503", "23505", "22P02"].includes(code))
+    return false;
   const message = clean(source.message ?? error).toLowerCase();
   if (
     /unauthorized|forbidden|validation|invalid|not found|financially_locked|conflict|already completed|cannot/.test(
@@ -396,10 +538,12 @@ export async function replayQueuedMutations(args: {
 }): Promise<{ replayed: number; failed: number; conflicted: number }> {
   await hydrateOfflineMutationQueue();
   const scope = args.scope ?? getOfflineMutationScope();
-  if (!scope || !navigator.onLine) return { replayed: 0, failed: 0, conflicted: 0 };
+  if (!scope || !navigator.onLine)
+    return { replayed: 0, failed: 0, conflicted: 0 };
   const queue = sortForReplay(
     queueCache.filter(
-      (item) => ["queued", "failed"].includes(item.status) && scopeMatches(item, scope),
+      (item) =>
+        ["queued", "failed"].includes(item.status) && scopeMatches(item, scope),
     ),
   );
   let replayed = 0;
@@ -409,7 +553,9 @@ export async function replayQueuedMutations(args: {
   for (const mutation of queue) {
     const dependencyPending =
       mutation.dependsOn?.some(
-        (id) => queueCache.find((item) => item.clientMutationId === id)?.status !== "synced",
+        (id) =>
+          queueCache.find((item) => item.clientMutationId === id)?.status !==
+          "synced",
       ) ?? false;
     if (dependencyPending) continue;
     const handler = args.handlers[mutation.actionType];

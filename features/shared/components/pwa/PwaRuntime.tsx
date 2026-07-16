@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   clearOfflineState,
@@ -19,12 +19,25 @@ type InstallPromptEvent = Event & {
 export default function PwaRuntime() {
   const [online, setOnline] = useState(true);
   const [summary, setSummary] = useState(() => getOfflineSyncSummary());
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(
+    null,
+  );
   const [updateReady, setUpdateReady] = useState<ServiceWorker | null>(null);
+  const [iosInstallAvailable, setIosInstallAvailable] = useState(false);
+  const [showIosInstructions, setShowIosInstructions] = useState(false);
+  const [activatingUpdate, setActivatingUpdate] = useState(false);
+  const updateReloading = useRef(false);
   const pending = summary.queued + summary.syncing + summary.failed;
 
   useEffect(() => {
     setOnline(navigator.onLine);
+    const iosDevice =
+      /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    setIosInstallAvailable(iosDevice && !standalone);
     void hydrateOfflineMutationQueue();
     void navigator.storage?.persist?.().catch(() => false);
 
@@ -36,18 +49,24 @@ export default function PwaRuntime() {
         .select("shop_id")
         .eq("id", userId)
         .maybeSingle();
-      if (profile?.shop_id) setOfflineMutationScope({ userId, shopId: profile.shop_id });
+      if (profile?.shop_id)
+        setOfflineMutationScope({ userId, shopId: profile.shop_id });
     };
     void supabase.auth.getSession().then(async ({ data }) => {
       const userId = data.session?.user.id;
       if (userId) await resolveScope(userId);
     });
 
-    const { data: authSubscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT") void clearOfflineState();
-      if (session?.user.id) window.setTimeout(() => void resolveScope(session.user.id), 0);
-    });
-    const unsubscribe = subscribeOfflineMutations(() => setSummary(getOfflineSyncSummary()));
+    const { data: authSubscription } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === "SIGNED_OUT") void clearOfflineState();
+        if (session?.user.id)
+          window.setTimeout(() => void resolveScope(session.user.id), 0);
+      },
+    );
+    const unsubscribe = subscribeOfflineMutations(() =>
+      setSummary(getOfflineSyncSummary()),
+    );
     const sync = () => {
       setOnline(navigator.onLine);
       if (navigator.onLine) void replayAllOfflineMutations();
@@ -64,16 +83,18 @@ export default function PwaRuntime() {
     window.addEventListener("beforeinstallprompt", beforeInstall);
 
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js", { scope: "/" }).then((registration) => {
-        if (registration.waiting) setUpdateReady(registration.waiting);
-        registration.addEventListener("updatefound", () => {
-          registration.installing?.addEventListener("statechange", () => {
-            if (registration.waiting && navigator.serviceWorker.controller) {
-              setUpdateReady(registration.waiting);
-            }
+      void navigator.serviceWorker
+        .register("/sw.js", { scope: "/" })
+        .then((registration) => {
+          if (registration.waiting) setUpdateReady(registration.waiting);
+          registration.addEventListener("updatefound", () => {
+            registration.installing?.addEventListener("statechange", () => {
+              if (registration.waiting && navigator.serviceWorker.controller) {
+                setUpdateReady(registration.waiting);
+              }
+            });
           });
         });
-      });
     }
     sync();
 
@@ -95,24 +116,121 @@ export default function PwaRuntime() {
     setInstallPrompt(null);
   };
 
-  if (online && pending === 0 && !installPrompt && !updateReady) return null;
+  const activateUpdate = () => {
+    if (!updateReady || activatingUpdate) return;
+    setActivatingUpdate(true);
+    const reloadWhenControlled = () => {
+      if (updateReloading.current) return;
+      updateReloading.current = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener(
+      "controllerchange",
+      reloadWhenControlled,
+      {
+        once: true,
+      },
+    );
+    updateReady.postMessage({ type: "SKIP_WAITING" });
+    window.setTimeout(reloadWhenControlled, 8_000);
+  };
+
+  if (
+    online &&
+    pending === 0 &&
+    !installPrompt &&
+    !iosInstallAvailable &&
+    !updateReady
+  ) {
+    return null;
+  }
 
   return (
     <div className="fixed bottom-4 right-4 z-[100] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-xl backdrop-blur">
-      <span className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-amber-400"}`} />
-      <span>{online ? (pending ? `Syncing ${pending}` : "Online") : `Offline · ${pending} pending`}</span>
-      {installPrompt && <button type="button" onClick={() => void install()} className="rounded-full bg-sky-400 px-3 py-1 text-slate-950">Install</button>}
+      <span
+        className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-amber-400"}`}
+      />
+      <span>
+        {online
+          ? pending
+            ? `Syncing ${pending}`
+            : "Online"
+          : `Offline · ${pending} pending`}
+      </span>
+      {installPrompt && (
+        <button
+          type="button"
+          onClick={() => void install()}
+          className="rounded-full bg-sky-400 px-3 py-1 text-slate-950"
+        >
+          Install
+        </button>
+      )}
+      {!installPrompt && iosInstallAvailable && (
+        <button
+          type="button"
+          onClick={() => setShowIosInstructions(true)}
+          className="rounded-full bg-sky-400 px-3 py-1 text-slate-950"
+        >
+          Install
+        </button>
+      )}
+      {(pending > 0 || !online) && (
+        <button
+          type="button"
+          onClick={() => window.location.assign("/offline/sync")}
+          className="rounded-full border border-slate-600 px-3 py-1"
+        >
+          Details
+        </button>
+      )}
       {updateReady && (
         <button
           type="button"
-          onClick={() => {
-            updateReady.postMessage({ type: "SKIP_WAITING" });
-            window.location.reload();
-          }}
+          onClick={activateUpdate}
+          disabled={activatingUpdate}
           className="rounded-full bg-sky-400 px-3 py-1 text-slate-950"
         >
-          Update
+          {activatingUpdate ? "Updating…" : "Update"}
         </button>
+      )}
+      {showIosInstructions && (
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ios-install-title"
+            className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-left shadow-2xl"
+          >
+            <h2 id="ios-install-title" className="text-lg font-semibold">
+              Install ProFixIQ on iPhone or iPad
+            </h2>
+            <ol className="mt-4 space-y-3 text-sm font-normal text-slate-300">
+              <li>
+                <span className="font-semibold text-slate-100">1.</span> Open
+                this page in Safari.
+              </li>
+              <li>
+                <span className="font-semibold text-slate-100">2.</span> Tap the
+                Share button in Safari.
+              </li>
+              <li>
+                <span className="font-semibold text-slate-100">3.</span> Choose{" "}
+                <span className="font-semibold text-slate-100">
+                  Add to Home Screen
+                </span>
+                , then tap Add.
+              </li>
+            </ol>
+            <button
+              type="button"
+              onClick={() => setShowIosInstructions(false)}
+              className="mt-5 w-full rounded-xl bg-sky-400 px-4 py-2 font-semibold text-slate-950"
+            >
+              Done
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -6,6 +6,10 @@ const client = readFileSync(
   "features/inspections/lib/inspection/save.ts",
   "utf8",
 );
+const replay = readFileSync(
+  "features/shared/lib/offline/replay.ts",
+  "utf8",
+);
 
 describe("Phase 6 inspection progress route", () => {
   it("requires and forwards one stable operation key", () => {
@@ -23,8 +27,9 @@ describe("Phase 6 inspection progress route", () => {
 
   it("preserves the operation key in queued replay payloads", () => {
     expect(client).toContain("operationKey: string");
-    expect(client).toContain("!payload.operationKey");
-    expect(client).toContain("await postInspectionSave(payload as InspectionSavePayload)");
+    expect(replay).toContain("!workOrderLineId || !operationKey || !payload.session");
+    expect(replay).toContain("{ ...payload, idempotencyKey: operationKey }");
+    expect(replay).toContain("operationKey,");
   });
 
   it("preserves HTTP status for permanent-error classification", () => {
