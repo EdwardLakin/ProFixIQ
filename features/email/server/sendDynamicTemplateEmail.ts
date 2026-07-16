@@ -2,6 +2,7 @@ import sgMail from "@sendgrid/mail";
 import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { getTemplateId, type EmailTemplateKey } from "./templateIds";
+import { sanitizeEmailMetadata } from "./sendgridWebhook";
 
 type DB = Database;
 
@@ -46,6 +47,18 @@ export async function sendDynamicTemplateEmail(
   const supabase = getAdminClient();
   const templateId = getTemplateId(input.templateKey);
   const fromEmail = requiredEnv("SENDGRID_FROM_EMAIL");
+  const to = input.to.trim().toLowerCase();
+
+  const { data: suppression, error: suppressionError } = await supabase
+    .from("email_suppressions")
+    .select("reason")
+    .eq("email", to)
+    .eq("suppressed", true)
+    .maybeSingle<{ reason: string | null }>();
+
+  if (suppressionError) {
+    throw new Error(`Failed to verify email suppression: ${suppressionError.message}`);
+  }
 
   const { data: logRow, error: insertError } = await supabase
     .from("email_logs")
@@ -53,11 +66,13 @@ export async function sendDynamicTemplateEmail(
       shop_id: input.shopId,
       template_key: input.templateKey,
       template_id: templateId,
-      to_email: input.to,
+      to_email: to,
       subject: input.subject ?? null,
       status: "queued",
       provider: "sendgrid",
-      metadata: (input.metadata ?? {}) as Json,
+      metadata: sanitizeEmailMetadata(
+        (input.metadata ?? {}) as Record<string, unknown>,
+      ) as Json,
       created_by: input.createdBy ?? null,
     })
     .select("id")
@@ -67,12 +82,27 @@ export async function sendDynamicTemplateEmail(
     throw new Error(insertError.message);
   }
 
+  if (suppression) {
+    const { error: suppressedLogError } = await supabase
+      .from("email_logs")
+      .update({
+        status: "suppressed",
+        error_text: suppression.reason ?? "Recipient is suppressed",
+      })
+      .eq("id", logRow.id);
+    if (suppressedLogError) throw new Error(suppressedLogError.message);
+    return;
+  }
+
   try {
     const [response] = await sgMail.send({
-      to: input.to,
+      to,
       from: fromEmail,
       templateId,
       dynamicTemplateData: input.dynamicTemplateData ?? {},
+      customArgs: {
+        email_log_id: logRow.id,
+      },
       ...(input.subject ? { subject: input.subject } : {}),
     });
 
@@ -86,7 +116,7 @@ export async function sendDynamicTemplateEmail(
     const { error: updateError } = await supabase
       .from("email_logs")
       .update({
-        status: "sent",
+        status: "accepted",
         provider_message_id: providerMessageId,
         sent_at: new Date().toISOString(),
       })
@@ -98,7 +128,7 @@ export async function sendDynamicTemplateEmail(
         {
           emailLogId: logRow.id,
           templateKey: input.templateKey,
-          to: input.to,
+          to,
           error: updateError.message,
         },
       );

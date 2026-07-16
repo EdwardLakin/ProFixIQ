@@ -19,7 +19,6 @@ export async function sendPortalInviteEmail(input: {
     createdBy: input.createdBy,
     metadata: {
       kind: "portal_invite",
-      portal_link: input.portalLink,
     } as Json,
     dynamicTemplateData: {
       portal_link: input.portalLink,
@@ -52,7 +51,6 @@ export async function sendQuoteReadyEmail(input: {
     createdBy: input.createdBy,
     metadata: {
       kind: "quote_ready",
-      quote_url: input.quoteUrl,
     } as Json,
     dynamicTemplateData: {
       quote_url: input.quoteUrl,
@@ -91,7 +89,6 @@ export async function sendInvoiceReadyEmail(input: {
     metadata: {
       kind: "invoice_ready",
       work_order_id: input.workOrderId,
-      portal_url: input.portalUrl,
     } as Json,
     dynamicTemplateData: {
       portalUrl: input.portalUrl,
@@ -132,8 +129,6 @@ export async function sendUserInviteEmail(input: {
     createdBy: input.createdBy,
     metadata: {
       kind: "user_invite",
-      login_url: input.loginUrl,
-      username: input.username,
       resend: input.resend ?? false,
     } as Json,
     dynamicTemplateData: {
