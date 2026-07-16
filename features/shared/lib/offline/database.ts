@@ -135,6 +135,20 @@ export async function getOfflineSnapshot<T>(args: {
   return row;
 }
 
+export async function removeOfflineSnapshots(args: {
+  scope: { userId: string; shopId: string };
+  kind: string;
+  entityIds: string[];
+}): Promise<void> {
+  const db = getDatabase();
+  if (!db || args.entityIds.length === 0) return;
+  await db.snapshots.bulkDelete(
+    args.entityIds.map((entityId) =>
+      snapshotKey(args.scope, args.kind, entityId),
+    ),
+  );
+}
+
 export async function listOfflineSnapshots<T>(args: {
   scope: { userId: string; shopId: string };
   kind: string;
