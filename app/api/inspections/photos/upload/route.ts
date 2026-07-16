@@ -9,6 +9,7 @@ import crypto from "crypto";
 import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
 
+const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 
 function asString(v: FormDataEntryValue | null): string | null {
   if (typeof v !== "string") return null;
@@ -234,6 +235,18 @@ export async function POST(req: NextRequest) {
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Missing file" }, { status: 400 });
+  }
+  if (!file.type.toLowerCase().startsWith("image/")) {
+    return NextResponse.json(
+      { error: "Inspection evidence must be an image." },
+      { status: 415 },
+    );
+  }
+  if (file.size > MAX_PHOTO_BYTES) {
+    return NextResponse.json(
+      { error: "Inspection photos must be 15 MB or smaller." },
+      { status: 413 },
+    );
   }
 
   const resolved = await resolveShopId({

@@ -21,6 +21,7 @@ interface InspectionItemCardProps {
   inspectionId: string;
   workOrderId?: string | null;
   workOrderLineId?: string | null;
+  draftKey?: string;
   onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
   onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
   onUpdateStatus: (
@@ -28,8 +29,16 @@ interface InspectionItemCardProps {
     itemIndex: number,
     status: InspectionItemStatus,
   ) => void;
-  onUpdateValue?: (sectionIndex: number, itemIndex: number, value: string) => void;
-  onUpdateUnit?: (sectionIndex: number, itemIndex: number, unit: string) => void;
+  onUpdateValue?: (
+    sectionIndex: number,
+    itemIndex: number,
+    value: string,
+  ) => void;
+  onUpdateUnit?: (
+    sectionIndex: number,
+    itemIndex: number,
+    unit: string,
+  ) => void;
   variant?: "card" | "row";
 }
 
@@ -67,6 +76,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     inspectionId,
     workOrderId,
     workOrderLineId,
+    draftKey,
     onUpdateNote,
     onUpload,
     onUpdateStatus,
@@ -205,7 +215,8 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   itmIdx: number,
                   updates: Partial<InspectionItem>,
                 ) => {
-                  if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
+                  if (updates.status)
+                    onUpdateStatus(secIdx, itmIdx, updates.status);
                 }}
                 onStatusChange={(s: InspectionItemStatus) =>
                   onUpdateStatus(sectionIndex, itemIndex, s)
@@ -231,37 +242,41 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
           </div>
         ) : null}
 
-        {showPhotos && (item.status === "fail" || item.status === "recommend") && (
-          <div className="mt-1">
-            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                  Photos
+        {showPhotos &&
+          (item.status === "fail" || item.status === "recommend") && (
+            <div className="mt-1">
+              <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                    Photos
+                  </div>
+
+                  <PhotoUploadButton
+                    inspectionId={inspectionId}
+                    workOrderId={workOrderId}
+                    workOrderLineId={workOrderLineId}
+                    draftKey={draftKey}
+                    sectionIndex={sectionIndex}
+                    itemIndex={itemIndex}
+                    itemName={label || null}
+                    photoUrls={item.photoUrls ?? []}
+                    onChange={(urls: string[]) => {
+                      const newUrl = urls[urls.length - 1];
+                      if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
+                    }}
+                  />
                 </div>
 
-                <PhotoUploadButton
-                  inspectionId={inspectionId}
-                  workOrderId={workOrderId}
-                  workOrderLineId={workOrderLineId}
-                  itemName={label || null}
-                  photoUrls={item.photoUrls ?? []}
-                  onChange={(urls: string[]) => {
-                    const newUrl = urls[urls.length - 1];
-                    if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
-                  }}
-                />
+                {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
+                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                    {item.photoUrls.map((url, i) => (
+                      <PhotoThumbnail key={url + i} url={url} />
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
-                <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                  {item.photoUrls.map((url, i) => (
-                    <PhotoThumbnail key={url + i} url={url} />
-                  ))}
-                </div>
-              )}
             </div>
-          </div>
-        )}
+          )}
       </div>
     );
   }
@@ -269,7 +284,10 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
   return (
     <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
       <div className="min-w-0">
-        <h3 className="truncate text-[15px] font-semibold text-[color:var(--theme-text-primary)]" title={label}>
+        <h3
+          className="truncate text-[15px] font-semibold text-[color:var(--theme-text-primary)]"
+          title={label}
+        >
           {label || "—"}
         </h3>
 
@@ -306,7 +324,8 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 itmIdx: number,
                 updates: Partial<InspectionItem>,
               ) => {
-                if (updates.status) onUpdateStatus(secIdx, itmIdx, updates.status);
+                if (updates.status)
+                  onUpdateStatus(secIdx, itmIdx, updates.status);
               }}
               onStatusChange={(s: InspectionItemStatus) =>
                 onUpdateStatus(sectionIndex, itemIndex, s)
@@ -329,36 +348,40 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
         </div>
       )}
 
-      {showPhotos && (item.status === "fail" || item.status === "recommend") && (
-        <div className="mt-2">
-          <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                Photos
+      {showPhotos &&
+        (item.status === "fail" || item.status === "recommend") && (
+          <div className="mt-2">
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                  Photos
+                </div>
+                <PhotoUploadButton
+                  inspectionId={inspectionId}
+                  workOrderId={workOrderId}
+                  workOrderLineId={workOrderLineId}
+                  draftKey={draftKey}
+                  sectionIndex={sectionIndex}
+                  itemIndex={itemIndex}
+                  itemName={label || null}
+                  photoUrls={item.photoUrls ?? []}
+                  onChange={(urls: string[]) => {
+                    const newUrl = urls[urls.length - 1];
+                    if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
+                  }}
+                />
               </div>
-              <PhotoUploadButton
-                inspectionId={inspectionId}
-                workOrderId={workOrderId}
-                workOrderLineId={workOrderLineId}
-                itemName={label || null}
-                photoUrls={item.photoUrls ?? []}
-                onChange={(urls: string[]) => {
-                  const newUrl = urls[urls.length - 1];
-                  if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
-                }}
-              />
-            </div>
 
-            {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
-              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                {item.photoUrls.map((url, i) => (
-                  <PhotoThumbnail key={url + i} url={url} />
-                ))}
-              </div>
-            )}
+              {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
+                <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                  {item.photoUrls.map((url, i) => (
+                    <PhotoThumbnail key={url + i} url={url} />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }

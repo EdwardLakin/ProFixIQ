@@ -10,6 +10,7 @@ import {
   type OfflineMutationRunner,
 } from "@/features/shared/lib/offline/mutations";
 import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
+import { replayInspectionPhotoMutation } from "@inspections/lib/inspection/inspectionPhotoStaging";
 
 type ReplayPayload = Record<string, unknown>;
 
@@ -41,6 +42,7 @@ async function apiPost(path: string, body: unknown, operationKey?: string) {
 }
 
 const handlers: Record<string, OfflineMutationRunner> = {
+  "inspection:upload-photo": replayInspectionPhotoMutation,
   "inspection:save-session": async (mutation) => {
     const payload = mutation.payload as ReplayPayload;
     const workOrderLineId = text(payload.workOrderLineId);

@@ -3148,6 +3148,7 @@ type SmartMatchRow = {
                             inspectionId={inspectionId}
                             workOrderId={workOrderId}
                             workOrderLineId={workOrderLineId || null}
+                            draftKey={draftKey}
                             onUpdateStatus={(
                               secIdx: number,
                               itemIdx: number,
