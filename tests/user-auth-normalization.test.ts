@@ -46,6 +46,10 @@ type MockAdminOptions = {
   shopName?: string;
   sameShopProfiles?: { id: string; username: string | null }[];
   createdUserId?: string;
+  canonicalRole?: "owner" | "admin";
+  profileUpsertError?: string | null;
+  workforceUpsertError?: string | null;
+  deleteUserError?: string | null;
 };
 
 function jsonRequest(body: Record<string, unknown>): Request {
@@ -64,18 +68,34 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
     data: { user: { id: createdUserId } },
     error: null,
   }));
-  const profileUpsert = vi.fn(async (_payload: ProfileUpsertPayload) => ({ error: null }));
-  const workforceUpsert = vi.fn(async (_payload: Record<string, unknown>) => ({ error: null }));
+  const deleteUser = vi.fn(async (_userId: string) => ({
+    error: options.deleteUserError
+      ? { message: options.deleteUserError }
+      : null,
+  }));
+  const profileUpsert = vi.fn(async (_payload: ProfileUpsertPayload) => ({
+    error: options.profileUpsertError
+      ? { message: options.profileUpsertError }
+      : null,
+  }));
+  const workforceUpsert = vi.fn(async (_payload: Record<string, unknown>) => ({
+    error: options.workforceUpsertError
+      ? { message: options.workforceUpsertError }
+      : null,
+  }));
 
   const adminClient = {
-    auth: { admin: { createUser } },
+    auth: { admin: { createUser, deleteUser } },
     from: vi.fn((table: string) => {
       if (table === "shops") {
         return {
           select: () => ({
             eq: () => ({
               maybeSingle: async () => ({
-                data: { name: options.shopName ?? "Downtown Diesel", shop_name: null },
+                data: {
+                  name: options.shopName ?? "Downtown Diesel",
+                  shop_name: null,
+                },
                 error: null,
               }),
             }),
@@ -88,7 +108,10 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
           select: () => ({
             eq: () => ({
               ilike: () => ({
-                limit: async () => ({ data: options.sameShopProfiles ?? [], error: null }),
+                limit: async () => ({
+                  data: options.sameShopProfiles ?? [],
+                  error: null,
+                }),
               }),
             }),
           }),
@@ -107,11 +130,20 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
   mocks.requireShopScopedApiAccess.mockResolvedValue({
     ok: true,
     profile: { id: adminId, shop_id: shopId },
+    canonicalRole: options.canonicalRole ?? "owner",
   });
   mocks.createAdminSupabase.mockReturnValue(adminClient);
   mocks.assertShopHasAvailableSeat.mockResolvedValue(undefined);
 
-  return { createUser, profileUpsert, workforceUpsert, shopId, adminId, createdUserId };
+  return {
+    createUser,
+    deleteUser,
+    profileUpsert,
+    workforceUpsert,
+    shopId,
+    adminId,
+    createdUserId,
+  };
 }
 
 describe("shop user auth normalization", () => {
@@ -124,7 +156,9 @@ describe("shop user auth normalization", () => {
     const username = normalizeProvisioningUsername(" Sam Tech ", namespace);
 
     expect(username).toBe("downtowndiessamtech");
-    expect(buildShopUserAuthEmail(username)).toBe("downtowndiessamtech@local.profix-internal");
+    expect(buildShopUserAuthEmail(username)).toBe(
+      "downtowndiessamtech@local.profix-internal",
+    );
     expect(normalizeAuthIdentifier(username)).toBe(
       "downtowndiessamtech@local.profix-internal",
     );
@@ -132,11 +166,15 @@ describe("shop user auth normalization", () => {
 
   it("normalizes username-only login exactly like backing auth email creation", () => {
     expect(normalizeLoginUsername(" Shop.User-01 ")).toBe("shopuser01");
-    expect(normalizeAuthIdentifier(" Shop.User-01 ")).toBe("shopuser01@local.profix-internal");
+    expect(normalizeAuthIdentifier(" Shop.User-01 ")).toBe(
+      "shopuser01@local.profix-internal",
+    );
   });
 
   it("preserves explicit email login as lower-case email auth for email users", () => {
-    expect(normalizeAuthIdentifier(" Person@Example.COM ")).toBe("person@example.com");
+    expect(normalizeAuthIdentifier(" Person@Example.COM ")).toBe(
+      "person@example.com",
+    );
     expect(getAuthIdentifierStrategy(" Person@Example.COM ")).toEqual({
       inputKind: "email",
       authEmail: "person@example.com",
@@ -155,24 +193,29 @@ describe("shop user auth normalization", () => {
 
   it("creates username-only staff users with a synthetic auth email", async () => {
     const { POST } = await import("../app/api/admin/create-user/route");
-    const { createUser, profileUpsert, shopId, createdUserId } = buildCreateUserRouteMocks();
+    const { createUser, profileUpsert, shopId, createdUserId } =
+      buildCreateUserRouteMocks();
     const password = " Temp Password 123 ";
 
-    const response = await POST(jsonRequest({
-      username: " Sam Tech ",
-      password,
-      full_name: "Sam Tech",
-      role: "mechanic",
-      shop_id: "client-supplied-shop",
-    }));
+    const response = await POST(
+      jsonRequest({
+        username: " Sam Tech ",
+        password,
+        full_name: "Sam Tech",
+        role: "mechanic",
+        shop_id: "client-supplied-shop",
+      }),
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({
-      email: "downtowndiessamtech@local.profix-internal",
-      password,
-      email_confirm: true,
-    }));
+    expect(createUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "downtowndiessamtech@local.profix-internal",
+        password,
+        email_confirm: true,
+      }),
+    );
     expect(profileUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         id: createdUserId,
@@ -182,36 +225,42 @@ describe("shop user auth normalization", () => {
       }),
       { onConflict: "id" },
     );
-    expect(payload).toEqual(expect.objectContaining({
-      username: "downtowndiessamtech",
-      email: null,
-      auth_email: "downtowndiessamtech@local.profix-internal",
-      shop_id: shopId,
-    }));
+    expect(payload).toEqual(
+      expect.objectContaining({
+        username: "downtowndiessamtech",
+        email: null,
+        auth_email: "downtowndiessamtech@local.profix-internal",
+        shop_id: shopId,
+      }),
+    );
   });
 
   it("creates username plus contact email staff users with username as auth identity", async () => {
     const { POST } = await import("../app/api/admin/create-user/route");
     const { createUser, profileUpsert } = buildCreateUserRouteMocks();
 
-    const response = await POST(jsonRequest({
-      username: "Sam.Tech",
-      email: " Sam.Tech@Example.COM ",
-      password: "temporary-password",
-      full_name: "Sam Tech",
-      role: "advisor",
-    }));
+    const response = await POST(
+      jsonRequest({
+        username: "Sam.Tech",
+        email: " Sam.Tech@Example.COM ",
+        password: "temporary-password",
+        full_name: "Sam Tech",
+        role: "advisor",
+      }),
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({
-      email: "downtowndiessamtech@local.profix-internal",
-      email_confirm: true,
-      user_metadata: expect.objectContaining({
-        username: "downtowndiessamtech",
-        contact_email: "sam.tech@example.com",
+    expect(createUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: "downtowndiessamtech@local.profix-internal",
+        email_confirm: true,
+        user_metadata: expect.objectContaining({
+          username: "downtowndiessamtech",
+          contact_email: "sam.tech@example.com",
+        }),
       }),
-    }));
+    );
     expect(profileUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "sam.tech@example.com",
@@ -219,28 +268,145 @@ describe("shop user auth normalization", () => {
       }),
       { onConflict: "id" },
     );
-    expect(payload).toEqual(expect.objectContaining({
-      username: "downtowndiessamtech",
-      email: "sam.tech@example.com",
-      auth_email: "downtowndiessamtech@local.profix-internal",
-    }));
+    expect(payload).toEqual(
+      expect.objectContaining({
+        username: "downtowndiessamtech",
+        email: "sam.tech@example.com",
+        auth_email: "downtowndiessamtech@local.profix-internal",
+      }),
+    );
   });
 
   it("blocks duplicate usernames within the same shop before creating auth users", async () => {
     const { POST } = await import("../app/api/admin/create-user/route");
     const { createUser } = buildCreateUserRouteMocks({
-      sameShopProfiles: [{ id: "existing-user", username: "downtowndiessamtech" }],
+      sameShopProfiles: [
+        { id: "existing-user", username: "downtowndiessamtech" },
+      ],
     });
 
-    const response = await POST(jsonRequest({
-      username: "Sam Tech",
-      password: "temporary-password",
-      role: "mechanic",
-    }));
+    const response = await POST(
+      jsonRequest({
+        username: "Sam Tech",
+        password: "temporary-password",
+        full_name: "Sam Tech",
+        role: "mechanic",
+      }),
+    );
     const payload = await response.json();
 
     expect(response.status).toBe(400);
-    expect(payload.error).toBe("A user with this username already exists in this shop.");
+    expect(payload.error).toBe(
+      "A user with this username already exists in this shop.",
+    );
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the auth account when profile provisioning fails", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { deleteUser, createdUserId } = buildCreateUserRouteMocks({
+      profileUpsertError: "database unavailable",
+    });
+
+    const response = await POST(
+      jsonRequest({
+        username: "Sam Tech",
+        password: "temporary-password",
+        full_name: "Sam Tech",
+        role: "mechanic",
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload.code).toBe("profile_upsert_failed");
+    expect(deleteUser).toHaveBeenCalledWith(createdUserId);
+  });
+
+  it("rolls back the auth account when workforce provisioning fails", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { deleteUser, createdUserId } = buildCreateUserRouteMocks({
+      workforceUpsertError: "workforce unavailable",
+    });
+
+    const response = await POST(
+      jsonRequest({
+        username: "Sam Tech",
+        password: "temporary-password",
+        full_name: "Sam Tech",
+        role: "mechanic",
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload.code).toBe("workforce_profile_seed_failed");
+    expect(deleteUser).toHaveBeenCalledWith(createdUserId);
+  });
+
+  it("reports an actionable partial-provisioning error when rollback fails", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    buildCreateUserRouteMocks({
+      profileUpsertError: "database unavailable",
+      deleteUserError: "auth cleanup unavailable",
+    });
+
+    const response = await POST(
+      jsonRequest({
+        username: "Sam Tech",
+        password: "temporary-password",
+        full_name: "Sam Tech",
+        role: "mechanic",
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload.code).toBe("provisioning_rollback_failed");
+    expect(payload.error).toContain("Contact support before retrying");
+  });
+
+  it("prevents admins from creating owner or admin accounts", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { createUser } = buildCreateUserRouteMocks({
+      canonicalRole: "admin",
+    });
+
+    const response = await POST(
+      jsonRequest({
+        username: "Another Owner",
+        password: "temporary-password",
+        full_name: "Another Owner",
+        role: "owner",
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it("validates required staff identity fields before provisioning", async () => {
+    const { POST } = await import("../app/api/admin/create-user/route");
+    const { createUser } = buildCreateUserRouteMocks();
+
+    const missingName = await POST(
+      jsonRequest({
+        username: "Sam Tech",
+        password: "temporary-password",
+        role: "mechanic",
+      }),
+    );
+    const shortPassword = await POST(
+      jsonRequest({
+        username: "Sam Tech",
+        password: "short",
+        full_name: "Sam Tech",
+        role: "mechanic",
+      }),
+    );
+
+    expect(missingName.status).toBe(400);
+    expect(shortPassword.status).toBe(400);
     expect(createUser).not.toHaveBeenCalled();
   });
 
@@ -270,5 +436,4 @@ describe("shop user auth normalization", () => {
     expect(payload).not.toHaveProperty("authEmail");
     expect(mocks.createAdminSupabase).not.toHaveBeenCalled();
   });
-
 });
