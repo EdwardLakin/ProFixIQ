@@ -52,7 +52,6 @@ type Props = {
   onEmailChange: (value: string) => void;
   onLogoUrlChange: (value: string) => void;
   onLogoUpload: (e: FileInputChangeEvent) => void;
-  onGenerateLogo: () => void;
 };
 
 export default function OwnerSettingsBusinessSection({
@@ -82,7 +81,6 @@ export default function OwnerSettingsBusinessSection({
   onEmailChange,
   onLogoUrlChange,
   onLogoUpload,
-  onGenerateLogo,
 }: Props) {
   return (
     <OwnerSettingsPanel
@@ -123,72 +121,102 @@ export default function OwnerSettingsBusinessSection({
       </div>
 
       <div className="space-y-3 text-sm">
-        <Input
-          value={shopName}
-          onChange={(e) => onShopNameChange(e.target.value)}
-          placeholder="Shop name"
-          disabled={!isUnlocked}
-        />
-        <Input
-          value={address}
-          onChange={(e) => onAddressChange(e.target.value)}
-          placeholder="Street address"
-          disabled={!isUnlocked}
-        />
+        <label className="block space-y-1.5">
+          <span className={labelClass}>Shop name</span>
+          <Input
+            value={shopName}
+            onChange={(e) => onShopNameChange(e.target.value)}
+            placeholder="Downtown Diesel"
+            disabled={!isUnlocked}
+          />
+        </label>
+        <label className="block space-y-1.5">
+          <span className={labelClass}>Street address</span>
+          <Input
+            value={address}
+            onChange={(e) => onAddressChange(e.target.value)}
+            placeholder="123 Service Road"
+            disabled={!isUnlocked}
+          />
+        </label>
 
         <div className="grid gap-2 md:grid-cols-3">
-          <Input
-            value={city}
-            onChange={(e) => onCityChange(e.target.value)}
-            placeholder="City"
-            disabled={!isUnlocked}
-          />
-          <Input
-            value={province}
-            onChange={(e) => onProvinceChange(e.target.value)}
-            placeholder={provinceLabel}
-            disabled={!isUnlocked}
-          />
-          <Input
-            value={postalCode}
-            onChange={(e) => onPostalCodeChange(e.target.value)}
-            placeholder={postalLabel}
-            disabled={!isUnlocked}
-          />
+          <label className="block space-y-1.5">
+            <span className={labelClass}>City</span>
+            <Input
+              value={city}
+              onChange={(e) => onCityChange(e.target.value)}
+              placeholder="City"
+              disabled={!isUnlocked}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>{provinceLabel}</span>
+            <Input
+              value={province}
+              onChange={(e) => onProvinceChange(e.target.value)}
+              placeholder={provinceLabel}
+              disabled={!isUnlocked}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>{postalLabel}</span>
+            <Input
+              value={postalCode}
+              onChange={(e) => onPostalCodeChange(e.target.value)}
+              placeholder={postalLabel}
+              disabled={!isUnlocked}
+            />
+          </label>
         </div>
 
         <div className="grid gap-2 md:grid-cols-2">
-          <Input
-            value={phone}
-            onChange={(e) => onPhoneChange(e.target.value)}
-            placeholder="Phone number"
-            disabled={!isUnlocked}
-          />
-          <Input
-            value={email}
-            onChange={(e) => onEmailChange(e.target.value)}
-            placeholder="Email"
-            disabled={!isUnlocked}
-          />
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Phone number</span>
+            <Input
+              value={phone}
+              onChange={(e) => onPhoneChange(e.target.value)}
+              placeholder="(555) 555-0100"
+              disabled={!isUnlocked}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Public email</span>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => onEmailChange(e.target.value)}
+              placeholder="service@example.com"
+              disabled={!isUnlocked}
+            />
+          </label>
         </div>
 
         <div className="grid gap-2 md:grid-cols-2">
-          <Input
-            value={logoUrl}
-            onChange={(e) => onLogoUrlChange(e.target.value)}
-            placeholder="Logo URL"
-            disabled={!isUnlocked}
-          />
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={onLogoUpload as unknown as React.ChangeEventHandler<HTMLInputElement>}
-            disabled={!isUnlocked}
-          />
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Logo URL</span>
+            <Input
+              value={logoUrl}
+              onChange={(e) => onLogoUrlChange(e.target.value)}
+              placeholder="https://…"
+              disabled={!isUnlocked}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className={labelClass}>Upload logo</span>
+            <Input
+              type="file"
+              accept="image/*"
+              onChange={
+                onLogoUpload as unknown as React.ChangeEventHandler<HTMLInputElement>
+              }
+              disabled={!isUnlocked}
+            />
+          </label>
         </div>
 
-        <Button onClick={onGenerateLogo} variant="secondary" className="mt-1" disabled={!isUnlocked}>
-          Generate logo with AI
+        <Button variant="secondary" className="mt-1" disabled>
+          AI logo maker · Coming soon
         </Button>
 
         {logoUrl ? (
