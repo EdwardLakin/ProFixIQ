@@ -3,8 +3,13 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
+import { LEGAL_DOCUMENTS } from "@/features/legal/lib/config";
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -16,6 +21,9 @@ type Body = {
   inviteId?: string;
   operationKey?: string;
   idempotencyKey?: string;
+  legalAccepted?: boolean;
+  portalTermsVersion?: string;
+  privacyVersion?: string;
 };
 
 function clean(value: unknown): string {
@@ -49,6 +57,16 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  if (
+    body?.legalAccepted !== true ||
+    body.portalTermsVersion !== LEGAL_DOCUMENTS.portalTerms.version ||
+    body.privacyVersion !== LEGAL_DOCUMENTS.privacy.version
+  ) {
+    return NextResponse.json(
+      { error: "Current portal terms and privacy notice must be accepted." },
+      { status: 400 },
+    );
+  }
 
   const rpc = supabaseAdmin as unknown as RpcClient;
   const { data: existingProfile } = await supabaseAdmin
@@ -56,13 +74,18 @@ export async function POST(req: NextRequest) {
     .select("shop_id")
     .eq("id", user.id)
     .maybeSingle();
-  const { data, error } = await rpc.rpc("accept_customer_portal_invite_atomic", {
-    p_invite_id: inviteId,
-    p_actor_user_id: user.id,
-    p_actor_email: user.email,
-    p_operation_key: `portal-invite:${user.id}:${operationKey}`,
-    p_at: new Date().toISOString(),
-  });
+  const { data, error } = await rpc.rpc(
+    "accept_customer_portal_invite_with_legal_atomic",
+    {
+      p_invite_id: inviteId,
+      p_actor_user_id: user.id,
+      p_actor_email: user.email,
+      p_operation_key: `portal-invite:${user.id}:${operationKey}`,
+      p_portal_terms_version: body.portalTermsVersion,
+      p_privacy_version: body.privacyVersion,
+      p_at: new Date().toISOString(),
+    },
+  );
 
   if (error) {
     const message = [error.message, error.details, error.hint]
@@ -81,18 +104,19 @@ export async function POST(req: NextRequest) {
   }
 
   if (!existingProfile?.shop_id) {
-    const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
-      user.id,
-      {
+    const { error: metadataError } =
+      await supabaseAdmin.auth.admin.updateUserById(user.id, {
         app_metadata: {
           ...user.app_metadata,
           profixiq_portal_only: true,
         },
-      },
-    );
+      });
     if (metadataError) {
       return NextResponse.json(
-        { error: "Portal access was linked, but account routing could not be finalized. Retry this link." },
+        {
+          error:
+            "Portal access was linked, but account routing could not be finalized. Retry this link.",
+        },
         { status: 500 },
       );
     }
