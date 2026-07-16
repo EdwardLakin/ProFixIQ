@@ -349,8 +349,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [router, routeId]);
 
   const openQuoteReview = useCallback(() => {
-    router.push(`/work-orders/${routeId}/quote-review`);
-  }, [router, routeId]);
+    router.push(`/quote-review/${wo?.id ?? routeId}`);
+  }, [router, routeId, wo?.id]);
 
   /* ---------------------- AUTH + assignables ---------------------- */
   useEffect(() => {
@@ -2021,7 +2021,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         Recommended repairs stay here until advisor/customer approval materializes work lines.
                       </p>
                     </div>
-                    <Link href={`/work-orders/${wo?.id ?? routeId}/quote-review`} className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-500/20">
+                    <Link href={`/quote-review/${wo?.id ?? routeId}`} className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-500/20">
                       Open Quote Review
                     </Link>
                   </div>
@@ -2064,7 +2064,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                             </div>
                           ) : null}
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <Link href={`/work-orders/${wo?.id ?? routeId}/quote-review`} className="rounded-md border border-sky-400/40 px-2.5 py-1 text-[11px] font-semibold text-sky-100 hover:bg-sky-500/10">
+                            <Link href={`/quote-review/${wo?.id ?? routeId}`} className="rounded-md border border-sky-400/40 px-2.5 py-1 text-[11px] font-semibold text-sky-100 hover:bg-sky-500/10">
                               Review
                             </Link>
                             {partRequests[0]?.id ? (
