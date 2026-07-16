@@ -8,6 +8,12 @@ import { Toaster, toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
+import { getOfflineMutationScope } from "@/features/shared/lib/offline/mutations";
+import {
+  downloadAdvisorOfflineDay,
+  getCachedAdvisorDay,
+  getLatestCachedAdvisorDay,
+} from "@/features/work-orders/mobile/advisorOffline";
 
 type DB = Database;
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
@@ -57,6 +63,12 @@ export default function MobileAppointmentsPage() {
   // data
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
+  const [online, setOnline] = useState(
+    () => typeof navigator !== "undefined" && navigator.onLine,
+  );
+  const [downloadingOffline, setDownloadingOffline] = useState(false);
+  const [offlineSavedAt, setOfflineSavedAt] = useState<string | null>(null);
+  const [usingOfflineData, setUsingOfflineData] = useState(false);
 
   // form state
   const [editing, setEditing] = useState<Booking | null>(null);
@@ -74,7 +86,16 @@ export default function MobileAppointmentsPage() {
       if (error) {
         // eslint-disable-next-line no-console
         console.error(error);
-        toast.error("Unable to load shops.");
+        const scope = getOfflineMutationScope();
+        const cached = scope ? await getLatestCachedAdvisorDay(scope) : null;
+        if (cached) {
+          setShops([cached.shop as ShopRow]);
+          setShopSlug(cached.shop.slug ?? "");
+          setOfflineSavedAt(cached.downloadedAt);
+          setUsingOfflineData(true);
+        } else {
+          toast.error("Unable to load shops.");
+        }
         return;
       }
 
@@ -93,6 +114,16 @@ export default function MobileAppointmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
   // selected shop row
   const selectedShop = useMemo(
     () => shops.find((s) => (s.slug as string | null) === shopSlug) ?? null,
@@ -107,6 +138,18 @@ export default function MobileAppointmentsPage() {
     (async () => {
       setLoadingCustomers(true);
       try {
+        if (!navigator.onLine) {
+          const scope = getOfflineMutationScope();
+          const cached = scope
+            ? await getCachedAdvisorDay({ scope, day })
+            : null;
+          setCustomers(cached?.customers ?? []);
+          if (cached) {
+            setOfflineSavedAt(cached.downloadedAt);
+            setUsingOfflineData(true);
+          }
+          return;
+        }
         const { data, error } = await supabase
           .from("customers")
           .select("*")
@@ -131,7 +174,7 @@ export default function MobileAppointmentsPage() {
         setLoadingCustomers(false);
       }
     })();
-  }, [supabase, selectedShop]);
+  }, [supabase, selectedShop, day]);
 
   /* ------------------------------ Bookings --------------------------------- */
 
@@ -151,10 +194,21 @@ export default function MobileAppointmentsPage() {
         if (!res.ok) throw new Error("Failed to load appointments.");
         const j = (await res.json().catch(() => [])) as Booking[];
         setBookings(j ?? []);
+        setUsingOfflineData(false);
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error(err);
-        toast.error("Failed to load appointments.");
+        const scope = getOfflineMutationScope();
+        const cached = scope ? await getCachedAdvisorDay({ scope, day }) : null;
+        if (cached && cached.shop.slug === shopSlug) {
+          setBookings(cached.bookings);
+          setCustomers(cached.customers);
+          setOfflineSavedAt(cached.downloadedAt);
+          setUsingOfflineData(true);
+          toast.warning("Showing appointments saved on this device.");
+        } else {
+          toast.error("Failed to load appointments.");
+        }
       } finally {
         setLoadingBookings(false);
       }
@@ -213,9 +267,10 @@ export default function MobileAppointmentsPage() {
         }),
       });
 
-      const j = (await res
-        .json()
-        .catch(() => ({}))) as { booking?: Booking; error?: string };
+      const j = (await res.json().catch(() => ({}))) as {
+        booking?: Booking;
+        error?: string;
+      };
 
       if (!res.ok || !j.booking) {
         throw new Error(j?.error || "Unable to create appointment.");
@@ -266,6 +321,30 @@ export default function MobileAppointmentsPage() {
 
   const totalForDay = bookings.length;
 
+  async function downloadOfflineDay() {
+    if (!online || downloadingOffline) return;
+    setDownloadingOffline(true);
+    try {
+      const bundle = await downloadAdvisorOfflineDay(day);
+      setBookings(bundle.bookings);
+      setCustomers(bundle.customers);
+      setOfflineSavedAt(bundle.downloadedAt);
+      setUsingOfflineData(false);
+      toast.success("Advisor day and customer lookup saved for offline use.");
+      if (bundle.truncated.customers || bundle.truncated.vehicles) {
+        toast.warning(
+          "The shop lookup is large; only the newest 5,000 records were saved.",
+        );
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Offline download failed.",
+      );
+    } finally {
+      setDownloadingOffline(false);
+    }
+  }
+
   /* -------------------------------- Render --------------------------------- */
 
   return (
@@ -286,6 +365,30 @@ export default function MobileAppointmentsPage() {
             appointments.
           </p>
         </header>
+
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-[color:var(--theme-text-primary)]">
+                {online ? "Connected" : "Offline"}
+                {usingOfflineData ? " · saved device view" : ""}
+              </p>
+              <p className="mt-1 text-[color:var(--theme-text-secondary)]">
+                {offlineSavedAt
+                  ? `Saved ${new Date(offlineSavedAt).toLocaleString()}`
+                  : "This day has not been saved for offline use."}
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="xs"
+              disabled={!online || downloadingOffline}
+              onClick={() => void downloadOfflineDay()}
+            >
+              {downloadingOffline ? "Saving…" : "Download this day"}
+            </Button>
+          </div>
+        </section>
 
         {/* Shop + day picker */}
         <section className="space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md">
@@ -370,7 +473,12 @@ export default function MobileAppointmentsPage() {
 
         {/* Create / edit form */}
         <section className="space-y-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-card backdrop-blur-md">
-          {editing ? (
+          {!online ? (
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+              Appointment creation and changes require a connection. Saved
+              appointments remain available to review.
+            </p>
+          ) : editing ? (
             <EditForm
               booking={editing}
               customers={customers}
@@ -402,7 +510,9 @@ export default function MobileAppointmentsPage() {
           </div>
 
           {loadingBookings ? (
-            <p className="text-xs text-[color:var(--theme-text-secondary)]">Fetching appointments…</p>
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+              Fetching appointments…
+            </p>
           ) : bookings.length === 0 ? (
             <p className="text-xs text-[color:var(--theme-text-secondary)]">
               No appointments for this day.
@@ -411,10 +521,7 @@ export default function MobileAppointmentsPage() {
             <ul className="space-y-2">
               {bookings
                 .slice()
-                .sort(
-                  (a, b) =>
-                    +new Date(a.starts_at) - +new Date(b.starts_at),
-                )
+                .sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))
                 .map((b) => {
                   const start = new Date(b.starts_at);
                   const end = new Date(b.ends_at);
@@ -449,6 +556,7 @@ export default function MobileAppointmentsPage() {
                           type="button"
                           size="xs"
                           variant="outline"
+                          disabled={!online}
                           onClick={() => setEditing(b)}
                         >
                           Edit
@@ -457,6 +565,7 @@ export default function MobileAppointmentsPage() {
                           type="button"
                           size="xs"
                           variant="ghost"
+                          disabled={!online}
                           className="text-red-300 hover:bg-red-900/25"
                           onClick={() => void handleDelete(b.id)}
                         >
@@ -604,9 +713,7 @@ function CreateForm({
           onChange={(e) => handleSelectCustomer(e.target.value)}
           className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
         >
-          <option value="">
-            {loadingCustomers ? "Loading…" : "Select…"}
-          </option>
+          <option value="">{loadingCustomers ? "Loading…" : "Select…"}</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {customerLabel(c)}
@@ -685,9 +792,7 @@ function EditForm({
   const [customerId, setCustomerId] = useState<string>(
     booking.customer_id ?? "",
   );
-  const [customerName, setCustomerName] = useState(
-    booking.customer_name ?? "",
-  );
+  const [customerName, setCustomerName] = useState(booking.customer_name ?? "");
   const [customerEmail, setCustomerEmail] = useState(
     booking.customer_email ?? "",
   );
@@ -775,9 +880,7 @@ function EditForm({
           onChange={(e) => handleSelectCustomer(e.target.value)}
           className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
         >
-          <option value="">
-            {loadingCustomers ? "Loading…" : "Select…"}
-          </option>
+          <option value="">{loadingCustomers ? "Loading…" : "Select…"}</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {customerLabel(c)}
