@@ -959,7 +959,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       } else {
         toast.success("Findings sent to quote review.");
       }
-      router.push(`/work-orders/${resolvedWorkOrderId}/quote-review`);
+      router.push(`/quote-review/${resolvedWorkOrderId}`);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Unable to submit findings";
