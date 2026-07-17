@@ -340,14 +340,14 @@ export default function PayrollTimeClient() {
           <button
             className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)] disabled:opacity-50"
             onClick={() => void handleRebuild()}
-            disabled={!activePeriodId || busyAction !== null || summary.blocking > 0 || Boolean(refreshState?.refreshError) || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
+            disabled={!activePeriodId || busyAction !== null || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
           >
             {busyAction === "rebuild" ? "Recalculating…" : "Recalculate"}
           </button>
           <button
             className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-emerald-200 disabled:opacity-50"
             onClick={() => void handleApprove()}
-            disabled={!activePeriodId || busyAction !== null || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
+            disabled={!activePeriodId || busyAction !== null || summary.blocking > 0 || Boolean(refreshState?.refreshError) || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
           >
             {busyAction === "approve" ? "Approving…" : "Approve Payroll"}
           </button>
