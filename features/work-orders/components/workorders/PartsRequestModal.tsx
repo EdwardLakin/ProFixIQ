@@ -13,7 +13,6 @@ import {
 import {
   createOfflinePartsRequestDraft,
   getOfflinePartsRequestDraft,
-  saveOfflinePartsRequestDraft,
   submitOfflinePartsRequestDraft,
 } from "@/features/parts/offline/partsRequestDrafts";
 
@@ -206,7 +205,6 @@ export default function PartsRequestModal({
         })),
         updatedAt: new Date().toISOString(),
       };
-      await saveOfflinePartsRequestDraft(draft);
       const result = await submitOfflinePartsRequestDraft(draft);
       if (result.conflicted) {
         toast.error("Parts request needs review in Sync Center.");

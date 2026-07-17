@@ -1,5 +1,7 @@
 begin;
 
+-- Re-apply the parts draft materializer so production databases that already
+-- ran 20260717100000 accept the canonical legacy `lead` role alias.
 create or replace function public.materialize_offline_parts_request_draft_atomic(
   p_shop_id uuid,
   p_actor_user_id uuid,

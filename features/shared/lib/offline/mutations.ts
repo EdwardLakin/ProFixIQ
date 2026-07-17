@@ -632,6 +632,7 @@ export async function runMutationWithOfflineQueue<T>(args: {
   dependsOn?: string[];
   orderKey?: string;
   conflictCheck?: () => Promise<string | null>;
+  bestEffortOnlineHistory?: boolean;
 }): Promise<{ queued: boolean; conflicted: boolean }> {
   await hydrateOfflineMutationQueue();
   const queueOnOffline = args.queueOnOffline !== false;
@@ -679,7 +680,16 @@ export async function runMutationWithOfflineQueue<T>(args: {
       }
     }
     await args.runner();
-    await queueEntry("synced");
+    if (args.bestEffortOnlineHistory) {
+      try {
+        await queueEntry("synced");
+      } catch {
+        // The server commit succeeded; unavailable device history must not
+        // turn an online mutation into an apparent submission failure.
+      }
+    } else {
+      await queueEntry("synced");
+    }
     return { queued: false, conflicted: false };
   } catch (error) {
     if (queueOnOffline && isRetryableOfflineError(error)) {

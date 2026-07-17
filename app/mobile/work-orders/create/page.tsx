@@ -36,7 +36,6 @@ import NewWorkOrderLineForm from "@/features/work-orders/components/NewWorkOrder
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 import {
-  getOfflineMutationScope,
   setOfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 import {
@@ -1071,6 +1070,12 @@ export default function MobileCreateWorkOrderPage() {
           customerId: cust.id,
           vehicleId: veh.id,
         };
+        const advisorScope = { userId: currentUserId, shopId };
+        await pruneDependentPartsRequestDrafts({
+          scope: advisorScope,
+          workOrderDraftId: prepared.id,
+          activeTempLineIds: prepared.lines.map((line) => line.tempId),
+        });
         await saveCurrentAdvisorWorkOrderDraft(submissionDraft);
         const materialization =
           await materializeAdvisorWorkOrderDraft(submissionDraft);
@@ -1085,21 +1090,18 @@ export default function MobileCreateWorkOrderPage() {
             createdError?.message ?? "Created work order could not be loaded.",
           );
         }
-        const scope = getOfflineMutationScope();
-        if (scope) {
-          const parts = await resolveAndSubmitDependentPartsDrafts({
-            scope,
-            workOrderDraftId: prepared.id,
-            workOrderId: materialization.workOrderId,
-            lineIdMap: materialization.lineIdMap,
-          });
-          if (parts.queued > 0) {
-            setError(
-              `${parts.queued} parts request${parts.queued === 1 ? "" : "s"} queued for sync.`,
-            );
-          }
-          await removeCurrentAdvisorWorkOrderDraft(scope);
+        const parts = await resolveAndSubmitDependentPartsDrafts({
+          scope: advisorScope,
+          workOrderDraftId: prepared.id,
+          workOrderId: materialization.workOrderId,
+          lineIdMap: materialization.lineIdMap,
+        });
+        if (parts.queued > 0) {
+          setError(
+            `${parts.queued} parts request${parts.queued === 1 ? "" : "s"} queued for sync.`,
+          );
         }
+        await removeCurrentAdvisorWorkOrderDraft(advisorScope);
         setWo(createdRow as WorkOrderRow);
         setDraftLines([]);
         draftIdentityRef.current = null;
