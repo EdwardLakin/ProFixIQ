@@ -320,6 +320,11 @@ Rules:
 - Use synonyms: pass=ok, okay=ok, failed=fail, not applicable=na, recommend=recommend, rec=recommend.
 - Keep values concise and units normalized when possible.
 - When you set a FAIL or RECOMMEND status, include a short note if the transcript includes a reason (leak/loose/cracked/worn/etc).
+- The technician may inspect the vehicle in ANY order. Never assume a guided sequence or force the current UI item.
+- A transcript may contain multiple unrelated findings or measurements. Return one command per distinct item, preserving the technician's spoken order.
+- Use the named corner, axle, side, component, or section to resolve each command independently.
+- Do not merge distinct inspection items into one command.
+- Never invent a status, measurement, part, quantity, labor time, test, or repair that the technician did not say.
 
 IMPORTANT:
 - Prefer "oneshot_item" when a single utterance includes status + reason + parts and/or labor.
