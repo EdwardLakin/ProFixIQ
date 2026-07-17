@@ -47,6 +47,17 @@ describe("instant analysis guided onboarding review checkpoint", () => {
     expect(panel).toContain("ignore_reason_code");
   });
 
+  it("keeps cleanup under ten minutes with explicit safe bulk fixes", () => {
+    const panel = read("features/onboarding-v2/components/InstantAnalysisReviewPanel.tsx");
+    const safeRoute = read("app/api/shop-boost/review-items/apply-safe/route.ts");
+
+    expect(panel).toContain("Fix \${safeItems.length} safe items");
+    expect(panel).toContain("Duplicate merges and lower-confidence decisions always stay manual");
+    expect(safeRoute).toContain("applyHighConfidenceRecommendations");
+    expect(safeRoute).toContain("threshold: 0.85");
+    expect(safeRoute).toContain('allowRoles: ["owner", "admin"]');
+  });
+
   it("restricts review reads and writes to owners and admins", () => {
     const listRoute = read("app/api/shop-boost/review-items/route.ts");
     const itemRoute = read("app/api/shop-boost/review-items/[id]/route.ts");
