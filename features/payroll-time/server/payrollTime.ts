@@ -515,6 +515,15 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
           source_ref: { shift_id: shift.id, slice_start: slice.start, slice_end: slice.end },
         });
       }
+      if (sliceBreakCount > policy.paid_breaks_per_day) {
+        pushException(row, {
+          severity: "warning",
+          code: "excess_break_count",
+          message: `Recorded ${sliceBreakCount} regular breaks; policy expects ${policy.paid_breaks_per_day}.`,
+          source_type: "attendance",
+          source_ref: { shift_id: shift.id, break_count: sliceBreakCount, expected_breaks: policy.paid_breaks_per_day },
+        });
+      }
       if (slice.minutes >= policy.lunch_required_after_minutes && sliceBreakCount < policy.paid_breaks_per_day) {
         pushException(row, {
           severity: "warning",
@@ -535,6 +544,18 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
         source_type: "attendance",
         source_ref: { shift_id: shift.id, ...warning },
       });
+    }
+    const longLunchThreshold = policy.default_lunch_duration_minutes + 15;
+    for (const lunch of rest.lunchPairs) {
+      if (lunch.minutes > longLunchThreshold) {
+        pushException(warningRow, {
+          severity: "warning",
+          code: "long_lunch",
+          message: `Lunch length ${lunch.minutes} minutes exceeds expected ${policy.default_lunch_duration_minutes} minutes.`,
+          source_type: "attendance",
+          source_ref: { shift_id: shift.id, lunch },
+        });
+      }
     }
 
     if (!shift.end_time) {
