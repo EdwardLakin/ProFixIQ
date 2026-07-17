@@ -105,13 +105,18 @@ function normalize(value: string): string {
     .trim();
 }
 
+function containsPhrase(value: string, phrase: string): boolean {
+  const normalizedValue = ` ${normalize(value)} `;
+  const normalizedPhrase = normalize(phrase);
+  return Boolean(normalizedPhrase) && normalizedValue.includes(` ${normalizedPhrase} `);
+}
+
 function ruleFor(value: string): ServiceRule | null {
-  const normalized = normalize(value);
   return (
     RULES.find(
       (rule) =>
-        rule.terms.some((term) => normalized.includes(term)) &&
-        !(rule.excludes ?? []).some((term) => normalized.includes(term)),
+        rule.terms.some((term) => containsPhrase(value, term)) &&
+        !(rule.excludes ?? []).some((term) => containsPhrase(value, term)),
     ) ?? null
   );
 }
@@ -129,11 +134,12 @@ export function findRelevantHistoryCandidates(input: {
       (candidate) =>
         ruleFor(candidate.description)?.family === quoteRule.family,
     )
-    .filter((candidate) =>
-      candidate.mileageDeltaKm == null
-        ? candidate.ageDays <= quoteRule.maxDays
-        : candidate.mileageDeltaKm >= 0 &&
-          candidate.mileageDeltaKm <= quoteRule.maxKm,
+    .filter(
+      (candidate) =>
+        candidate.ageDays <= quoteRule.maxDays &&
+        (candidate.mileageDeltaKm == null ||
+          (candidate.mileageDeltaKm >= 0 &&
+            candidate.mileageDeltaKm <= quoteRule.maxKm)),
     )
     .sort((a, b) => {
       const aScore = a.mileageDeltaKm ?? a.ageDays * 40;
