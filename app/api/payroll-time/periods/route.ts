@@ -129,6 +129,7 @@ export async function GET(req: NextRequest) {
 
   const trueZero = enrichedEntries.length === 0 && !refreshState.hasSourceTime;
   return NextResponse.json({
+    settings: current.settings ?? null,
     periods: periods ?? [],
     activePeriodId,
     entries: enrichedEntries,
@@ -143,4 +144,72 @@ export async function GET(req: NextRequest) {
           : null,
     },
   });
+}
+
+
+type PayrollCadence = "weekly" | "biweekly" | "semimonthly" | "monthly";
+
+type SettingsBody = {
+  cadence?: PayrollCadence;
+  week_starts_on?: number;
+  period_anchor_date?: string | null;
+};
+
+export async function PUT(req: NextRequest) {
+  const auth = await requirePayrollReviewer();
+  if (!auth.ok) return auth.response;
+  if (!["owner", "admin"].includes(String(auth.me.role ?? ""))) {
+    return NextResponse.json({ error: "Only an owner or admin can change payroll period settings." }, { status: 403 });
+  }
+
+  const body = (await req.json().catch(() => null)) as SettingsBody | null;
+  const allowedCadences: PayrollCadence[] = ["weekly", "biweekly", "semimonthly", "monthly"];
+  if (!body?.cadence || !allowedCadences.includes(body.cadence)) {
+    return NextResponse.json({ error: "Choose weekly, bi-weekly, semi-monthly, or monthly." }, { status: 400 });
+  }
+
+  const weekStartsOn = Number(body.week_starts_on);
+  if (!Number.isInteger(weekStartsOn) || weekStartsOn < 0 || weekStartsOn > 6) {
+    return NextResponse.json({ error: "Week start must be a day from Sunday through Saturday." }, { status: 400 });
+  }
+
+  const anchorDate = body.period_anchor_date?.trim() || null;
+  if (anchorDate && !/^\d{4}-\d{2}-\d{2}$/.test(anchorDate)) {
+    return NextResponse.json({ error: "Anchor date must be a valid calendar date." }, { status: 400 });
+  }
+  if (body.cadence === "biweekly" && !anchorDate) {
+    return NextResponse.json({ error: "Bi-weekly payroll requires an anchor period start date." }, { status: 400 });
+  }
+
+  const admin: AdminClient = createAdminSupabase();
+  const now = new Date().toISOString();
+  const { data: settings, error } = await (admin as any)
+    .from("shop_payroll_settings")
+    .upsert({
+      shop_id: auth.me.shop_id,
+      cadence: body.cadence,
+      week_starts_on: weekStartsOn,
+      period_anchor_date: anchorDate,
+      updated_at: now,
+    }, { onConflict: "shop_id" })
+    .select("*")
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  await (admin as any).from("audit_logs").insert({
+    shop_id: auth.me.shop_id,
+    actor_id: auth.me.id,
+    action: "payroll.settings.updated",
+    target_table: "shop_payroll_settings",
+    target_id: settings.id,
+    metadata: {
+      cadence: body.cadence,
+      week_starts_on: weekStartsOn,
+      period_anchor_date: anchorDate,
+    },
+  });
+
+  const current = await getOrCreateCurrentPeriod(auth.me.shop_id!, auth.me.id);
+  return NextResponse.json({ ok: true, settings, currentPeriod: current.period });
 }
