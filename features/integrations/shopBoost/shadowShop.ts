@@ -19,8 +19,8 @@ import {
 
 type CsvRow = Record<string, string>;
 
-type ShadowDomainKey = "customers" | "vehicles" | "history" | "parts" | "staff";
-const SHADOW_DATASET_KEYS: ShadowDomainKey[] = ["customers", "vehicles", "history", "parts", "staff"];
+type ShadowDomainKey = "customers" | "vehicles" | "history" | "invoices" | "parts" | "staff";
+const SHADOW_DATASET_KEYS: ShadowDomainKey[] = ["customers", "vehicles", "history", "invoices", "parts", "staff"];
 
 type ShadowStagedRow = {
   id: string;
@@ -284,6 +284,7 @@ function buildItems(rows: ShadowStagedRow[], domain: ShadowDomainKey): ShadowPre
 
 function mapEntityType(key: ShadowDomainKey): string {
   if (key === "history") return "history";
+  if (key === "invoices") return "invoices";
   return key;
 }
 
@@ -325,6 +326,24 @@ function stageRowsByDomain(rows: CsvRow[], domain: ShadowDomainKey): ShadowStage
         confidence,
         reviewFlag: confidence < 75,
         blocked: !row.work_order && !row.invoice_number,
+      };
+    }
+
+    if (domain === "invoices") {
+      const confidence = confidenceFromCompleteness(row, [
+        "invoice_number",
+        "customer",
+        "total",
+        "date",
+      ]);
+      return {
+        id: `invoice-${index}`,
+        domain,
+        raw: row,
+        normalized: row,
+        confidence,
+        reviewFlag: confidence < 75,
+        blocked: !row.invoice_number && !row.invoice && !row.order_number,
       };
     }
 
@@ -686,6 +705,7 @@ export async function buildShadowShopSnapshot(args: {
     customers: [],
     vehicles: [],
     history: [],
+    invoices: [],
     parts: [],
     staff: [],
   };
@@ -694,6 +714,7 @@ export async function buildShadowShopSnapshot(args: {
     customers: { count: 0, fileName: null },
     vehicles: { count: 0, fileName: null },
     history: { count: 0, fileName: null },
+    invoices: { count: 0, fileName: null },
     parts: { count: 0, fileName: null },
     staff: { count: 0, fileName: null },
   };
@@ -716,6 +737,7 @@ export async function buildShadowShopSnapshot(args: {
     customers: stageRowsByDomain(parsedRowsByDomain.customers, "customers"),
     vehicles: stageRowsByDomain(parsedRowsByDomain.vehicles, "vehicles"),
     history: stageRowsByDomain(parsedRowsByDomain.history, "history"),
+    invoices: stageRowsByDomain(parsedRowsByDomain.invoices, "invoices"),
     parts: stageRowsByDomain(parsedRowsByDomain.parts, "parts"),
     staff: stageRowsByDomain(parsedRowsByDomain.staff, "staff"),
   };
