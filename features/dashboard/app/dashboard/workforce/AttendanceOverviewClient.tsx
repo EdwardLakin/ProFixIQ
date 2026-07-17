@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { WorkforceQuickLinks } from "./WorkforceQuickLinks";
 import { OperationalViewSwitcher } from "@/features/dashboard/components/OperationalViewSwitcher";
@@ -118,9 +119,12 @@ type AttendanceOverviewClientProps = {
   to: string;
   timezone?: string | null;
   role?: string | null;
+  selectedDate: string;
+  personId?: string | null;
 };
 
-export function AttendanceOverviewClient({ from, to, timezone, role }: AttendanceOverviewClientProps) {
+export function AttendanceOverviewClient({ from, to, timezone, role, selectedDate, personId }: AttendanceOverviewClientProps) {
+  const router = useRouter();
   const [data, setData] = useState<AttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +135,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
 
     try {
       const res = await fetch(
-        `/api/scheduling/shifts?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        `/api/scheduling/shifts?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${personId ? `&user_id=${encodeURIComponent(personId)}` : ""}`,
         { cache: "no-store" },
       );
 
@@ -148,7 +152,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
     } finally {
       setLoading(false);
     }
-  }, [from, to]);
+  }, [from, personId, to]);
 
   useEffect(() => {
     void fetchAttendance();
@@ -234,7 +238,24 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
         <p className="mt-2 inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-xs text-[color:var(--theme-text-secondary)]">
           {timezone ? `Today based on shop timezone: ${timezone}` : "Today based on shop day window (UTC fallback)"}
         </p>
-        <WorkforceQuickLinks roleScope="manager" className="mt-4 flex flex-wrap gap-2" />
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+            Day
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => {
+                const params = new URLSearchParams();
+                params.set("date", event.target.value);
+                if (personId) params.set("person_id", personId);
+                router.push(`/dashboard/workforce/attendance?${params.toString()}`);
+              }}
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+            />
+          </label>
+          {personId ? <Link href={`/dashboard/workforce/attendance?date=${selectedDate}`} className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-orange-300">Show all employees</Link> : null}
+          <WorkforceQuickLinks roleScope="manager" className="flex flex-wrap gap-2" />
+        </div>
       </section>
 
       {loading && (
@@ -278,6 +299,56 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
                 <div className="mt-2 text-xl font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
               </div>
             ))}
+          </section>
+
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Daily timecards</h2>
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Attendance punches and current duration for the selected shop day.</p>
+              </div>
+              <span className="text-xs text-[color:var(--theme-text-muted)]">{shifts.length} timecard{shifts.length === 1 ? "" : "s"}</span>
+            </div>
+            <div className="mt-4 grid gap-3 xl:grid-cols-2">
+              {shifts.map((shift) => {
+                const shiftId = typeof shift.id === "string" ? shift.id : "";
+                const events = punches
+                  .filter((punch) => punch.shift_id === shiftId)
+                  .sort((a, b) => (safeDate(a.timestamp)?.getTime() ?? 0) - (safeDate(b.timestamp)?.getTime() ?? 0));
+                const durationMinutes = shift.start_time
+                  ? Math.max(0, Math.round(((shift.end_time ? new Date(shift.end_time) : new Date()).getTime() - new Date(shift.start_time).getTime()) / 60000))
+                  : 0;
+                return (
+                  <article key={shiftId} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold text-[color:var(--theme-text-primary)]">{getEmployeeDisplayName(shift)}</h3>
+                        <p className="text-xs text-[color:var(--theme-text-muted)]">{formatShiftRange(shift, timezone)}</p>
+                      </div>
+                      <span className={`rounded-full border px-2.5 py-1 text-xs ${shift.end_time ? "border-emerald-400/30 text-emerald-300" : "border-amber-400/40 bg-amber-500/10 text-amber-200"}`}>
+                        {shift.end_time ? "Closed" : "Open"}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Duration</p><p className="font-medium">{Math.floor(durationMinutes / 60)}h {durationMinutes % 60}m</p></div>
+                      <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Punches</p><p className="font-medium">{events.length}</p></div>
+                      <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Status</p><p className="font-medium capitalize">{shift.status ?? "unknown"}</p></div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {events.length === 0 ? <span className="text-xs text-amber-300">No punch events recorded</span> : events.map((event) => (
+                        <span key={String(event.id)} className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs text-[color:var(--theme-text-secondary)]">
+                          {displayEventType(normalizeEventType(event))} · {safeDate(event.timestamp)?.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: timezone || undefined }) ?? "Unknown"}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex gap-3 text-xs">
+                      {shift.user_id ? <Link href={`/dashboard/workforce/payroll-review?person_id=${shift.user_id}`} className="font-medium text-orange-300">Payroll detail</Link> : null}
+                      {shift.user_id ? <Link href={`/dashboard/admin/people/${shift.user_id}#payroll-posture`} className="font-medium text-orange-300">Employee record</Link> : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
 
           <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
