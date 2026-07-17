@@ -224,7 +224,7 @@ export default function PayrollTimeClient() {
     void loadExportHistory(activePeriodId);
   }, [activePeriodId]);
 
-  async function runAction(path: string, actionName: string, payload: Record<string, unknown>, method: "POST" | "PUT" = "POST") {
+  async function runAction(path: string, actionName: string, payload: unknown, method: "POST" | "PUT" = "POST") {
     setBusyAction(actionName);
     setError(null);
     const res = await fetch(path, {
