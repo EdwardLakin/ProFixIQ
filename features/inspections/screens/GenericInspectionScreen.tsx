@@ -1762,6 +1762,12 @@ type SmartMatchRow = {
       const correctionNote = correctionSpeech.match(
         /^(?:add|append)\s+(?:a\s+)?note\s*(?::|that)?\s*(.+)$/,
       )?.[1];
+      const correctionValueMatch = correctionSpeech.match(
+        /\b(?:change|correct|correction|actually).*(?:measurement|reading|value)?\s*(?:was|is|to)?\s*(\d+(?:\.\d+)?)\b/,
+      );
+      const correctionValue = correctionValueMatch
+        ? Number(correctionValueMatch[1])
+        : null;
 
       if (
         correctionTarget &&
@@ -1783,6 +1789,19 @@ type SmartMatchRow = {
             sectionIndex: correctionTarget.sectionIndex,
             itemIndex: correctionTarget.itemIndex,
             note: correctionNote,
+          } as unknown as ParsedCommand,
+        ];
+      } else if (
+        correctionTarget &&
+        correctionValue != null &&
+        Number.isFinite(correctionValue)
+      ) {
+        commands = [
+          {
+            command: "update_value",
+            sectionIndex: correctionTarget.sectionIndex,
+            itemIndex: correctionTarget.itemIndex,
+            value: correctionValue,
           } as unknown as ParsedCommand,
         ];
       } else {
