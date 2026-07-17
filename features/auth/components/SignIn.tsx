@@ -45,9 +45,15 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
     const redirect = safeInternalRedirect(searchParams.get("redirect"), "");
     const sessionId = searchParams.get("session_id")?.trim();
     const flow = searchParams.get("flow")?.trim();
+    const demoId = searchParams.get("demoId")?.trim();
+    const intakeId = searchParams.get("intakeId")?.trim();
+    const activationContext = searchParams.get("activationContext")?.trim();
     if (redirect) params.set("redirect", redirect);
     if (sessionId) params.set("session_id", sessionId);
     if (flow) params.set("flow", flow);
+    if (demoId) params.set("demoId", demoId);
+    if (intakeId) params.set("intakeId", intakeId);
+    if (activationContext) params.set("activationContext", activationContext);
     return `${origin}/auth/callback${params.size ? `?${params.toString()}` : ""}`;
   }, [origin, searchParams]);
 

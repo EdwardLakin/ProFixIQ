@@ -12,6 +12,7 @@ describe("create work order customer and vehicle persistence", () => {
     expect(page).toContain("const { shop_id: _shopId, ...customerPatch } = customerWrite");
     expect(page).not.toContain("const needsPatch =");
     expect(page).toContain(".update(customerPatch)");
+    expect(page).toContain(".update(buildImplicitCustomerPatch(customerPatch))");
     expect(page).toContain(".insert(customerWrite)");
   });
 
@@ -43,8 +44,10 @@ describe("create work order customer and vehicle persistence", () => {
     }
   });
 
-  it("applies current form values when an existing duplicate is reused", () => {
-    expect(page).toContain(".update(buildVehiclePatch(vehicle, cust.id))");
+  it("preserves blank fields when an implicit duplicate is reused", () => {
+    expect(page).toContain(".update(buildImplicitVehiclePatch(vehicle, cust.id))");
+    expect(page).toContain("buildImplicitCustomerPatch(customerPatch)");
+    expect(page).toContain('key === "customer_id"');
     expect(page).toContain('.eq("customer_id", cust.id)');
   });
 

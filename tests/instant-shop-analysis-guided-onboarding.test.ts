@@ -58,7 +58,8 @@ describe("instant shop analysis guided onboarding handoff", () => {
     expect(handoff).toContain('event_type: "instant_analysis_mapped"');
     expect(handoff).toContain("reviewPhasePending");
     expect(handoff).toContain('select("step_key,status,answer")');
-    expect(handoff).toContain('!args.importSummary && existingStep?.status === "completed"');
+    expect(handoff).toContain("importSummary: ShopBoostImportSummary");
+    expect(handoff).not.toContain("importSummary?: ShopBoostImportSummary");
   });
 
   it("binds activation to the unlocked email and provides a retry-safe handoff page", () => {
@@ -68,10 +69,16 @@ describe("instant shop analysis guided onboarding handoff", () => {
 
     expect(activation).toContain('.from("demo_shop_boost_leads")');
     expect(activation).toContain('.eq("email", normalizedUserEmail)');
+    expect(activation).toContain('.eq("lead_kind", "activation_claim")');
+    expect(activation).toContain('role !== "owner" && role !== "admin"');
+    expect(activation).toContain("readPersistedImportSummary");
+    expect(activation).toContain("ensureStorageCopy");
     expect(activation).toContain("demoRow.shop_id !== shopId");
     expect(handoffPage).toContain('fetch("/api/demo/shop-boost/activate"');
     expect(handoffPage).toContain("readPersistedActivationContext");
     expect(signIn).toContain("resolvePostAuthDestination");
+    expect(signIn).toContain('searchParams.get("activationContext")');
+    expect(signIn).toContain('params.set("activationContext", activationContext)');
     expect(signIn).not.toContain('router.replace("/onboarding")');
   });
 });

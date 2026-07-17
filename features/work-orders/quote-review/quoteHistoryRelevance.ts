@@ -105,13 +105,30 @@ function normalize(value: string): string {
     .trim();
 }
 
+function tokenMatches(candidate: string, expected: string): boolean {
+  if (candidate === expected || candidate === `${expected}s`) return true;
+  return expected.endsWith("y") && candidate === `${expected.slice(0, -1)}ies`;
+}
+
+function containsPhrase(value: string, phrase: string): boolean {
+  const valueTokens = normalize(value).split(" ").filter(Boolean);
+  const phraseTokens = normalize(phrase).split(" ").filter(Boolean);
+  if (phraseTokens.length === 0 || phraseTokens.length > valueTokens.length) {
+    return false;
+  }
+  return valueTokens.some((_, start) =>
+    phraseTokens.every((token, offset) =>
+      tokenMatches(valueTokens[start + offset] ?? "", token),
+    ),
+  );
+}
+
 function ruleFor(value: string): ServiceRule | null {
-  const normalized = normalize(value);
   return (
     RULES.find(
       (rule) =>
-        rule.terms.some((term) => normalized.includes(term)) &&
-        !(rule.excludes ?? []).some((term) => normalized.includes(term)),
+        rule.terms.some((term) => containsPhrase(value, term)) &&
+        !(rule.excludes ?? []).some((term) => containsPhrase(value, term)),
     ) ?? null
   );
 }
@@ -129,11 +146,12 @@ export function findRelevantHistoryCandidates(input: {
       (candidate) =>
         ruleFor(candidate.description)?.family === quoteRule.family,
     )
-    .filter((candidate) =>
-      candidate.mileageDeltaKm == null
-        ? candidate.ageDays <= quoteRule.maxDays
-        : candidate.mileageDeltaKm >= 0 &&
-          candidate.mileageDeltaKm <= quoteRule.maxKm,
+    .filter(
+      (candidate) =>
+        candidate.ageDays <= quoteRule.maxDays &&
+        (candidate.mileageDeltaKm == null ||
+          (candidate.mileageDeltaKm >= 0 &&
+            candidate.mileageDeltaKm <= quoteRule.maxKm)),
     )
     .sort((a, b) => {
       const aScore = a.mileageDeltaKm ?? a.ageDays * 40;

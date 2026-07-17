@@ -53,6 +53,36 @@ describe("quote history relevance", () => {
     expect(matches).toEqual([]);
   });
 
+  it("does not classify ignition coil service as engine oil", () => {
+    const matches = findRelevantHistoryCandidates({
+      quoteLineId: "quote-1",
+      quoteDescription: "Ignition coil service",
+      candidates: [
+        candidate({
+          description: "Engine oil service",
+          mileageDeltaKm: 2_000,
+          ageDays: 30,
+        }),
+      ],
+    });
+    expect(matches).toEqual([]);
+  });
+
+  it("applies the age limit even when mileage is available", () => {
+    const matches = findRelevantHistoryCandidates({
+      quoteLineId: "quote-1",
+      quoteDescription: "Engine oil change",
+      candidates: [
+        candidate({
+          description: "Engine oil service",
+          mileageDeltaKm: 2_000,
+          ageDays: 800,
+        }),
+      ],
+    });
+    expect(matches).toEqual([]);
+  });
+
   it("uses time limits when mileage is unavailable", () => {
     const matches = findRelevantHistoryCandidates({
       quoteLineId: "quote-1",

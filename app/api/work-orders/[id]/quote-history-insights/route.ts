@@ -141,6 +141,7 @@ export async function GET(req: Request) {
     )
     .eq("shop_id", shopId)
     .in("work_order_id", priorIds)
+    .is("voided_at", null)
     .or(
       "status.in.(completed,ready_to_invoice,invoiced),line_status.in.(completed,ready_to_invoice,invoiced)",
     );

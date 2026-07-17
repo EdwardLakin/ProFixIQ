@@ -17,6 +17,7 @@ describe("quote history insights route", () => {
       route.match(/\.eq\("shop_id", shopId\)/g)?.length ?? 0,
     ).toBeGreaterThanOrEqual(4);
     expect(route).toContain('.neq("id", workOrderId)');
+    expect(route).toContain('.is("voided_at", null)');
   });
 
   it("gates candidates deterministically and validates AI-selected pairs", () => {

@@ -299,11 +299,23 @@ function badgeClass(tone: ReturnType<typeof workflowDisplay>["tone"]): string {
   }
 }
 
+function isSentForDecision(line: EditableQuoteLine): boolean {
+  const status = safeTrim(line.status).toLowerCase();
+  const stage = safeTrim(line.stage).toLowerCase();
+  return (
+    Boolean(line.sent_to_customer_at) ||
+    status === "sent" ||
+    status === "customer_pending" ||
+    stage === "sent" ||
+    stage === "customer_pending"
+  );
+}
+
 function canSendLine(line: EditableQuoteLine): boolean {
   const status = safeTrim(line.status).toLowerCase();
   const stage = safeTrim(line.stage).toLowerCase();
   if (NON_SENDABLE_STATUSES.has(status)) return false;
-  if (status === "sent" || Boolean(line.sent_to_customer_at)) return false;
+  if (isSentForDecision(line)) return false;
   return SEND_READY_STATUSES.has(status) || SEND_READY_STAGES.has(stage);
 }
 
@@ -1004,7 +1016,7 @@ export default function QuoteReviewView(props: {
                             </button>
                             {!line.sent_to_customer_at && canSendLine(line) ? <span className="rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">Will send</span> : null}
                             {!finalDecision ? <>
-                              <button type="button" disabled={!canSendLine(line) && safeTrim(line.status).toLowerCase() !== "sent"} onClick={() => openDecisionDialog(line, "approve")} className="rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-45">Approve</button>
+                              <button type="button" disabled={!canSendLine(line) && !isSentForDecision(line)} onClick={() => openDecisionDialog(line, "approve")} className="rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-45">Approve</button>
                               <button type="button" onClick={() => openDecisionDialog(line, "defer")} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">Defer</button>
                               <button type="button" onClick={() => openDecisionDialog(line, "decline")} className="rounded-xl border border-red-400/45 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">Decline</button>
                             </> : null}

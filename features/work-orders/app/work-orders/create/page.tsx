@@ -895,6 +895,24 @@ useEffect(() => {
     drivetrain: strOrNull(v.drivetrain ?? null),
   });
 
+  const buildImplicitCustomerPatch = (
+    patch: Omit<ReturnType<typeof buildCustomerInsert>, "shop_id">,
+  ) =>
+    Object.fromEntries(
+      Object.entries(patch).filter(([, value]) => value !== null && value !== undefined && value !== ""),
+    ) as Partial<CustomerRow>;
+
+  const buildImplicitVehiclePatch = (
+    v: VehicleWithExtra,
+    customerIdIn: string,
+  ): Partial<VehicleRow> =>
+    Object.fromEntries(
+      Object.entries(buildVehiclePatch(v, customerIdIn)).filter(
+        ([key, value]) =>
+          key === "customer_id" || (value !== null && value !== undefined && value !== ""),
+      ),
+    ) as Partial<VehicleRow>;
+
   const hydrateCustomerFromRow = useCallback(
     (row: CustomerRowWithBusiness): CustomerWithBusiness =>
       normalizeCustomerForIntake({
@@ -1164,7 +1182,7 @@ useEffect(() => {
 
         const { data: patched, error: patchErr } = await supabase
           .from("customers")
-          .update(customerPatch)
+          .update(buildImplicitCustomerPatch(customerPatch))
           .eq("id", row.id)
           .eq("shop_id", shopId)
           .select("*")
@@ -1190,7 +1208,7 @@ useEffect(() => {
 
         const { data: patched, error: patchErr } = await supabase
           .from("customers")
-          .update(customerPatch)
+          .update(buildImplicitCustomerPatch(customerPatch))
           .eq("id", row.id)
           .eq("shop_id", shopId)
           .select("*")
@@ -1251,7 +1269,7 @@ useEffect(() => {
       }
       const { data: existing, error: existingErr } = await supabase
         .from("vehicles")
-        .update(buildVehiclePatch(vehicle, cust.id))
+        .update(buildImplicitVehiclePatch(vehicle, cust.id))
         .eq("id", sameCustomerMatch.id)
         .eq("shop_id", shopId)
         .eq("customer_id", cust.id)
@@ -1318,9 +1336,9 @@ useEffect(() => {
       if (findErr) throw findErr;
 
       if (maybe?.length) {
-        // ✅ patch update the matched vehicle so edits persist
+        // Identifier-based reuse must preserve fields the advisor did not enter.
         const id = (maybe[0] as VehicleRow).id;
-        const patch = buildVehiclePatch(vehicle, cust.id);
+        const patch = buildImplicitVehiclePatch(vehicle, cust.id);
 
         const { data: updated, error: updErr } = await supabase
           .from("vehicles")
@@ -1392,6 +1410,8 @@ useEffect(() => {
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
+      const hadExplicitCustomerId = Boolean(customerId);
+      const hadExplicitVehicleId = Boolean(vehicleId);
       const cust = await ensureCustomer(shopId);
       const veh = await ensureVehicleRow(cust, shopId);
       const persistedCustomer = hydrateCustomerFromRow(cust);
@@ -1399,12 +1419,20 @@ useEffect(() => {
 
       assertWritePersisted(
         "customer",
-        buildCustomerInsert(customer, shopId),
+        hadExplicitCustomerId
+          ? buildCustomerInsert(customer, shopId)
+          : buildImplicitCustomerPatch(
+              (({ shop_id: _shopId, ...patch }) => patch)(
+                buildCustomerInsert(customer, shopId),
+              ),
+            ),
         cust as unknown as Record<string, unknown>,
       );
       assertWritePersisted(
         "vehicle",
-        buildVehiclePatch(vehicle, cust.id) as Record<string, unknown>,
+        (hadExplicitVehicleId
+          ? buildVehiclePatch(vehicle, cust.id)
+          : buildImplicitVehiclePatch(vehicle, cust.id)) as Record<string, unknown>,
         veh as unknown as Record<string, unknown>,
       );
 

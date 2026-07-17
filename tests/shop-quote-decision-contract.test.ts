@@ -14,8 +14,12 @@ const helper = fs.readFileSync(
 const migration = fs.readFileSync(
   path.join(
     root,
-    "supabase/migrations/20260717003000_shop_recorded_quote_decisions.sql",
+    "supabase/migrations/20260717011000_quote_decision_integrity_fixes.sql",
   ),
+  "utf8",
+);
+const legacyDecline = fs.readFileSync(
+  path.join(root, "app/api/work-orders/quotes/[id]/decline/route.ts"),
   "utf8",
 );
 
@@ -44,5 +48,14 @@ describe("shop quote decision contract", () => {
     expect(migration).toContain(
       "Approved work cannot be reversed from quote review",
     );
+    expect(migration).toContain("q.approved_at is not null");
+    expect(migration).toContain("q.stage::text, '')) = 'customer_approved'");
+  });
+
+  it("supports deferred stages and delegates legacy decline", () => {
+    expect(migration).toContain("'customer_deferred'::text");
+    expect(legacyDecline).toContain("applyWorkOrderQuoteLineDecision");
+    expect(legacyDecline).toContain('decisionSource: "shop"');
+    expect(legacyDecline).not.toContain('.update({ status: "declined"');
   });
 });

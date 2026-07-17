@@ -67,14 +67,37 @@ function panelClass(extra = "") {
   return `rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] ${extra}`;
 }
 
-function targetQty(
-  item: Pick<RequestItemRow, "qty" | "qty_approved" | "qty_requested">,
+function approvedReceivingQty(
+  item: Pick<RequestItemRow, "qty_approved">,
 ) {
-  return Math.max(
-    Number(item.qty_approved ?? 0),
-    Number(item.qty_requested ?? 0),
-    Number(item.qty ?? 0),
-  );
+  return Math.max(0, Number(item.qty_approved ?? 0));
+}
+
+function approvedRequestFlow(
+  items: Array<
+    Pick<RequestItemRow, "qty_approved" | "qty_received" | "qty_consumed">
+  >,
+): "awaitingApproval" | "orderReceive" | "readyTech" | "complete" {
+  if (items.length === 0 || items.some((item) => approvedReceivingQty(item) <= 0)) {
+    return "awaitingApproval";
+  }
+  if (
+    items.every(
+      (item) => Number(item.qty_consumed ?? 0) >= approvedReceivingQty(item),
+    )
+  ) {
+    return "complete";
+  }
+  if (
+    items.every(
+      (item) =>
+        Number(item.qty_received ?? 0) >= approvedReceivingQty(item) &&
+        Number(item.qty_consumed ?? 0) < approvedReceivingQty(item),
+    )
+  ) {
+    return "readyTech";
+  }
+  return "orderReceive";
 }
 
 function sourceLabel(kind: string | null, reason: string | null) {
@@ -167,7 +190,6 @@ export default function PartsDashboardPage(): JSX.Element {
       const [
         partsRes,
         movesRes,
-        requestsRes,
         openPoRes,
         stagingRes,
         candidateRes,
@@ -184,10 +206,6 @@ export default function PartsDashboardPage(): JSX.Element {
           )
           .gte("created_at", d30Ago.toISOString())
           .order("created_at", { ascending: true }),
-        supabase
-          .from("part_requests")
-          .select("id,status,work_order_id")
-          .in("status", ["requested", "quoted", "approved", "fulfilled"]),
         supabase
           .from("purchase_orders")
           .select("id", { count: "exact", head: true })
@@ -270,19 +288,25 @@ export default function PartsDashboardPage(): JSX.Element {
         setPartNameById(names);
       }
 
-      const requests = (requestsRes.data ?? []) as Array<
+      const requests: Array<
         Pick<RequestRow, "id" | "status" | "work_order_id">
-      >;
+      > = [];
+      const pageSize = 500;
+      for (let offset = 0; ; offset += pageSize) {
+        const page = await supabase
+          .from("part_requests")
+          .select("id,status,work_order_id")
+          .in("status", ["requested", "quoted", "approved", "fulfilled"])
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (page.error) throw page.error;
+        const rows = (page.data ?? []) as typeof requests;
+        requests.push(...rows);
+        if (rows.length < pageSize) break;
+      }
+
       const requestIds = requests.map((request) => request.id);
-      const itemsRes = requestIds.length
-        ? await supabase
-            .from("part_request_items")
-            .select(
-              "request_id,status,qty,qty_requested,qty_approved,qty_received,qty_consumed",
-            )
-            .in("request_id", requestIds)
-        : { data: [], error: null };
-      const items = (itemsRes.data ?? []) as Array<
+      const items: Array<
         Pick<
           RequestItemRow,
           | "request_id"
@@ -293,7 +317,24 @@ export default function PartsDashboardPage(): JSX.Element {
           | "qty_received"
           | "qty_consumed"
         >
-      >;
+      > = [];
+      for (let chunkStart = 0; chunkStart < requestIds.length; chunkStart += 200) {
+        const requestIdChunk = requestIds.slice(chunkStart, chunkStart + 200);
+        for (let offset = 0; ; offset += pageSize) {
+          const page = await supabase
+            .from("part_request_items")
+            .select(
+              "request_id,status,qty,qty_requested,qty_approved,qty_received,qty_consumed",
+            )
+            .in("request_id", requestIdChunk)
+            .order("id", { ascending: true })
+            .range(offset, offset + pageSize - 1);
+          if (page.error) throw page.error;
+          const rows = (page.data ?? []) as typeof items;
+          items.push(...rows);
+          if (rows.length < pageSize) break;
+        }
+      }
       const itemsByRequest = new Map<string, typeof items>();
       for (const item of items) {
         const current = itemsByRequest.get(item.request_id) ?? [];
@@ -319,11 +360,12 @@ export default function PartsDashboardPage(): JSX.Element {
       setOpenPoCount(openPoRes.count ?? 0);
       setReceiveQueueCount(
         items.filter((item) => {
-          const target = targetQty(item);
+          const target = approvedReceivingQty(item);
           return (
             activeIds.has(item.request_id) &&
             target > 0 &&
-            Number(item.qty_received ?? 0) < target
+            Number(item.qty_received ?? 0) < target &&
+            Number(item.qty_consumed ?? 0) < target
           );
         }).length,
       );
@@ -349,18 +391,7 @@ export default function PartsDashboardPage(): JSX.Element {
           continue;
         }
         const requestItems = itemsByRequest.get(request.id) ?? [];
-        const isReady =
-          requestItems.length > 0 &&
-          requestItems.every((item) => {
-            const target = targetQty(item);
-            return (
-              target > 0 &&
-              Number(item.qty_received ?? 0) >= target &&
-              Number(item.qty_consumed ?? 0) < target
-            );
-          });
-        if (isReady) nextFlow.readyTech += 1;
-        else nextFlow.orderReceive += 1;
+        nextFlow[approvedRequestFlow(requestItems)] += 1;
       }
       setFlow(nextFlow);
       setLoading(false);

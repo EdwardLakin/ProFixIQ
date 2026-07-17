@@ -102,7 +102,8 @@ export async function POST(
         demo_id: demoId,
         email: emailNormalized,
         summary,
-      } as DB["public"]["Tables"]["demo_shop_boost_leads"]["Insert"]);
+        lead_kind: "activation_claim",
+      } as DB["public"]["Tables"]["demo_shop_boost_leads"]["Insert"] & { lead_kind: "activation_claim" });
 
     if (leadErr) {
       console.error("[demo/shop-boost/claim] Failed to insert demo lead", leadErr);
