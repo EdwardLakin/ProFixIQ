@@ -18,6 +18,7 @@ import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
 import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
+import VoiceControlsPanel from "@inspections/components/inspection/VoiceControlsPanel";
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
 import type {
@@ -821,10 +822,9 @@ type SmartMatchRow = {
   >({});
   const smartMatchTimers = useRef<Record<string, number>>({});
 
-  const [wakeActive, setWakeActive] = useState(false);
-  // ✅ Use ref for logic to avoid React state race between transcripts
-  const wakeActiveRef = useRef<boolean>(false);
-  const wakeTimeoutRef = useRef<number | null>(null);
+  const [voiceControlsOpen, setVoiceControlsOpen] = useState(false);
+  const [voiceHeld, setVoiceHeld] = useState(false);
+  const voiceHeldRef = useRef(false);
 
   const [voiceState, setVoiceState] = useState<
     "idle" | "connecting" | "listening" | "error"
@@ -1832,13 +1832,20 @@ type SmartMatchRow = {
         }
       }
 
+      const successfulUpdates = applied.filter((result) => result.ok).length;
       const feedback =
-        primaryFeedback ??
-        buildVoiceBrainFeedback({
-          rawSpeech: text,
-          parsed: commands,
-          applied,
-        });
+        successfulUpdates > 1
+          ? {
+              spoken: `${successfulUpdates} inspection updates recorded.`,
+              toast: `${successfulUpdates} inspection updates recorded`,
+              followUp: { kind: "none" as const },
+            }
+          : primaryFeedback ??
+            buildVoiceBrainFeedback({
+              rawSpeech: text,
+              parsed: commands,
+              applied,
+            });
 
       if (feedback.toast) {
         toast.success(feedback.toast);
@@ -1886,104 +1893,66 @@ type SmartMatchRow = {
     }
   };
 
-  function maybeHandleWakeWord(raw: string): string | null {
+  function maybeHandleVoicePhrase(raw: string): string | null {
     const normalized = raw
       .toLowerCase()
-      .replace(/[^\w\s]/g, " ")
+      .replace(/[^\w\s.]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
 
-    // Include common STT variations
-    const WAKE_PREFIXES = ["hey profix", "hey pro fix", "hey buster"] as const;
+    if (!normalized) return null;
 
-    const matchPrefixFrom = (
-      input: string,
-    ): { prefix: string; remainder: string } | null => {
-      for (const prefix of WAKE_PREFIXES) {
-        if (input === prefix) return { prefix, remainder: "" };
-        if (input.startsWith(prefix + " ")) {
-          return { prefix, remainder: input.slice(prefix.length).trimStart() };
-        }
+    const WAKE_PREFIXES = ["hey profix", "hey pro fix", "hey buster", "buster"] as const;
+    let command = normalized;
+
+    for (const prefix of WAKE_PREFIXES) {
+      if (command === prefix) return null;
+      if (command.startsWith(prefix + " ")) {
+        command = command.slice(prefix.length).trimStart();
+        break;
       }
+    }
+
+    const resumeCommand =
+      /^(resume|resume listening|start listening|continue listening)$/.test(command);
+    const holdCommand =
+      /^(hold|hold listening|pause listening|ignore conversation)$/.test(command);
+    const stopCommand =
+      /^(stop|stop listening|end voice|end voice session)$/.test(command);
+
+    if (resumeCommand) {
+      voiceHeldRef.current = false;
+      setVoiceHeld(false);
+      toast.success("Free-form voice resumed.");
+      speakLocal("Listening.");
       return null;
-    };
-
-    const setWake = (on: boolean) => {
-      wakeActiveRef.current = on; // logic gate
-      setWakeActive(on); // UI badge
-    };
-
-    const bumpTimeout = () => {
-      if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
-      wakeTimeoutRef.current = window.setTimeout(() => setWake(false), 8000);
-    };
-
-    const beep = () => {
-      try {
-        type WebkitAudioWindow = Window & {
-          webkitAudioContext?: typeof AudioContext;
-        };
-        const AudioCtxCtor =
-          window.AudioContext ||
-          (window as WebkitAudioWindow).webkitAudioContext;
-
-        if (!AudioCtxCtor) return;
-
-        const ctx = new AudioCtxCtor();
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = "sine";
-        o.frequency.value = 880;
-        g.gain.value = 0.05;
-        o.connect(g);
-        g.connect(ctx.destination);
-        o.start();
-        window.setTimeout(() => {
-          o.stop();
-          void ctx.close();
-        }, 120);
-      } catch {
-        // ignore
-      }
-    };
-
-    const awake = wakeActiveRef.current;
-
-    if (!awake) {
-      const match = matchPrefixFrom(normalized);
-      if (!match) return null;
-
-      setWake(true);
-      bumpTimeout();
-
-      toast.success("READY", { duration: 1200 });
-      beep();
-
-      // Wake-only? arm but do NOT forward empty transcript
-      if (!match.remainder) return null;
-
-      return match.remainder;
     }
 
-    // already awake: extend timeout and strip prefix if repeated
-    bumpTimeout();
+    if (voiceHeldRef.current) return null;
 
-    const repeated = matchPrefixFrom(normalized);
-    if (repeated) {
-      // Wake-only while already awake => keep armed, no command to process
-      if (!repeated.remainder) return null;
-      return repeated.remainder;
+    if (holdCommand) {
+      voiceHeldRef.current = true;
+      setVoiceHeld(true);
+      toast.success("Voice is on hold. Say Buster resume to continue.");
+      speakLocal("Voice on hold.");
+      return null;
     }
 
-    // No repeated wake word; treat full phrase as the command
-    return normalized;
+    if (stopCommand) {
+      window.setTimeout(() => stopListening(), 0);
+      toast.success("Voice session stopped.");
+      speakLocal("Voice stopped.");
+      return null;
+    }
+
+    return command;
   }
 
   const voice = useRealtimeVoice(
     async (text: string) => {
       await handleTranscript(text);
     },
-    (raw: string) => maybeHandleWakeWord(raw),
+    (raw: string) => maybeHandleVoicePhrase(raw),
     {
       onStateChange: setVoiceState,
       onPulse: triggerVoicePulse,
@@ -2000,6 +1969,8 @@ type SmartMatchRow = {
     if (guardLocked()) return;
 
     try {
+      voiceHeldRef.current = false;
+      setVoiceHeld(false);
       await voice.start();
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
@@ -2017,13 +1988,8 @@ type SmartMatchRow = {
       voice.stop();
     } catch {}
 
-    wakeActiveRef.current = false;
-    setWakeActive(false);
-
-    if (wakeTimeoutRef.current) {
-      window.clearTimeout(wakeTimeoutRef.current);
-      wakeTimeoutRef.current = null;
-    }
+    voiceHeldRef.current = false;
+    setVoiceHeld(false);
   };
 
   const inFlightRef = useRef<Set<string>>(new Set());
@@ -2830,8 +2796,10 @@ type SmartMatchRow = {
               </div>
               <div className="min-w-0">
                 <div className="text-sm font-semibold sm:text-base">
-                  {voiceState === "listening"
-                    ? "Listening for the next finding…"
+                  {voiceHeld
+                    ? "Voice is on hold"
+                    : voiceState === "listening"
+                    ? "Free-form voice is listening…"
                     : voiceState === "connecting"
                       ? "Connecting voice capture…"
                       : voiceState === "error"
@@ -2844,13 +2812,41 @@ type SmartMatchRow = {
                   {[4, 8, 6, 11, 7, 13, 9, 5, 10, 6, 12, 8, 4, 9, 5, 7].map((height, index) => (
                     <span key={`${height}-${index}`} className={cn("w-0.5 rounded-full bg-orange-300/80", !isListening && "opacity-25")} style={{ height }} />
                   ))}
-                  {wakeActive ? <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-200">Ready</span> : null}
+                  {voiceHeld ? (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
+                      Say “Buster resume”
+                    </span>
+                  ) : isListening ? (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-200">
+                      Any order · wake phrase optional
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-white/20 bg-white/5 text-[11px] font-semibold text-white hover:bg-white/10"
+                onClick={() => setVoiceControlsOpen(true)}
+              >
+                Voice controls
+              </Button>
               {!isLocked && <StartListeningButton isListening={isListening} onStart={startListening} />}
+              {!isLocked && isListening && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-white/20 bg-white/5 text-[11px] font-semibold text-white hover:bg-white/10"
+                  onClick={stopListening}
+                >
+                  Stop
+                </Button>
+              )}
               {!isLocked && (isListening || isPaused) && (
                 <PauseResumeButton
                   isPaused={isPaused}
@@ -3338,6 +3334,13 @@ type SmartMatchRow = {
           </div>
         </div>
       </div>
+
+      <VoiceControlsPanel
+        isOpen={voiceControlsOpen}
+        onClose={() => setVoiceControlsOpen(false)}
+        voiceState={voiceState}
+        isHeld={voiceHeld}
+      />
 
       {showMissingLineWarning && (
         <div className={cn("inset-x-0 z-50 px-3", isEmbed ? "sticky bottom-[76px]" : "fixed bottom-[52px]")}>
