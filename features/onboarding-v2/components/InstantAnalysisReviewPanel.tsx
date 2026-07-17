@@ -105,9 +105,12 @@ function recommendedActionLabel(action: RecommendedAction, failed: boolean) {
 
 function isHighRisk(item: ReviewItem) {
   return (
-    item.recommendation.recommendedAction === "merge_candidate" ||
-    item.issue_type === "conflict" ||
-    item.issue_type === "duplicate_candidate"
+    resolutionForRecommendation(item.recommendation.recommendedAction) === "linked_to_existing" &&
+    (
+      item.recommendation.recommendedAction === "merge_candidate" ||
+      item.issue_type === "conflict" ||
+      item.issue_type === "duplicate_candidate"
+    )
   );
 }
 
