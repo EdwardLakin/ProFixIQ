@@ -25,9 +25,11 @@ function emptyDomainResult(): DomainResult {
 }
 
 function domainResult(
-  summary: ShopBoostImportSummary,
+  summary: ShopBoostImportSummary | undefined,
   dataset: ShopBoostUploadDatasetKey,
 ): DomainResult {
+  if (!summary) return emptyDomainResult();
+
   const candidates =
     dataset === "history"
       ? ["history", "work_order", "work_orders"]
@@ -50,9 +52,10 @@ function domainResult(
 }
 
 function importedCount(
-  summary: ShopBoostImportSummary,
+  summary: ShopBoostImportSummary | undefined,
   dataset: ShopBoostUploadDatasetKey,
 ): number {
+  if (!summary) return 0;
   if (dataset === "customers") return summary.customersImported;
   if (dataset === "vehicles") return summary.vehiclesImported;
   if (dataset === "history") return summary.workOrdersImported;
@@ -67,7 +70,7 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
   demoId: string;
   intakeId: string;
   uploadedDatasets: ShopBoostUploadDatasetKey[];
-  importSummary: ShopBoostImportSummary;
+  importSummary?: ShopBoostImportSummary;
 }): Promise<{ sessionId: string; redirectTo: string }> {
   const admin = createAdminSupabase();
   const now = new Date().toISOString();
@@ -205,10 +208,10 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
       demoId: args.demoId,
       intakeId: args.intakeId,
       uploadedDatasets: mappedDatasets.map((item) => item.dataset),
-      completionState: args.importSummary.completionState,
+      completionState: args.importSummary?.completionState ?? "unknown",
       reviewPhasePending:
-        args.importSummary.rowResults.reviewCount > 0 ||
-        args.importSummary.rowResults.failedCount > 0,
+        (args.importSummary?.rowResults.reviewCount ?? 0) > 0 ||
+        (args.importSummary?.rowResults.failedCount ?? 0) > 0,
     },
     created_by: args.userId,
   });
