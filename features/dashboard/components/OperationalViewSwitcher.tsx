@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/features/shared/utils/cn";
-import { canonicalizeRole, type CanonicalRole } from "@/features/shared/lib/rbac";
+import {
+  canonicalizeRole,
+  type CanonicalRole,
+} from "@/features/shared/lib/rbac";
 
 export type OperationalView = {
   href: string;
@@ -15,12 +18,32 @@ export const OPERATIONAL_VIEWS: OperationalView[] = [
   {
     href: "/dashboard",
     label: "Shop Overview",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts", "dispatcher", "driver", "fleet_manager", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "parts",
+      "dispatcher",
+      "driver",
+      "fleet_manager",
+      "lead_hand",
+      "foreman",
+    ],
   },
   {
     href: "/work-orders/board",
     label: "Work Order Board",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "lead_hand",
+      "foreman",
+    ],
   },
   {
     href: "/dashboard/workforce/attendance",
@@ -29,7 +52,9 @@ export const OPERATIONAL_VIEWS: OperationalView[] = [
   },
 ];
 
-export function getOperationalViewsForRole(role?: string | null): OperationalView[] {
+export function getOperationalViewsForRole(
+  role?: string | null,
+): OperationalView[] {
   const normalized = canonicalizeRole(role);
   return OPERATIONAL_VIEWS.filter((view) => view.roles.includes(normalized));
 }
@@ -48,13 +73,13 @@ export function OperationalViewSwitcher({
   role?: string | null;
   className?: string;
 }) {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
   const views = getOperationalViewsForRole(role);
 
   if (views.length <= 1) return null;
 
-  const currentQuery = searchParams.toString();
+  const currentQuery = searchParams?.toString() ?? "";
 
   return (
     <nav
@@ -66,9 +91,10 @@ export function OperationalViewSwitcher({
     >
       {views.map((view) => {
         const active = isActive(pathname, view.href);
-        const href = active && pathname === "/work-orders/board" && currentQuery
-          ? `${view.href}?${currentQuery}`
-          : view.href;
+        const href =
+          active && pathname === "/work-orders/board" && currentQuery
+            ? `${view.href}?${currentQuery}`
+            : view.href;
 
         return (
           <Link
@@ -77,7 +103,8 @@ export function OperationalViewSwitcher({
             aria-current={active ? "page" : undefined}
             className={cn(
               "whitespace-nowrap rounded-xl px-3 py-2 font-medium text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70",
-              active && "bg-orange-500/20 text-orange-900 shadow-[inset_0_0_0_1px_rgba(251,146,60,0.35)] dark:text-orange-100",
+              active &&
+                "bg-orange-500/20 text-orange-900 shadow-[inset_0_0_0_1px_rgba(251,146,60,0.35)] dark:text-orange-100",
             )}
           >
             {view.label}

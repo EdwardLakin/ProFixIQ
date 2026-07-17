@@ -7,63 +7,77 @@ import type { OperationsDashboardPayload } from "@/features/dashboard/server/get
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 vi.mock("@/features/dashboard/server/getOperationsDashboardPayload", () => ({
-  getOperationsDashboardPayload: vi.fn(async (): Promise<OperationsDashboardPayload> => ({
-    identity: {
-      userId: "user-1",
-      email: "owner@example.com",
-      shopId: "shop-1",
-      role: "owner",
-      fullName: "Operations Owner",
-      profileExists: true,
-      shopLoaded: true,
-      shop: {
-        id: "shop-1",
-        name: "ProFixIQ Demo Shop",
-        shop_name: null,
-        business_name: null,
+  getOperationsDashboardPayload: vi.fn(
+    async (): Promise<OperationsDashboardPayload> => ({
+      identity: {
+        userId: "user-1",
+        email: "owner@example.com",
+        shopId: "shop-1",
+        role: "owner",
+        fullName: "Operations Owner",
+        profileExists: true,
+        shopLoaded: true,
+        shop: {
+          id: "shop-1",
+          name: "ProFixIQ Demo Shop",
+          shop_name: null,
+          business_name: null,
+        },
       },
-    },
-    viewerScope: "shop",
-    topSummary: {
-      activeJobs: 8,
-      blockedJobs: 2,
-      waitingApprovals: 3,
-      waitingParts: 4,
-      techniciansClockedIn: 5,
-      appointmentsToday: 2,
-      completedToday: 1,
-    },
-    immediateAttention: [
-      { label: "Waiting for customer approval", value: "3", href: "/work-orders/board?stage=awaiting_approval" },
-    ],
-    todayOperations: [
-      { label: "Open work orders", value: "8", href: "/work-orders/board" },
-    ],
-    quickActions: [
-      { label: "Create Work Order", href: "/work-orders/create", tone: "primary" },
-      { label: "Work Order Board", href: "/work-orders/board", tone: "neutral" },
-    ],
-    recentOperationalActivity: [],
-    activeJobSummary: [{ label: "In progress", value: 8, pct: 80 }],
-    liveShopLoad: [{ label: "Today", count: 8, pct: 80 }],
-    dailySummary: [{ label: "Approval queue", value: "3", tone: "accent" }],
-    liveWork: [
-      {
-        id: "work-order-1",
-        label: "WO-1001",
-        stage: "In progress",
-        risk: "normal",
-        priority: 1,
+      viewerScope: "shop",
+      topSummary: {
+        activeJobs: 8,
+        blockedJobs: 2,
+        waitingApprovals: 3,
+        waitingParts: 4,
+        techniciansClockedIn: 5,
+        appointmentsToday: 2,
+        completedToday: 1,
       },
-    ],
-    technicianActivity: [],
-    blockerStack: [],
-    alerts: [],
-    suggestedActions: [],
-    flowMix: [{ label: "In Progress", value: 8 }],
-    sectionErrors: [],
-    fetchAudit: [],
-  })),
+      immediateAttention: [
+        {
+          label: "Waiting for customer approval",
+          value: "3",
+          href: "/work-orders/board?stage=awaiting_approval",
+        },
+      ],
+      todayOperations: [
+        { label: "Open work orders", value: "8", href: "/work-orders/board" },
+      ],
+      quickActions: [
+        {
+          label: "Create Work Order",
+          href: "/work-orders/create",
+          tone: "primary",
+        },
+        {
+          label: "Work Order Board",
+          href: "/work-orders/board",
+          tone: "neutral",
+        },
+      ],
+      recentOperationalActivity: [],
+      activeJobSummary: [{ label: "In progress", value: 8, pct: 80 }],
+      liveShopLoad: [{ label: "Today", count: 8, pct: 80 }],
+      dailySummary: [{ label: "Approval queue", value: "3", tone: "accent" }],
+      liveWork: [
+        {
+          id: "work-order-1",
+          label: "WO-1001",
+          stage: "In progress",
+          risk: "normal",
+          priority: 1,
+        },
+      ],
+      technicianActivity: [],
+      blockerStack: [],
+      alerts: [],
+      suggestedActions: [],
+      flowMix: [{ label: "In Progress", value: 8 }],
+      sectionErrors: [],
+      fetchAudit: [],
+    }),
+  ),
 }));
 
 vi.mock("../app/dashboard/_components/OperationsCharts", () => ({
@@ -76,9 +90,8 @@ describe("smoke", () => {
   });
 
   it("keeps the operations dashboard focused on core command surfaces", async () => {
-    const { default: OperationsDashboardView } = await import(
-      "../app/dashboard/_components/OperationsDashboardView"
-    );
+    const { default: OperationsDashboardView } =
+      await import("../app/dashboard/_components/OperationsDashboardView");
 
     const markup = renderToStaticMarkup(await OperationsDashboardView());
 
@@ -88,9 +101,10 @@ describe("smoke", () => {
     expect(markup).not.toContain("Download migration report");
 
     expect(markup).toMatch(/Open work orders/i);
-    expect(markup).toContain("Immediate Attention");
+    expect(markup).toContain("Needs attention");
     expect(markup).toContain("Waiting for customer approval");
-    expect(markup).toContain("Quick Actions");
-    expect(markup).toContain("Live Work Command Surface");
+    expect(markup).toContain("Today&#x27;s pulse");
+    expect(markup).toContain("Action rail");
+    expect(markup).toContain("Work in motion");
   });
 });
