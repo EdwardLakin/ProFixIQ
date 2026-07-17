@@ -153,20 +153,20 @@ export default function AdminLandingClient() {
       />
 
       <AdminPanel>
-        <AdminPanelTitle title="Immediate Attention" description="Live snapshot from governance, workforce, and payroll-time datasets." />
+        <AdminPanelTitle title="Immediate Attention" description="Every live status opens the page where the work can be completed." />
         {error ? <p className="px-4 py-3 text-xs text-red-300">Failed to load summary: {error}</p> : null}
         {!summary ? (
           <AdminEmptyState title="Loading governance summary" body="Collecting counts from canonical admin surfaces." />
         ) : (
           <AdminStatGrid>
-            <AdminStatCard label="People" value={summary.userCount} hint="Canonical shop-scoped person records." />
-            <AdminStatCard label="Workforce profiles" value={summary.employeeCount} hint="People with assigned workforce posture." />
-            <AdminStatCard label="Shops" value={summary.shopCount} hint="Tenant records in oversight scope." />
-            <AdminStatCard label="Audit (24h)" value={summary.audit24hCount} hint="Privileged events in last day." />
-            <AdminStatCard label="Open payroll periods" value={summary.openPayrollPeriods} hint="Open or draft periods needing reviewer attention." />
-            <AdminStatCard label="Payroll blocking exceptions" value={summary.payrollBlockingExceptions} hint="Must be cleared before approval lock." />
-            <AdminStatCard label="Payroll warnings" value={summary.payrollWarningExceptions} hint="Non-blocking anomalies to review." />
-            <AdminStatCard label="Workforce missing profile setup" value={summary.profileSetupMissingWorkforce} hint="Workforce readiness follow-up." />
+            <Link href="/dashboard/workforce/people"><AdminStatCard label="People" value={summary.userCount} hint="Open employee records and access controls →" /></Link>
+            <Link href="/dashboard/workforce/people"><AdminStatCard label="Workforce profiles" value={summary.employeeCount} hint="Review payroll readiness and profile gaps →" /></Link>
+            <Link href="/dashboard/admin/shops"><AdminStatCard label="Shops" value={summary.shopCount} hint={`${summary.incompleteShopCount} need profile follow-up →`} /></Link>
+            <Link href="/dashboard/admin/audit"><AdminStatCard label="Audit (24h)" value={summary.audit24hCount} hint="Inspect privileged events →" /></Link>
+            <Link href="/dashboard/workforce/payroll-review"><AdminStatCard label="Open payroll periods" value={summary.openPayrollPeriods} hint="Open payroll review →" /></Link>
+            <Link href="/dashboard/workforce/payroll-review?severity=blocking"><AdminStatCard label="Payroll blocking exceptions" value={summary.payrollBlockingExceptions} hint="Open required corrections →" /></Link>
+            <Link href="/dashboard/workforce/payroll-review?severity=warning"><AdminStatCard label="Payroll warnings" value={summary.payrollWarningExceptions} hint="Review advisory exceptions →" /></Link>
+            <Link href="/dashboard/workforce/people"><AdminStatCard label="Workforce missing profile setup" value={summary.profileSetupMissingWorkforce} hint="Complete employee setup →" /></Link>
           </AdminStatGrid>
         )}
       </AdminPanel>
