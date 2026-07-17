@@ -10,6 +10,15 @@ import {
 } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  createMessageDraft,
+  getOfflineMessageDraft,
+  removeOfflineMessageDraft,
+  resolveMessagingDraftScope,
+  saveOfflineMessageDraft,
+  type OfflineMessageDraft,
+} from "@/features/chat/offline/messageDrafts";
+import type { OfflineMutationScope } from "@/features/shared/lib/offline/mutations";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 
@@ -57,9 +66,47 @@ export default function ChatWindow({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(null);
+  const [draft, setDraft] = useState<OfflineMessageDraft | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const draftTargetId = `conversation:${conversationId}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    setDraftReady(false);
+    void resolveMessagingDraftScope(userId).then(async (scope) => {
+      if (!scope || cancelled) return;
+      const stored = await getOfflineMessageDraft({ scope, targetId: draftTargetId });
+      if (cancelled) return;
+      const next = stored ?? createMessageDraft({ scope, targetId: draftTargetId });
+      setDraftScope(scope);
+      setDraft(next);
+      setNewMessage(next.content);
+      setDraftSaved(Boolean(stored?.content));
+      setDraftReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftTargetId, userId]);
+
+  useEffect(() => {
+    if (!draftReady || !draftScope || !draft || sending) return;
+    const timer = window.setTimeout(() => {
+      if (!newMessage.trim()) {
+        void removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        setDraftSaved(false);
+        return;
+      }
+      const next = { ...draft, content: newMessage, updatedAt: new Date().toISOString() };
+      void saveOfflineMessageDraft(next).then(() => setDraftSaved(true));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [draft, draftReady, draftScope, draftTargetId, newMessage, sending]);
 
   const fetchMessages = useCallback(async () => {
     if (!conversationId) return;
@@ -198,7 +245,12 @@ export default function ChatWindow({
     const content = newMessage.trim();
     if (!content || sending) return;
 
-    const clientMessageId = crypto.randomUUID();
+    if (!navigator.onLine) {
+      setError("Offline — this message is saved as a draft and has not been sent.");
+      return;
+    }
+
+    const clientMessageId = draft?.clientMessageId ?? crypto.randomUUID();
     const tempId = `temp-${clientMessageId}`;
     const optimistic: Message = {
       id: tempId,
@@ -245,6 +297,13 @@ export default function ChatWindow({
         ),
         inserted,
       ]);
+      if (draftScope) {
+        await removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+      }
+      setDraft(
+        draftScope ? createMessageDraft({ scope: draftScope, targetId: draftTargetId }) : null,
+      );
+      setDraftSaved(false);
     } catch (err) {
       console.error("[ChatWindow] sendMessage error:", err);
       setMessages((prev) => prev.filter((message) => message.id !== tempId));
@@ -253,7 +312,7 @@ export default function ChatWindow({
     } finally {
       setSending(false);
     }
-  }, [conversationId, newMessage, sending, userId]);
+  }, [conversationId, draft, draftScope, draftTargetId, newMessage, sending, userId]);
 
   const deleteMessage = useCallback(
     async (id: string) => {
@@ -436,6 +495,11 @@ export default function ChatWindow({
           {sending ? "Sending…" : "Send"}
         </button>
       </div>
+      {draftSaved ? (
+        <div className="px-3 pb-2 text-[10px] text-[color:var(--theme-text-muted)]">
+          Saved on this device · delivery requires a connection
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -6,6 +6,16 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import ChatWindow from "@/features/ai/components/chat/ChatWindow";
 import UserAvatar from "@/features/chat/components/UserAvatar";
+import {
+  createMessageDraft,
+  getOfflineMessageDraft,
+  removeOfflineMessageDraft,
+  resolveMessagingDraftScope,
+  saveOfflineMessageDraft,
+  warmMessagingRouteShells,
+  type OfflineMessageDraft,
+} from "@/features/chat/offline/messageDrafts";
+import type { OfflineMutationScope } from "@/features/shared/lib/offline/mutations";
 
 type ConversationRow = Database["public"]["Tables"]["conversations"]["Row"];
 type MessageRow = Database["public"]["Tables"]["messages"]["Row"];
@@ -49,6 +59,11 @@ export default function PortalMessagesWorkspace(): JSX.Element {
   const [contextOptions, setContextOptions] = useState<ContextOption[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(null);
+  const [newThreadDraft, setNewThreadDraft] = useState<OfflineMessageDraft | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
+  const draftTargetId = "portal:new-conversation";
 
   const loadConversations = useCallback(async () => {
     const response = await fetch("/api/chat/my-conversations", { credentials: "include" });
@@ -59,21 +74,65 @@ export default function PortalMessagesWorkspace(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    void Promise.all([
-      supabase.auth.getUser(),
-      fetch("/api/chat/context-options", { credentials: "include" }).then((response) => response.json()),
-      loadConversations(),
-    ])
-      .then(([auth, contextPayload]) => {
-        setUserId(auth.data.user?.id ?? null);
+    void supabase.auth.getSession().then(({ data }) => {
+      setUserId(data.session?.user.id ?? null);
+    });
+    void fetch("/api/chat/context-options", { credentials: "include" })
+      .then((response) => response.json())
+      .then((contextPayload) => {
         const options = (contextPayload as { options?: ContextOption[] }).options;
         setContextOptions(Array.isArray(options) ? options : []);
       })
+      .catch(() => undefined);
+    void loadConversations()
       .catch((cause: unknown) => {
-        setError(cause instanceof Error ? cause.message : "Could not load messages");
+        if (navigator.onLine) {
+          setError(cause instanceof Error ? cause.message : "Could not load messages");
+        }
       })
       .finally(() => setLoading(false));
   }, [loadConversations, supabase]);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void resolveMessagingDraftScope(userId).then(async (scope) => {
+      if (!scope || cancelled) return;
+      const stored = await getOfflineMessageDraft({ scope, targetId: draftTargetId });
+      if (cancelled) return;
+      const next = stored ?? createMessageDraft({ scope, targetId: draftTargetId });
+      setDraftScope(scope);
+      setNewThreadDraft(next);
+      setMessage(next.content);
+      setSubject(next.subject ?? "");
+      setContextKey(next.contextKey ?? "");
+      setDraftSaved(Boolean(stored?.content || stored?.subject));
+      setDraftReady(true);
+      if (navigator.onLine) void warmMessagingRouteShells();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!draftReady || !draftScope || !newThreadDraft || !newThread) return;
+    const timer = window.setTimeout(() => {
+      if (!message.trim() && !subject.trim() && !contextKey) {
+        void removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        setDraftSaved(false);
+        return;
+      }
+      void saveOfflineMessageDraft({
+        ...newThreadDraft,
+        content: message,
+        subject,
+        contextKey,
+        updatedAt: new Date().toISOString(),
+      }).then(() => setDraftSaved(true));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [contextKey, draftReady, draftScope, message, newThread, newThreadDraft, subject]);
 
   const active = rows.find((row) => row.conversation.id === activeId) ?? null;
 
@@ -83,10 +142,16 @@ export default function PortalMessagesWorkspace(): JSX.Element {
     setSending(true);
     setError(null);
 
+    if (!navigator.onLine) {
+      setError("Offline — this message is saved as a draft and has not been sent.");
+      setSending(false);
+      return;
+    }
+
     const selectedContext = contextOptions.find(
       (option) => `${option.type}:${option.id}` === contextKey,
     );
-    const requestId = crypto.randomUUID();
+    const requestId = newThreadDraft?.conversationRequestId ?? crypto.randomUUID();
 
     try {
       const createResponse = await fetch("/api/chat/start-conversation", {
@@ -112,7 +177,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
         body: JSON.stringify({
           conversationId: created.id,
           content,
-          clientMessageId: crypto.randomUUID(),
+          clientMessageId: newThreadDraft?.clientMessageId ?? crypto.randomUUID(),
         }),
       });
       if (!messageResponse.ok) {
@@ -125,6 +190,11 @@ export default function PortalMessagesWorkspace(): JSX.Element {
       setContextKey("");
       setNewThread(false);
       setActiveId(created.id);
+      if (draftScope) {
+        await removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        setNewThreadDraft(createMessageDraft({ scope: draftScope, targetId: draftTargetId }));
+      }
+      setDraftSaved(false);
       await loadConversations();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not send message");
@@ -273,6 +343,11 @@ export default function PortalMessagesWorkspace(): JSX.Element {
                   {sending ? "Sending…" : "Send message"}
                 </button>
               </div>
+              {draftSaved ? (
+                <p className="text-xs text-[color:var(--theme-text-muted)]">
+                  Saved on this device · delivery requires a connection
+                </p>
+              ) : null}
             </div>
           ) : active && userId ? (
             <>
