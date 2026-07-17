@@ -260,6 +260,7 @@ export default function SchedulingClient(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const searchParams = useSearchParams();
   const correctionUserId = searchParams.get("user_id");
+  const correctionDate = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get("date") ?? "") ? searchParams.get("date")! : null;
 
   const [tab, setTab] = useState<TabKey>("shifts");
 
@@ -270,10 +271,8 @@ export default function SchedulingClient(): JSX.Element {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [userId, setUserId] = useState<string>("");
 
-  const [from, setFrom] = useState<string>(() =>
-    format(new Date(), "yyyy-MM-dd"),
-  );
-  const [to, setTo] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  const [from, setFrom] = useState<string>(() => correctionDate ?? format(new Date(), "yyyy-MM-dd"));
+  const [to, setTo] = useState<string>(() => correctionDate ?? format(new Date(), "yyyy-MM-dd"));
 
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
