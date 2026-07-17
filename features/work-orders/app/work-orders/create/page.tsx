@@ -267,6 +267,49 @@ const yearToStrOrNull = (
   return s ? s : null;
 };
 
+function validateVehicleSaveInput(vehicle: VehicleWithExtra): void {
+  const vin = strOrNull(vehicle.vin);
+  if (vin && !normalizeVinInput(vin).isValid) {
+    throw new Error("VIN must be a valid 17-character VIN before saving.");
+  }
+
+  const yearText = yearToStrOrNull(vehicle.year);
+  const year = numOrNull(vehicle.year);
+  const maximumYear = new Date().getFullYear() + 2;
+  if (
+    yearText &&
+    (year === null || !Number.isInteger(year) || year < 1886 || year > maximumYear)
+  ) {
+    throw new Error(`Year must be between 1886 and ${maximumYear}.`);
+  }
+
+  const engineHoursText = strOrNull(vehicle.engine_hours);
+  const engineHours = numOrNull(vehicle.engine_hours);
+  if (engineHoursText && (engineHours === null || engineHours < 0)) {
+    throw new Error("Engine hours must be a positive number.");
+  }
+}
+
+function assertWritePersisted(
+  entity: "customer" | "vehicle",
+  expected: Record<string, unknown>,
+  actual: Record<string, unknown>,
+): void {
+  const comparable = (value: unknown) =>
+    value === null || value === undefined || String(value).trim() === ""
+      ? null
+      : String(value).trim();
+  const mismatched = Object.entries(expected)
+    .filter(([key]) => key !== "shop_id")
+    .filter(([key, value]) => comparable(actual[key]) !== comparable(value))
+    .map(([key]) => key);
+  if (mismatched.length) {
+    throw new Error(
+      `${entity === "customer" ? "Customer" : "Vehicle"} fields did not save: ${mismatched.join(", ")}. Please try again.`,
+    );
+  }
+}
+
 function toDatetimeLocalInput(value: string | null | undefined): string {
   if (!value) return "";
   const d = new Date(value);
@@ -831,65 +874,26 @@ useEffect(() => {
   const buildVehiclePatch = (
     v: VehicleWithExtra,
     customerIdIn: string,
-  ): Partial<VehicleRow> => {
-    const patch: Partial<VehicleRow> = {
-      customer_id: customerIdIn,
-    };
-
-    const vin = validVinOrNull(v.vin);
-    if (vin !== null) patch.vin = vin;
-
-    const yr = numOrNull(v.year);
-    if (yr !== null) patch.year = yr;
-
-    const make = strOrNull(v.make);
-    if (make !== null) patch.make = make;
-
-    const model = strOrNull(v.model);
-    if (model !== null) patch.model = model;
-
-    const plate = strOrNull(v.license_plate);
-    if (plate !== null) patch.license_plate = plate;
-
-    const mileage = strOrNull(v.mileage);
-    if (mileage !== null) patch.mileage = mileage;
-
-    const unit = strOrNull(v.unit_number);
-    if (unit !== null) patch.unit_number = unit;
-
-    const color = strOrNull(v.color);
-    if (color !== null) patch.color = color;
-
-    const eh = numOrNull(v.engine_hours);
-    if (eh !== null) patch.engine_hours = eh;
-
-    // ✅ NEW
-    const engine = strOrNull(v.engine ?? null);
-    if (engine !== null) patch.engine = engine;
-
-    const submodel = strOrNull(v.submodel ?? null);
-    if (submodel !== null) patch.submodel = submodel;
-
-    const engineFamily = strOrNull(v.engine_family ?? null);
-    if (engineFamily !== null) patch.engine_family = engineFamily;
-
-    const engineType = strOrNull(v.engine_type ?? null);
-    if (engineType !== null) patch.engine_type = engineType;
-
-    const trans = strOrNull(v.transmission ?? null);
-    if (trans !== null) patch.transmission = trans;
-
-    const transmissionType = strOrNull(v.transmission_type ?? null);
-    if (transmissionType !== null) patch.transmission_type = transmissionType;
-
-    const fuel = strOrNull(v.fuel_type ?? null);
-    if (fuel !== null) patch.fuel_type = fuel;
-
-    const drive = strOrNull(v.drivetrain ?? null);
-    if (drive !== null) patch.drivetrain = drive;
-
-    return patch;
-  };
+  ): Partial<VehicleRow> => ({
+    customer_id: customerIdIn,
+    vin: validVinOrNull(v.vin),
+    year: numOrNull(v.year),
+    make: strOrNull(v.make),
+    model: strOrNull(v.model),
+    license_plate: strOrNull(v.license_plate),
+    mileage: strOrNull(v.mileage),
+    unit_number: strOrNull(v.unit_number),
+    color: strOrNull(v.color),
+    engine_hours: numOrNull(v.engine_hours),
+    engine: strOrNull(v.engine ?? null),
+    submodel: strOrNull(v.submodel ?? null),
+    engine_family: strOrNull(v.engine_family ?? null),
+    engine_type: strOrNull(v.engine_type ?? null),
+    transmission: strOrNull(v.transmission ?? null),
+    transmission_type: strOrNull(v.transmission_type ?? null),
+    fuel_type: strOrNull(v.fuel_type ?? null),
+    drivetrain: strOrNull(v.drivetrain ?? null),
+  });
 
   const hydrateCustomerFromRow = useCallback(
     (row: CustomerRowWithBusiness): CustomerWithBusiness =>
@@ -1119,17 +1123,8 @@ useEffect(() => {
   async function ensureCustomer(shopId: string): Promise<CustomerRowWithBusiness> {
     const normalizedEmail = normalizeEmail(customer.email);
     const normalizedPhone = normalizePhone(customer.phone);
-
-    const customerPatch: Partial<CustomerRowWithBusiness> = {};
-    if (strOrNull(customer.first_name)) customerPatch.first_name = strOrNull(customer.first_name);
-    if (strOrNull(customer.last_name)) customerPatch.last_name = strOrNull(customer.last_name);
-    if (strOrNull(customer.business_name ?? null)) customerPatch.business_name = strOrNull(customer.business_name ?? null);
-    if (normalizedEmail) customerPatch.email = normalizedEmail;
-    if (normalizedPhone) customerPatch.phone = normalizedPhone;
-    if (strOrNull(customer.address)) customerPatch.address = strOrNull(customer.address);
-    if (strOrNull(customer.city)) customerPatch.city = strOrNull(customer.city);
-    if (strOrNull(customer.province)) customerPatch.province = strOrNull(customer.province);
-    if (strOrNull(customer.postal_code)) customerPatch.postal_code = strOrNull(customer.postal_code);
+    const customerWrite = buildCustomerInsert(customer, shopId);
+    const { shop_id: _shopId, ...customerPatch } = customerWrite;
 
     if (customerId) {
       const { data, error } = await supabase
@@ -1141,19 +1136,6 @@ useEffect(() => {
       if (error) throw error;
       if (data) {
         const row = data as CustomerRowWithBusiness;
-        const needsPatch =
-          (normalizedEmail && !row.email) ||
-          (normalizedPhone && !row.phone) ||
-          (strOrNull(customer.first_name) && !row.first_name) ||
-          (strOrNull(customer.last_name) && !row.last_name) ||
-          (strOrNull(customer.business_name ?? null) && !row.business_name) ||
-          (strOrNull(customer.address) && !row.address) ||
-          (strOrNull(customer.city) && !row.city) ||
-          (strOrNull(customer.province) && !row.province) ||
-          (strOrNull(customer.postal_code) && !row.postal_code);
-
-        if (!needsPatch) return row;
-
         const { data: patched, error: patchErr } = await supabase
           .from("customers")
           .update(customerPatch)
@@ -1221,7 +1203,7 @@ useEffect(() => {
 
     const { data: inserted, error: insErr } = await supabase
       .from("customers")
-      .insert(buildCustomerInsert(customer, shopId))
+      .insert(customerWrite)
       .select("*")
       .single();
 
@@ -1269,12 +1251,14 @@ useEffect(() => {
       }
       const { data: existing, error: existingErr } = await supabase
         .from("vehicles")
-        .select("*")
+        .update(buildVehiclePatch(vehicle, cust.id))
         .eq("id", sameCustomerMatch.id)
         .eq("shop_id", shopId)
+        .eq("customer_id", cust.id)
+        .select("*")
         .single();
       if (existingErr || !existing) {
-        throw new Error(existingErr?.message ?? "Failed to load existing vehicle.");
+        throw new Error(existingErr?.message ?? "Failed to update existing vehicle.");
       }
       setVehicleId(existing.id);
       return existing as VehicleRow;
@@ -1398,6 +1382,7 @@ useEffect(() => {
           "Please enter at least a customer name, business name, phone, or email.",
         );
       }
+      validateVehicleSaveInput(vehicle);
 
       const {
         data: { user },
@@ -1409,53 +1394,39 @@ useEffect(() => {
 
       const cust = await ensureCustomer(shopId);
       const veh = await ensureVehicleRow(cust, shopId);
+      const persistedCustomer = hydrateCustomerFromRow(cust);
+      const persistedVehicle = hydrateVehicleFromRow(veh);
+
+      assertWritePersisted(
+        "customer",
+        buildCustomerInsert(customer, shopId),
+        cust as unknown as Record<string, unknown>,
+      );
+      assertWritePersisted(
+        "vehicle",
+        buildVehiclePatch(vehicle, cust.id) as Record<string, unknown>,
+        veh as unknown as Record<string, unknown>,
+      );
+
+      setCustomer(persistedCustomer);
+      setVehicle(persistedVehicle);
 
       // ✅ persist full vehicle info into draft/session
       cvDraft.bulkSet({
         customer: {
-          first_name: cust.first_name ?? null,
-          last_name: cust.last_name ?? null,
-          phone: customer.phone ?? null,
-          email: cust.email ?? null,
-          address: customer.address ?? null,
-          city: customer.city ?? null,
-          province: customer.province ?? null,
-          postal_code: customer.postal_code ?? null,
-          ...(cust.business_name ? { business_name: cust.business_name } : {}),
+          first_name: persistedCustomer.first_name ?? null,
+          last_name: persistedCustomer.last_name ?? null,
+          phone: persistedCustomer.phone ?? null,
+          email: persistedCustomer.email ?? null,
+          address: persistedCustomer.address ?? null,
+          city: persistedCustomer.city ?? null,
+          province: persistedCustomer.province ?? null,
+          postal_code: persistedCustomer.postal_code ?? null,
+          ...(persistedCustomer.business_name
+            ? { business_name: persistedCustomer.business_name }
+            : {}),
         },
-        vehicle: {
-          vin: veh.vin ?? null,
-          year: veh.year != null ? String(veh.year) : null,
-          make: veh.make ?? null,
-          model: veh.model ?? null,
-          license_plate: veh.license_plate ?? null,
-          mileage: (veh.mileage as string | null) ?? vehicle.mileage ?? null,
-          unit_number:
-            (veh.unit_number as string | null) ?? vehicle.unit_number ?? null,
-          color: (veh.color as string | null) ?? vehicle.color ?? null,
-          engine_hours:
-            veh.engine_hours != null
-              ? String(veh.engine_hours)
-              : vehicle.engine_hours ?? null,
-
-          // ✅ NEW
-          engine: (veh.engine as string | null) ?? vehicle.engine ?? null,
-          submodel: (veh.submodel as string | null) ?? vehicle.submodel ?? null,
-          engine_family:
-            (veh.engine_family as string | null) ?? vehicle.engine_family ?? null,
-          engine_type:
-            (veh.engine_type as string | null) ?? vehicle.engine_type ?? null,
-          transmission:
-            (veh.transmission as string | null) ?? vehicle.transmission ?? null,
-          transmission_type:
-            (veh.transmission_type as string | null) ??
-            vehicle.transmission_type ??
-            null,
-          fuel_type:
-            (veh.fuel_type as string | null) ?? vehicle.fuel_type ?? null,
-          drivetrain:
-            (veh.drivetrain as string | null) ?? vehicle.drivetrain ?? null,
-        },
+        vehicle: persistedVehicle,
       });
 
       if (wo?.id) {
