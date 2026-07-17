@@ -344,6 +344,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                     <div className="mt-3 flex gap-3 text-xs">
                       {shift.user_id ? <Link href={`/dashboard/workforce/payroll-review?person_id=${shift.user_id}`} className="font-medium text-orange-300">Payroll detail</Link> : null}
                       {shift.user_id ? <Link href={`/dashboard/admin/people/${shift.user_id}#payroll-posture`} className="font-medium text-orange-300">Employee record</Link> : null}
+                      {shift.user_id ? <Link href={`/dashboard/admin/scheduling?user_id=${shift.user_id}&shift_id=${shiftId}`} className="font-medium text-orange-300">Correct time</Link> : null}
                     </div>
                   </article>
                 );
