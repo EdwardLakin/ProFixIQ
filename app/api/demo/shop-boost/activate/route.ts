@@ -3,7 +3,10 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
-import { runShopBoostImport } from "@/features/integrations/imports/runFullImport";
+import {
+  runShopBoostImport,
+  type ShopBoostImportSummary,
+} from "@/features/integrations/imports/runFullImport";
 import { updateIntakeProgress } from "@/features/integrations/shopBoost/status";
 import {
   INSTANT_SHOP_ANALYSIS_DATASET_KEYS,
@@ -50,6 +53,53 @@ function pathBasename(path: string): string {
   return chunks[chunks.length - 1] ?? "upload.csv";
 }
 
+function readPersistedImportSummary(value: unknown): ShopBoostImportSummary | null {
+  const basics = isRecord(value) ? value : {};
+  const migrationProgress = isRecord(basics.migrationProgress) ? basics.migrationProgress : {};
+  const summary = migrationProgress.importSummary;
+  if (!isRecord(summary) || !isRecord(summary.rowResults)) return null;
+  if (
+    typeof summary.customersImported !== "number" ||
+    typeof summary.vehiclesImported !== "number" ||
+    typeof summary.workOrdersImported !== "number" ||
+    typeof summary.invoicesImported !== "number" ||
+    typeof summary.partsImported !== "number" ||
+    typeof summary.completionState !== "string"
+  ) {
+    return null;
+  }
+  return summary as unknown as ShopBoostImportSummary;
+}
+
+async function ensureStorageCopy(args: {
+  admin: ReturnType<typeof createAdminSupabase>;
+  sourcePath: string;
+  targetPath: string;
+}): Promise<void> {
+  const chunks = args.targetPath.split("/").filter(Boolean);
+  const fileName = chunks.pop();
+  const directory = chunks.join("/");
+  if (!fileName) throw new Error("Invalid activation storage target.");
+
+  const targetExists = async () => {
+    const { data, error } = await args.admin.storage
+      .from("shop-imports")
+      .list(directory, { limit: 100, search: fileName });
+    if (error) throw new Error(error.message);
+    return (data ?? []).some((entry) => entry.name === fileName);
+  };
+
+  if (await targetExists()) return;
+
+  const { error: copyError } = await args.admin.storage
+    .from("shop-imports")
+    .copy(args.sourcePath, args.targetPath);
+
+  if (!copyError) return;
+  if (await targetExists()) return;
+  throw new Error(copyError.message);
+}
+
 export async function POST(req: NextRequest) {
   const supabaseUser = createServerSupabaseRoute();
   const {
@@ -71,12 +121,20 @@ export async function POST(req: NextRequest) {
 
   const { data: profile } = await supabaseUser
     .from("profiles")
-    .select("shop_id")
+    .select("shop_id,role")
     .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null }>();
+    .maybeSingle<{ shop_id: string | null; role: string | null }>();
 
   if (!profile?.shop_id) {
     return NextResponse.json({ ok: false, error: "No shop linked." }, { status: 400 });
+  }
+
+  const role = profile.role?.trim().toLowerCase();
+  if (role !== "owner" && role !== "admin") {
+    return NextResponse.json(
+      { ok: false, error: "Only a shop owner or administrator can activate an analysis." },
+      { status: 403 },
+    );
   }
 
   const shopId = profile.shop_id;
@@ -112,6 +170,7 @@ export async function POST(req: NextRequest) {
     .select("id")
     .eq("demo_id", demoId)
     .eq("email", normalizedUserEmail)
+    .eq("lead_kind", "activation_claim")
     .maybeSingle();
 
   if (claimedLeadError || !claimedLead?.id) {
@@ -140,18 +199,30 @@ export async function POST(req: NextRequest) {
 
   const existing = await admin
     .from("shop_boost_intakes")
-    .select("id,status")
+    .select("id,status,intake_basics")
     .eq("shop_id", shopId)
     .eq("id", intakeId)
-    .maybeSingle();
+    .maybeSingle<{ id: string; status: string | null; intake_basics: unknown }>();
 
-  if (existing.data?.id) {
+  if (existing.error) {
+    return NextResponse.json(
+      { ok: false, error: `Failed to inspect activation state: ${existing.error.message}` },
+      { status: 500 },
+    );
+  }
+
+  const persistedImportSummary = readPersistedImportSummary(existing.data?.intake_basics);
+  const terminalStatus =
+    existing.data?.status === "completed" || existing.data?.status === "completed_with_errors";
+
+  if (existing.data?.id && terminalStatus && persistedImportSummary) {
     const guided = await mapInstantAnalysisToGuidedOnboarding({
       shopId,
       userId: user.id,
       demoId,
       intakeId,
       uploadedDatasets,
+      importSummary: persistedImportSummary,
     });
     return NextResponse.json({
       ok: true,
@@ -163,57 +234,66 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const copiedPaths: Partial<Record<ShopBoostUploadDatasetKey, string>> = {};
-  for (const [datasetKey, sourcePath] of Object.entries(sourcePaths) as Array<[ShopBoostUploadDatasetKey, string]>) {
-    const targetPath = `shops/${shopId}/${intakeId}/${datasetKey}-${pathBasename(sourcePath)}`;
-    const { error: copyErr } = await admin.storage.from("shop-imports").copy(sourcePath, targetPath);
-    if (copyErr) {
-      return NextResponse.json(
-        { ok: false, error: `Failed to prepare ${datasetKey} for activation import.` },
-        { status: 500 },
-      );
+  if (!existing.data?.id) {
+    const copiedPaths: Partial<Record<ShopBoostUploadDatasetKey, string>> = {};
+    for (const [datasetKey, sourcePath] of Object.entries(sourcePaths) as Array<[ShopBoostUploadDatasetKey, string]>) {
+      const targetPath = `shops/${shopId}/${intakeId}/${datasetKey}-${pathBasename(sourcePath)}`;
+      try {
+        await ensureStorageCopy({ admin, sourcePath, targetPath });
+      } catch (copyError) {
+        console.error("[demo/shop-boost/activate] Failed to prepare activation file", {
+          datasetKey,
+          sourcePath,
+          targetPath,
+          error: copyError instanceof Error ? copyError.message : copyError,
+        });
+        return NextResponse.json(
+          { ok: false, error: `Failed to prepare ${datasetKey} for activation import.` },
+          { status: 500 },
+        );
+      }
+      copiedPaths[datasetKey] = targetPath;
     }
-    copiedPaths[datasetKey] = targetPath;
-  }
 
-  const uploadManifest = Object.fromEntries(
-    uploadedDatasets.map((dataset) => [
-      dataset,
-      {
+    const uploadManifest = Object.fromEntries(
+      uploadedDatasets.map((dataset) => [
         dataset,
-        path: copiedPaths[dataset],
-        fileName: copiedPaths[dataset] ? pathBasename(copiedPaths[dataset]!) : null,
-        contentType: "text/csv",
-        sizeBytes: null,
-        target: dataset,
-        importMode: dataset === "invoices" ? "staging" : "direct",
+        {
+          dataset,
+          path: copiedPaths[dataset],
+          fileName: copiedPaths[dataset] ? pathBasename(copiedPaths[dataset]!) : null,
+          contentType: "text/csv",
+          sizeBytes: null,
+          target: dataset,
+          importMode: dataset === "invoices" ? "staging" : "direct",
+        },
+      ]),
+    );
+
+    const intakeInsert: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
+      id: intakeId,
+      shop_id: shopId,
+      questionnaire:
+        questionnaire as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
+      customers_file_path: copiedPaths.customers ?? null,
+      vehicles_file_path: copiedPaths.vehicles ?? null,
+      parts_file_path: copiedPaths.parts ?? null,
+      history_file_path: copiedPaths.history ?? null,
+      staff_file_path: copiedPaths.staff ?? null,
+      intake_basics: {
+        source: "demo_preview_activation",
+        demoId,
+        activatedByUserId: user.id,
+        activatedAt: new Date().toISOString(),
+        uploadManifest,
       },
-    ]),
-  );
+      status: "pending",
+    };
 
-  const intakeInsert: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
-    id: intakeId,
-    shop_id: shopId,
-    questionnaire:
-      questionnaire as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
-    customers_file_path: copiedPaths.customers ?? null,
-    vehicles_file_path: copiedPaths.vehicles ?? null,
-    parts_file_path: copiedPaths.parts ?? null,
-    history_file_path: copiedPaths.history ?? null,
-    staff_file_path: copiedPaths.staff ?? null,
-    intake_basics: {
-      source: "demo_preview_activation",
-      demoId,
-      activatedByUserId: user.id,
-      activatedAt: new Date().toISOString(),
-      uploadManifest,
-    },
-    status: "pending",
-  };
-
-  const { error: insertErr } = await admin.from("shop_boost_intakes").insert(intakeInsert);
-  if (insertErr) {
-    return NextResponse.json({ ok: false, error: `Failed to start intake: ${insertErr.message}` }, { status: 500 });
+    const { error: insertErr } = await admin.from("shop_boost_intakes").insert(intakeInsert);
+    if (insertErr) {
+      return NextResponse.json({ ok: false, error: `Failed to start intake: ${insertErr.message}` }, { status: 500 });
+    }
   }
 
   await updateIntakeProgress({
@@ -255,6 +335,7 @@ export async function POST(req: NextRequest) {
     patch: {
       completedAt: new Date().toISOString(),
       failedAt: null,
+      importSummary,
       resultSummary: {
         customersImported: importSummary.customersImported,
         vehiclesImported: importSummary.vehiclesImported,
