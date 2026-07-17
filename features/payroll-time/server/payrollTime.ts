@@ -1,6 +1,7 @@
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { createHash } from "crypto";
 import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
+import { calculatePayPeriodBounds, type PayrollCadence } from "@/features/payroll-time/lib/payPeriodBounds";
 
 export type PayrollPeriodStatus = "draft" | "open" | "approved" | "exported";
 
@@ -231,25 +232,15 @@ export async function getOrCreateCurrentPeriod(shopId: string, actorId: string) 
     payrollSettings = inserted.data;
   }
 
-  const cadence = payrollSettings?.cadence ?? "biweekly";
+  const cadence = (payrollSettings?.cadence ?? "biweekly") as PayrollCadence;
   const weekStartsOn = Number(payrollSettings?.week_starts_on ?? 1);
-
   const todayUtc = startOfUtcDay(`${toShopDate(today.toISOString(), timezone)}T00:00:00.000Z`);
-  const day = todayUtc.getUTCDay();
-  const diffToWeekStart = (day - weekStartsOn + 7) % 7;
-  const currentWeekStart = addDays(todayUtc, -diffToWeekStart);
-  const currentWeekEnd = addDays(currentWeekStart, 6);
-
-  let periodStart = currentWeekStart;
-  let periodEnd = currentWeekEnd;
-
-  if (cadence === "biweekly") {
-    const epoch = Date.UTC(2024, 0, 1);
-    const weeksSinceEpoch = Math.floor((currentWeekStart.getTime() - epoch) / (7 * 24 * 60 * 60 * 1000));
-    const isEven = weeksSinceEpoch % 2 === 0;
-    periodStart = isEven ? currentWeekStart : addDays(currentWeekStart, -7);
-    periodEnd = addDays(periodStart, 13);
-  }
+  const { start: periodStart, end: periodEnd } = calculatePayPeriodBounds({
+    shopDate: todayUtc,
+    cadence,
+    weekStartsOn,
+    anchorDate: payrollSettings?.period_anchor_date ?? null,
+  });
 
   const periodStartIso = toIsoDate(periodStart);
   const periodEndIso = toIsoDate(periodEnd);
@@ -369,14 +360,14 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       .select("id, user_id, type, status, start_time, end_time, excluded_from_payroll")
       .eq("shop_id", shopId)
       .neq("excluded_from_payroll", true)
-      .gte("start_time", rangeStart)
-      .lt("start_time", rangeEnd),
+      .lt("start_time", rangeEnd)
+      .or(`end_time.is.null,end_time.gt.${rangeStart}`),
     admin
       .from("work_order_line_labor_segments")
       .select("id, technician_id, started_at, ended_at")
       .eq("shop_id", shopId)
-      .gte("started_at", rangeStart)
-      .lt("started_at", rangeEnd),
+      .lt("started_at", rangeEnd)
+      .or(`ended_at.is.null,ended_at.gt.${rangeStart}`),
   ]);
 
   if (shiftsErr) throw new Error(shiftsErr.message);

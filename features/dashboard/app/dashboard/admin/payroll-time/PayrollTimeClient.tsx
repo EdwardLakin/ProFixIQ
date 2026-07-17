@@ -24,6 +24,12 @@ type Period = {
   exported_at: string | null;
 };
 
+type PayrollSettings = {
+  cadence: "weekly" | "biweekly" | "semimonthly" | "monthly";
+  week_starts_on: number;
+  period_anchor_date: string | null;
+};
+
 type Entry = {
   id: string;
   user_id: string;
@@ -88,6 +94,13 @@ function fmtFileSize(bytes: number | null | undefined) {
 export default function PayrollTimeClient() {
 
   const [periods, setPeriods] = useState<Period[]>([]);
+  const [payrollSettings, setPayrollSettings] = useState<PayrollSettings | null>(null);
+  const [canConfigurePeriods, setCanConfigurePeriods] = useState(false);
+  const [settingsForm, setSettingsForm] = useState<PayrollSettings>({
+    cadence: "biweekly",
+    week_starts_on: 1,
+    period_anchor_date: new Date().toISOString().slice(0, 10),
+  });
   const [activePeriodId, setActivePeriodId] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [exceptions, setExceptions] = useState<Exception[]>([]);
@@ -180,6 +193,16 @@ export default function PayrollTimeClient() {
       return;
     }
 
+    const nextSettings = (body?.settings ?? null) as PayrollSettings | null;
+    setPayrollSettings(nextSettings);
+    setCanConfigurePeriods(Boolean(body?.canConfigure));
+    if (nextSettings) {
+      setSettingsForm({
+        cadence: nextSettings.cadence,
+        week_starts_on: Number(nextSettings.week_starts_on ?? 1),
+        period_anchor_date: nextSettings.period_anchor_date ?? new Date().toISOString().slice(0, 10),
+      });
+    }
     setPeriods((body?.periods ?? []) as Period[]);
     setActivePeriodId((body?.activePeriodId as string | null) ?? null);
     setEntries((body?.entries ?? []) as Entry[]);
@@ -201,11 +224,11 @@ export default function PayrollTimeClient() {
     void loadExportHistory(activePeriodId);
   }, [activePeriodId]);
 
-  async function runAction(path: string, actionName: string, payload: Record<string, unknown>) {
+  async function runAction(path: string, actionName: string, payload: unknown, method: "POST" | "PUT" = "POST") {
     setBusyAction(actionName);
     setError(null);
     const res = await fetch(path, {
-      method: "POST",
+      method,
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
@@ -217,6 +240,11 @@ export default function PayrollTimeClient() {
     }
     setBusyAction(null);
     return body;
+  }
+
+  async function handleSavePeriodSettings() {
+    const result = await runAction("/api/payroll-time/periods", "settings", settingsForm, "PUT");
+    if (result) await load(result?.currentPeriod?.id ?? null);
   }
 
   async function handleRebuild() {
@@ -321,6 +349,66 @@ export default function PayrollTimeClient() {
           {summary.blocking === 0 && summary.warnings === 0 ? <p>Payroll totals are ready for review.</p> : null}
           <p className="text-xs text-[color:var(--theme-text-muted)]">Overtime, long shifts, missing lunch, and job-time ratio flags are advisory. Valid recorded attendance remains visible and payable for owner/admin decisions.</p>
         </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle
+          title="Pay period settings"
+          description="Choose how payroll periods are generated. Approved and exported periods remain locked historical snapshots."
+        />
+        <AdminToolbar>
+          <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+            Frequency
+            <select
+              className="min-w-52 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+              value={settingsForm.cadence}
+              disabled={!canConfigurePeriods || busyAction !== null}
+              onChange={(event) => setSettingsForm((current) => ({ ...current, cadence: event.target.value as PayrollSettings["cadence"] }))}
+            >
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-weekly</option>
+              <option value="semimonthly">Semi-monthly (1–15 / 16–end)</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </label>
+          {settingsForm.cadence === "weekly" ? (
+            <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+              Week starts
+              <select
+                className="min-w-44 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+                value={settingsForm.week_starts_on}
+                disabled={!canConfigurePeriods || busyAction !== null}
+                onChange={(event) => setSettingsForm((current) => ({ ...current, week_starts_on: Number(event.target.value) }))}
+              >
+                {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => <option key={day} value={index}>{day}</option>)}
+              </select>
+            </label>
+          ) : null}
+          {settingsForm.cadence === "biweekly" ? (
+            <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+              Anchor period starts
+              <input
+                type="date"
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+                value={settingsForm.period_anchor_date ?? ""}
+                disabled={!canConfigurePeriods || busyAction !== null}
+                onChange={(event) => setSettingsForm((current) => ({ ...current, period_anchor_date: event.target.value }))}
+              />
+            </label>
+          ) : null}
+          <button
+            className="self-end rounded-lg border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-orange-200 disabled:opacity-50"
+            disabled={!canConfigurePeriods || busyAction !== null}
+            onClick={() => void handleSavePeriodSettings()}
+          >
+            {busyAction === "settings" ? "Saving…" : "Save period settings"}
+          </button>
+        </AdminToolbar>
+        <p className="px-4 pb-4 text-xs text-[color:var(--theme-text-muted)]">
+          {canConfigurePeriods
+            ? `Current rule: ${payrollSettings?.cadence ?? "not configured"}. Changing it creates/selects the current matching period without rewriting approved history.`
+            : "Only an owner or admin can change the pay-period rule."}
+        </p>
       </AdminPanel>
 
       <AdminPanel>

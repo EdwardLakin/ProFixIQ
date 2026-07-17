@@ -62,6 +62,22 @@ export function formatDateTime(value: string | null | undefined, timezone?: stri
   }).format(d);
 }
 
+function toShopLocalInput(value: string | null | undefined, timezone?: string | null): string {
+  const date = safeDate(value);
+  if (!date) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone || undefined,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const byType = new Map(parts.map((part) => [part.type, part.value]));
+  return `${byType.get("year")}-${byType.get("month")}-${byType.get("day")}T${byType.get("hour")}:${byType.get("minute")}`;
+}
+
 export function getEmployeeDisplayName(shift: Pick<ShiftRow, "employeeName" | "employeeEmail" | "employee">): string {
   const employeeName = shift.employeeName?.trim() || shift.employee?.name?.trim();
   if (employeeName) return employeeName;
@@ -128,6 +144,16 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
   const [data, setData] = useState<AttendanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [punchEdit, setPunchEdit] = useState<{
+    punchId: string;
+    shiftId: string;
+    userId: string;
+    eventType: string;
+    localTime: string;
+  } | null>(null);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [savingPunch, setSavingPunch] = useState(false);
 
   const fetchAttendance = useCallback(async () => {
     setLoading(true);
@@ -228,6 +254,35 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
     };
   }, [data?.billableMinutes, punches, shifts, timezone]);
 
+
+  async function savePunchCorrection() {
+    if (!punchEdit) return;
+    setSavingPunch(true);
+    setCorrectionError(null);
+    try {
+      const response = await fetch("/api/workforce/attendance/corrections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          correction_type: "adjust_punch",
+          target_user_id: punchEdit.userId,
+          shift_id: punchEdit.shiftId,
+          punch_id: punchEdit.punchId,
+          corrected_punch_local: punchEdit.localTime,
+          reason: correctionReason,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Unable to save punch correction.");
+      setPunchEdit(null);
+      setCorrectionReason("");
+      await fetchAttendance();
+    } catch (error) {
+      setCorrectionError(error instanceof Error ? error.message : "Unable to save punch correction.");
+    } finally {
+      setSavingPunch(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -337,13 +392,73 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                       <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Punches</p><p className="font-medium">{events.length}</p></div>
                       <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Status</p><p className="font-medium capitalize">{shift.status ?? "unknown"}</p></div>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {events.length === 0 ? <span className="text-xs text-amber-300">No punch events recorded</span> : events.map((event) => (
-                        <span key={String(event.id)} className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs text-[color:var(--theme-text-secondary)]">
-                          {displayEventType(normalizeEventType(event))} · {safeDate(event.timestamp)?.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone: timezone || undefined }) ?? "Unknown"}
-                        </span>
-                      ))}
+                    <div className="mt-3 overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)]">
+                      {events.length === 0 ? <p className="p-3 text-xs text-amber-300">No punch events recorded</p> : events.map((event) => {
+                        const punchId = typeof event.id === "string" ? event.id : "";
+                        const eventType = normalizeEventType(event);
+                        return (
+                          <div key={punchId || `${eventType}-${event.timestamp}`} className="grid gap-2 border-b border-[color:var(--theme-border-soft)] p-3 last:border-b-0 sm:grid-cols-[minmax(120px,1fr)_minmax(170px,1.4fr)_auto] sm:items-center">
+                            <div>
+                              <p className="text-xs font-semibold text-[color:var(--theme-text-primary)]">{displayEventType(eventType)}</p>
+                              {event.note ? <p className="mt-0.5 text-[11px] text-[color:var(--theme-text-muted)]">{event.note}</p> : null}
+                            </div>
+                            <p className="text-xs text-[color:var(--theme-text-secondary)]">{formatDateTime(event.timestamp, timezone)}</p>
+                            <button
+                              type="button"
+                              disabled={!punchId || !shiftId || !shift.user_id}
+                              onClick={() => {
+                                if (!punchId || !shiftId || !shift.user_id) return;
+                                setPunchEdit({
+                                  punchId,
+                                  shiftId,
+                                  userId: shift.user_id,
+                                  eventType,
+                                  localTime: toShopLocalInput(event.timestamp, timezone),
+                                });
+                                setCorrectionReason("");
+                                setCorrectionError(null);
+                              }}
+                              className="rounded-lg border border-orange-400/40 px-2.5 py-1.5 text-xs font-medium text-orange-300 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
+                    {punchEdit?.shiftId === shiftId ? (
+                      <div className="mt-3 rounded-lg border border-orange-400/30 bg-orange-500/5 p-3">
+                        <p className="text-xs font-semibold text-orange-200">Edit {displayEventType(punchEdit.eventType)} punch</p>
+                        <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">The saved time uses the shop timezone and creates an audit record. Approved/exported periods cannot be changed.</p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(190px,1fr)_minmax(220px,2fr)_auto] sm:items-end">
+                          <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+                            Punch time
+                            <input
+                              type="datetime-local"
+                              value={punchEdit.localTime}
+                              onChange={(event) => setPunchEdit((current) => current ? { ...current, localTime: event.target.value } : current)}
+                              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+                            />
+                          </label>
+                          <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+                            Reason
+                            <input
+                              value={correctionReason}
+                              onChange={(event) => setCorrectionReason(event.target.value)}
+                              placeholder="Required for audit history"
+                              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+                            />
+                          </label>
+                          <div className="flex gap-2">
+                            <button type="button" disabled={savingPunch || correctionReason.trim().length < 3 || !punchEdit.localTime} onClick={() => void savePunchCorrection()} className="rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                              {savingPunch ? "Saving…" : "Save"}
+                            </button>
+                            <button type="button" disabled={savingPunch} onClick={() => setPunchEdit(null)} className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">Cancel</button>
+                          </div>
+                        </div>
+                        {correctionError ? <p className="mt-2 text-xs text-red-300">{correctionError}</p> : null}
+                      </div>
+                    ) : null}
                     <div className="mt-3 flex gap-3 text-xs">
                       {shift.user_id ? <Link href={`/dashboard/workforce/payroll-review?person_id=${shift.user_id}`} className="font-medium text-orange-300">Payroll detail</Link> : null}
                       {shift.user_id ? <Link href={`/dashboard/admin/people/${shift.user_id}#payroll-posture`} className="font-medium text-orange-300">Employee record</Link> : null}
