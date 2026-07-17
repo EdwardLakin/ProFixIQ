@@ -133,12 +133,12 @@ export default function WorkforceSchedulingClient() {
   async function addOverride() {
     if (!selectedStaffId || !overrideDate) return;
     setBusy(true);
-    const startIso = overrideStart ? `${overrideDate}T${overrideStart}:00.000Z` : null;
-    const endIso = overrideEnd ? `${overrideDate}T${overrideEnd}:00.000Z` : null;
+    const startLocal = overrideStart || null;
+    const endLocal = overrideEnd || null;
     const res = await fetch(`/api/scheduling/staff/${selectedStaffId}/overrides`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ schedule_date: overrideDate, start_time: startIso, end_time: endIso }),
+      body: JSON.stringify({ schedule_date: overrideDate, start_local: startLocal, end_local: endLocal }),
     });
     const body = await res.json().catch(() => null);
     setBusy(false);
