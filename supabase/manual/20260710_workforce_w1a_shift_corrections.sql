@@ -65,16 +65,16 @@ begin
   if p_reason is null or length(trim(p_reason)) = 0 then
     raise exception 'Correction reason is required';
   end if;
-  if p_actor_profile_id = p_target_user_id then
-    raise exception 'Admin corrections cannot target the actor''s own shift';
-  end if;
-  if p_correction_type not in ('create_missing_shift','adjust_start','adjust_end','adjust_start_and_end','void_shift') then
+   if p_correction_type not in ('create_missing_shift','adjust_start','adjust_end','adjust_start_and_end','void_shift') then
     raise exception 'Unsupported correction type';
   end if;
 
   select * into v_actor from public.profiles where id = p_actor_profile_id and shop_id = p_shop_id;
   if not found then raise exception 'Actor is not in shop'; end if;
   if coalesce(v_actor.role, '') not in ('owner','admin','manager') then raise exception 'Forbidden'; end if;
+  if p_actor_profile_id = p_target_user_id and coalesce(v_actor.role, '') <> 'owner' then
+    raise exception 'Only an owner can apply an audited correction to their own shift';
+  end if;
 
   select * into v_target from public.profiles where id = p_target_user_id and shop_id = p_shop_id;
   if not found then raise exception 'Target user is not in shop'; end if;
