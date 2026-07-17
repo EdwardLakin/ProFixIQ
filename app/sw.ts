@@ -27,6 +27,21 @@ const serwist = new Serwist({
     {
       matcher: ({ request, url }) =>
         request.mode === "navigate" &&
+        (url.pathname === "/portal/messages" || url.pathname === "/chat"),
+      handler: new NetworkFirst({
+        cacheName: "profixiq-messaging-shell-v1",
+        networkTimeoutSeconds: 4,
+        plugins: [
+          new ExpirationPlugin({
+            maxEntries: 10,
+            maxAgeSeconds: 60 * 60 * 24 * 14,
+          }),
+        ],
+      }),
+    },
+    {
+      matcher: ({ request, url }) =>
+        request.mode === "navigate" &&
         (url.pathname === "/mobile/appointments" ||
           url.pathname === "/mobile/work-orders/create"),
       handler: new NetworkFirst({

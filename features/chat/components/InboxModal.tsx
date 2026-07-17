@@ -7,6 +7,16 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import UserAvatar from "@/features/chat/components/UserAvatar";
 import ModalShell from "@/features/shared/components/ModalShell";
+import {
+  createMessageDraft,
+  getOfflineMessageDraft,
+  removeOfflineMessageDraft,
+  resolveMessagingDraftScope,
+  saveOfflineMessageDraft,
+  warmMessagingRouteShells,
+  type OfflineMessageDraft,
+} from "@/features/chat/offline/messageDrafts";
+import type { OfflineMutationScope } from "@/features/shared/lib/offline/mutations";
 
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
@@ -140,8 +150,16 @@ export default function InboxModal({
   const [composeAudience, setComposeAudience] = useState<"internal" | "customer">("internal");
   const [roleFilter, setRoleFilter] = useState("all");
   const [useContext, setUseContext] = useState(true);
+  const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(null);
+  const [messageDraft, setMessageDraft] = useState<OfflineMessageDraft | null>(null);
+  const [loadedDraftTarget, setLoadedDraftTarget] = useState<string | null>(null);
+  const [draftSaved, setDraftSaved] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const context = useMemo(() => inferContext(pathname), [pathname]);
+  const draftTargetId = activeConversationId
+    ? `conversation:${activeConversationId}`
+    : `staff:new:${composeAudience}:${context.context_type ?? "general"}:${context.context_id ?? "none"}`;
 
   const loadConversations = useCallback(async () => {
     const res = await fetch("/api/chat/my-conversations", { credentials: "include" });
@@ -157,8 +175,8 @@ export default function InboxModal({
   useEffect(() => {
     if (!open) return;
 
-    void supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
-    void loadConversations();
+    void supabase.auth.getSession().then(({ data }) => setMe(data.session?.user.id ?? null));
+    void loadConversations().catch(() => undefined);
 
     void fetch("/api/chat/users", { credentials: "include" })
       .then((r) => r.json())
@@ -170,8 +188,72 @@ export default function InboxModal({
           })),
         );
         setCustomers(Array.isArray(json?.customers) ? json.customers : []);
-      });
+      })
+      .catch(() => undefined);
   }, [open, supabase, loadConversations]);
+
+  useEffect(() => {
+    if (!open || !me) return;
+    let cancelled = false;
+    void resolveMessagingDraftScope(me).then(async (scope) => {
+      if (!scope || cancelled) return;
+      setDraftScope(scope);
+      if (navigator.onLine) void warmMessagingRouteShells();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [me, open]);
+
+  useEffect(() => {
+    if (!open || !draftScope) return;
+    let cancelled = false;
+    setLoadedDraftTarget(null);
+    void getOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId }).then(
+      (stored) => {
+        if (cancelled) return;
+        const next = stored ?? createMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        setMessageDraft(next);
+        setCompose(next.content);
+        if (!activeConversationId) {
+          setSelectedRecipients(next.recipientIds ?? []);
+          setSelectedCustomerId(next.customerId ?? null);
+          setUseContext(next.useContext ?? true);
+        }
+        setDraftSaved(Boolean(stored?.content));
+        setLoadedDraftTarget(draftTargetId);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [activeConversationId, draftScope, draftTargetId, open]);
+
+  useEffect(() => {
+    if (
+      !draftScope ||
+      !messageDraft ||
+      loadedDraftTarget !== draftTargetId ||
+      messageDraft.targetId !== draftTargetId
+    ) return;
+    const timer = window.setTimeout(() => {
+      if (!compose.trim()) {
+        void removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+        setDraftSaved(false);
+        return;
+      }
+      void saveOfflineMessageDraft({
+        ...messageDraft,
+        content: compose,
+        audience: composeAudience,
+        recipientIds: selectedRecipients,
+        customerId: selectedCustomerId,
+        useContext,
+        updatedAt: new Date().toISOString(),
+      }).then(() => setDraftSaved(true));
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [compose, composeAudience, draftScope, draftTargetId, loadedDraftTarget, messageDraft, selectedCustomerId, selectedRecipients, useContext]);
 
   useEffect(() => {
     if (!open || !activeConversationId) return;
@@ -264,6 +346,14 @@ export default function InboxModal({
     if (!content || sending || !me) return;
 
     setSending(true);
+    setSendError(null);
+
+    if (!navigator.onLine) {
+      setSending(false);
+      setDraftSaved(true);
+      setSendError("Offline — this message is saved as a draft and has not been sent.");
+      return;
+    }
 
     try {
       let conversationId = activeConversationId;
@@ -283,7 +373,7 @@ export default function InboxModal({
                 ? context.context_label
                 : null,
             is_broadcast: composeAudience === "internal" && selectedRecipients.length > 3,
-            request_id: crypto.randomUUID(),
+            request_id: messageDraft?.conversationRequestId ?? crypto.randomUUID(),
           }),
         });
 
@@ -291,8 +381,6 @@ export default function InboxModal({
         if (!res.ok) throw new Error(data?.error ?? "Could not start inbox thread");
 
         conversationId = data.id;
-        setActiveConversationId(conversationId);
-        await loadConversations();
       }
 
       const res = await fetch("/api/chat/send-message", {
@@ -302,7 +390,7 @@ export default function InboxModal({
           conversationId,
           senderId: me,
           content,
-          clientMessageId: crypto.randomUUID(),
+          clientMessageId: messageDraft?.clientMessageId ?? crypto.randomUUID(),
           metadata: {
             deep_link: useContext ? context.deep_link : null,
             context_type: context.context_type,
@@ -311,7 +399,22 @@ export default function InboxModal({
         }),
       });
 
-      if (res.ok) setCompose("");
+      if (!res.ok) {
+        const failure = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(failure?.error ?? "Could not send message");
+      }
+      if (draftScope) {
+        await removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
+      }
+      setCompose("");
+      setDraftSaved(false);
+      if (draftScope) {
+        setMessageDraft(createMessageDraft({ scope: draftScope, targetId: draftTargetId }));
+      }
+      setActiveConversationId(conversationId);
+      await loadConversations();
+    } catch (cause) {
+      setSendError(cause instanceof Error ? cause.message : "Could not send message");
     } finally {
       setSending(false);
     }
@@ -326,6 +429,9 @@ export default function InboxModal({
     useContext,
     context,
     loadConversations,
+    messageDraft,
+    draftScope,
+    draftTargetId,
   ]);
 
   if (!open) return null;
@@ -580,6 +686,14 @@ export default function InboxModal({
               {sending ? "Sending" : "Send"}
             </button>
           </div>
+          {draftSaved ? (
+            <p className="px-3 pb-2 text-[10px] text-[color:var(--theme-text-muted)]">
+              Saved on this device · delivery requires a connection
+            </p>
+          ) : null}
+          {sendError ? (
+            <p className="px-3 pb-2 text-[10px] text-red-300">{sendError}</p>
+          ) : null}
         </section>
 
         <aside className="hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5 text-xs text-[color:var(--theme-text-secondary)] xl:block">
