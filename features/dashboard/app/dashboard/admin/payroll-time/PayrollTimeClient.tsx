@@ -137,6 +137,32 @@ export default function PayrollTimeClient() {
     });
   }, [employeeSearch, entries, personIdFilter]);
 
+  const groupedEntries = useMemo(() => {
+    const groups = new Map<string, { userId: string; name: string; email: string; rows: Entry[] }>();
+    for (const entry of filteredEntries) {
+      const group = groups.get(entry.user_id) ?? {
+        userId: entry.user_id,
+        name: entry.profiles?.full_name ?? entry.user_id,
+        email: entry.profiles?.email ?? "",
+        rows: [],
+      };
+      group.rows.push(entry);
+      groups.set(entry.user_id, group);
+    }
+    return [...groups.values()]
+      .map((group) => ({
+        ...group,
+        rows: group.rows.sort((a, b) => a.work_date.localeCompare(b.work_date)),
+        worked: group.rows.reduce((sum, row) => sum + Number(row.worked_minutes ?? 0), 0),
+        regular: group.rows.reduce((sum, row) => sum + Number(row.regular_minutes ?? 0), 0),
+        overtime: group.rows.reduce((sum, row) => sum + Number(row.overtime_minutes ?? 0), 0),
+        job: group.rows.reduce((sum, row) => sum + Number(row.job_minutes ?? 0), 0),
+        blocking: group.rows.reduce((sum, row) => sum + Number(row.blocking_exception_count ?? 0), 0),
+        warnings: group.rows.reduce((sum, row) => sum + Number(row.warning_exception_count ?? 0), 0),
+      }))
+      .sort((a, b) => b.blocking - a.blocking || b.warnings - a.warnings || a.name.localeCompare(b.name));
+  }, [filteredEntries]);
+
   const filteredExceptions = useMemo(() => {
     return exceptions.filter((item) => (exceptionSeverityFilter === "all" ? true : item.severity === exceptionSeverityFilter));
   }, [exceptionSeverityFilter, exceptions]);
@@ -314,7 +340,7 @@ export default function PayrollTimeClient() {
           <button
             className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)] disabled:opacity-50"
             onClick={() => void handleRebuild()}
-            disabled={!activePeriodId || busyAction !== null || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
+            disabled={!activePeriodId || busyAction !== null || summary.blocking > 0 || Boolean(refreshState?.refreshError) || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
           >
             {busyAction === "rebuild" ? "Recalculating…" : "Recalculate"}
           </button>
@@ -371,61 +397,60 @@ export default function PayrollTimeClient() {
         ) : filteredEntries.length === 0 ? (
           <AdminEmptyState title={zeroState?.message ?? "No employee time has been recorded for this pay period."} body={activePeriod ? `${activePeriod.period_start} → ${activePeriod.period_end}` : "Open Attendance or Scheduling to record employee time."} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-[color:var(--theme-surface-inset)] text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
-                <tr>
-                  <th className="px-4 py-2.5 text-left">Employee</th>
-                  <th className="px-4 py-2.5 text-left">Date / clock</th>
-                  <th className="px-4 py-2.5 text-right">Shift duration</th>
-                  <th className="px-4 py-2.5 text-right">Paid breaks</th>
-                  <th className="px-4 py-2.5 text-right">Unpaid lunch</th>
-                  <th className="px-4 py-2.5 text-right">Payroll hours</th>
-                  <th className="px-4 py-2.5 text-right">Regular</th>
-                  <th className="px-4 py-2.5 text-right">Overtime</th>
-                  <th className="px-4 py-2.5 text-right">Job time</th>
-                  <th className="px-4 py-2.5 text-right">Other paid shop time</th>
-                  <th className="px-4 py-2.5 text-right">Scheduled</th>
-                  <th className="px-4 py-2.5 text-right">Approved away</th>
-                  <th className="px-4 py-2.5 text-left">Status</th>
-                  <th className="px-4 py-2.5 text-left">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
-                {filteredEntries.map((entry) => (
-                  <tr key={entry.id} className="text-[color:var(--theme-text-primary)]">
-                    <td className="px-4 py-2.5">
-                      <p className="font-medium text-[color:var(--theme-text-primary)]"><Link href={`/dashboard/admin/people/${entry.user_id}`} className="font-medium text-[color:var(--theme-text-primary)] hover:text-orange-300">{entry.profiles?.full_name ?? entry.user_id}</Link></p>
-                      <p className="text-xs text-[color:var(--theme-text-muted)]">{entry.profiles?.email ?? ""}</p>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5">
-                      <p>{entry.work_date}</p>
-                      <p className="text-xs text-[color:var(--theme-text-muted)]">{entry.source_snapshot?.shifts?.[0]?.start_time ? new Date(entry.source_snapshot.shifts[0].start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"} → {entry.source_snapshot?.shifts?.[0]?.end_time ? new Date(entry.source_snapshot.shifts[0].end_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "In progress"}</p>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.attendance_minutes)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.paid_break_minutes)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.unpaid_break_minutes)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.worked_minutes)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.regular_minutes)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.overtime_minutes)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.job_minutes)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(Math.max(0, Number(entry.worked_minutes ?? 0) - Number(entry.job_minutes ?? 0)))}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.scheduled_minutes ?? 0)}h</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right">{fmtHours(entry.approved_time_away_minutes_in_period ?? 0)}h</td>
-                    <td className="px-4 py-2.5">
-                      {entry.blocking_exception_count > 0 ? (
-                        <AdminBadge>Shift still open</AdminBadge>
-                      ) : entry.warning_exception_count > 0 ? (
-                        <AdminBadge>Needs review</AdminBadge>
-                      ) : (
-                        <span className="text-xs text-emerald-300">{entry.payroll_status_label ?? "Ready"}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5"><Link className="text-xs font-medium text-orange-300 hover:text-orange-200" href={`/dashboard/workforce/attendance?person_id=${entry.user_id}`}>Review time</Link></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3 p-4">
+            {groupedEntries.map((group) => (
+              <details
+                key={group.userId}
+                className="group rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+                open={group.blocking > 0}
+              >
+                <summary className="cursor-pointer list-none p-4">
+                  <div className="grid gap-3 md:grid-cols-[minmax(180px,2fr)_repeat(5,minmax(72px,1fr))] md:items-center">
+                    <div>
+                      <Link href={`/dashboard/admin/people/${group.userId}`} className="font-semibold text-[color:var(--theme-text-primary)] hover:text-orange-300">
+                        {group.name}
+                      </Link>
+                      <p className="text-xs text-[color:var(--theme-text-muted)]">{group.email || `${group.rows.length} recorded day${group.rows.length === 1 ? "" : "s"}`}</p>
+                    </div>
+                    <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Payroll</p><p className="font-semibold">{fmtHours(group.worked)}h</p></div>
+                    <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Regular</p><p className="font-semibold">{fmtHours(group.regular)}h</p></div>
+                    <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Overtime</p><p className="font-semibold">{fmtHours(group.overtime)}h</p></div>
+                    <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Job time</p><p className="font-semibold">{fmtHours(group.job)}h</p></div>
+                    <div>
+                      {group.blocking > 0 ? <AdminBadge>{group.blocking} blocking</AdminBadge> : group.warnings > 0 ? <AdminBadge>{group.warnings} review</AdminBadge> : <span className="text-xs font-medium text-emerald-300">Ready</span>}
+                    </div>
+                  </div>
+                </summary>
+                <div className="border-t border-[color:var(--theme-border-soft)] p-3">
+                  <div className="hidden grid-cols-[minmax(120px,1.5fr)_repeat(5,minmax(64px,1fr))_minmax(92px,1fr)] gap-2 px-3 pb-2 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)] md:grid">
+                    <span>Date / clock</span><span>Payroll</span><span>Regular</span><span>OT</span><span>Job</span><span>Other paid</span><span>Status</span>
+                  </div>
+                  <div className="space-y-2">
+                    {group.rows.map((entry) => (
+                      <div key={entry.id} className="grid gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 text-sm md:grid-cols-[minmax(120px,1.5fr)_repeat(5,minmax(64px,1fr))_minmax(92px,1fr)] md:items-center">
+                        <div>
+                          <p className="font-medium">{entry.work_date}</p>
+                          <p className="text-xs text-[color:var(--theme-text-muted)]">
+                            {entry.source_snapshot?.shifts?.[0]?.start_time ? new Date(entry.source_snapshot.shifts[0].start_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—"}
+                            {" → "}
+                            {entry.source_snapshot?.shifts?.[0]?.end_time ? new Date(entry.source_snapshot.shifts[0].end_time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "In progress"}
+                          </p>
+                        </div>
+                        <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Payroll: </span>{fmtHours(entry.worked_minutes)}h</p>
+                        <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Regular: </span>{fmtHours(entry.regular_minutes)}h</p>
+                        <p><span className="md:hidden text-[color:var(--theme-text-muted)]">OT: </span>{fmtHours(entry.overtime_minutes)}h</p>
+                        <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Job: </span>{fmtHours(entry.job_minutes)}h</p>
+                        <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Other: </span>{fmtHours(Math.max(0, Number(entry.worked_minutes ?? 0) - Number(entry.job_minutes ?? 0)))}h</p>
+                        <div>
+                          {entry.blocking_exception_count > 0 ? <AdminBadge>Open shift</AdminBadge> : entry.warning_exception_count > 0 ? <AdminBadge>Review</AdminBadge> : <span className="text-xs text-emerald-300">{entry.payroll_status_label ?? "Ready"}</span>}
+                          <Link className="mt-1 block text-xs font-medium text-orange-300 hover:text-orange-200" href={`/dashboard/workforce/attendance?person_id=${entry.user_id}&date=${entry.work_date}`}>View timecard</Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            ))}
           </div>
         )}
       </AdminPanel>
