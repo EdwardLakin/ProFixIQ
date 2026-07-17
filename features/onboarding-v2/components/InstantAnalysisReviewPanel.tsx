@@ -146,7 +146,7 @@ export default function InstantAnalysisReviewPanel({ steps }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ intakeId, status: "" });
+      const params = new URLSearchParams({ intakeId, status: "unresolved" });
       const response = await fetch(`/api/shop-boost/review-items?${params.toString()}`, {
         cache: "no-store",
       });
