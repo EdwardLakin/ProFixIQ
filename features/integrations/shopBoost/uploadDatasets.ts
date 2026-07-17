@@ -93,3 +93,19 @@ export const SHOP_BOOST_DIRECT_IMPORT_DATASETS: ShopBoostUploadDatasetKey[] = [
 ];
 
 export const SHOP_BOOST_UPLOAD_DATASET_KEYS = SHOP_BOOST_UPLOAD_DATASETS.map((d) => d.key);
+
+export const INSTANT_SHOP_ANALYSIS_DATASET_KEYS = [
+  "customers",
+  "vehicles",
+  "history",
+  "invoices",
+  "parts",
+] as const satisfies readonly ShopBoostUploadDatasetKey[];
+
+const instantAnalysisDatasetKeySet = new Set<ShopBoostUploadDatasetKey>(
+  INSTANT_SHOP_ANALYSIS_DATASET_KEYS,
+);
+
+export const INSTANT_SHOP_ANALYSIS_DATASETS = SHOP_BOOST_UPLOAD_DATASETS.filter((dataset) =>
+  instantAnalysisDatasetKeySet.has(dataset.key),
+);
