@@ -78,14 +78,17 @@ describe("instant shop analysis guided onboarding handoff", () => {
 
   it("binds activation to the unlocked email and provides a retry-safe handoff page", () => {
     const activation = read("app/api/demo/shop-boost/activate/route.ts");
+    const claim = read("app/api/demo/shop-boost/claim/route.ts");
     const handoffPage = read("app/onboarding/shop-boost/page.tsx");
     const signIn = read("features/auth/components/SignIn.tsx");
 
+    expect(claim).toContain('.eq("lead_kind", "activation_claim")');
     expect(activation).toContain('.from("demo_shop_boost_leads")');
     expect(activation).toContain('.eq("email", normalizedUserEmail)');
     expect(activation).toContain('.eq("lead_kind", "activation_claim")');
     expect(activation).toContain('role !== "owner" && role !== "admin"');
     expect(activation).toContain("readPersistedImportSummary");
+    expect(activation).toContain("isRecord(basics.importSummary)");
     expect(activation).toContain("ensureStorageCopy");
     expect(activation).toContain("demoRow.shop_id !== shopId");
     expect(handoffPage).toContain('fetch("/api/demo/shop-boost/activate"');
