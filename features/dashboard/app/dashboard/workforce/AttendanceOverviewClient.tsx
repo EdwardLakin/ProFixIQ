@@ -315,9 +315,12 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                 const events = punches
                   .filter((punch) => punch.shift_id === shiftId)
                   .sort((a, b) => (safeDate(a.timestamp)?.getTime() ?? 0) - (safeDate(b.timestamp)?.getTime() ?? 0));
-                const durationMinutes = shift.start_time
-                  ? Math.max(0, Math.round(((shift.end_time ? new Date(shift.end_time) : new Date()).getTime() - new Date(shift.start_time).getTime()) / 60000))
-                  : 0;
+                const allocationStart = shift.start_time ? Math.max(new Date(shift.start_time).getTime(), new Date(from).getTime()) : 0;
+                const allocationEnd = Math.min(
+                  shift.end_time ? new Date(shift.end_time).getTime() : Date.now(),
+                  new Date(to).getTime(),
+                );
+                const durationMinutes = allocationStart > 0 ? Math.max(0, Math.round((allocationEnd - allocationStart) / 60000)) : 0;
                 return (
                   <article key={shiftId} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -330,7 +333,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                       </span>
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Duration</p><p className="font-medium">{Math.floor(durationMinutes / 60)}h {durationMinutes % 60}m</p></div>
+                      <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Day allocation</p><p className="font-medium">{Math.floor(durationMinutes / 60)}h {durationMinutes % 60}m</p></div>
                       <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Punches</p><p className="font-medium">{events.length}</p></div>
                       <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Status</p><p className="font-medium capitalize">{shift.status ?? "unknown"}</p></div>
                     </div>
@@ -344,7 +347,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                     <div className="mt-3 flex gap-3 text-xs">
                       {shift.user_id ? <Link href={`/dashboard/workforce/payroll-review?person_id=${shift.user_id}`} className="font-medium text-orange-300">Payroll detail</Link> : null}
                       {shift.user_id ? <Link href={`/dashboard/admin/people/${shift.user_id}#payroll-posture`} className="font-medium text-orange-300">Employee record</Link> : null}
-                      {shift.user_id ? <Link href={`/dashboard/admin/scheduling?user_id=${shift.user_id}&shift_id=${shiftId}`} className="font-medium text-orange-300">Correct time</Link> : null}
+                      {shift.user_id ? <Link href={`/dashboard/admin/scheduling?user_id=${shift.user_id}&shift_id=${shiftId}&date=${selectedDate}`} className="font-medium text-orange-300">Correct time</Link> : null}
                     </div>
                   </article>
                 );
