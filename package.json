@@ -2,6 +2,7 @@
   "name": "profixiq",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.34.5",
   "main": "postcss.config.js",
   "scripts": {
     "dev": "next dev",
