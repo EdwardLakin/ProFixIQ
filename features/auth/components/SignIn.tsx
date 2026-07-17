@@ -114,7 +114,12 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         setNotice("Check your email to verify the account, then continue into shop setup.");
         return;
       }
-      router.replace("/onboarding");
+      const destination = await resolvePostAuthDestination({
+        supabase,
+        searchParams,
+        defaultDashboardHref: "/onboarding",
+      });
+      router.replace(destination);
     } finally {
       setLoading(false);
     }
