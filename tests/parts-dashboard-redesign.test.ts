@@ -22,6 +22,14 @@ describe("Parts dashboard redesign", () => {
     );
   });
 
+  it("uses approved receiving quantities, consumed completion, and paged totals", () => {
+    expect(source).toContain("function approvedReceivingQty");
+    expect(source).toContain("function approvedRequestFlow");
+    expect(source).toContain('return "complete"');
+    expect(source).toContain(".range(offset, offset + pageSize - 1)");
+    expect(source).not.toContain("function targetQty");
+  });
+
   it("keeps the dashboard on canonical parts routes", () => {
     expect(source).toContain('href="/parts/requests"');
     expect(source).toContain('href="/parts/receiving"');
