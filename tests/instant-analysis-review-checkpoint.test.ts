@@ -53,7 +53,7 @@ describe("instant analysis guided onboarding review checkpoint", () => {
     const panel = read("features/onboarding-v2/components/InstantAnalysisReviewPanel.tsx");
     const safeRoute = read("app/api/shop-boost/review-items/apply-safe/route.ts");
 
-    expect(panel).toContain("Fix \${safeItems.length} safe items");
+    expect(panel).toContain('Fix ${safeItems.length} safe items');
     expect(panel).toContain("Duplicate merges and lower-confidence decisions always stay manual");
     expect(safeRoute).toContain("applyHighConfidenceRecommendations");
     expect(safeRoute).toContain("threshold: 0.85");
