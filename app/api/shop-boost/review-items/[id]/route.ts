@@ -1,25 +1,14 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { resolveAndMaterializeReviewItem } from "@/features/integrations/shopBoost/reviewMaterialization";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: Request, context: RouteContext) {
   const { id } = await context.params;
-  const supabaseUser = createServerSupabaseRoute();
-  const {
-    data: { user },
-  } = await supabaseUser.auth.getUser();
-
-  if (!user?.id) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-
-  const { data: profile } = await supabaseUser
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null }>();
-
-  if (!profile?.shop_id) return NextResponse.json({ ok: false, error: "No shop linked." }, { status: 400 });
+  const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
+  if (!access.ok) return access.response;
+  const shopId = access.profile.shop_id!;
 
   const body = (await req.json().catch(() => ({}))) as {
     resolution_action?: "linked_to_existing" | "created_new" | "ignored";
@@ -37,8 +26,8 @@ export async function PATCH(req: Request, context: RouteContext) {
 
   const result = await resolveAndMaterializeReviewItem({
     reviewItemId: id,
-    shopId: profile.shop_id,
-    userId: user.id,
+    shopId,
+    userId: access.profile.id,
     resolutionAction: body.resolution_action ?? "ignored",
     confirmHighRiskAction: body.confirm_high_risk_action === true,
     ignoreReasonCode: body.ignore_reason_code,

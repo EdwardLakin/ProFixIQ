@@ -5,6 +5,7 @@ import { buildGuidedDestination, GUIDED_ONBOARDING_STEPS, getGuidedOnboardingSte
 import type { GuidedOnboardingSessionDetail, GuidedOnboardingStepRow } from "@/features/onboarding-v2/guided/types";
 import { OnboardingHighlightFrame } from "./OnboardingHighlightFrame";
 import ShopSettingsSetupModal from "./ShopSettingsSetupModal";
+import InstantAnalysisReviewPanel from "./InstantAnalysisReviewPanel";
 
 type Props = {
   initialSessionId?: string;
@@ -185,6 +186,8 @@ export default function GuidedOnboardingWorkspace({ initialSessionId }: Props) {
       {error ? <div className="rounded-2xl border border-red-400/30 bg-red-950/30 px-4 py-3 text-sm text-red-100">{error}</div> : null}
       {loadingCopy ? <div className="rounded-2xl border border-orange-300/25 bg-orange-400/10 px-4 py-3 text-sm text-orange-100">{loadingCopy}</div> : null}
       {loadState === "loading" ? <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-sm text-[color:var(--theme-text-secondary)]">Loading guided setup…</div> : null}
+
+      {detail ? <InstantAnalysisReviewPanel steps={detail.steps} /> : null}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="space-y-5">
