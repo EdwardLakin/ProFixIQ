@@ -328,6 +328,7 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     "/",
+    "/sign-in",
     "/compare-plans",
     "/subscribe",
     "/confirm",
@@ -338,6 +339,8 @@ export const config = {
     "/demo/:path*",
     "/portal/:path*",
     "/mobile/sign-in",
+    "/launch",
+    "/offline/:path*",
     "/onboarding/:path*",
     "/dashboard/:path*",
     "/fleet/:path*",
