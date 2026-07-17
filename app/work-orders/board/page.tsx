@@ -18,13 +18,12 @@ export default async function WorkOrderBoardPage({
     : params?.stage;
   const initialStage = parseWorkOrderBoardStageFilter(rawStage);
   return (
-    <main className="min-h-screen px-4 py-6 text-[color:var(--theme-text-primary)] md:px-6">
-      <div className="mx-auto max-w-[1500px] space-y-4">
+    <main className="min-h-screen px-4 py-5 text-[color:var(--theme-text-primary)] md:px-6">
+      <div className="mx-auto max-w-[1680px] space-y-4">
         <OperationalViewSwitcher role={identity.role} />
         <WorkOrderBoard
           variant="shop"
-          title="Shop work order board"
-          subtitle="Read-only board for real-time workflow visibility across active work orders."
+          title="Work Order Board"
           initialStage={initialStage}
         />
       </div>
