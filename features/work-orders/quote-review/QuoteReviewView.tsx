@@ -41,6 +41,9 @@ type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type QuoteLineUpdate = DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
 type PartsByQuoteLine = Record<string, ResolvedQuotePart[]>;
 type RequestByQuoteLine = Record<string, PartRequest[]>;
+type QuoteDecision = "approve" | "decline" | "defer";
+type ContactMethod = "phone" | "in_person" | "email" | "other";
+type HistoryInsight = { quoteLineId: string; historyLineId: string; workOrderId: string; workOrderNumber: string | null; description: string; completedAt: string; mileageDeltaKm: number | null; ageDays: number; reason: string };
 
 type EditableQuoteLine = QuoteLine & {
   _dirty?: boolean;
@@ -95,6 +98,18 @@ function fmt(value: number | null | undefined): string {
 
 function statusLabel(value: string | null | undefined): string {
   return safeTrim(value).replaceAll("_", " ") || "—";
+}
+
+function isFinalDecision(line: EditableQuoteLine): boolean {
+  const status = safeTrim(line.status).toLowerCase();
+  return Boolean(line.work_order_line_id) || ["approved", "converted", "declined", "deferred"].includes(status);
+}
+
+function historyDistanceLabel(insight: HistoryInsight): string {
+  if (insight.mileageDeltaKm != null) return `${Math.round(insight.mileageDeltaKm).toLocaleString()} km ago`;
+  if (insight.ageDays < 45) return `${insight.ageDays} days ago`;
+  if (insight.ageDays < 730) return `${Math.max(1, Math.round(insight.ageDays / 30))} months ago`;
+  return `${Math.max(1, Math.round(insight.ageDays / 365))} years ago`;
 }
 
 function isValidEmail(value: string): boolean {
@@ -346,6 +361,13 @@ export default function QuoteReviewView(props: {
   const [requestsByQuoteLine, setRequestsByQuoteLine] = useState<RequestByQuoteLine>({});
   const [workLines, setWorkLines] = useState<WorkOrderLine[]>([]);
   const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
+  const [openParts, setOpenParts] = useState<Record<string, boolean>>({});
+  const [historyInsights, setHistoryInsights] = useState<Record<string, HistoryInsight>>({});
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [decisionDialog, setDecisionDialog] = useState<{ line: EditableQuoteLine; decision: QuoteDecision } | null>(null);
+  const [decisionContact, setDecisionContact] = useState<ContactMethod>("phone");
+  const [decisionNote, setDecisionNote] = useState("");
+  const [decisionSaving, setDecisionSaving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [savingCustomerEmail, setSavingCustomerEmail] = useState(false);
@@ -358,6 +380,19 @@ export default function QuoteReviewView(props: {
   const [savingSuppliesOverride, setSavingSuppliesOverride] = useState(false);
 
   const laborRate = useMemo(() => asNumber((shop as unknown as { labor_rate?: unknown } | null)?.labor_rate) ?? 120, [shop]);
+
+  const loadHistoryInsights = useCallback(async () => {
+    if (!woId) return;
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(`/api/work-orders/${woId}/quote-history-insights`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as { insights?: HistoryInsight[] } | null;
+      if (!response.ok) return;
+      setHistoryInsights(Object.fromEntries((payload?.insights ?? []).map((insight) => [insight.quoteLineId, insight])));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [woId]);
 
   const reload = useCallback(async () => {
     if (!woId) return;
@@ -492,7 +527,8 @@ export default function QuoteReviewView(props: {
     setLoading(false);
     loadedOnceRef.current = true;
     setLoadedOnce(true);
-  }, [supabase, woId]);
+    void loadHistoryInsights();
+  }, [loadHistoryInsights, supabase, woId]);
 
   useEffect(() => {
     loadedOnceRef.current = false;
@@ -613,26 +649,36 @@ export default function QuoteReviewView(props: {
     }
   }
 
-  async function updateQuoteLineState(line: EditableQuoteLine, status: string, stage?: string | null) {
-    if (!wo?.shop_id) return;
-    const patch: QuoteLineUpdate = {
-      status,
-      stage: stage ?? line.stage,
-      declined_at: status === "declined" ? new Date().toISOString() : line.declined_at,
-      updated_at: new Date().toISOString(),
-    };
-    const { error } = await supabase
-      .from("work_order_quote_lines")
-      .update(patch)
-      .eq("id", line.id)
-      .eq("shop_id", wo.shop_id)
-      .eq("work_order_id", woId);
-    if (error) {
-      toast.error(error.message);
-      return;
+  function openDecisionDialog(line: EditableQuoteLine, decision: QuoteDecision) {
+    setDecisionContact("phone");
+    setDecisionNote("");
+    setDecisionDialog({ line, decision });
+  }
+
+  async function confirmShopDecision() {
+    if (!decisionDialog || decisionSaving) return;
+    setDecisionSaving(true);
+    try {
+      if (quoteLines.some((line) => line._dirty)) {
+        const saved = await saveAllDirty();
+        if (!saved) return;
+      }
+      const response = await fetch(`/api/work-orders/quotes/${decisionDialog.line.id}/authorize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: decisionDialog.decision, contactMethod: decisionContact, note: decisionNote, operationKey: crypto.randomUUID() }),
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error ?? "Could not record the shop decision.");
+      const pastTense = decisionDialog.decision === "approve" ? "approved" : decisionDialog.decision === "decline" ? "declined" : "deferred";
+      toast.success(`Quote line ${pastTense} by the shop.`);
+      setDecisionDialog(null);
+      await reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not record the shop decision.");
+    } finally {
+      setDecisionSaving(false);
     }
-    toast.success(`Quote line marked ${statusLabel(status)}.`);
-    await reload();
   }
 
   async function saveSuppliesOverride() {
@@ -838,6 +884,8 @@ export default function QuoteReviewView(props: {
                     const partsTotal = quoteLinePartsTotal(line);
                     const total = quoteLineTotal(line, laborRate);
                     const sources = sourceSummary(line);
+                    const historyInsight = historyInsights[line.id];
+                    const finalDecision = isFinalDecision(line);
 
                     return (
                       <div key={line.id} className={`${padX} py-4`}>
@@ -870,16 +918,28 @@ export default function QuoteReviewView(props: {
                             <div>Labor rate: <span className="text-[color:var(--theme-text-primary)]">{fmt(lineLaborRate)}/hr</span></div>
                           </div>
 
+                          {historyInsight ? (
+                            <div className="mt-3 rounded-xl border border-sky-300/30 bg-sky-400/10 p-3 text-xs">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <div className="font-semibold uppercase tracking-[0.16em] text-sky-100">Relevant vehicle history</div>
+                                  <div className="mt-1 text-[color:var(--theme-text-primary)]">Completed {historyDistanceLabel(historyInsight)}{historyInsight.workOrderNumber ? ` on WO ${historyInsight.workOrderNumber}` : " on a prior work order"}.</div>
+                                  <div className="mt-1 text-[color:var(--theme-text-secondary)]">{historyInsight.description}</div>
+                                </div>
+                                <a href={`/work-orders/${historyInsight.workOrderId}`} className="rounded-lg border border-sky-300/35 px-2.5 py-1.5 font-semibold text-sky-100 hover:bg-sky-400/10">View prior WO</a>
+                              </div>
+                            </div>
+                          ) : historyLoading ? <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">Checking relevant vehicle history…</div> : null}
+
                           <div className="mt-3 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Required parts</div>
-                              {partsSummary ? (
-                                <div className="text-[color:var(--theme-text-secondary)]">
-                                  Sync: <span className="text-[color:var(--theme-text-primary)]">{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {fmt(partsSummary.partsTotal)}</span>
-                                </div>
-                              ) : null}
+                              <div className="flex flex-wrap items-center gap-2">
+                                {partsSummary ? <div className="text-[color:var(--theme-text-secondary)]">Sync: <span className="text-[color:var(--theme-text-primary)]">{partsSummary.pendingCount > 0 ? "pending" : "quoted"} • {partsSummary.quotedCount}/{partsSummary.requiredCount} quoted • {fmt(partsSummary.partsTotal)}</span></div> : null}
+                                {(partsByQuoteLine[line.id] ?? []).length > 0 ? <button type="button" onClick={() => setOpenParts((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="rounded-lg border border-[color:var(--desktop-border)] px-2.5 py-1.5 font-semibold text-[color:var(--theme-text-primary)]">{openParts[line.id] ? "Hide parts" : `View ${(partsByQuoteLine[line.id] ?? []).length} parts`}</button> : null}
+                              </div>
                             </div>
-                            {(partsByQuoteLine[line.id] ?? []).length > 0 ? (
+                            {(partsByQuoteLine[line.id] ?? []).length > 0 && openParts[line.id] ? (
                               <div className="mt-2 space-y-2">
                                 {(partsByQuoteLine[line.id] ?? []).map((part) => {
                                   const request = part.requestId ? (requestsByQuoteLine[line.id] ?? []).find((candidate) => candidate.id === part.requestId) ?? null : null;
@@ -936,26 +996,21 @@ export default function QuoteReviewView(props: {
                           ) : null}
 
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" onClick={() => setOpenDetails((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                            <button type="button" disabled={finalDecision} onClick={() => setOpenDetails((prev) => ({ ...prev, [line.id]: !prev[line.id] }))} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-45">
                               {openDetails[line.id] ? "Hide editor" : "Edit quote line"}
                             </button>
-                            <button type="button" onClick={() => markRecommendedReady(line)} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                            <button type="button" disabled={finalDecision} onClick={() => markRecommendedReady(line)} className="desktop-btn-secondary rounded-xl px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-45">
                               Recompute ready state
                             </button>
                             {!line.sent_to_customer_at && canSendLine(line) ? <span className="rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">Will send</span> : null}
-                            {safeTrim(line.status).toLowerCase() !== "declined" ? (
-                              <button type="button" onClick={() => void updateQuoteLineState(line, "declined", line.stage)} className="rounded-xl border border-red-400/45 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">
-                                Decline
-                              </button>
-                            ) : null}
-                            {safeTrim(line.status).toLowerCase() !== "deferred" ? (
-                              <button type="button" onClick={() => void updateQuoteLineState(line, "deferred", line.stage)} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">
-                                Defer
-                              </button>
-                            ) : null}
+                            {!finalDecision ? <>
+                              <button type="button" disabled={!canSendLine(line) && safeTrim(line.status).toLowerCase() !== "sent"} onClick={() => openDecisionDialog(line, "approve")} className="rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-45">Approve</button>
+                              <button type="button" onClick={() => openDecisionDialog(line, "defer")} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">Defer</button>
+                              <button type="button" onClick={() => openDecisionDialog(line, "decline")} className="rounded-xl border border-red-400/45 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">Decline</button>
+                            </> : null}
                           </div>
 
-                          {openDetails[line.id] ? (
+                          {openDetails[line.id] && !finalDecision ? (
                             <div className="desktop-panel-soft mt-3 p-4">
                               <div className={embedded ? "grid gap-3" : "grid gap-3 md:grid-cols-2"}>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
@@ -996,10 +1051,6 @@ export default function QuoteReviewView(props: {
                                     <option value="pending_parts">pending parts</option>
                                     <option value="quoted">ready / quoted</option>
                                     <option value="sent">sent</option>
-                                    <option value="approved">approved</option>
-                                    <option value="declined">declined</option>
-                                    <option value="deferred">deferred</option>
-                                    <option value="converted">converted</option>
                                   </select>
                                 </label>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
@@ -1103,7 +1154,7 @@ export default function QuoteReviewView(props: {
                   {sending ? "Sending…" : "Send ready quote lines"}
                 </button>
                 <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">Portal link will be: <span className="text-[color:var(--theme-text-secondary)]">/portal/quotes/{woId}</span></div>
-                <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Phase 5C still needs customer portal rendering, approval, and materialization of approved quote lines into punchable work_order_lines.</div>
+                <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Customer portal decisions and shop-recorded phone decisions use the same canonical approval lifecycle.</div>
               </div>
             </div>
 
@@ -1118,6 +1169,30 @@ export default function QuoteReviewView(props: {
         </div>
 
         {!embedded && <div className="mt-6 text-xs text-[color:var(--theme-text-muted)]">Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}</div>}
+
+        {decisionDialog ? (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4" role="dialog" aria-modal="true" aria-labelledby="shop-decision-title">
+            <div className="w-full max-w-lg rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-overlay)] p-5 shadow-2xl">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Classic shop approval</div>
+              <h2 id="shop-decision-title" className="mt-2 text-lg font-semibold text-[color:var(--theme-text-primary)]">Record {statusLabel(decisionDialog.decision)} — {safeTrim(decisionDialog.line.description) || "quote line"}</h2>
+              <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Use this after confirming the customer&apos;s decision outside the portal. The advisor, contact method, time, and note are retained with the quote.</p>
+              <label className="mt-4 block text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                Customer contact method
+                <select value={decisionContact} onChange={(event) => setDecisionContact(event.target.value as ContactMethod)} className={inputCls}>
+                  <option value="phone">Phone call</option><option value="in_person">In person</option><option value="email">Email</option><option value="other">Other</option>
+                </select>
+              </label>
+              <label className="mt-3 block text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                Advisor note (optional)
+                <textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value.slice(0, 1000))} rows={3} placeholder="Example: Approved by phone with Jamie at 2:15 PM." className={inputCls} />
+              </label>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button type="button" disabled={decisionSaving} onClick={() => setDecisionDialog(null)} className="desktop-btn-secondary rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50">Cancel</button>
+                <button type="button" disabled={decisionSaving} onClick={() => void confirmShopDecision()} className={decisionDialog.decision === "decline" ? "rounded-xl border border-red-400/45 bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-100 disabled:opacity-50" : "desktop-btn-primary rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50"}>{decisionSaving ? "Recording…" : `Confirm ${statusLabel(decisionDialog.decision)}`}</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <AddJobModal
           isOpen={addJobOpen}

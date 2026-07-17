@@ -4,9 +4,24 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/workOrderQuoteLineApproval";
+import type {
+  QuoteApprovalDecision,
+  QuoteDecisionContactMethod,
+} from "@/features/work-orders/server/workOrderQuoteLineApproval";
 
 export const runtime = "nodejs";
 
+const DECISIONS = new Set<QuoteApprovalDecision>([
+  "approve",
+  "decline",
+  "defer",
+]);
+const CONTACT_METHODS = new Set<QuoteDecisionContactMethod>([
+  "phone",
+  "in_person",
+  "email",
+  "other",
+]);
 
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
@@ -49,6 +64,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const body = (await req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const decisionValue = String(body.decision ?? "approve")
+      .trim()
+      .toLowerCase();
+    const contactValue = String(body.contactMethod ?? "other")
+      .trim()
+      .toLowerCase();
+    if (!DECISIONS.has(decisionValue as QuoteApprovalDecision)) {
+      return NextResponse.json(
+        { error: "Unsupported quote decision" },
+        { status: 400 },
+      );
+    }
+    if (!CONTACT_METHODS.has(contactValue as QuoteDecisionContactMethod)) {
+      return NextResponse.json(
+        { error: "Unsupported contact method" },
+        { status: 400 },
+      );
+    }
+    const decision = decisionValue as QuoteApprovalDecision;
+    const contactMethod = contactValue as QuoteDecisionContactMethod;
+    const note =
+      typeof body.note === "string" ? body.note.trim().slice(0, 1000) : null;
+    const operationKey =
+      typeof body.operationKey === "string"
+        ? body.operationKey.trim().slice(0, 160)
+        : undefined;
+
     const { data: q, error: qErr } = await supabase
       .from("work_order_quote_lines")
       .select("id, shop_id, work_order_id, work_order_line_id")
@@ -79,7 +125,11 @@ export async function POST(req: NextRequest) {
       shopId: q.shop_id,
       customerId: null,
       actorUserId: user.id,
-      decision: "approve",
+      decision,
+      decisionSource: "shop",
+      contactMethod,
+      decisionNote: note,
+      operationKey,
     });
 
     if (!result.ok) {
@@ -95,6 +145,7 @@ export async function POST(req: NextRequest) {
         result.workOrderLineIds[0] ?? q.work_order_line_id ?? null,
       workOrderLineIds: result.workOrderLineIds,
       approvalState: result.approvalState,
+      decision,
       partRelink: result.partRelink,
     });
   } catch {
