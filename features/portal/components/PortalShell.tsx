@@ -122,7 +122,11 @@ export default function PortalShell({
     }
   };
 
-  // ✅ AUTH PAGES: allow the auth page to own the full viewport/background
+  if (isPortalAuth(pathname)) {
+    return children;
+  }
+
+  // Public shop and enrollment pages keep the lightweight portal frame.
   if (hideNav) {
     return (
       <div className="relative min-h-dvh app-metal-bg text-[color:var(--theme-text-primary)] overflow-hidden">
