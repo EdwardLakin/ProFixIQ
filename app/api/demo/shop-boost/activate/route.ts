@@ -84,12 +84,45 @@ export async function POST(req: NextRequest) {
 
   const { data: demoRow, error: demoErr } = await admin
     .from("demo_shop_boosts")
-    .select("id,snapshot")
+    .select("id,snapshot,shop_id")
     .eq("id", demoId)
     .maybeSingle();
 
   if (demoErr || !demoRow?.snapshot) {
     return NextResponse.json({ ok: false, error: "Preview expired. Please run analysis again." }, { status: 404 });
+  }
+
+  if (demoRow.shop_id && demoRow.shop_id !== shopId) {
+    return NextResponse.json(
+      { ok: false, error: "This analysis has already been activated by another shop." },
+      { status: 403 },
+    );
+  }
+
+  const normalizedUserEmail = user.email?.trim().toLowerCase() ?? "";
+  if (!normalizedUserEmail) {
+    return NextResponse.json(
+      { ok: false, error: "A verified account email is required to activate this analysis." },
+      { status: 403 },
+    );
+  }
+
+  const { data: claimedLead, error: claimedLeadError } = await admin
+    .from("demo_shop_boost_leads")
+    .select("id")
+    .eq("demo_id", demoId)
+    .eq("email", normalizedUserEmail)
+    .maybeSingle();
+
+  if (claimedLeadError || !claimedLead?.id) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Sign in with the same email used to unlock this analysis, or return to the report and unlock it first.",
+      },
+      { status: 403 },
+    );
   }
 
   const snapshot = isRecord(demoRow.snapshot) ? demoRow.snapshot : null;
