@@ -105,10 +105,22 @@ function normalize(value: string): string {
     .trim();
 }
 
+function tokenMatches(candidate: string, expected: string): boolean {
+  if (candidate === expected || candidate === `${expected}s`) return true;
+  return expected.endsWith("y") && candidate === `${expected.slice(0, -1)}ies`;
+}
+
 function containsPhrase(value: string, phrase: string): boolean {
-  const normalizedValue = ` ${normalize(value)} `;
-  const normalizedPhrase = normalize(phrase);
-  return Boolean(normalizedPhrase) && normalizedValue.includes(` ${normalizedPhrase} `);
+  const valueTokens = normalize(value).split(" ").filter(Boolean);
+  const phraseTokens = normalize(phrase).split(" ").filter(Boolean);
+  if (phraseTokens.length === 0 || phraseTokens.length > valueTokens.length) {
+    return false;
+  }
+  return valueTokens.some((_, start) =>
+    phraseTokens.every((token, offset) =>
+      tokenMatches(valueTokens[start + offset] ?? "", token),
+    ),
+  );
 }
 
 function ruleFor(value: string): ServiceRule | null {
