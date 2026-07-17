@@ -224,11 +224,11 @@ export default function PayrollTimeClient() {
     void loadExportHistory(activePeriodId);
   }, [activePeriodId]);
 
-  async function runAction(path: string, actionName: string, payload: Record<string, unknown>) {
+  async function runAction(path: string, actionName: string, payload: Record<string, unknown>, method: "POST" | "PUT" = "POST") {
     setBusyAction(actionName);
     setError(null);
     const res = await fetch(path, {
-      method: "POST",
+      method,
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
@@ -243,7 +243,7 @@ export default function PayrollTimeClient() {
   }
 
   async function handleSavePeriodSettings() {
-    const result = await runAction("/api/payroll-time/periods", "settings", settingsForm);
+    const result = await runAction("/api/payroll-time/periods", "settings", settingsForm, "PUT");
     if (result) await load(result?.currentPeriod?.id ?? null);
   }
 
