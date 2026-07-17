@@ -134,6 +134,7 @@ export default function InstantAnalysisReviewPanel({ steps }: Props) {
   const [payload, setPayload] = useState<ReviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<(typeof DOMAIN_FILTERS)[number]["key"]>("all");
   const [confirmHighRiskId, setConfirmHighRiskId] = useState<string | null>(null);
@@ -180,6 +181,18 @@ export default function InstantAnalysisReviewPanel({ steps }: Props) {
     [filter, unresolvedItems],
   );
 
+  const safeItems = useMemo(
+    () =>
+      unresolvedItems.filter(
+        (item) =>
+          item.status === "pending" &&
+          item.recommendation.recommendationConfidence >= 0.85 &&
+          item.recommendation.recommendedAction !== "merge_candidate" &&
+          !isHighRisk(item),
+      ),
+    [unresolvedItems],
+  );
+
   const countsByDomain = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of unresolvedItems) {
@@ -224,6 +237,33 @@ export default function InstantAnalysisReviewPanel({ steps }: Props) {
     },
     [loadReview],
   );
+
+  const applySafeFixes = useCallback(async () => {
+    if (!intakeId || safeItems.length === 0) return;
+    setBulkBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/shop-boost/review-items/apply-safe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intakeId }),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { ok?: boolean; attempted?: number; succeeded?: number; failed?: number; error?: string }
+        | null;
+      if (!response.ok) throw new Error(result?.error ?? "Unable to apply safe fixes");
+      await loadReview();
+      if ((result?.failed ?? 0) > 0) {
+        setError(
+          `ProFixIQ fixed ${result?.succeeded ?? 0} items. ${result?.failed ?? 0} still need individual review.`,
+        );
+      }
+    } catch (bulkError) {
+      setError(bulkError instanceof Error ? bulkError.message : "Unable to apply safe fixes");
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [intakeId, loadReview, safeItems.length]);
 
   if (!intakeId) return null;
 
@@ -290,6 +330,27 @@ export default function InstantAnalysisReviewPanel({ steps }: Props) {
         {error ? (
           <div className="mb-4 rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {error}
+          </div>
+        ) : null}
+
+        {safeItems.length > 1 ? (
+          <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-emerald-200">
+                {safeItems.length} high-confidence fixes are ready
+              </p>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+                Apply the safe recommendations together. Duplicate merges and lower-confidence decisions always stay manual.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={bulkBusy || Boolean(busyItemId)}
+              onClick={() => void applySafeFixes()}
+              className="shrink-0 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {bulkBusy ? "Applying safe fixes…" : `Fix ${safeItems.length} safe items`}
+            </button>
           </div>
         ) : null}
 
