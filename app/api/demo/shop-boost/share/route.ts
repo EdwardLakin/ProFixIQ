@@ -63,10 +63,10 @@ export async function POST(req: NextRequest) {
 
     const { data: existingLead } = await supabase
       .from("demo_shop_boost_leads")
-      .select("id, share_count, emails_sent")
+      .select("id, share_count, emails_sent, lead_kind")
       .eq("demo_id", demoId)
       .eq("email", recipientEmail)
-      .maybeSingle<{ id: string; share_count: number | null; emails_sent: number | null }>();
+      .maybeSingle<{ id: string; share_count: number | null; emails_sent: number | null; lead_kind: string | null }>();
 
     if (existingLead?.id) {
       await supabase
@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
           emails_sent: (existingLead.emails_sent ?? 0) + 1,
           last_viewed_at: new Date().toISOString(),
           engagement_score: Math.min(100, ((existingLead.emails_sent ?? 0) + 1) * 8),
+          lead_kind: existingLead.lead_kind === "activation_claim" ? "activation_claim" : "share_recipient",
         } as Record<string, unknown>)
         .eq("id", existingLead.id);
     } else {
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
         share_count: 1,
         emails_sent: 1,
         engagement_score: 8,
+        lead_kind: "share_recipient",
       } as Record<string, unknown>);
     }
 
