@@ -169,7 +169,11 @@ export async function GET(req: Request) {
     .limit(250);
 
   if (domain) query = query.eq("domain", domain);
-  if (status) query = query.eq("status", status);
+  if (status === "unresolved") {
+    query = query.in("status", ["pending", "failed_materialization"]);
+  } else if (status) {
+    query = query.eq("status", status);
+  }
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
