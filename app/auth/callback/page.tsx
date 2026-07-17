@@ -54,10 +54,16 @@ export default function AuthCallbackPage() {
         const mode = sp.get("mode")?.trim();
         const sessionId = sp.get("session_id")?.trim();
         const flow = sp.get("flow")?.trim();
+        const demoId = sp.get("demoId")?.trim();
+        const intakeId = sp.get("intakeId")?.trim();
+        const activationContext = sp.get("activationContext")?.trim();
         if (redirect) passthrough.set("redirect", redirect);
         if (mode) passthrough.set("mode", mode);
         if (sessionId) passthrough.set("session_id", sessionId);
         if (flow) passthrough.set("flow", flow);
+        if (demoId) passthrough.set("demoId", demoId);
+        if (intakeId) passthrough.set("intakeId", intakeId);
+        if (activationContext) passthrough.set("activationContext", activationContext);
         const signInHref = `/sign-in${passthrough.toString() ? `?${passthrough.toString()}` : ""}`;
 
         router.replace(signInHref);
