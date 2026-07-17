@@ -56,7 +56,9 @@ function pathBasename(path: string): string {
 function readPersistedImportSummary(value: unknown): ShopBoostImportSummary | null {
   const basics = isRecord(value) ? value : {};
   const migrationProgress = isRecord(basics.migrationProgress) ? basics.migrationProgress : {};
-  const summary = migrationProgress.importSummary;
+  const summary = isRecord(basics.importSummary)
+    ? basics.importSummary
+    : migrationProgress.importSummary;
   if (!isRecord(summary) || !isRecord(summary.rowResults)) return null;
   if (
     typeof summary.customersImported !== "number" ||
