@@ -105,6 +105,12 @@ export async function stageInstantAnalysisUploads(args: {
   return {
     demoId: plan.demoId,
     intakeId: plan.intakeId,
-    uploads: plan.uploads.map(({ token: _token, ...upload }) => upload),
+    uploads: plan.uploads.map((upload) => ({
+      dataset: upload.dataset,
+      path: upload.path,
+      fileName: upload.fileName,
+      sizeBytes: upload.sizeBytes,
+      contentType: upload.contentType,
+    })),
   };
 }
