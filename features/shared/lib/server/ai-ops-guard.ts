@@ -86,6 +86,16 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
     anomalyHighCostUsd: envNum("AI_ANOMALY_COST_REALTIME_TOKEN", 0.05),
     anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_REALTIME_TOKEN", 8),
   },
+  work_order_documentation_rewrite: {
+    budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_DOCUMENTATION", 30),
+    budgetHardUsd: envNum("AI_BUDGET_HARD_USD_DOCUMENTATION", 50),
+    rateLimitMax: envNum("AI_RATE_LIMIT_DOCUMENTATION_MAX", 40),
+    rateLimitWindowMs: envNum("AI_RATE_LIMIT_DOCUMENTATION_WINDOW_MS", 5 * 60 * 1000),
+    anomalySpikeThreshold: envNum("AI_ANOMALY_SPIKE_DOCUMENTATION", 25),
+    anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_DOCUMENTATION", 6),
+    anomalyHighCostUsd: envNum("AI_ANOMALY_COST_DOCUMENTATION", 0.15),
+    anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_DOCUMENTATION", 4),
+  },
   branding_generate_logo: {
     budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_BRANDING", 80),
     budgetHardUsd: envNum("AI_BUDGET_HARD_USD_BRANDING", 120),

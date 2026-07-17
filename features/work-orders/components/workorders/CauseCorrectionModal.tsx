@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import ModalShell from "@/features/shared/components/ModalShell";
+import VoiceDictationButton from "@/features/shared/voice/VoiceDictationButton";
 
 interface CauseCorrectionModalProps {
   isOpen: boolean;
@@ -41,6 +42,12 @@ export default function CauseCorrectionModal({
   const [savingDraft, setSavingDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+  const [dictatedStory, setDictatedStory] = useState("");
+  const [rewriting, setRewriting] = useState(false);
+  const [rewritePreview, setRewritePreview] = useState<{
+    cause: string;
+    correction: string;
+  } | null>(null);
 
   const causeRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -50,6 +57,9 @@ export default function CauseCorrectionModal({
       setCorrection(initialCorrection);
       setError(null);
       setOk(null);
+      setDictatedStory("");
+      setRewritePreview(null);
+      setRewriting(false);
       setTimeout(() => causeRef.current?.focus(), 50);
     }
   }, [isOpen, initialCause, initialCorrection]);
@@ -104,7 +114,61 @@ export default function CauseCorrectionModal({
     }
   };
 
-  const busy = submitting || savingDraft;
+  const handleRewrite = async (): Promise<void> => {
+    const transcript = dictatedStory.trim();
+    if (!transcript || rewriting) return;
+
+    setRewriting(true);
+    setError(null);
+    setOk(null);
+    try {
+      const response = await fetch("/api/work-orders/documentation/rewrite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId,
+          transcript,
+          existingCause: cause,
+          existingCorrection: correction,
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { cause?: string; correction?: string; error?: string }
+        | null;
+
+      if (
+        !response.ok ||
+        typeof body?.cause !== "string" ||
+        typeof body?.correction !== "string"
+      ) {
+        throw new Error(body?.error || "Could not rewrite the job story.");
+      }
+
+      setRewritePreview({
+        cause: body.cause,
+        correction: body.correction,
+      });
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not rewrite the job story.",
+      );
+    } finally {
+      setRewriting(false);
+    }
+  };
+
+  const applyRewrite = (): void => {
+    if (!rewritePreview) return;
+    setCause(rewritePreview.cause);
+    setCorrection(rewritePreview.correction);
+    onDraftChange?.(rewritePreview.cause, rewritePreview.correction);
+    setRewritePreview(null);
+    setOk("AI rewrite applied to the editable draft.");
+  };
+
+  const busy = submitting || savingDraft || rewriting;
 
   const headerLabel =
     (lineLabel ?? "").trim().length > 0 ? lineLabel.trim() : jobId;
@@ -130,6 +194,93 @@ export default function CauseCorrectionModal({
             complete, searchable, and useful later.
           </div>
         </div>
+
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-4 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper-light)]">
+                Voice story
+              </div>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+                Describe what you verified and what you did. The original
+                dictation stays visible until you choose to apply the rewrite.
+              </p>
+            </div>
+            <VoiceDictationButton
+              disabled={busy}
+              idleLabel="Dictate story"
+              listeningLabel="Stop"
+              onTranscript={(transcript) => {
+                if (!transcript) return;
+                setDictatedStory((current) => {
+                  const existing = current.trim();
+                  return existing ? `${existing} ${transcript}` : transcript;
+                });
+                setRewritePreview(null);
+              }}
+            />
+          </div>
+
+          <textarea
+            rows={4}
+            value={dictatedStory}
+            onChange={(event) => {
+              setDictatedStory(event.target.value);
+              setRewritePreview(null);
+            }}
+            className="mt-3 w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            placeholder="Raw technician dictation appears here…"
+          />
+
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              disabled={rewriting || dictatedStory.trim().length < 3}
+              onClick={() => void handleRewrite()}
+              className="rounded-full border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-light)] transition hover:bg-[color:var(--theme-surface-subtle)] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {rewriting ? "Rewriting…" : "Rewrite cause & correction"}
+            </button>
+          </div>
+
+          {rewritePreview ? (
+            <div className="mt-3 space-y-3 rounded-xl border border-emerald-400/25 bg-emerald-500/5 p-3">
+              <div>
+                <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                  Proposed cause
+                </div>
+                <p className="mt-1 text-sm leading-5 text-[color:var(--theme-text-primary)]">
+                  {rewritePreview.cause}
+                </p>
+              </div>
+              <div>
+                <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                  Proposed correction
+                </div>
+                <p className="mt-1 text-sm leading-5 text-[color:var(--theme-text-primary)]">
+                  {rewritePreview.correction}
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRewritePreview(null)}
+                  className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs text-[color:var(--theme-text-secondary)]"
+                >
+                  Keep current draft
+                </button>
+                <button
+                  type="button"
+                  onClick={applyRewrite}
+                  className="rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-emerald-950"
+                >
+                  Apply rewrite
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
         <div className="flex items-center justify-between text-[0.7rem] text-[color:var(--theme-text-secondary)]">
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="font-semibold uppercase tracking-[0.18em]">

@@ -389,5 +389,40 @@ export function useRealtimeVoice(
     setState("idle");
   }
 
+  useEffect(() => {
+    return () => {
+      stoppedRef.current = true;
+
+      try {
+        workletRef.current?.disconnect();
+      } catch {}
+      workletRef.current = null;
+
+      try {
+        zeroGainRef.current?.disconnect();
+      } catch {}
+      zeroGainRef.current = null;
+
+      const socket = wsRef.current;
+      wsRef.current = null;
+      try {
+        socket?.close();
+      } catch {}
+
+      try {
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      } catch {}
+      mediaStreamRef.current = null;
+
+      const audioContext = audioCtxRef.current;
+      audioCtxRef.current = null;
+      try {
+        void audioContext?.close();
+      } catch {}
+
+      liveRef.current = "";
+    };
+  }, []);
+
   return { start, stop };
 }
