@@ -26,6 +26,7 @@ export default function PwaRuntime() {
   const [iosInstallAvailable, setIosInstallAvailable] = useState(false);
   const [showIosInstructions, setShowIosInstructions] = useState(false);
   const [activatingUpdate, setActivatingUpdate] = useState(false);
+  const [syncBlocked, setSyncBlocked] = useState<string | null>(null);
   const updateReloading = useRef(false);
   const pending = summary.queued + summary.syncing + summary.failed;
 
@@ -69,7 +70,17 @@ export default function PwaRuntime() {
     );
     const sync = () => {
       setOnline(navigator.onLine);
-      if (navigator.onLine) void replayAllOfflineMutations();
+      if (navigator.onLine) {
+        void replayAllOfflineMutations()
+          .then(() => setSyncBlocked(null))
+          .catch((cause: unknown) => {
+            setSyncBlocked(
+              cause instanceof Error
+                ? cause.message
+                : "Saved work could not be verified for sync.",
+            );
+          });
+      }
     };
     window.addEventListener("online", sync);
     window.addEventListener("offline", sync);
@@ -140,7 +151,8 @@ export default function PwaRuntime() {
     pending === 0 &&
     !installPrompt &&
     !iosInstallAvailable &&
-    !updateReady
+    !updateReady &&
+    !syncBlocked
   ) {
     return null;
   }
@@ -151,12 +163,15 @@ export default function PwaRuntime() {
         className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-amber-400"}`}
       />
       <span>
-        {online
+        {syncBlocked
+          ? "Sync needs attention"
+          : online
           ? pending
             ? `Syncing ${pending}`
             : "Online"
           : `Offline · ${pending} pending`}
       </span>
+      {syncBlocked && <span className="sr-only">{syncBlocked}</span>}
       {installPrompt && (
         <button
           type="button"
@@ -175,7 +190,7 @@ export default function PwaRuntime() {
           Install
         </button>
       )}
-      {(pending > 0 || !online) && (
+      {(pending > 0 || !online || syncBlocked) && (
         <button
           type="button"
           onClick={() => window.location.assign("/offline/sync")}
@@ -188,10 +203,14 @@ export default function PwaRuntime() {
         <button
           type="button"
           onClick={activateUpdate}
-          disabled={activatingUpdate}
+          disabled={activatingUpdate || pending > 0}
           className="rounded-full bg-sky-400 px-3 py-1 text-slate-950"
         >
-          {activatingUpdate ? "Updating…" : "Update"}
+          {activatingUpdate
+            ? "Updating…"
+            : pending > 0
+              ? "Sync before update"
+              : "Update"}
         </button>
       )}
       {showIosInstructions && (
