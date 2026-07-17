@@ -244,11 +244,28 @@ export async function getOrCreateCurrentPeriod(shopId: string, actorId: string) 
   let periodEnd = currentWeekEnd;
 
   if (cadence === "biweekly") {
-    const epoch = Date.UTC(2024, 0, 1);
-    const weeksSinceEpoch = Math.floor((currentWeekStart.getTime() - epoch) / (7 * 24 * 60 * 60 * 1000));
-    const isEven = weeksSinceEpoch % 2 === 0;
-    periodStart = isEven ? currentWeekStart : addDays(currentWeekStart, -7);
+    const configuredAnchor = payrollSettings?.period_anchor_date
+      ? startOfUtcDay(`${payrollSettings.period_anchor_date}T00:00:00.000Z`)
+      : startOfUtcDay("2024-01-01T00:00:00.000Z");
+    const daysSinceAnchor = Math.floor((todayUtc.getTime() - configuredAnchor.getTime()) / (24 * 60 * 60 * 1000));
+    const cycle = Math.floor(daysSinceAnchor / 14);
+    periodStart = addDays(configuredAnchor, cycle * 14);
     periodEnd = addDays(periodStart, 13);
+  } else if (cadence === "semimonthly") {
+    const year = todayUtc.getUTCFullYear();
+    const month = todayUtc.getUTCMonth();
+    if (todayUtc.getUTCDate() <= 15) {
+      periodStart = new Date(Date.UTC(year, month, 1));
+      periodEnd = new Date(Date.UTC(year, month, 15));
+    } else {
+      periodStart = new Date(Date.UTC(year, month, 16));
+      periodEnd = new Date(Date.UTC(year, month + 1, 0));
+    }
+  } else if (cadence === "monthly") {
+    const year = todayUtc.getUTCFullYear();
+    const month = todayUtc.getUTCMonth();
+    periodStart = new Date(Date.UTC(year, month, 1));
+    periodEnd = new Date(Date.UTC(year, month + 1, 0));
   }
 
   const periodStartIso = toIsoDate(periodStart);
@@ -369,14 +386,14 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       .select("id, user_id, type, status, start_time, end_time, excluded_from_payroll")
       .eq("shop_id", shopId)
       .neq("excluded_from_payroll", true)
-      .gte("start_time", rangeStart)
-      .lt("start_time", rangeEnd),
+      .lt("start_time", rangeEnd)
+      .or(`end_time.is.null,end_time.gt.${rangeStart}`),
     admin
       .from("work_order_line_labor_segments")
       .select("id, technician_id, started_at, ended_at")
       .eq("shop_id", shopId)
-      .gte("started_at", rangeStart)
-      .lt("started_at", rangeEnd),
+      .lt("started_at", rangeEnd)
+      .or(`ended_at.is.null,ended_at.gt.${rangeStart}`),
   ]);
 
   if (shiftsErr) throw new Error(shiftsErr.message);
