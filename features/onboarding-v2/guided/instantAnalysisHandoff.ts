@@ -151,7 +151,7 @@ function emptyDomainResult(): DomainResult {
 }
 
 function domainResult(
-  summary: ShopBoostImportSummary | undefined,
+  summary: ShopBoostImportSummary,
   dataset: ShopBoostUploadDatasetKey,
 ): DomainResult {
   if (!summary) return emptyDomainResult();
@@ -178,7 +178,7 @@ function domainResult(
 }
 
 function importedCount(
-  summary: ShopBoostImportSummary | undefined,
+  summary: ShopBoostImportSummary,
   dataset: ShopBoostUploadDatasetKey,
 ): number {
   if (!summary) return 0;
@@ -196,7 +196,7 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
   demoId: string;
   intakeId: string;
   uploadedDatasets: ShopBoostUploadDatasetKey[];
-  importSummary?: ShopBoostImportSummary;
+  importSummary: ShopBoostImportSummary;
 }): Promise<{ sessionId: string; redirectTo: string }> {
   const admin = createAdminSupabase() as unknown as SupabaseClient<GuidedDatabase>;
   const now = new Date().toISOString();
@@ -269,9 +269,6 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
   });
 
   for (const { dataset, stepKey } of mappedDatasets) {
-    const existingStep = existingStepByKey.get(stepKey);
-    if (!args.importSummary && existingStep?.status === "completed") continue;
-
     const result = domainResult(args.importSummary, dataset);
     const { error: updateStepError } = await admin
       .from("guided_onboarding_steps")
