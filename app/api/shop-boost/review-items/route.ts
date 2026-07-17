@@ -102,7 +102,7 @@ function deriveRecommendationExplanation(recommendation: RecommendationDto): str
 export async function GET(req: Request) {
   const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
   if (!access.ok) return access.response;
-  const shopId = access.shopId!;
+  const shopId = access.profile.shop_id!;
 
   const url = new URL(req.url);
   const domain = url.searchParams.get("domain");
