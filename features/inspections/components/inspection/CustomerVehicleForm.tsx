@@ -122,6 +122,11 @@ function hydrateVehicleFields(v: VehicleRow): VehicleInfo {
 /* Autocomplete: Customer (business + first/last, STRICT same-shop)           */
 /* -------------------------------------------------------------------------- */
 
+type CustomerVehicleSearchPick = {
+  customer: CustomerRow;
+  vehicle: VehicleRow | null;
+};
+
 function CustomerAutocomplete({
   q,
   shopId,
@@ -129,10 +134,10 @@ function CustomerAutocomplete({
 }: {
   q: string;
   shopId: string | null;
-  onPick: (c: CustomerRow) => void;
+  onPick: (pick: CustomerVehicleSearchPick) => void;
 }) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
-  const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [rows, setRows] = useState<CustomerVehicleSearchPick[]>([]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -141,7 +146,6 @@ function CustomerAutocomplete({
   useEffect(() => {
     const term = (q ?? "").trim();
 
-    // require 2+ chars and a shop
     if (!term || !shopId || term.length < 2) {
       setRows([]);
       setOpen(false);
@@ -154,8 +158,9 @@ function CustomerAutocomplete({
     const t = window.setTimeout(async () => {
       setBusy(true);
       try {
-        const like = `%${term.replaceAll("%", "").replaceAll("_", "")}%`;
-        const { data, error } = await supabase
+        const escapedTerm = term.replaceAll("%", "").replaceAll("_", "");
+        const like = `%${escapedTerm}%`;
+        const { data: customerRows, error: customerError } = await supabase
           .from("customers")
           .select(
             "id, business_name, first_name, last_name, name, phone, phone_number, email, address, city, province, postal_code, created_at",
@@ -175,14 +180,48 @@ function CustomerAutocomplete({
           .order("created_at", { ascending: false })
           .limit(12);
 
-        if (error) throw error;
-        if (thisReq === reqCounter.current) {
-          const deduped = new Map<string, CustomerRow>();
-          for (const row of (data ?? []) as CustomerRow[]) {
-            if (!deduped.has(row.id)) deduped.set(row.id, row);
-          }
-          setRows(Array.from(deduped.values()));
+        if (customerError) throw customerError;
+
+        const customers = (customerRows ?? []) as CustomerRow[];
+        const customerIds = customers.map((customer) => customer.id);
+        let vehicles: VehicleRow[] = [];
+
+        if (customerIds.length > 0) {
+          const { data: vehicleRows, error: vehicleError } = await supabase
+            .from("vehicles")
+            .select(
+              "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id, created_at",
+            )
+            .eq("shop_id", shopId)
+            .in("customer_id", customerIds)
+            .order("created_at", { ascending: false })
+            .limit(48);
+
+          if (vehicleError) throw vehicleError;
+          vehicles = (vehicleRows ?? []) as VehicleRow[];
         }
+
+        const vehiclesByCustomer = new Map<string, VehicleRow[]>();
+        for (const vehicle of vehicles) {
+          if (!vehicle.customer_id) continue;
+          const existing = vehiclesByCustomer.get(vehicle.customer_id) ?? [];
+          existing.push(vehicle);
+          vehiclesByCustomer.set(vehicle.customer_id, existing);
+        }
+
+        const matches: CustomerVehicleSearchPick[] = [];
+        for (const customer of customers) {
+          const customerVehicles = vehiclesByCustomer.get(customer.id) ?? [];
+          if (customerVehicles.length === 0) {
+            matches.push({ customer, vehicle: null });
+          } else {
+            for (const vehicle of customerVehicles) {
+              matches.push({ customer, vehicle });
+            }
+          }
+        }
+
+        if (thisReq === reqCounter.current) setRows(matches.slice(0, 12));
       } catch {
         if (thisReq === reqCounter.current) setRows([]);
       } finally {
@@ -218,20 +257,28 @@ function CustomerAutocomplete({
           {busy && (
             <div className="px-3 py-2 text-xs text-[color:var(--theme-text-muted)]">Searching…</div>
           )}
-          {rows.map((c) => {
+          {rows.map(({ customer: c, vehicle: v }) => {
             const normalized = hydrateCustomerFields(c);
             const contact = [normalized.first_name, normalized.last_name]
               .filter(Boolean)
               .join(" ");
             const top =
               normalized.business_name || contact || normalized.name || "Unnamed";
-            const sub =
-              normalized.business_name && contact
-                ? contact
-                : [normalized.phone, normalized.email].filter(Boolean).join(" · ");
+            const vehicleLabel = v
+              ? [
+                  v.unit_number ? `Unit ${v.unit_number}` : null,
+                  v.license_plate ? `Plate ${v.license_plate}` : null,
+                  [v.year, v.make, v.model].filter(Boolean).join(" "),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : "No vehicle on file";
+            const contactLabel = [contact, normalized.phone, normalized.email]
+              .filter(Boolean)
+              .join(" · ");
             return (
               <button
-                key={c.id}
+                key={`${c.id}:${v?.id ?? "no-vehicle"}`}
                 type="button"
                 className="
                   block w-full cursor-pointer px-3 py-2 text-left text-sm transition
@@ -241,12 +288,13 @@ function CustomerAutocomplete({
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onPick(c);
+                  onPick({ customer: c, vehicle: v });
                   setOpen(false);
                 }}
               >
                 <div className="truncate text-[color:var(--theme-text-primary)]">{top}</div>
-                <div className="truncate text-xs text-[color:var(--theme-text-muted)]">{sub || "—"}</div>
+                <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">{vehicleLabel}</div>
+                <div className="truncate text-[11px] text-[color:var(--theme-text-muted)]">{contactLabel || "—"}</div>
               </button>
             );
           })}
@@ -266,12 +314,10 @@ function CustomerAutocomplete({
 function UnitNumberAutocomplete({
   q,
   shopId,
-  customerId,
   onPick,
 }: {
   q: string;
   shopId: string | null;
-  customerId: string | null;
   onPick: (v: VehicleRow) => void;
 }) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -284,7 +330,7 @@ function UnitNumberAutocomplete({
   useEffect(() => {
     const term = (q ?? "").trim();
 
-    if (!term || !shopId || !customerId) {
+    if (!term || !shopId || term.length < 2) {
       setRows([]);
       setOpen(false);
       return;
@@ -296,14 +342,14 @@ function UnitNumberAutocomplete({
     const t = window.setTimeout(async () => {
       setBusy(true);
       try {
-        const like = `%${term}%`;
+        const escapedTerm = term.replaceAll("%", "").replaceAll("_", "");
+        const like = `%${escapedTerm}%`;
         const { data, error } = await supabase
           .from("vehicles")
           .select(
             "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id, created_at",
           )
           .eq("shop_id", shopId)
-          .eq("customer_id", customerId)
           .or(
             `unit_number.ilike.${like},license_plate.ilike.${like},vin.ilike.${like},model.ilike.${like}`,
           )
@@ -321,7 +367,7 @@ function UnitNumberAutocomplete({
     }, 150);
 
     return () => window.clearTimeout(t);
-  }, [q, shopId, customerId, supabase]);
+  }, [q, shopId, supabase]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -489,7 +535,35 @@ export default function CustomerVehicleForm({
     };
   }, [currentCustomerId, selectedVehicleId, shopId, vehicle.license_plate, vehicle.unit_number, vehicle.vin]);
 
-  async function handlePickedCustomer(c: CustomerRow) {
+  const applyPickedVehicle = useCallback(
+    (picked: VehicleRow) => {
+      const fields = hydrateVehicleFields(picked);
+      safeSetVehicle("vin", fields.vin);
+      safeSetVehicle("year", fields.year);
+      safeSetVehicle("make", fields.make);
+      safeSetVehicle("model", fields.model);
+      safeSetVehicle("license_plate", fields.license_plate);
+      safeSetVehicle("mileage", fields.mileage);
+      safeSetVehicle("unit_number", fields.unit_number ?? null);
+      safeSetVehicle("color", fields.color);
+      safeSetVehicle("engine_hours", fields.engine_hours ?? null);
+      safeSetVehicle("engine", fields.engine ?? null);
+      safeSetVehicle("submodel", fields.submodel ?? null);
+      safeSetVehicle("engine_family", fields.engine_family ?? null);
+      safeSetVehicle("engine_type", fields.engine_type ?? null);
+      safeSetVehicle("transmission", fields.transmission ?? null);
+      safeSetVehicle("transmission_type", fields.transmission_type ?? null);
+      safeSetVehicle("fuel_type", fields.fuel_type ?? null);
+      safeSetVehicle("drivetrain", fields.drivetrain ?? null);
+      onVehicleSelected?.(picked.id);
+    },
+    [onVehicleSelected, safeSetVehicle],
+  );
+
+  async function handlePickedCustomer(
+    c: CustomerRow,
+    pickedVehicle: VehicleRow | null = null,
+  ) {
     const applyCustomer = (picked: CustomerRow) => {
       const fields = hydrateCustomerFields(picked);
       safeSetCustomer("business_name", fields.business_name ?? null);
@@ -506,7 +580,6 @@ export default function CustomerVehicleForm({
 
     applyCustomer(c);
 
-    // Fill remaining fields from the scoped full row.
     try {
       const query = supabase
         .from("customers")
@@ -518,18 +591,24 @@ export default function CustomerVehicleForm({
 
       if (data) applyCustomer(data as CustomerRow);
     } catch {
-      /* ignore */
+      /* Keep the fields already returned by autocomplete. */
     }
 
     onCustomerSelected?.(c.id);
     setCurrentCustomerId(c.id);
 
-    // If they only have one vehicle, auto-fill it
+    if (pickedVehicle) {
+      applyPickedVehicle(pickedVehicle);
+      return;
+    }
+
+    // Preserve the existing customer-page and URL-prefill behavior: a customer
+    // with exactly one vehicle can still be selected without a vehicle choice.
     try {
       const { data: vehs } = await supabase
         .from("vehicles")
         .select(
-          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, created_at",
+          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id, created_at",
         )
         .eq("customer_id", c.id)
         .eq("shop_id", shopId)
@@ -537,32 +616,34 @@ export default function CustomerVehicleForm({
         .limit(2);
 
       const arr = (vehs ?? []) as VehicleRow[];
-      if (arr.length === 1) {
-        const v = arr[0];
-        const fields = hydrateVehicleFields(v);
-        safeSetVehicle("vin", fields.vin);
-        safeSetVehicle("year", fields.year);
-        safeSetVehicle("make", fields.make);
-        safeSetVehicle("model", fields.model);
-        safeSetVehicle("license_plate", fields.license_plate);
-        safeSetVehicle("mileage", fields.mileage);
-        safeSetVehicle("unit_number", fields.unit_number ?? null);
-        safeSetVehicle("color", fields.color);
-        safeSetVehicle("engine_hours", fields.engine_hours ?? null);
-        safeSetVehicle("engine", fields.engine ?? null);
-        safeSetVehicle("submodel", fields.submodel ?? null);
-        safeSetVehicle("engine_family", fields.engine_family ?? null);
-        safeSetVehicle("engine_type", fields.engine_type ?? null);
-        safeSetVehicle("transmission", fields.transmission ?? null);
-        safeSetVehicle("transmission_type", fields.transmission_type ?? null);
-        safeSetVehicle("fuel_type", fields.fuel_type ?? null);
-        safeSetVehicle("drivetrain", fields.drivetrain ?? null);
-
-        onVehicleSelected?.(v.id);
-      }
+      if (arr.length === 1) applyPickedVehicle(arr[0]);
     } catch {
       /* ignore */
     }
+  }
+
+  async function handlePickedVehicle(v: VehicleRow) {
+    if (v.customer_id && shopId) {
+      try {
+        const { data: owner } = await supabase
+          .from("customers")
+          .select(
+            "id, business_name, first_name, last_name, name, phone, phone_number, email, address, city, province, postal_code, created_at",
+          )
+          .eq("id", v.customer_id)
+          .eq("shop_id", shopId)
+          .maybeSingle();
+
+        if (owner) {
+          await handlePickedCustomer(owner as CustomerRow, v);
+          return;
+        }
+      } catch {
+        /* Fall through and at least apply the vehicle. */
+      }
+    }
+
+    applyPickedVehicle(v);
   }
 
   const handleSaveClick = async () => {
@@ -664,7 +745,9 @@ export default function CustomerVehicleForm({
               <CustomerAutocomplete
                 q={customer.business_name ?? ""}
                 shopId={shopId}
-                onPick={handlePickedCustomer}
+                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                  void handlePickedCustomer(pickedCustomer, pickedVehicle);
+                }}
               />
             </div>
 
@@ -680,7 +763,9 @@ export default function CustomerVehicleForm({
               <CustomerAutocomplete
                 q={customer.first_name ?? ""}
                 shopId={shopId}
-                onPick={handlePickedCustomer}
+                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                  void handlePickedCustomer(pickedCustomer, pickedVehicle);
+                }}
               />
             </div>
 
@@ -696,7 +781,9 @@ export default function CustomerVehicleForm({
               <CustomerAutocomplete
                 q={customer.last_name ?? ""}
                 shopId={shopId}
-                onPick={handlePickedCustomer}
+                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                  void handlePickedCustomer(pickedCustomer, pickedVehicle);
+                }}
               />
             </div>
 
@@ -712,7 +799,9 @@ export default function CustomerVehicleForm({
               <CustomerAutocomplete
                 q={customer.phone ?? ""}
                 shopId={shopId}
-                onPick={handlePickedCustomer}
+                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                  void handlePickedCustomer(pickedCustomer, pickedVehicle);
+                }}
               />
             </div>
 
@@ -729,7 +818,9 @@ export default function CustomerVehicleForm({
               <CustomerAutocomplete
                 q={customer.email ?? ""}
                 shopId={shopId}
-                onPick={handlePickedCustomer}
+                onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
+                  void handlePickedCustomer(pickedCustomer, pickedVehicle);
+                }}
               />
             </div>
 
@@ -829,31 +920,8 @@ export default function CustomerVehicleForm({
               <UnitNumberAutocomplete
                 q={vehicle.unit_number ?? ""}
                 shopId={shopId}
-                customerId={currentCustomerId}
                 onPick={(v) => {
-                  safeSetVehicle("unit_number", v.unit_number ?? null);
-                  safeSetVehicle("vin", v.vin ?? null);
-                  safeSetVehicle("year", v.year != null ? String(v.year) : null);
-                  safeSetVehicle("make", v.make ?? null);
-                  safeSetVehicle("model", v.model ?? null);
-                  safeSetVehicle("license_plate", v.license_plate ?? null);
-                  safeSetVehicle("mileage", v.mileage ?? null);
-                  safeSetVehicle("color", v.color ?? null);
-                  safeSetVehicle(
-                    "engine_hours",
-                    v.engine_hours != null ? String(v.engine_hours) : null,
-                  );
-
-                  safeSetVehicle("engine", v.engine ?? null);
-                  safeSetVehicle("submodel", v.submodel ?? null);
-                  safeSetVehicle("engine_family", v.engine_family ?? null);
-                  safeSetVehicle("engine_type", v.engine_type ?? null);
-                  safeSetVehicle("transmission", v.transmission ?? null);
-                  safeSetVehicle("transmission_type", v.transmission_type ?? null);
-                  safeSetVehicle("fuel_type", v.fuel_type ?? null);
-                  safeSetVehicle("drivetrain", v.drivetrain ?? null);
-
-                  onVehicleSelected?.(v.id);
+                  void handlePickedVehicle(v);
                 }}
               />
             </div>
@@ -913,6 +981,13 @@ export default function CustomerVehicleForm({
                 onChange={(e) =>
                   safeSetVehicle("license_plate", e.target.value || null)
                 }
+              />
+              <UnitNumberAutocomplete
+                q={vehicle.license_plate ?? ""}
+                shopId={shopId}
+                onPick={(v) => {
+                  void handlePickedVehicle(v);
+                }}
               />
             </div>
 
