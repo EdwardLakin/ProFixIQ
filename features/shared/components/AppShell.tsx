@@ -18,19 +18,7 @@ import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordCh
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscriptionStatus";
-
-const NON_APP_ROUTES = [
-  "/",
-  "/sign-in",
-  "/sign-up",
-  "/coming-soon",
-  "/auth",
-  "/forgot-password",
-  "/auth/reset",
-  "/auth/set-password",
-  "/mobile",
-  "/demo",
-];
+import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoundaries";
 
 const HEADER_OFFSET_DESKTOP = "pt-14";
 
@@ -124,11 +112,7 @@ export default function AppShell({
 
   const punchRef = useRef<HTMLDivElement | null>(null);
 
-  const isPortalRoute =
-    pathname === "/portal" || pathname.startsWith("/portal/");
-  const isAppRoute =
-    !isPortalRoute &&
-    !NON_APP_ROUTES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const isAppRoute = !isOutsideDesktopAppShell(pathname);
 
   const canSeeAgentConsole =
     !!userRole &&
