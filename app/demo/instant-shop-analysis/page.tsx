@@ -6,7 +6,7 @@ import { appendActivationContextToHref, type ActivationContext } from "@/feature
 import type { ShopBoostPreflightReport } from "@/features/integrations/shopBoost/preflightAnalysis";
 import type { ShadowShopSnapshot } from "@/features/integrations/shopBoost/shadowShop";
 import {
-  SHOP_BOOST_UPLOAD_DATASETS,
+  INSTANT_SHOP_ANALYSIS_DATASETS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
 
@@ -441,7 +441,7 @@ export default function InstantShopAnalysisPage() {
               </div>
 
               <div className="space-y-3 text-xs">
-                {SHOP_BOOST_UPLOAD_DATASETS.map((dataset) => (
+                {INSTANT_SHOP_ANALYSIS_DATASETS.map((dataset) => (
                   <FileRow
                     key={dataset.key}
                     id={`demo-${dataset.key}`}
