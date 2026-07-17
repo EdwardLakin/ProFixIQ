@@ -303,6 +303,7 @@ async function getPeriodSourceState(admin: any, shopId: string, period: any, tim
     entriesCount: entriesCount ?? 0,
     sourceCount: (shifts?.length ?? 0) + (jobs?.length ?? 0),
     sourceFreshAt: candidates.length ? new Date(Math.max(...candidates)).toISOString() : null,
+    hasOpenTime: (shifts ?? []).some((shift: any) => !shift.end_time) || (jobs ?? []).some((job: any) => !job.ended_at),
     rangeStart,
     rangeEnd,
   };
@@ -319,10 +320,10 @@ export async function refreshOpenPeriodIfStale(params: { shopId: string; actorId
   const state = await getPeriodSourceState(admin, params.shopId, period, shop?.timezone ?? "UTC");
   const periodUpdated = period.updated_at ? new Date(period.updated_at).getTime() : 0;
   const sourceUpdated = state.sourceFreshAt ? new Date(state.sourceFreshAt).getTime() : 0;
-  if (state.entriesCount === 0 || sourceUpdated > periodUpdated) {
+  if (state.entriesCount === 0 || sourceUpdated > periodUpdated || state.hasOpenTime) {
     try {
       await rebuildPeriod(params);
-      return { refreshed: true, reason: state.entriesCount === 0 ? "empty" : "stale", hasSourceTime: state.sourceCount > 0, refreshError: null };
+      return { refreshed: true, reason: state.hasOpenTime ? "live" : state.entriesCount === 0 ? "empty" : "stale", hasSourceTime: state.sourceCount > 0, refreshError: null };
     } catch (err) {
       console.error("payroll open-period auto-refresh failed", err);
       return { refreshed: false, reason: "refresh_failed", hasSourceTime: state.sourceCount > 0, refreshError: err instanceof Error ? err.message : "Payroll refresh failed" };
