@@ -314,12 +314,10 @@ function CustomerAutocomplete({
 function UnitNumberAutocomplete({
   q,
   shopId,
-  customerId,
   onPick,
 }: {
   q: string;
   shopId: string | null;
-  customerId: string | null;
   onPick: (v: VehicleRow) => void;
 }) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -346,16 +344,12 @@ function UnitNumberAutocomplete({
       try {
         const escapedTerm = term.replaceAll("%", "").replaceAll("_", "");
         const like = `%${escapedTerm}%`;
-        const shopVehicles = supabase
+        const { data, error } = await supabase
           .from("vehicles")
           .select(
             "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id, created_at",
           )
-          .eq("shop_id", shopId);
-        const scopedVehicles = customerId
-          ? shopVehicles.eq("customer_id", customerId)
-          : shopVehicles;
-        const { data, error } = await scopedVehicles
+          .eq("shop_id", shopId)
           .or(
             `unit_number.ilike.${like},license_plate.ilike.${like},vin.ilike.${like},model.ilike.${like}`,
           )
@@ -373,7 +367,7 @@ function UnitNumberAutocomplete({
     }, 150);
 
     return () => window.clearTimeout(t);
-  }, [q, shopId, customerId, supabase]);
+  }, [q, shopId, supabase]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -926,7 +920,6 @@ export default function CustomerVehicleForm({
               <UnitNumberAutocomplete
                 q={vehicle.unit_number ?? ""}
                 shopId={shopId}
-                customerId={currentCustomerId}
                 onPick={(v) => {
                   void handlePickedVehicle(v);
                 }}
@@ -992,7 +985,6 @@ export default function CustomerVehicleForm({
               <UnitNumberAutocomplete
                 q={vehicle.license_plate ?? ""}
                 shopId={shopId}
-                customerId={currentCustomerId}
                 onPick={(v) => {
                   void handlePickedVehicle(v);
                 }}
