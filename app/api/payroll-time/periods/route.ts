@@ -130,6 +130,7 @@ export async function GET(req: NextRequest) {
   const trueZero = enrichedEntries.length === 0 && !refreshState.hasSourceTime;
   return NextResponse.json({
     settings: current.settings ?? null,
+    canConfigure: ["owner", "admin"].includes(String(me.role ?? "")),
     periods: periods ?? [],
     activePeriodId,
     entries: enrichedEntries,
