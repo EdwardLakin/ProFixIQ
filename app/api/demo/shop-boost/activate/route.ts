@@ -6,9 +6,10 @@ import { buildShopBoostProfile } from "@/features/integrations/ai/shopBoost";
 import { runShopBoostImport } from "@/features/integrations/imports/runFullImport";
 import { updateIntakeProgress } from "@/features/integrations/shopBoost/status";
 import {
-  SHOP_BOOST_UPLOAD_DATASET_KEYS,
+  INSTANT_SHOP_ANALYSIS_DATASET_KEYS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
+import { mapInstantAnalysisToGuidedOnboarding } from "@/features/onboarding-v2/guided/instantAnalysisHandoff";
 
 type DB = Database;
 
@@ -34,7 +35,7 @@ function extractPaths(snapshot: unknown): Partial<Record<ShopBoostUploadDatasetK
   const uploadPaths = isRecord(root.activationUploadPaths) ? root.activationUploadPaths : {};
   const result: Partial<Record<ShopBoostUploadDatasetKey, string>> = {};
 
-  for (const key of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
+  for (const key of INSTANT_SHOP_ANALYSIS_DATASET_KEYS) {
     const value = uploadPaths[key];
     if (typeof value === "string" && value.length > 0) {
       result[key] = value;
@@ -83,12 +84,45 @@ export async function POST(req: NextRequest) {
 
   const { data: demoRow, error: demoErr } = await admin
     .from("demo_shop_boosts")
-    .select("id,snapshot")
+    .select("id,snapshot,shop_id")
     .eq("id", demoId)
     .maybeSingle();
 
   if (demoErr || !demoRow?.snapshot) {
     return NextResponse.json({ ok: false, error: "Preview expired. Please run analysis again." }, { status: 404 });
+  }
+
+  if (demoRow.shop_id && demoRow.shop_id !== shopId) {
+    return NextResponse.json(
+      { ok: false, error: "This analysis has already been activated by another shop." },
+      { status: 403 },
+    );
+  }
+
+  const normalizedUserEmail = user.email?.trim().toLowerCase() ?? "";
+  if (!normalizedUserEmail) {
+    return NextResponse.json(
+      { ok: false, error: "A verified account email is required to activate this analysis." },
+      { status: 403 },
+    );
+  }
+
+  const { data: claimedLead, error: claimedLeadError } = await admin
+    .from("demo_shop_boost_leads")
+    .select("id")
+    .eq("demo_id", demoId)
+    .eq("email", normalizedUserEmail)
+    .maybeSingle();
+
+  if (claimedLeadError || !claimedLead?.id) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Sign in with the same email used to unlock this analysis, or return to the report and unlock it first.",
+      },
+      { status: 403 },
+    );
   }
 
   const snapshot = isRecord(demoRow.snapshot) ? demoRow.snapshot : null;
@@ -98,7 +132,9 @@ export async function POST(req: NextRequest) {
   }
 
   const sourcePaths = extractPaths(snapshot);
-  if (Object.keys(sourcePaths).length === 0) {
+  const questionnaire = isRecord(snapshot.questionnaire) ? snapshot.questionnaire : {};
+  const uploadedDatasets = Object.keys(sourcePaths) as ShopBoostUploadDatasetKey[];
+  if (uploadedDatasets.length === 0) {
     return NextResponse.json({ ok: false, error: "Preview files expired. Please run analysis again." }, { status: 410 });
   }
 
@@ -110,7 +146,21 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (existing.data?.id) {
-    return NextResponse.json({ ok: true, intakeId, status: existing.data.status, reused: true });
+    const guided = await mapInstantAnalysisToGuidedOnboarding({
+      shopId,
+      userId: user.id,
+      demoId,
+      intakeId,
+      uploadedDatasets,
+    });
+    return NextResponse.json({
+      ok: true,
+      intakeId,
+      status: existing.data.status,
+      reused: true,
+      guidedSessionId: guided.sessionId,
+      redirectTo: guided.redirectTo,
+    });
   }
 
   const copiedPaths: Partial<Record<ShopBoostUploadDatasetKey, string>> = {};
@@ -126,10 +176,26 @@ export async function POST(req: NextRequest) {
     copiedPaths[datasetKey] = targetPath;
   }
 
+  const uploadManifest = Object.fromEntries(
+    uploadedDatasets.map((dataset) => [
+      dataset,
+      {
+        dataset,
+        path: copiedPaths[dataset],
+        fileName: copiedPaths[dataset] ? pathBasename(copiedPaths[dataset]!) : null,
+        contentType: "text/csv",
+        sizeBytes: null,
+        target: dataset,
+        importMode: dataset === "invoices" ? "staging" : "direct",
+      },
+    ]),
+  );
+
   const intakeInsert: DB["public"]["Tables"]["shop_boost_intakes"]["Insert"] = {
     id: intakeId,
     shop_id: shopId,
-    questionnaire: {},
+    questionnaire:
+      questionnaire as DB["public"]["Tables"]["shop_boost_intakes"]["Insert"]["questionnaire"],
     customers_file_path: copiedPaths.customers ?? null,
     vehicles_file_path: copiedPaths.vehicles ?? null,
     parts_file_path: copiedPaths.parts ?? null,
@@ -140,6 +206,7 @@ export async function POST(req: NextRequest) {
       demoId,
       activatedByUserId: user.id,
       activatedAt: new Date().toISOString(),
+      uploadManifest,
     },
     status: "pending",
   };
@@ -200,5 +267,34 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ ok: true, intakeId, status: completedStatus });
+  const guided = await mapInstantAnalysisToGuidedOnboarding({
+    shopId,
+    userId: user.id,
+    demoId,
+    intakeId,
+    uploadedDatasets,
+    importSummary,
+  });
+
+  const { error: demoLinkError } = await admin
+    .from("demo_shop_boosts")
+    .update({ shop_id: shopId, intake_id: intakeId })
+    .eq("id", demoId);
+
+  if (demoLinkError) {
+    console.warn("[demo/shop-boost/activate] Failed to persist demo ownership link", {
+      demoId,
+      intakeId,
+      shopId,
+      error: demoLinkError.message,
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    intakeId,
+    status: completedStatus,
+    guidedSessionId: guided.sessionId,
+    redirectTo: guided.redirectTo,
+  });
 }

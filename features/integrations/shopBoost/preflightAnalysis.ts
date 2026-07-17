@@ -70,6 +70,7 @@ function prettyDomain(entityType: string): string {
   if (entityType === "vehicles") return "Vehicles";
   if (entityType === "parts") return "Parts";
   if (entityType === "history") return "Work orders";
+  if (entityType === "invoices") return "Invoices";
   if (entityType === "staff") return "Staff";
   return entityType;
 }
