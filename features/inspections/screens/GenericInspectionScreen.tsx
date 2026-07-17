@@ -825,6 +825,10 @@ type SmartMatchRow = {
   const [voiceControlsOpen, setVoiceControlsOpen] = useState(false);
   const [voiceHeld, setVoiceHeld] = useState(false);
   const voiceHeldRef = useRef(false);
+  const lastVoiceTargetRef = useRef<{
+    sectionIndex: number;
+    itemIndex: number;
+  } | null>(null);
 
   const [voiceState, setVoiceState] = useState<
     "idle" | "connecting" | "listening" | "error"
@@ -1743,7 +1747,47 @@ type SmartMatchRow = {
     const applied: VoiceCommandApplyResult[] = [];
 
     try {
-      commands = await interpretCommand(mainText, ctx);
+      const correctionTarget = lastVoiceTargetRef.current;
+      const correctionSpeech = normalizeSpeech(mainText);
+      const correctionStatus =
+        /\b(ok|okay|pass|good)\b/.test(correctionSpeech)
+          ? "ok"
+          : /\b(fail|failed|bad)\b/.test(correctionSpeech)
+            ? "fail"
+            : /\b(recommend|recommended|rec)\b/.test(correctionSpeech)
+              ? "recommend"
+              : /\b(not applicable|n a|na)\b/.test(correctionSpeech)
+                ? "na"
+                : null;
+      const correctionNote = correctionSpeech.match(
+        /^(?:add|append)\s+(?:a\s+)?note\s*(?::|that)?\s*(.+)$/,
+      )?.[1];
+
+      if (
+        correctionTarget &&
+        correctionStatus &&
+        /\b(change|correct|actually|make)\b/.test(correctionSpeech)
+      ) {
+        commands = [
+          {
+            command: "update_status",
+            sectionIndex: correctionTarget.sectionIndex,
+            itemIndex: correctionTarget.itemIndex,
+            status: correctionStatus,
+          } as unknown as ParsedCommand,
+        ];
+      } else if (correctionTarget && correctionNote) {
+        commands = [
+          {
+            command: "add_note",
+            sectionIndex: correctionTarget.sectionIndex,
+            itemIndex: correctionTarget.itemIndex,
+            note: correctionNote,
+          } as unknown as ParsedCommand,
+        ];
+      } else {
+        commands = await interpretCommand(mainText, ctx);
+      }
 
       // ✅ FALLBACK: if AI returns nothing, try local parsing
       if (!commands.length) {
@@ -1798,6 +1842,7 @@ type SmartMatchRow = {
 
           if (r?.appliedTarget) {
             lastAppliedTarget = r.appliedTarget;
+            lastVoiceTargetRef.current = r.appliedTarget;
 
             const okResult: VoiceCommandApplyResult = {
               command: commandLabel(command),
