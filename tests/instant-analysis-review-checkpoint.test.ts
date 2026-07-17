@@ -31,10 +31,12 @@ describe("instant analysis guided onboarding review checkpoint", () => {
   it("loads pending and failed materializations for the activated intake", () => {
     const panel = read("features/onboarding-v2/components/InstantAnalysisReviewPanel.tsx");
 
-    expect(panel).toContain('new URLSearchParams({ intakeId, status: "" })');
+    expect(panel).toContain('new URLSearchParams({ intakeId, status: "unresolved" })');
     expect(panel).toContain('item.status === "pending" || item.status === "failed_materialization"');
     expect(panel).toContain("Retry needed");
     expect(panel).toContain("Blocking launch");
+    const listRoute = read("app/api/shop-boost/review-items/route.ts");
+    expect(listRoute).toContain('query.in("status", ["pending", "failed_materialization"])');
   });
 
   it("supports recommended fixes, explicit risky confirmation, and reasoned ignores", () => {
