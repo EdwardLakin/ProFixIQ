@@ -188,7 +188,11 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
       const shiftId = typeof s.id === "string" ? s.id : "";
       const userId = typeof s.user_id === "string" ? s.user_id : typeof s.userId === "string" ? s.userId : "unknown";
       const shiftPunches = punchesByShift.get(shiftId) ?? unlinkedPunchesByUser.get(userId) ?? [];
-      const state = shiftStateFromPunches(shiftPunches);
+      const punchState = shiftStateFromPunches(shiftPunches);
+      const state: NowBucket =
+        punchState === "no_activity" && s.status === "active" && !s.end_time
+          ? "clocked_in"
+          : punchState;
       const sorted = [...shiftPunches].sort((a, b) => {
         const da = safeDate(a.timestamp)?.getTime() ?? 0;
         const db = safeDate(b.timestamp)?.getTime() ?? 0;
@@ -266,7 +270,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role }: Attendanc
               ["On break", String(data?.activitySummary?.onBreak ?? derived.onBreak)],
               ["On lunch", String(data?.activitySummary?.onLunch ?? derived.onLunch)],
               ["Ended today", String(data?.activitySummary?.endedToday ?? derived.endedToday)],
-              ["Job time today", `${data?.activitySummary?.jobMinutesToday ?? 0} min`],
+              ["Job time today", `${data?.activitySummary?.jobMinutesToday ?? derived.billableMinutes} min`],
               ["Utilization %", `${data?.activitySummary?.utilizationPct ?? 0}%`],
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
