@@ -12,6 +12,7 @@ import PwaRuntime from "@/features/shared/components/pwa/PwaRuntime";
 import type { Metadata, Viewport } from "next";
 
 import ThemedToaster from "@/features/shared/components/ThemedToaster";
+import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -57,23 +58,7 @@ export default async function RootLayout({
   const hdrs = await headers();
   const pathname = hdrs.get("x-next-pathname") ?? "";
 
-  const isPublicRoute =
-    pathname === "/" ||
-    pathname.startsWith("/launch") ||
-    pathname.startsWith("/offline") ||
-    pathname.startsWith("/signup") ||
-    pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/mobile/sign-in") ||
-    pathname.startsWith("/forgot-password") ||
-    pathname.startsWith("/auth/reset") ||
-    pathname.startsWith("/auth/set-password") ||
-    pathname.startsWith("/confirm") ||
-    pathname.startsWith("/compare-plans") ||
-    pathname.startsWith("/subscribe") ||
-    pathname.startsWith("/demo") ||
-    pathname.startsWith("/portal/auth/") ||
-    pathname.startsWith("/portal/join/") ||
-    pathname.startsWith("/portal/confirm");
+  const isPublicRoute = isStandalonePublicRoute(pathname);
 
   const useAppShell = !isPublicRoute;
 
