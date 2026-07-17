@@ -52,6 +52,11 @@ import type {
   AdvisorWorkOrderDraftLine,
 } from "@/features/work-orders/mobile/advisorOfflineTypes";
 import { AdvisorDraftLines } from "@/features/work-orders/mobile/AdvisorDraftLines";
+import { AdvisorPartsDraftEditor } from "@/features/parts/offline/AdvisorPartsDraftEditor";
+import {
+  pruneDependentPartsRequestDrafts,
+  resolveAndSubmitDependentPartsDrafts,
+} from "@/features/parts/offline/partsRequestDrafts";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -572,6 +577,7 @@ export default function MobileCreateWorkOrderPage() {
   const [offlineCustomers, setOfflineCustomers] = useState<CustomerPick[]>([]);
   const [offlineVehicles, setOfflineVehicles] = useState<VehiclePick[]>([]);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [workOrderDraftId, setWorkOrderDraftId] = useState<string | null>(null);
   const [online, setOnline] = useState(
     () => typeof navigator !== "undefined" && navigator.onLine,
   );
@@ -610,6 +616,7 @@ export default function MobileCreateWorkOrderPage() {
                 id: storedDraft.id,
                 operationKey: storedDraft.operationKey,
               };
+              setWorkOrderDraftId(storedDraft.id);
               setDraftLines(storedDraft.lines);
               setIsWaiter(storedDraft.isWaiter);
               const savedCustomer = bundle?.customers.find(
@@ -662,6 +669,18 @@ export default function MobileCreateWorkOrderPage() {
     })();
   }, [supabase]);
 
+  const ensureDraftIdentity = useCallback(() => {
+    if (!draftIdentityRef.current) {
+      const id = createAdvisorDraftId();
+      draftIdentityRef.current = {
+        id,
+        operationKey: `${id}:materialize`,
+      };
+      setWorkOrderDraftId(id);
+    }
+    return draftIdentityRef.current;
+  }, []);
+
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     window.addEventListener("online", update);
@@ -674,12 +693,9 @@ export default function MobileCreateWorkOrderPage() {
 
   const buildAdvisorDraft = useCallback((): AdvisorWorkOrderDraft | null => {
     if (!currentUserId || !shopId) return null;
-    draftIdentityRef.current ??= (() => {
-      const id = createAdvisorDraftId();
-      return { id, operationKey: `${id}:materialize` };
-    })();
+    const identity = ensureDraftIdentity();
     return {
-      ...draftIdentityRef.current,
+      ...identity,
       userId: currentUserId,
       shopId,
       customerId: customer.id,
@@ -692,7 +708,15 @@ export default function MobileCreateWorkOrderPage() {
       lines: draftLines,
       updatedAt: new Date().toISOString(),
     };
-  }, [currentUserId, shopId, customer, vehicle, isWaiter, draftLines]);
+  }, [
+    currentUserId,
+    shopId,
+    customer,
+    vehicle,
+    isWaiter,
+    draftLines,
+    ensureDraftIdentity,
+  ]);
 
   useEffect(() => {
     if (wo?.id || creatingWo || !currentUserId || !shopId) return;
@@ -1061,11 +1085,25 @@ export default function MobileCreateWorkOrderPage() {
             createdError?.message ?? "Created work order could not be loaded.",
           );
         }
+        const scope = getOfflineMutationScope();
+        if (scope) {
+          const parts = await resolveAndSubmitDependentPartsDrafts({
+            scope,
+            workOrderDraftId: prepared.id,
+            workOrderId: materialization.workOrderId,
+            lineIdMap: materialization.lineIdMap,
+          });
+          if (parts.queued > 0) {
+            setError(
+              `${parts.queued} parts request${parts.queued === 1 ? "" : "s"} queued for sync.`,
+            );
+          }
+          await removeCurrentAdvisorWorkOrderDraft(scope);
+        }
         setWo(createdRow as WorkOrderRow);
         setDraftLines([]);
-        const scope = getOfflineMutationScope();
-        if (scope) await removeCurrentAdvisorWorkOrderDraft(scope);
         draftIdentityRef.current = null;
+        setWorkOrderDraftId(null);
         return;
       }
 
@@ -1581,8 +1619,32 @@ export default function MobileCreateWorkOrderPage() {
             <div className="mt-4">
               <AdvisorDraftLines
                 lines={draftLines}
-                onChange={setDraftLines}
+                onChange={(next) => {
+                  const identity = ensureDraftIdentity();
+                  setDraftLines(next);
+                  if (currentUserId && shopId) {
+                    void pruneDependentPartsRequestDrafts({
+                      scope: { userId: currentUserId, shopId },
+                      workOrderDraftId: identity.id,
+                      activeTempLineIds: next.map((line) => line.tempId),
+                    });
+                  }
+                }}
                 disabled={creatingWo}
+              />
+            </div>
+          )}
+
+          {!wo?.id && (
+            <div className="mt-4">
+              <AdvisorPartsDraftEditor
+                scope={
+                  currentUserId && shopId
+                    ? { userId: currentUserId, shopId }
+                    : null
+                }
+                workOrderDraftId={workOrderDraftId}
+                lines={draftLines}
               />
             </div>
           )}

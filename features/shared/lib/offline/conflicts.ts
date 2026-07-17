@@ -47,6 +47,10 @@ export function offlineMutationDeviceValue(
   if (mutation.actionType === "job:punch-transition") {
     return text(payload.action) || null;
   }
+  if (mutation.actionType === "parts-request:create-draft") {
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    return `${items.length} requested part${items.length === 1 ? "" : "s"}`;
+  }
   return null;
 }
 

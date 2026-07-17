@@ -6,6 +6,16 @@ import { toast } from "sonner";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  getOfflineMutationScope,
+  resolveOfflineMutationScope,
+} from "@/features/shared/lib/offline/mutations";
+import {
+  createOfflinePartsRequestDraft,
+  getOfflinePartsRequestDraft,
+  saveOfflinePartsRequestDraft,
+  submitOfflinePartsRequestDraft,
+} from "@/features/parts/offline/partsRequestDrafts";
 
 type DB = Database;
 
@@ -71,6 +81,24 @@ export default function PartsRequestModal({
     setJobLabel("");
 
     (async () => {
+      const scope = getOfflineMutationScope();
+      const recovered = scope
+        ? await getOfflinePartsRequestDraft({
+            scope,
+            workOrderId,
+            workOrderLineId: jobId,
+          })
+        : null;
+      if (recovered) {
+        setHeaderNotes(recovered.notes);
+        setRows(
+          recovered.items.map((item) => ({
+            id: item.tempId,
+            description: item.description,
+            qty: String(item.qty),
+          })),
+        );
+      }
       // Work order custom id
       if (workOrderId) {
         const { data } = await supabase
@@ -103,7 +131,10 @@ export default function PartsRequestModal({
   }, [isOpen, requestNote, supabase, workOrderId, jobId]);
 
   const addRow = () =>
-    setRows((r) => [...r, { id: crypto.randomUUID(), description: "", qty: "1" }]);
+    setRows((r) => [
+      ...r,
+      { id: crypto.randomUUID(), description: "", qty: "1" },
+    ]);
 
   const removeRow = (id: string) =>
     setRows((r) => (r.length > 1 ? r.filter((x) => x.id !== id) : r));
@@ -117,7 +148,7 @@ export default function PartsRequestModal({
       const description = r.description.trim();
       const n = Number.parseInt(r.qty, 10);
       const qty = Number.isFinite(n) ? n : 0;
-      return { description, qty };
+      return { tempId: r.id, description, qty };
     })
     .filter((i) => i.description && i.qty > 0);
 
@@ -145,37 +176,52 @@ export default function PartsRequestModal({
     setSubmitting(true);
 
     try {
-      const res = await fetch("/api/parts/requests/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderId,
-          jobId,
-          notes: headerNotes || undefined,
-          items: validItems,
-        }),
+      const scope = await resolveOfflineMutationScope({
+        workOrderId,
+        workOrderLineId: jobId,
       });
-
-      const raw = await res.text();
-      let json: { requestId?: string; error?: string } | null = null;
-      try {
-        json = raw
-          ? (JSON.parse(raw) as { requestId?: string; error?: string })
-          : null;
-      } catch {
-        /* ignore */
+      if (!scope)
+        throw new Error("Offline user and shop scope is unavailable.");
+      const existing = await getOfflinePartsRequestDraft({
+        scope,
+        workOrderId,
+        workOrderLineId: jobId,
+      });
+      const base =
+        existing ??
+        createOfflinePartsRequestDraft({
+          scope,
+          workOrderId,
+          workOrderLineId: jobId,
+        });
+      const draft = {
+        ...base,
+        notes: headerNotes,
+        items: validItems.map((item) => ({
+          tempId: item.tempId,
+          description: item.description,
+          qty: item.qty,
+          partNumber: null,
+          manufacturer: null,
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveOfflinePartsRequestDraft(draft);
+      const result = await submitOfflinePartsRequestDraft(draft);
+      if (result.conflicted) {
+        toast.error("Parts request needs review in Sync Center.");
+        return;
       }
-
-      if (!res.ok || !json?.requestId) {
-        const msg = json?.error || raw || `Request failed with status ${res.status}`;
-        toast.error(`Parts request failed: ${msg}`);
+      if (result.queued) {
+        toast.warning("Parts request saved on this device and queued.");
+        emit(closeEventName);
         return;
       }
 
       toast.success("Parts request sent.");
 
       const detail: SubmittedDetail = {
-        requestId: json.requestId,
+        requestId: result.requestId ?? draft.operationKey,
         workOrderId,
         jobId,
       };
@@ -183,7 +229,9 @@ export default function PartsRequestModal({
       emit(submittedEventName, detail);
       emit(closeEventName);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Unable to submit request");
+      toast.error(
+        err instanceof Error ? err.message : "Unable to submit request",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -209,7 +257,8 @@ export default function PartsRequestModal({
             Parts request
           </div>
           <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Send a clean request to parts without losing the work order and job context.
+            Send a clean request to parts without losing the work order and job
+            context.
           </div>
         </div>
 
@@ -273,7 +322,9 @@ export default function PartsRequestModal({
                 <input
                   className="col-span-8 rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
                   value={r.description}
-                  onChange={(e) => setCell(r.id, { description: e.target.value })}
+                  onChange={(e) =>
+                    setCell(r.id, { description: e.target.value })
+                  }
                   placeholder="e.g. rear pads, serp belt…"
                 />
 
@@ -291,7 +342,8 @@ export default function PartsRequestModal({
                   onBlur={() => {
                     // normalize on blur
                     const n = Number.parseInt(r.qty, 10);
-                    const normalized = Number.isFinite(n) && n > 0 ? String(n) : "1";
+                    const normalized =
+                      Number.isFinite(n) && n > 0 ? String(n) : "1";
                     setCell(r.id, { qty: normalized });
                   }}
                   aria-label="Quantity"
@@ -302,7 +354,11 @@ export default function PartsRequestModal({
                     className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[0.7rem] text-[color:var(--theme-text-secondary)] transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-40 disabled:hover:bg-[color:var(--theme-surface-overlay)] disabled:hover:text-[color:var(--theme-text-secondary)]"
                     onClick={() => removeRow(r.id)}
                     disabled={rows.length <= 1}
-                    title={rows.length <= 1 ? "At least one row is required" : "Remove row"}
+                    title={
+                      rows.length <= 1
+                        ? "At least one row is required"
+                        : "Remove row"
+                    }
                     type="button"
                   >
                     ✕

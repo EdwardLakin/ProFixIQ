@@ -45,6 +45,7 @@ const ACTION_LABELS: Record<string, string> = {
   "inspection:upload-photo": "Inspection photo",
   save_story_draft: "Cause and correction",
   "job:punch-transition": "Job status",
+  "parts-request:create-draft": "Parts request",
 };
 
 function formatBytes(bytes: number): string {

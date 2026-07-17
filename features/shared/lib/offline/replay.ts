@@ -14,6 +14,11 @@ import {
 import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { replayInspectionPhotoMutation } from "@inspections/lib/inspection/inspectionPhotoStaging";
 import {
+  postOfflinePartsRequestDraft,
+  removeOfflinePartsRequestDraft,
+  type OfflinePartsRequestDraft,
+} from "@/features/parts/offline/partsRequestDrafts";
+import {
   reconcileOfflineTechnicianState,
   type OfflineReconciliationResult,
 } from "@/features/shared/lib/offline/reconciliation";
@@ -48,6 +53,17 @@ async function apiPost(path: string, body: unknown, operationKey?: string) {
 }
 
 const handlers: Record<string, OfflineMutationRunner> = {
+  "parts-request:create-draft": async (mutation) => {
+    const draft = mutation.payload as OfflinePartsRequestDraft;
+    if (!draft?.id || !draft.workOrderId || !draft.workOrderLineId) {
+      return { conflicted: "Parts request is missing its work-order line." };
+    }
+    await postOfflinePartsRequestDraft(draft);
+    await removeOfflinePartsRequestDraft({
+      scope: { userId: mutation.userId, shopId: mutation.shopId },
+      draftId: draft.id,
+    });
+  },
   "inspection:upload-photo": replayInspectionPhotoMutation,
   "inspection:save-session": async (mutation) => {
     const payload = mutation.payload as ReplayPayload;
