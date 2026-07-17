@@ -41,7 +41,7 @@ export async function POST(
       const path = `demos/${demoId}/${intakeId}/${file.dataset}-${randomUUID()}.csv`;
       const { data, error } = await admin.storage
         .from(DEMO_UPLOAD_BUCKET)
-        .createSignedUploadUrl(path, { upsert: true });
+        .createSignedUploadUrl(path);
 
       if (error || !data?.token) {
         console.error("[demo/shop-boost/uploads] Failed to sign upload", {
