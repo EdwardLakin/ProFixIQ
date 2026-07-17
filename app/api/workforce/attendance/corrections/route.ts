@@ -45,7 +45,9 @@ export async function POST(req: Request) {
   if (!body?.correction_type) return NextResponse.json({ error: "correction_type is required" }, { status: 400 });
   if (!body.target_user_id) return NextResponse.json({ error: "target_user_id is required" }, { status: 400 });
   if (!reason) return NextResponse.json({ error: "Correction reason is required" }, { status: 400 });
-  if (body.target_user_id === auth.me.id) return NextResponse.json({ error: "Use the employee shift lifecycle for your own shift; admin corrections cannot target yourself." }, { status: 403 });
+  if (body.target_user_id === auth.me.id && auth.me.role !== "owner") {
+    return NextResponse.json({ error: "Only an owner can apply an audited correction to their own shift." }, { status: 403 });
+  }
 
   const needsShift = body.correction_type !== "create_missing_shift";
   if (needsShift && !body.shift_id) return NextResponse.json({ error: "shift_id is required" }, { status: 400 });

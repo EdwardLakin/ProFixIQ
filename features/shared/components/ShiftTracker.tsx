@@ -51,6 +51,7 @@ export default function ShiftTracker({
 
   const applyShiftState = useCallback((state: MobileShiftState) => {
     setShiftState(state);
+    window.dispatchEvent(new CustomEvent("workforce:shift-state", { detail: state }));
   }, []);
 
   const loadOpenShift = useCallback(async () => {

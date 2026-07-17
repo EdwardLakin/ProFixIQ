@@ -164,7 +164,7 @@ export async function GET() {
 
   const response: WorkforceOverviewResponse = {
     summary: {
-      workingToday: Math.max(activeStaff.size - awayTodayUsers.size, 0),
+      workingToday: activity.summary.activeTechnicians,
       awayToday: awayTodayUsers.size,
       awayTomorrow: awayTomorrowUsers.size,
       pendingTimeOff,

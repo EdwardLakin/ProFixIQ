@@ -88,6 +88,26 @@ function zonedDateTimeToUtcMs(
   return utcMs;
 }
 
+export function shopLocalDateTimeToUtc(
+  dateKey: string,
+  timeValue: string,
+  timezone?: string | null,
+): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  const time = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(timeValue);
+  if (!match || !time) throw new Error("Invalid shop-local date or time");
+  const safeTimezone = normalizeTimezone(timezone);
+  const utcMs = zonedDateTimeToUtcMs({
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3]),
+    hour: Number(time[1]),
+    minute: Number(time[2]),
+    second: Number(time[3] ?? 0),
+  }, safeTimezone);
+  return new Date(utcMs).toISOString();
+}
+
 export function getShopLocalDayWindow(
   timezone: string,
   referenceDate: Date = new Date(),

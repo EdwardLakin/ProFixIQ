@@ -9,6 +9,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
 import ShiftTracker from "@shared/components/ShiftTracker";
+import { fetchMobileShiftState, type MobileShiftState } from "@/features/mobile/shifts/client";
 import InboxModal from "@/features/chat/components/InboxModal";
 import AgentRequestModal from "@/features/agent/components/AgentRequestModal";
 import { cn } from "@/features/shared/utils/cn";
@@ -115,6 +116,7 @@ export default function AppShell({
   const periodDaysLeft = daysUntil(periodEndIso);
 
   const [punchOpen, setPunchOpen] = useState(false);
+  const [headerShiftState, setHeaderShiftState] = useState<MobileShiftState | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
@@ -225,6 +227,19 @@ export default function AppShell({
 
     return () => cleanup?.();
   }, [supabase, isAppRoute]);
+
+  useEffect(() => {
+    if (!userId) {
+      setHeaderShiftState(null);
+      return;
+    }
+    void fetchMobileShiftState().then(setHeaderShiftState).catch(() => setHeaderShiftState(null));
+    const onShiftState = (event: Event) => {
+      setHeaderShiftState((event as CustomEvent<MobileShiftState>).detail);
+    };
+    window.addEventListener("workforce:shift-state", onShiftState);
+    return () => window.removeEventListener("workforce:shift-state", onShiftState);
+  }, [userId]);
 
   useEffect(() => {
     if (!punchOpen) return;
@@ -439,8 +454,23 @@ export default function AppShell({
                   onClick={() => setPunchOpen((p) => !p)}
                   title="Punch / shift tracker"
                 >
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
-                  Shift
+                  <span
+                    className={cn(
+                      "inline-block h-2 w-2 rounded-full",
+                      headerShiftState?.activity === "working"
+                        ? "bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]"
+                        : headerShiftState?.activity === "on_break" || headerShiftState?.activity === "on_lunch"
+                          ? "bg-amber-400"
+                          : "bg-slate-400",
+                    )}
+                  />
+                  {headerShiftState?.activity === "working"
+                    ? "Working"
+                    : headerShiftState?.activity === "on_break"
+                      ? "Break"
+                      : headerShiftState?.activity === "on_lunch"
+                        ? "Lunch"
+                        : "Shift"}
                 </ActionButton>
               ) : null}
 

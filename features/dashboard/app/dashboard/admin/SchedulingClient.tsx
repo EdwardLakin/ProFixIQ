@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addMinutes, format, isValid, parseISO } from "date-fns";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { useSearchParams } from "next/navigation";
 
 import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
@@ -257,6 +258,9 @@ function keepEndSameDay(startLocal: string, endLocal: string): string {
 
 export default function SchedulingClient(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const searchParams = useSearchParams();
+  const correctionUserId = searchParams.get("user_id");
+  const correctionDate = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get("date") ?? "") ? searchParams.get("date")! : null;
 
   const [tab, setTab] = useState<TabKey>("shifts");
 
@@ -267,10 +271,8 @@ export default function SchedulingClient(): JSX.Element {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [userId, setUserId] = useState<string>("");
 
-  const [from, setFrom] = useState<string>(() =>
-    format(new Date(), "yyyy-MM-dd"),
-  );
-  const [to, setTo] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  const [from, setFrom] = useState<string>(() => correctionDate ?? format(new Date(), "yyyy-MM-dd"));
+  const [to, setTo] = useState<string>(() => correctionDate ?? format(new Date(), "yyyy-MM-dd"));
 
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
@@ -456,6 +458,12 @@ export default function SchedulingClient(): JSX.Element {
     if (rf === "all") return users;
     return users.filter((u) => (u.role ?? "").toLowerCase() === rf);
   }, [users, roleFilter]);
+
+  useEffect(() => {
+    if (correctionUserId && users.some((user) => user.id === correctionUserId)) {
+      setUserId(correctionUserId);
+    }
+  }, [correctionUserId, users]);
 
   // If role filter changes, and selected user no longer matches, clear userId.
   useEffect(() => {

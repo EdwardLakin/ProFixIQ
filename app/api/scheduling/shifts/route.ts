@@ -122,8 +122,8 @@ export async function GET(req: NextRequest) {
     .from("tech_shifts")
     .select("*")
     .eq("shop_id", a.me.shop_id)
-    .gte("start_time", from)
     .lt("start_time", to)
+    .or(`end_time.is.null,end_time.gt.${from}`)
     .order("start_time", { ascending: false });
 
   if (userId) shiftQ = shiftQ.eq("user_id", userId);
@@ -193,30 +193,8 @@ export async function GET(req: NextRequest) {
   if (shopRes.error) return NextResponse.json({ error: shopRes.error.message }, { status: 500 });
   const activity = await buildWorkforceActivity({ shopId: a.me.shop_id!, timezone: shopRes.data?.timezone ?? null });
 
-  // Billable minutes (work_order_lines)
-  let woQ = admin
-    .from("work_order_lines")
-    .select("labor_time, user_id, assigned_tech_id, created_at, shop_id")
-    .eq("shop_id", a.me.shop_id)
-    .gte("created_at", from)
-    .lte("created_at", to);
-
-  if (userId) {
-    woQ = woQ.or(`user_id.eq.${userId},assigned_tech_id.eq.${userId}`);
-  } else if (staffIds) {
-    woQ = woQ.or(
-      `user_id.in.(${staffIds.join(",")}),assigned_tech_id.in.(${staffIds.join(",")})`,
-    );
-  }
-
-  const { data: lines, error: lErr } = await woQ;
-  if (lErr) return NextResponse.json({ error: lErr.message }, { status: 500 });
-
-  let billableMinutes = 0;
-  for (const r of (lines ?? []) as Array<{ labor_time: number | null }>) {
-    const hrs = typeof r.labor_time === "number" ? r.labor_time : 0;
-    billableMinutes += Math.max(0, hrs) * 60;
-  }
+  // Productive time comes from canonical labor segments through the shared activity builder.
+  const billableMinutes = activity.summary.jobMinutesToday;
 
   return NextResponse.json({
     shifts: attendanceShifts,

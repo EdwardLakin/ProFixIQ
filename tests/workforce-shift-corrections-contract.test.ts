@@ -22,7 +22,8 @@ describe("Workforce W1A shift correction contract", () => {
   it("requires audited correction reasons and server-side actor authorization", () => {
     expect(route).toContain("Correction reason is required");
     expect(route).toContain("canManageScheduling");
-    expect(route).toContain("body.target_user_id === auth.me.id");
+    expect(route).toContain('body.target_user_id === auth.me.id && auth.me.role !== "owner"');
+    expect(route).toContain("Only an owner can apply an audited correction to their own shift");
     expect(route).toContain("apply_shift_correction");
     expect(route).not.toContain("actor_profile_id?:");
   });

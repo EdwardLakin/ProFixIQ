@@ -277,8 +277,8 @@ export async function buildWorkforceActivity(params: {
       .from("tech_shifts")
       .select("*")
       .eq("shop_id", params.shopId)
-      .gte("start_time", from)
       .lt("start_time", to)
+      .or(`end_time.is.null,end_time.gt.${from}`)
       .order("start_time", { ascending: false }),
     admin
       .from("profiles")
@@ -305,8 +305,6 @@ export async function buildWorkforceActivity(params: {
         .from("punch_events")
         .select("*")
         .in("shift_id", shiftIds)
-        .gte("timestamp", from)
-        .lt("timestamp", to)
         .order("timestamp", { ascending: true })
     : { data: [], error: null };
   if (punchesScopedRes.error) throw punchesScopedRes.error;

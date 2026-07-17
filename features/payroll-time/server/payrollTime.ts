@@ -58,6 +58,61 @@ function dateDiffMinutes(start: string, end: string): number {
   return Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000));
 }
 
+export type ShopDaySlice = {
+  workDate: string;
+  start: string;
+  end: string;
+  minutes: number;
+};
+
+export function splitIntervalByShopDay(args: {
+  start: string;
+  end: string;
+  timezone: string;
+  rangeStart?: string;
+  rangeEnd?: string;
+}): ShopDaySlice[] {
+  const rawStart = new Date(args.start).getTime();
+  const rawEnd = new Date(args.end).getTime();
+  const floor = args.rangeStart ? new Date(args.rangeStart).getTime() : rawStart;
+  const ceiling = args.rangeEnd ? new Date(args.rangeEnd).getTime() : rawEnd;
+  let cursor = Math.max(rawStart, floor);
+  const limit = Math.min(rawEnd, ceiling);
+  if (!Number.isFinite(cursor) || !Number.isFinite(limit) || limit <= cursor) return [];
+
+  const slices: ShopDaySlice[] = [];
+  while (cursor < limit) {
+    const workDate = toShopDate(new Date(cursor).toISOString(), args.timezone);
+    const date = startOfUtcDay(`${workDate}T00:00:00.000Z`);
+    const nextDate = toIsoDate(addDays(date, 1));
+    let nextBoundary = new Date(localDateToUtcBoundary(nextDate, args.timezone)).getTime();
+    if (!Number.isFinite(nextBoundary) || nextBoundary <= cursor) nextBoundary = cursor + 24 * 60 * 60 * 1000;
+    const sliceEnd = Math.min(limit, nextBoundary);
+    slices.push({
+      workDate,
+      start: new Date(cursor).toISOString(),
+      end: new Date(sliceEnd).toISOString(),
+      minutes: Math.max(0, Math.round((sliceEnd - cursor) / 60000)),
+    });
+    cursor = sliceEnd;
+  }
+  return slices;
+}
+
+function overlapPairMinutes(
+  pairs: Array<{ start: string; end: string }>,
+  sliceStart: string,
+  sliceEnd: string,
+): number {
+  const from = new Date(sliceStart).getTime();
+  const to = new Date(sliceEnd).getTime();
+  return pairs.reduce((total, pair) => {
+    const start = Math.max(from, new Date(pair.start).getTime());
+    const end = Math.min(to, new Date(pair.end).getTime());
+    return total + (end > start ? Math.round((end - start) / 60000) : 0);
+  }, 0);
+}
+
 
 export type PayrollPolicySnapshot = {
   paid_breaks_per_day: number;
@@ -228,8 +283,8 @@ async function getPeriodSourceState(admin: any, shopId: string, period: any, tim
   const rangeStart = localDateToUtcBoundary(period.period_start, timezone);
   const rangeEnd = localDateToUtcBoundary(toIsoDate(addDays(startOfUtcDay(`${period.period_end}T00:00:00.000Z`), 1)), timezone);
   const [{ data: shifts }, { data: jobs }, { data: settings }, { count: entriesCount }] = await Promise.all([
-    admin.from("tech_shifts").select("id, start_time, end_time, created_at").eq("shop_id", shopId).neq("excluded_from_payroll", true).gte("start_time", rangeStart).lt("start_time", rangeEnd),
-    admin.from("work_order_line_labor_segments").select("id, started_at, ended_at, updated_at, created_at").eq("shop_id", shopId).gte("started_at", rangeStart).lt("started_at", rangeEnd),
+    admin.from("tech_shifts").select("id, start_time, end_time, created_at").eq("shop_id", shopId).neq("excluded_from_payroll", true).lt("start_time", rangeEnd).or(`end_time.is.null,end_time.gt.${rangeStart}`),
+    admin.from("work_order_line_labor_segments").select("id, started_at, ended_at, updated_at, created_at").eq("shop_id", shopId).lt("started_at", rangeEnd).or(`ended_at.is.null,ended_at.gt.${rangeStart}`),
     admin.from("shop_payroll_settings").select("updated_at").eq("shop_id", shopId).maybeSingle(),
     admin.from("payroll_time_entries").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("period_id", period.id),
   ]);
@@ -248,6 +303,7 @@ async function getPeriodSourceState(admin: any, shopId: string, period: any, tim
     entriesCount: entriesCount ?? 0,
     sourceCount: (shifts?.length ?? 0) + (jobs?.length ?? 0),
     sourceFreshAt: candidates.length ? new Date(Math.max(...candidates)).toISOString() : null,
+    hasOpenTime: (shifts ?? []).some((shift: any) => !shift.end_time) || (jobs ?? []).some((job: any) => !job.ended_at),
     rangeStart,
     rangeEnd,
   };
@@ -264,10 +320,10 @@ export async function refreshOpenPeriodIfStale(params: { shopId: string; actorId
   const state = await getPeriodSourceState(admin, params.shopId, period, shop?.timezone ?? "UTC");
   const periodUpdated = period.updated_at ? new Date(period.updated_at).getTime() : 0;
   const sourceUpdated = state.sourceFreshAt ? new Date(state.sourceFreshAt).getTime() : 0;
-  if (state.entriesCount === 0 || sourceUpdated > periodUpdated) {
+  if (state.entriesCount === 0 || sourceUpdated > periodUpdated || state.hasOpenTime) {
     try {
       await rebuildPeriod(params);
-      return { refreshed: true, reason: state.entriesCount === 0 ? "empty" : "stale", hasSourceTime: state.sourceCount > 0, refreshError: null };
+      return { refreshed: true, reason: state.hasOpenTime ? "live" : state.entriesCount === 0 ? "empty" : "stale", hasSourceTime: state.sourceCount > 0, refreshError: null };
     } catch (err) {
       console.error("payroll open-period auto-refresh failed", err);
       return { refreshed: false, reason: "refresh_failed", hasSourceTime: state.sourceCount > 0, refreshError: err instanceof Error ? err.message : "Payroll refresh failed" };
@@ -367,102 +423,158 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
 
   const exceptions: PayrollException[] = [];
 
-  for (const shift of shifts ?? []) {
-    if (!shift.user_id) continue;
-    const workDate = toShopDate(shift.start_time, timezone);
-    const key = `${shift.user_id}:${workDate}`;
-    const row = rowsByKey.get(key) ?? {
-      user_id: shift.user_id,
-      work_date: workDate,
-      attendance_minutes: 0,
-      unpaid_break_minutes: 0,
-      paid_break_minutes: 0,
-      job_minutes: 0,
-      warnings: 0,
-      blocking: 0,
-      source_snapshot: { shift_ids: [], open_shift_ids: [], shifts: [] },
-    };
+  const newRow = (userId: string, workDate: string) => ({
+    user_id: userId,
+    work_date: workDate,
+    attendance_minutes: 0,
+    unpaid_break_minutes: 0,
+    paid_break_minutes: 0,
+    job_minutes: 0,
+    warnings: 0,
+    blocking: 0,
+    source_snapshot: { shift_ids: [], open_shift_ids: [], shifts: [], job_segment_ids: [] } as Record<string, unknown>,
+  });
+  const getRow = (userId: string, workDate: string) => {
+    const key = `${userId}:${workDate}`;
+    const row = rowsByKey.get(key) ?? newRow(userId, workDate);
+    rowsByKey.set(key, row);
+    return row;
+  };
+  const pushException = (row: ReturnType<typeof newRow>, item: Omit<PayrollException, "user_id" | "work_date">) => {
+    if (item.severity === "blocking") row.blocking += 1;
+    else row.warnings += 1;
+    exceptions.push({ ...item, user_id: row.user_id, work_date: row.work_date });
+  };
 
+  for (const shift of shifts ?? []) {
+    if (!shift.user_id || !shift.start_time) continue;
     const endTime = shift.end_time ?? new Date().toISOString();
     const duration = dateDiffMinutes(shift.start_time, endTime);
-
-    row.attendance_minutes += duration;
+    const slices = splitIntervalByShopDay({
+      start: shift.start_time,
+      end: endTime,
+      timezone,
+      rangeStart,
+      rangeEnd,
+    });
+    if (slices.length === 0) continue;
 
     const events = punchEventsByShift.get(shift.id) ?? [];
     const rest = parsePayrollRestEvents({ events, shiftStart: shift.start_time, shiftEnd: endTime, policy });
-    row.unpaid_break_minutes += rest.unpaidBreakMinutes;
-    row.paid_break_minutes += rest.paidBreakMinutes;
 
-    const snapshot = row.source_snapshot as Record<string, unknown>;
-    const parserWarnings = Array.isArray(snapshot.parser_warnings) ? (snapshot.parser_warnings as unknown[]) : [];
-    parserWarnings.push(...rest.warnings);
-    snapshot.parser_warnings = parserWarnings;
+    for (const slice of slices) {
+      const row = getRow(shift.user_id, slice.workDate);
+      row.attendance_minutes += slice.minutes;
 
-    const addWarning = (code: string, message: string, sourceRef: Record<string, unknown>) => {
-      row.warnings += 1;
-      exceptions.push({ user_id: shift.user_id, work_date: workDate, severity: "warning", code, message, source_type: "attendance", source_ref: sourceRef });
-    };
+      const regularBreakMinutes = overlapPairMinutes(rest.breakPairs, slice.start, slice.end);
+      const lunchMinutes = overlapPairMinutes(rest.lunchPairs, slice.start, slice.end);
+      row.paid_break_minutes +=
+        (policy.breaks_are_paid ? regularBreakMinutes : 0) +
+        (policy.lunch_is_paid ? lunchMinutes : 0);
+      row.unpaid_break_minutes +=
+        (policy.breaks_are_paid ? 0 : regularBreakMinutes) +
+        (policy.lunch_is_paid ? 0 : lunchMinutes);
 
-    for (const warning of rest.warnings) addWarning(warning.code, warning.message, { shift_id: shift.id, ...warning });
-    if (rest.breakPairs.length < policy.paid_breaks_per_day) {
-      addWarning("missing_expected_break", `Recorded ${rest.breakPairs.length} regular breaks; policy expects ${policy.paid_breaks_per_day}.`, { shift_id: shift.id, break_count: rest.breakPairs.length, expected_breaks: policy.paid_breaks_per_day });
+      const shiftIds = Array.isArray(row.source_snapshot.shift_ids)
+        ? row.source_snapshot.shift_ids as string[]
+        : [];
+      if (!shiftIds.includes(shift.id)) shiftIds.push(shift.id);
+      row.source_snapshot.shift_ids = shiftIds;
+
+      const summaries = Array.isArray(row.source_snapshot.shifts)
+        ? row.source_snapshot.shifts as Array<Record<string, unknown>>
+        : [];
+      summaries.push({
+        id: shift.id,
+        start_time: shift.start_time,
+        end_time: shift.end_time,
+        status: shift.status,
+        slice_start: slice.start,
+        slice_end: slice.end,
+        slice_minutes: slice.minutes,
+      });
+      row.source_snapshot.shifts = summaries;
+      row.source_snapshot.policy_snapshot = policy;
+      row.source_snapshot.break_source = events.length > 0 ? "punch_events" : "none_recorded";
+      row.source_snapshot.punch_event_count = events.length;
+      row.source_snapshot.paid_break_minutes = row.paid_break_minutes;
+      row.source_snapshot.unpaid_break_minutes = row.unpaid_break_minutes;
+
+      const sliceBreakCount = rest.breakPairs.filter((pair) =>
+        new Date(pair.start) < new Date(slice.end) && new Date(pair.end) > new Date(slice.start),
+      ).length;
+      const sliceLunchCount = rest.lunchPairs.filter((pair) =>
+        new Date(pair.start) < new Date(slice.end) && new Date(pair.end) > new Date(slice.start),
+      ).length;
+      if (slice.minutes >= policy.lunch_required_after_minutes && sliceLunchCount === 0) {
+        pushException(row, {
+          severity: "warning",
+          code: "missing_lunch",
+          message: `Attendance exceeded ${policy.lunch_required_after_minutes} minutes with no lunch punch.`,
+          source_type: "attendance",
+          source_ref: { shift_id: shift.id, slice_start: slice.start, slice_end: slice.end },
+        });
+      }
+      if (sliceBreakCount > policy.paid_breaks_per_day) {
+        pushException(row, {
+          severity: "warning",
+          code: "excess_break_count",
+          message: `Recorded ${sliceBreakCount} regular breaks; policy expects ${policy.paid_breaks_per_day}.`,
+          source_type: "attendance",
+          source_ref: { shift_id: shift.id, break_count: sliceBreakCount, expected_breaks: policy.paid_breaks_per_day },
+        });
+      }
+      if (slice.minutes >= policy.lunch_required_after_minutes && sliceBreakCount < policy.paid_breaks_per_day) {
+        pushException(row, {
+          severity: "warning",
+          code: "missing_expected_break",
+          message: `Recorded ${sliceBreakCount} regular breaks; policy expects ${policy.paid_breaks_per_day}.`,
+          source_type: "attendance",
+          source_ref: { shift_id: shift.id, break_count: sliceBreakCount, expected_breaks: policy.paid_breaks_per_day },
+        });
+      }
     }
-    if (rest.breakPairs.length > policy.paid_breaks_per_day) {
-      addWarning("excess_break_count", `Recorded ${rest.breakPairs.length} regular breaks; policy expects ${policy.paid_breaks_per_day}.`, { shift_id: shift.id, break_count: rest.breakPairs.length, expected_breaks: policy.paid_breaks_per_day });
-    }
-    if (duration >= policy.lunch_required_after_minutes && rest.lunchPairs.length === 0) {
-      addWarning("missing_lunch", `Shift exceeded ${policy.lunch_required_after_minutes} minutes with no lunch punch.`, { shift_id: shift.id, duration, threshold: policy.lunch_required_after_minutes });
+
+    const warningRow = getRow(shift.user_id, slices[slices.length - 1].workDate);
+    for (const warning of rest.warnings) {
+      pushException(warningRow, {
+        severity: "warning",
+        code: warning.code,
+        message: warning.message,
+        source_type: "attendance",
+        source_ref: { shift_id: shift.id, ...warning },
+      });
     }
     const longLunchThreshold = policy.default_lunch_duration_minutes + 15;
     for (const lunch of rest.lunchPairs) {
-      if (lunch.minutes > longLunchThreshold) addWarning("long_lunch", `Lunch length ${lunch.minutes} minutes exceeds expected ${policy.default_lunch_duration_minutes} minutes.`, { shift_id: shift.id, lunch });
+      if (lunch.minutes > longLunchThreshold) {
+        pushException(warningRow, {
+          severity: "warning",
+          code: "long_lunch",
+          message: `Lunch length ${lunch.minutes} minutes exceeds expected ${policy.default_lunch_duration_minutes} minutes.`,
+          source_type: "attendance",
+          source_ref: { shift_id: shift.id, lunch },
+        });
+      }
     }
-    const ids = Array.isArray(row.source_snapshot.shift_ids)
-      ? (row.source_snapshot.shift_ids as string[])
-      : [];
-    ids.push(shift.id);
-    row.source_snapshot.shift_ids = ids;
-    const shiftSummaries = Array.isArray(row.source_snapshot.shifts)
-      ? (row.source_snapshot.shifts as Array<Record<string, unknown>>)
-      : [];
-    shiftSummaries.push({ id: shift.id, start_time: shift.start_time, end_time: shift.end_time, status: shift.status });
-    row.source_snapshot.shifts = shiftSummaries;
-    row.source_snapshot = {
-      ...row.source_snapshot,
-      break_source: events.length > 0 ? "punch_events" : "none_recorded",
-      punch_event_count: events.length,
-      break_count: rest.breakPairs.length,
-      lunch_count: rest.lunchPairs.length,
-      break_pairs: rest.breakPairs,
-      lunch_pairs: rest.lunchPairs,
-      paid_break_minutes: row.paid_break_minutes,
-      unpaid_lunch_minutes: policy.lunch_is_paid ? 0 : rest.lunchMinutes,
-      policy_snapshot: policy,
-    };
 
     if (!shift.end_time) {
-      const openIds = Array.isArray(row.source_snapshot.open_shift_ids)
-        ? (row.source_snapshot.open_shift_ids as string[])
+      const openIds = Array.isArray(warningRow.source_snapshot.open_shift_ids)
+        ? warningRow.source_snapshot.open_shift_ids as string[]
         : [];
-      openIds.push(shift.id);
-      row.source_snapshot.open_shift_ids = openIds;
-      row.blocking += 1;
-      exceptions.push({
-        user_id: shift.user_id,
-        work_date: workDate,
+      if (!openIds.includes(shift.id)) openIds.push(shift.id);
+      warningRow.source_snapshot.open_shift_ids = openIds;
+      pushException(warningRow, {
         severity: "blocking",
         code: "open_shift",
-        message: "Shift is still open and missing clock-out.",
+        message: "Shift is still open. Review the live duration before approving payroll.",
         source_type: "attendance",
-        source_ref: { shift_id: shift.id },
+        source_ref: { shift_id: shift.id, start_time: shift.start_time, current_duration_minutes: duration },
       });
     }
 
     if (duration > suspiciousShiftMinutes) {
-      row.warnings += 1;
-      exceptions.push({
-        user_id: shift.user_id,
-        work_date: workDate,
+      pushException(warningRow, {
         severity: "warning",
         code: "suspicious_shift",
         message: `Shift length ${duration} minutes exceeds threshold ${suspiciousShiftMinutes}.`,
@@ -472,10 +584,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     }
 
     if (duration <= 0) {
-      row.blocking += 1;
-      exceptions.push({
-        user_id: shift.user_id,
-        work_date: workDate,
+      pushException(warningRow, {
         severity: "blocking",
         code: "invalid_duration",
         message: "Shift duration is invalid or negative.",
@@ -483,50 +592,41 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
         source_ref: { shift_id: shift.id },
       });
     }
-
-    rowsByKey.set(key, row);
   }
 
   for (const seg of jobSegments ?? []) {
     if (!seg.technician_id || !seg.started_at) continue;
-    const workDate = toShopDate(seg.started_at, timezone);
-    const key = `${seg.technician_id}:${workDate}`;
-    const row = rowsByKey.get(key) ?? {
-      user_id: seg.technician_id,
-      work_date: workDate,
-      attendance_minutes: 0,
-      unpaid_break_minutes: 0,
-      paid_break_minutes: 0,
-      job_minutes: 0,
-      warnings: 0,
-      blocking: 0,
-      source_snapshot: { shift_ids: [], open_shift_ids: [], shifts: [], job_segment_ids: [] },
-    };
+    const segmentEnd = seg.ended_at ?? new Date().toISOString();
+    const slices = splitIntervalByShopDay({
+      start: seg.started_at,
+      end: segmentEnd,
+      timezone,
+      rangeStart,
+      rangeEnd,
+    });
+    if (slices.length === 0) continue;
 
-    if (!seg.ended_at) {
-      row.warnings += 1;
-      exceptions.push({
-        user_id: seg.technician_id,
-        work_date: workDate,
-        severity: "warning",
-        code: "open_job_segment",
-        message: "Job segment is still active.",
-        source_type: "job_time",
-        source_ref: { segment_id: seg.id },
-      });
+    for (const slice of slices) {
+      const row = getRow(seg.technician_id, slice.workDate);
+      row.job_minutes += slice.minutes;
+      const segIds = Array.isArray(row.source_snapshot.job_segment_ids)
+        ? row.source_snapshot.job_segment_ids as string[]
+        : [];
+      if (!segIds.includes(seg.id)) segIds.push(seg.id);
+      row.source_snapshot.job_segment_ids = segIds;
     }
 
-    const duration = seg.ended_at ? dateDiffMinutes(seg.started_at, seg.ended_at) : 0;
-    row.job_minutes += duration;
-
-    const segIds = Array.isArray(row.source_snapshot.job_segment_ids)
-      ? (row.source_snapshot.job_segment_ids as string[])
-      : [];
-    segIds.push(seg.id);
-    row.source_snapshot.job_segment_ids = segIds;
-    rowsByKey.set(key, row);
+    if (!seg.ended_at) {
+      const row = getRow(seg.technician_id, slices[slices.length - 1].workDate);
+      pushException(row, {
+        severity: "warning",
+        code: "open_job_segment",
+        message: "Job segment is still active and is included through the current time.",
+        source_type: "job_time",
+        source_ref: { segment_id: seg.id, started_at: seg.started_at },
+      });
+    }
   }
-
 
   const { data: existingEntries } = await admin.from("payroll_time_entries").select("user_id, work_date, adjustment_minutes, approval_state").eq("shop_id", shopId).eq("period_id", periodId);
   const adjustmentByKey = new Map((existingEntries ?? []).map((e: any) => [`${e.user_id}:${e.work_date}`, Number(e.adjustment_minutes ?? 0)]));
