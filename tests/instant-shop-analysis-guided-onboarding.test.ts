@@ -31,14 +31,28 @@ describe("instant shop analysis guided onboarding handoff", () => {
     expect(source).not.toContain("SHOP_BOOST_UPLOAD_DATASETS.map");
   });
 
-  it("preserves questionnaire context and invoice analysis", () => {
+  it("stages files outside the analysis request and preserves questionnaire context", () => {
+    const page = read("app/demo/instant-shop-analysis/page.tsx");
+    const uploadRoute = read("app/api/demo/shop-boost/uploads/route.ts");
     const runRoute = read("app/api/demo/shop-boost/run/route.ts");
+    const uploadHelper = read(
+      "features/integrations/shopBoost/stageDemoUploads.ts",
+    );
     const shadowShop = read("features/integrations/shopBoost/shadowShop.ts");
 
-    expect(runRoute).toContain('formData.get("questionnaire")');
+    expect(page).toContain("stageInstantAnalysisUploads");
+    expect(uploadRoute).toContain("createSignedUploadUrl");
+    expect(uploadHelper).toContain("uploadToSignedUrl");
+    expect(runRoute).toContain("await req.json()");
+    expect(runRoute).toContain(".download(upload.path)");
+    expect(runRoute).toContain("uploadedCsvs");
+    expect(runRoute).not.toContain("req.formData()");
+    expect(page).not.toContain("new FormData()");
     expect(runRoute).toContain("questionnaire,");
     expect(shadowShop).toContain('"invoices" | "parts"');
-    expect(shadowShop).toContain('invoices: stageRowsByDomain(parsedRowsByDomain.invoices, "invoices")');
+    expect(shadowShop).toContain(
+      'invoices: stageRowsByDomain(parsedRowsByDomain.invoices, "invoices")',
+    );
   });
 
   it("copies the full upload manifest and maps activation into guided onboarding", () => {
@@ -64,14 +78,17 @@ describe("instant shop analysis guided onboarding handoff", () => {
 
   it("binds activation to the unlocked email and provides a retry-safe handoff page", () => {
     const activation = read("app/api/demo/shop-boost/activate/route.ts");
+    const claim = read("app/api/demo/shop-boost/claim/route.ts");
     const handoffPage = read("app/onboarding/shop-boost/page.tsx");
     const signIn = read("features/auth/components/SignIn.tsx");
 
+    expect(claim).toContain('.eq("lead_kind", "activation_claim")');
     expect(activation).toContain('.from("demo_shop_boost_leads")');
     expect(activation).toContain('.eq("email", normalizedUserEmail)');
     expect(activation).toContain('.eq("lead_kind", "activation_claim")');
     expect(activation).toContain('role !== "owner" && role !== "admin"');
     expect(activation).toContain("readPersistedImportSummary");
+    expect(activation).toContain("isRecord(basics.importSummary)");
     expect(activation).toContain("ensureStorageCopy");
     expect(activation).toContain("demoRow.shop_id !== shopId");
     expect(handoffPage).toContain('fetch("/api/demo/shop-boost/activate"');

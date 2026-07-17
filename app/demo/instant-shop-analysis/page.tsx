@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState, type FormEvent } from "react";
 import { appendActivationContextToHref, type ActivationContext } from "@/features/integrations/shopBoost/activationContext";
 import type { ShopBoostPreflightReport } from "@/features/integrations/shopBoost/preflightAnalysis";
 import type { ShadowShopSnapshot } from "@/features/integrations/shopBoost/shadowShop";
+import { stageInstantAnalysisUploads } from "@/features/integrations/shopBoost/stageDemoUploads";
 import {
   INSTANT_SHOP_ANALYSIS_DATASETS,
   type ShopBoostUploadDatasetKey,
@@ -112,6 +113,7 @@ export default function InstantShopAnalysisPage() {
 
   const [runError, setRunError] = useState<string | null>(null);
   const [runLoading, setRunLoading] = useState(false);
+  const [runProgress, setRunProgress] = useState<string | null>(null);
 
   const [email, setEmail] = useState("");
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -201,19 +203,36 @@ export default function InstantShopAnalysisPage() {
     setStep("analyzing");
 
     try {
-      const form = new FormData();
-      form.append("shopName", shopName.trim());
-      form.append("country", country);
-      form.append("questionnaire", JSON.stringify({ ...questionnaire }));
-      for (const [dataset, file] of selectedEntries) {
-        form.append(`${dataset}File`, file);
-      }
-
-      const res = await fetch("/api/demo/shop-boost/run", {
-        method: "POST",
-        body: form,
+      const staged = await stageInstantAnalysisUploads({
+        selectedFiles: selectedEntries.map(([dataset, file]) => ({
+          dataset,
+          file,
+        })),
+        onProgress: setRunProgress,
       });
 
+      setRunProgress("Building your import readiness report…");
+      const res = await fetch("/api/demo/shop-boost/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          demoId: staged.demoId,
+          intakeId: staged.intakeId,
+          shopName: shopName.trim(),
+          country,
+          questionnaire: { ...questionnaire },
+          uploads: staged.uploads,
+        }),
+      });
+
+      const responseType = res.headers.get("content-type") ?? "";
+      if (!responseType.includes("application/json")) {
+        throw new Error(
+          res.status === 413
+            ? "The selected exports are too large to analyze together."
+            : "The analysis service returned an invalid response. Please retry.",
+        );
+      }
       const json = (await res.json()) as RunResponse;
 
       if (!res.ok || !json.ok) {
@@ -246,6 +265,7 @@ export default function InstantShopAnalysisPage() {
       setStep("form");
     } finally {
       setRunLoading(false);
+      setRunProgress(null);
     }
   };
 
@@ -461,8 +481,8 @@ export default function InstantShopAnalysisPage() {
                 ))}
 
                 <p className={THEME.help}>
-                  This is a preflight preview. Full migration and materialization run only after signup,
-                  activation, and setup.
+                  Files upload securely one at a time, then the same staged exports carry into Guided
+                  Onboarding. Full materialization runs only after signup and activation.
                 </p>
               </div>
             </section>
@@ -478,12 +498,12 @@ export default function InstantShopAnalysisPage() {
                   THEME.ctaDisabled,
                 ].join(" ")}
               >
-                {isAnalyzing ? "Analyzing importability…" : "Run Instant Shop Analysis"}
+                {isAnalyzing ? "Uploading and analyzing…" : "Run Instant Shop Analysis"}
               </button>
 
               {step === "analyzing" && (
                 <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[11px] text-[color:var(--theme-text-secondary)]">
-                  Running parser + matching heuristics to build your import readiness report…
+                  {runProgress ?? "Preparing your secure import analysis…"}
                 </span>
               )}
 

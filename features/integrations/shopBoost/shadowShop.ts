@@ -697,9 +697,15 @@ function deriveOperationalPayload(args: {
   };
 }
 
+export type ShadowShopCsvUpload = {
+  fileName: string;
+  text: string;
+};
+
 export async function buildShadowShopSnapshot(args: {
   intakeId: string;
-  uploadedFiles: Partial<Record<ShopBoostUploadDatasetKey, File>>;
+  uploadedFiles?: Partial<Record<ShopBoostUploadDatasetKey, File>>;
+  uploadedCsvs?: Partial<Record<ShopBoostUploadDatasetKey, ShadowShopCsvUpload>>;
 }): Promise<ShadowShopSnapshot> {
   const parsedRowsByDomain: Record<ShadowDomainKey, CsvRow[]> = {
     customers: [],
@@ -722,14 +728,15 @@ export async function buildShadowShopSnapshot(args: {
   for (const key of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
     if (!SHADOW_DATASET_KEYS.includes(key as ShadowDomainKey)) continue;
     const shadowKey = key as ShadowDomainKey;
-    const file = args.uploadedFiles[key];
-    if (!file) continue;
-    const text = await file.text();
+    const file = args.uploadedFiles?.[key];
+    const stagedCsv = args.uploadedCsvs?.[key];
+    if (!file && !stagedCsv) continue;
+    const text = stagedCsv?.text ?? (await file!.text());
     const rows = parseCsv(text);
     parsedRowsByDomain[shadowKey] = rows;
     uploadSummary[shadowKey] = {
       count: rows.length,
-      fileName: file.name,
+      fileName: stagedCsv?.fileName ?? file?.name ?? null,
     };
   }
 

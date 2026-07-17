@@ -53,6 +53,7 @@ export async function POST(
       .from("demo_shop_boost_leads")
       .select("id")
       .eq("email", emailNormalized)
+      .eq("lead_kind", "activation_claim")
       .maybeSingle();
 
     if (!existingErr && existingLead) {

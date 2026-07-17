@@ -1,18 +1,31 @@
 // app/api/demo/shop-boost/run/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   buildShadowShopSnapshot,
+  type ShadowShopCsvUpload,
   type ShadowShopSnapshot,
 } from "@/features/integrations/shopBoost/shadowShop";
 import {
-  INSTANT_SHOP_ANALYSIS_DATASET_KEYS,
-  type ShopBoostUploadDatasetKey,
-} from "@/features/integrations/shopBoost/uploadDatasets";
+  DEMO_UPLOAD_BUCKET,
+  DEMO_UPLOAD_MAX_FILE_BYTES,
+  DEMO_UPLOAD_MAX_TOTAL_BYTES,
+  type DemoStagedUploadManifestEntry,
+  validateDemoUploadFileDescriptors,
+} from "@/features/integrations/shopBoost/demoUploadContract";
+import type { ShopBoostUploadDatasetKey } from "@/features/integrations/shopBoost/uploadDatasets";
 
 type DB = Database;
+
+type DemoRunBody = {
+  demoId?: string;
+  intakeId?: string;
+  shopName?: string;
+  country?: string;
+  questionnaire?: unknown;
+  uploads?: unknown;
+};
 
 type DemoRunSuccessResponse = {
   ok: true;
@@ -28,108 +41,200 @@ type DemoRunErrorResponse = {
 
 type DemoRunResponse = DemoRunSuccessResponse | DemoRunErrorResponse;
 
-const SHOP_IMPORT_BUCKET = "shop-imports";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function safeShopName(name: string): string {
   return name.trim().replace(/\s+/g, " ").slice(0, 80);
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function asFile(v: FormDataEntryValue | null): File | null {
-  if (!v || typeof v !== "object") return null;
-  const rec = v as unknown;
-  if (!isRecord(rec)) return null;
-
-  const ab = rec.arrayBuffer;
-  const name = rec.name;
-  if (typeof ab !== "function" || typeof name !== "string") return null;
-
-  return v as File;
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
 }
 
-export async function POST(req: NextRequest): Promise<NextResponse<DemoRunResponse>> {
+function readUploadManifest(args: {
+  demoId: string;
+  intakeId: string;
+  uploads: unknown;
+}):
+  | { ok: true; uploads: DemoStagedUploadManifestEntry[] }
+  | { ok: false; error: string } {
+  const validated = validateDemoUploadFileDescriptors(args.uploads);
+  if (!validated.ok) return validated;
+
+  const rawUploads = Array.isArray(args.uploads) ? args.uploads : [];
+  const expectedPrefix = `demos/${args.demoId}/${args.intakeId}/`;
+  const uploads: DemoStagedUploadManifestEntry[] = [];
+
+  for (let index = 0; index < validated.files.length; index += 1) {
+    const raw = isRecord(rawUploads[index]) ? rawUploads[index] : {};
+    const path = typeof raw.path === "string" ? raw.path : "";
+    if (
+      !path.startsWith(expectedPrefix) ||
+      path.includes("..") ||
+      !path.endsWith(".csv")
+    ) {
+      return {
+        ok: false,
+        error: "The secure upload manifest is invalid or has expired. Please retry the analysis.",
+      };
+    }
+    uploads.push({ ...validated.files[index], path });
+  }
+
+  return { ok: true, uploads };
+}
+
+export async function POST(
+  req: NextRequest,
+): Promise<NextResponse<DemoRunResponse>> {
   try {
-    const formData = await req.formData();
+    const body = (await req.json().catch(() => null)) as DemoRunBody | null;
+    const demoId = body?.demoId;
+    const intakeId = body?.intakeId;
 
-    const rawShopName = formData.get("shopName");
-    const rawCountry = formData.get("country");
-
-    const shopName =
-      typeof rawShopName === "string" && rawShopName.trim().length > 0
-        ? safeShopName(rawShopName)
-        : null;
-
-    if (!shopName) {
-      return NextResponse.json({ ok: false, error: "Shop name is required." }, { status: 400 });
-    }
-
-    const countryValue =
-      typeof rawCountry === "string" && (rawCountry === "US" || rawCountry === "CA")
-        ? rawCountry
-        : "US";
-
-    const rawQuestionnaire = formData.get("questionnaire");
-    let questionnaire: Record<string, unknown> = {};
-    if (typeof rawQuestionnaire === "string" && rawQuestionnaire.trim()) {
-      try {
-        const parsed = JSON.parse(rawQuestionnaire) as unknown;
-        if (isRecord(parsed)) questionnaire = parsed;
-      } catch {
-        return NextResponse.json(
-          { ok: false, error: "Shop profile answers were invalid. Please try again." },
-          { status: 400 },
-        );
-      }
-    }
-
-    const filesByDataset: Partial<Record<ShopBoostUploadDatasetKey, File>> = {};
-    for (const key of INSTANT_SHOP_ANALYSIS_DATASET_KEYS) {
-      const file = asFile(formData.get(`${key}File`));
-      if (file) filesByDataset[key] = file;
-    }
-
-    if (Object.values(filesByDataset).length === 0) {
+    if (!isUuid(demoId) || !isUuid(intakeId)) {
       return NextResponse.json(
-        { ok: false, error: "Please upload at least one CSV so we have data to analyze." },
+        { ok: false, error: "The secure analysis intake is invalid. Please retry." },
         { status: 400 },
       );
     }
 
-    const intakeId = randomUUID();
-    const snapshot = await buildShadowShopSnapshot({
+    const shopName =
+      typeof body?.shopName === "string" && body.shopName.trim()
+        ? safeShopName(body.shopName)
+        : null;
+    if (!shopName) {
+      return NextResponse.json(
+        { ok: false, error: "Shop name is required." },
+        { status: 400 },
+      );
+    }
+
+    const countryValue =
+      body?.country === "US" || body?.country === "CA" ? body.country : "US";
+    const questionnaire = isRecord(body?.questionnaire)
+      ? body.questionnaire
+      : {};
+    const manifest = readUploadManifest({
+      demoId,
       intakeId,
-      uploadedFiles: filesByDataset,
+      uploads: body?.uploads,
     });
+    if (!manifest.ok) {
+      return NextResponse.json(manifest, { status: 400 });
+    }
 
     const supabase = createAdminSupabase();
-    const demoId = randomUUID();
+    const { data: existingDemo, error: existingError } = await supabase
+      .from("demo_shop_boosts")
+      .select("id,snapshot")
+      .eq("id", demoId)
+      .maybeSingle();
 
-    const uploadedPathEntries = await Promise.all(
-      Object.entries(filesByDataset).map(async ([dataset, file]) => {
-        const path = `demos/${demoId}/${intakeId}/${dataset}-${safeShopName(file.name || `${dataset}.csv`)}`;
-        const { error: uploadErr } = await supabase.storage
-          .from(SHOP_IMPORT_BUCKET)
-          .upload(path, file, { upsert: true, contentType: file.type || "text/csv" });
+    if (existingError) {
+      return NextResponse.json(
+        { ok: false, error: "We couldn't inspect the analysis intake. Please retry." },
+        { status: 500 },
+      );
+    }
 
-        if (uploadErr) {
-          throw new Error(`Failed to stage ${dataset} demo file: ${uploadErr.message}`);
-        }
+    if (existingDemo?.snapshot) {
+      const existingSnapshot = isRecord(existingDemo.snapshot)
+        ? existingDemo.snapshot
+        : {};
+      if (existingSnapshot.intakeId === intakeId) {
+        return NextResponse.json({
+          ok: true,
+          demoId,
+          intakeId,
+          analysis: existingSnapshot as unknown as ShadowShopSnapshot,
+        });
+      }
+      return NextResponse.json(
+        { ok: false, error: "This analysis intake is already in use. Please start again." },
+        { status: 409 },
+      );
+    }
 
-        return [dataset, path] as const;
-      }),
-    );
+    const uploadedCsvs: Partial<
+      Record<ShopBoostUploadDatasetKey, ShadowShopCsvUpload>
+    > = {};
+    const activationUploadPaths: Partial<
+      Record<ShopBoostUploadDatasetKey, string>
+    > = {};
+    let totalBytes = 0;
 
-    const activationUploadPaths = Object.fromEntries(uploadedPathEntries);
+    for (const upload of manifest.uploads) {
+      const { data: blob, error: downloadError } = await supabase.storage
+        .from(DEMO_UPLOAD_BUCKET)
+        .download(upload.path);
+
+      if (downloadError || !blob) {
+        console.error("[demo/shop-boost/run] Staged upload missing", {
+          dataset: upload.dataset,
+          path: upload.path,
+          error: downloadError?.message,
+        });
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `The ${upload.dataset} upload did not finish. Please retry the analysis.`,
+          },
+          { status: 409 },
+        );
+      }
+
+      if (blob.size <= 0 || blob.size > DEMO_UPLOAD_MAX_FILE_BYTES) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `${upload.fileName} is empty or exceeds the 20 MB analysis limit.`,
+          },
+          { status: 413 },
+        );
+      }
+
+      totalBytes += blob.size;
+      if (totalBytes > DEMO_UPLOAD_MAX_TOTAL_BYTES) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "The staged exports exceed the 60 MB analysis limit.",
+          },
+          { status: 413 },
+        );
+      }
+
+      uploadedCsvs[upload.dataset] = {
+        fileName: upload.fileName,
+        text: await blob.text(),
+      };
+      activationUploadPaths[upload.dataset] = upload.path;
+    }
+
+    const snapshot = await buildShadowShopSnapshot({
+      intakeId,
+      uploadedCsvs,
+    });
     const snapshotWithActivation = {
       ...snapshot,
       questionnaire,
       activationUploadPaths,
+      activationUploadManifest: manifest.uploads,
     };
 
-    const { data: demoRow, error: demoErr } = await supabase
+    const { data: demoRow, error: demoError } = await supabase
       .from("demo_shop_boosts")
       .insert({
         id: demoId,
@@ -142,10 +247,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
       .select("id")
       .single();
 
-    if (demoErr || !demoRow?.id) {
-      console.error("Failed to insert demo_shop_boosts", demoErr);
+    if (demoError || !demoRow?.id) {
+      console.error("[demo/shop-boost/run] Failed to persist analysis", demoError);
       return NextResponse.json(
-        { ok: false, error: "We ran the analysis, but could not save the demo result." },
+        {
+          ok: false,
+          error: "We ran the analysis, but could not save the result. Please retry.",
+        },
         { status: 500 },
       );
     }
@@ -157,12 +265,19 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
         intakeId,
         analysis: snapshotWithActivation,
       },
-      { status: 200 },
+      {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      },
     );
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Unexpected error while running demo analysis.";
-    console.error("Demo run error", err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  } catch (error) {
+    console.error("[demo/shop-boost/run] Unexpected analysis error", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Unexpected error while running the import analysis. Please try again.",
+      },
+      { status: 500 },
+    );
   }
 }
