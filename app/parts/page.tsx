@@ -1,70 +1,83 @@
-//app/parts/page.tsx
-
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Boxes,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Clock3,
+  Package,
+  PackageCheck,
+  Plus,
+  ScanLine,
+  ShoppingCart,
+  Tags,
+  Truck,
+  Warehouse,
+} from "lucide-react";
+
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
-import PageShell from "@/features/shared/components/PageShell";
-import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 type DB = Database;
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type StockMoveRow = DB["public"]["Tables"]["stock_moves"]["Row"];
 type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
-type TrustExtendedPart = {
+type RequestItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
+
+type RecentMove = Pick<
+  StockMoveRow,
+  | "id"
+  | "created_at"
+  | "reason"
+  | "qty_change"
+  | "part_id"
+  | "reference_kind"
+  | "reference_id"
+>;
+type TrustExtendedPart = Pick<PartRow, "id" | "created_at" | "sku"> & {
   part_number?: string | null;
   normalized_part_key?: string | null;
   import_confidence?: number | null;
 };
+type TrustSummary = {
+  lowTrust: number;
+  reviewStaging: number;
+  ambiguousCandidates: number;
+};
+type FlowCounts = {
+  needsQuote: number;
+  awaitingApproval: number;
+  orderReceive: number;
+  readyTech: number;
+  complete: number;
+};
 
-type RecentMove = Pick<StockMoveRow, "id" | "created_at" | "reason" | "qty_change" | "part_id" | "reference_kind" | "reference_id">;
-type TrustSummary = { lowTrust: number; reviewStaging: number; ambiguousCandidates: number };
+const ACTIVE_REQUEST_STATUSES: RequestRow["status"][] = [
+  "requested",
+  "quoted",
+  "approved",
+];
 
-function Sparkline({ points, width = 120, height = 28 }: { points: number[]; width?: number; height?: number }) {
-  if (!points.length) return <svg width={width} height={height} aria-hidden><line x1="0" x2={width} y1={height / 2} y2={height / 2} stroke="currentColor" opacity={0.2} /></svg>;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = max - min || 1;
-  const stepX = width / Math.max(1, points.length - 1);
-  const path = points.map((v, i) => `${i === 0 ? "M" : "L"} ${(i * stepX).toFixed(2)} ${(height - ((v - min) / range) * height).toFixed(2)}`).join(" ");
-  return <svg width={width} height={height} aria-hidden><path d={path} fill="none" stroke="currentColor" /></svg>;
+function panelClass(extra = "") {
+  return `rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] ${extra}`;
 }
 
-function OverviewCard({ title, value, href, hint }: { title: string; value: React.ReactNode; href?: string; hint?: string }) {
-  const content = (
-    <div className={`${ui.itemCard} group px-4 py-4 transition hover:border-[color:var(--brand-accent,#E39A6E)]`}>
-      <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">{title}</p>
-      <div className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{hint}</div> : null}
-    </div>
-  );
-  return href ? <Link href={href} className="block">{content}</Link> : content;
-}
-
-function ActionButton({ href, children, emphasis }: { href: string; children: React.ReactNode; emphasis?: boolean }) {
-  return (
-    <Link
-      href={href}
-      className={`inline-flex items-center justify-center rounded-lg border px-3 py-2 text-sm font-medium text-[color:var(--theme-text-primary)] transition ${
-        emphasis
-          ? ui.buttonPrimary
-          : ui.buttonSecondary
-      }`}
-    >
-      {children}
-    </Link>
+function targetQty(
+  item: Pick<RequestItemRow, "qty" | "qty_approved" | "qty_requested">,
+) {
+  return Math.max(
+    Number(item.qty_approved ?? 0),
+    Number(item.qty_requested ?? 0),
+    Number(item.qty ?? 0),
   );
 }
 
-function moveTone(qty: number): string {
-  if (qty > 0) return "text-emerald-200 bg-emerald-950/20 border-emerald-500/25";
-  if (qty < 0) return "text-rose-200 bg-rose-950/20 border-rose-500/25";
-  return "text-[color:var(--theme-text-secondary)] bg-[color:var(--theme-surface-subtle)] border-[color:var(--theme-border-soft)]";
-}
-
-function sourceLabel(kind: string | null, reason: string | null): string {
+function sourceLabel(kind: string | null, reason: string | null) {
   const key = String(kind ?? "").toLowerCase();
   if (key === "purchase_order") return "PO receive";
   if (key === "request_receive") return "Request receive";
@@ -73,18 +86,75 @@ function sourceLabel(kind: string | null, reason: string | null): string {
   return String(reason ?? (key || "movement")).replaceAll("_", " ");
 }
 
+function MetricCard({
+  label,
+  value,
+  hint,
+  href,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: string;
+  href: string;
+  icon: typeof Package;
+  tone: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex min-h-20 items-center gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 transition hover:border-[var(--brand-accent,#E39A6E)]/55"
+    >
+      <span
+        className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white ${tone}`}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs text-[color:var(--theme-text-secondary)]">
+          {label}
+        </span>
+        <span className="block text-2xl font-bold text-[color:var(--theme-text-primary)]">
+          {value}
+        </span>
+        {hint ? (
+          <span className="block truncate text-[11px] text-[color:var(--theme-text-muted)]">
+            {hint}
+          </span>
+        ) : null}
+      </span>
+      <ChevronRight className="h-4 w-4 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5" />
+    </Link>
+  );
+}
+
 export default function PartsDashboardPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [loading, setLoading] = useState(true);
   const [skuTotal, setSkuTotal] = useState(0);
   const [skuNewThis7d, setSkuNewThis7d] = useState(0);
   const [moves7dCount, setMoves7dCount] = useState(0);
-  const [moves30Spark, setMoves30Spark] = useState<number[]>([]);
-  const [openRequestsCount, setOpenRequestsCount] = useState<number | null>(null);
-  const [openPoCount, setOpenPoCount] = useState<number | null>(null);
-  const [receiveQueueCount, setReceiveQueueCount] = useState<number | null>(null);
-  const [trustSummary, setTrustSummary] = useState<TrustSummary>({ lowTrust: 0, reviewStaging: 0, ambiguousCandidates: 0 });
-  const [partNameById, setPartNameById] = useState<Record<string, { name: string | null; sku: string | null }>>({});
+  const [openRequestCount, setOpenRequestCount] = useState(0);
+  const [openWorkOrderCount, setOpenWorkOrderCount] = useState(0);
+  const [openItemCount, setOpenItemCount] = useState(0);
+  const [openPoCount, setOpenPoCount] = useState(0);
+  const [receiveQueueCount, setReceiveQueueCount] = useState(0);
+  const [flow, setFlow] = useState<FlowCounts>({
+    needsQuote: 0,
+    awaitingApproval: 0,
+    orderReceive: 0,
+    readyTech: 0,
+    complete: 0,
+  });
+  const [trustSummary, setTrustSummary] = useState<TrustSummary>({
+    lowTrust: 0,
+    reviewStaging: 0,
+    ambiguousCandidates: 0,
+  });
+  const [partNameById, setPartNameById] = useState<
+    Record<string, { name: string | null; sku: string | null }>
+  >({});
   const [recentMoves, setRecentMoves] = useState<RecentMove[]>([]);
 
   useEffect(() => {
@@ -94,167 +164,645 @@ export default function PartsDashboardPage(): JSX.Element {
       const d7Ago = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
       const d30Ago = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
 
-      const [partsRes, movesRes, openReqRes, openPoRes, receiveQueueRes, stagingRes, candidateRes] = await Promise.all([
-        supabase.from("parts").select("id, created_at, sku, part_number, normalized_part_key, import_confidence, source_intake_id"),
+      const [
+        partsRes,
+        movesRes,
+        requestsRes,
+        openPoRes,
+        stagingRes,
+        candidateRes,
+      ] = await Promise.all([
+        supabase
+          .from("parts")
+          .select(
+            "id, created_at, sku, part_number, normalized_part_key, import_confidence, source_intake_id",
+          ),
         supabase
           .from("stock_moves")
-          .select("id, part_id, qty_change, reason, created_at, reference_kind, reference_id")
+          .select(
+            "id, part_id, qty_change, reason, created_at, reference_kind, reference_id",
+          )
           .gte("created_at", d30Ago.toISOString())
           .order("created_at", { ascending: true }),
-        supabase.from("part_requests").select("id", { count: "exact", head: true }).in("status", ["requested", "quoted", "approved"] as RequestRow["status"][]),
-        supabase.from("purchase_orders").select("id", { count: "exact", head: true }).in("status", ["draft", "sent", "partially_received"]),
-        supabase.from("part_request_items").select("qty_approved, qty_received").gt("qty_approved", 0),
+        supabase
+          .from("part_requests")
+          .select("id,status,work_order_id")
+          .in("status", ["requested", "quoted", "approved", "fulfilled"]),
+        supabase
+          .from("purchase_orders")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["draft", "sent", "partially_received"]),
         supabase.from("shop_parts_import_staging").select("status"),
-        supabase.from("shop_parts_import_match_candidates").select("staging_id, candidate_part_id"),
+        supabase
+          .from("shop_parts_import_match_candidates")
+          .select("staging_id, candidate_part_id"),
       ]);
 
-      const partsRows = (partsRes.data ?? []) as Array<Pick<PartRow, "id" | "created_at" | "sku"> & TrustExtendedPart>;
-
+      const partsRows = (partsRes.data ?? []) as TrustExtendedPart[];
       setSkuTotal(partsRows.length);
-      setSkuNewThis7d(partsRows.filter((p) => !!p.created_at && new Date(p.created_at) >= d7Ago && new Date(p.created_at) < now).length);
-
-      const lowTrust = partsRows.filter((p) => !p.sku?.trim() || !p.part_number?.trim() || !p.normalized_part_key?.trim() || (typeof p.import_confidence === "number" && p.import_confidence < 0.75)).length;
-      const reviewStaging = (stagingRes.data ?? []).filter((s) => ["pending", "review", "ambiguous"].includes(String(s.status ?? "").toLowerCase())).length;
+      setSkuNewThis7d(
+        partsRows.filter(
+          (part) =>
+            !!part.created_at &&
+            new Date(part.created_at) >= d7Ago &&
+            new Date(part.created_at) < now,
+        ).length,
+      );
+      const lowTrust = partsRows.filter(
+        (part) =>
+          !part.sku?.trim() ||
+          !part.part_number?.trim() ||
+          !part.normalized_part_key?.trim() ||
+          (typeof part.import_confidence === "number" &&
+            part.import_confidence < 0.75),
+      ).length;
+      const reviewStaging = (stagingRes.data ?? []).filter((row) =>
+        ["pending", "review", "ambiguous"].includes(
+          String(row.status ?? "").toLowerCase(),
+        ),
+      ).length;
       const candidateCounts: Record<string, number> = {};
       for (const row of candidateRes.data ?? []) {
         const key = String(row.staging_id ?? row.candidate_part_id ?? "");
-        if (!key) continue;
-        candidateCounts[key] = (candidateCounts[key] ?? 0) + 1;
+        if (key) candidateCounts[key] = (candidateCounts[key] ?? 0) + 1;
       }
-      const ambiguousCandidates = Object.values(candidateCounts).filter((count) => count > 1).length;
-      setTrustSummary({ lowTrust, reviewStaging, ambiguousCandidates });
+      setTrustSummary({
+        lowTrust,
+        reviewStaging,
+        ambiguousCandidates: Object.values(candidateCounts).filter(
+          (count) => count > 1,
+        ).length,
+      });
 
-      const mv = (movesRes.data ?? []) as RecentMove[];
-      setMoves7dCount(mv.filter((m) => new Date(String(m.created_at)) >= d7Ago).length);
-      const buckets = Array<number>(30).fill(0);
-      for (const m of mv) {
-        const dt = new Date(String(m.created_at));
-        const idx = Math.min(29, Math.max(0, Math.floor((dt.getTime() - d30Ago.getTime()) / (24 * 3600 * 1000))));
-        buckets[idx] += Number(m.qty_change ?? 0);
-      }
-      setMoves30Spark(buckets);
-      const recent = [...mv].sort((a, b) => new Date(String(b.created_at)).getTime() - new Date(String(a.created_at)).getTime()).slice(0, 12);
+      const moves = (movesRes.data ?? []) as RecentMove[];
+      setMoves7dCount(
+        moves.filter((move) => new Date(String(move.created_at)) >= d7Ago)
+          .length,
+      );
+      const recent = [...moves]
+        .sort(
+          (a, b) =>
+            new Date(String(b.created_at)).getTime() -
+            new Date(String(a.created_at)).getTime(),
+        )
+        .slice(0, 8);
       setRecentMoves(recent);
-
-      const partIds = [...new Set(recent.map((x) => String(x.part_id ?? "")).filter(Boolean))];
+      const partIds = [
+        ...new Set(
+          recent.map((move) => String(move.part_id ?? "")).filter(Boolean),
+        ),
+      ];
       if (partIds.length) {
-        const partInfo = await supabase.from("parts").select("id, name, sku").in("id", partIds);
-        const map: Record<string, { name: string | null; sku: string | null }> = {};
-        for (const p of partInfo.data ?? []) map[String(p.id)] = { name: p.name ?? null, sku: p.sku ?? null };
-        setPartNameById(map);
-      } else {
-        setPartNameById({});
+        const partInfo = await supabase
+          .from("parts")
+          .select("id, name, sku")
+          .in("id", partIds);
+        const names: Record<
+          string,
+          { name: string | null; sku: string | null }
+        > = {};
+        for (const part of partInfo.data ?? []) {
+          names[String(part.id)] = {
+            name: part.name ?? null,
+            sku: part.sku ?? null,
+          };
+        }
+        setPartNameById(names);
       }
 
-      setOpenRequestsCount(openReqRes.count ?? 0);
+      const requests = (requestsRes.data ?? []) as Array<
+        Pick<RequestRow, "id" | "status" | "work_order_id">
+      >;
+      const requestIds = requests.map((request) => request.id);
+      const itemsRes = requestIds.length
+        ? await supabase
+            .from("part_request_items")
+            .select(
+              "request_id,status,qty,qty_requested,qty_approved,qty_received,qty_consumed",
+            )
+            .in("request_id", requestIds)
+        : { data: [], error: null };
+      const items = (itemsRes.data ?? []) as Array<
+        Pick<
+          RequestItemRow,
+          | "request_id"
+          | "status"
+          | "qty"
+          | "qty_requested"
+          | "qty_approved"
+          | "qty_received"
+          | "qty_consumed"
+        >
+      >;
+      const itemsByRequest = new Map<string, typeof items>();
+      for (const item of items) {
+        const current = itemsByRequest.get(item.request_id) ?? [];
+        current.push(item);
+        itemsByRequest.set(item.request_id, current);
+      }
+
+      const activeRequests = requests.filter((request) =>
+        ACTIVE_REQUEST_STATUSES.includes(request.status),
+      );
+      setOpenRequestCount(activeRequests.length);
+      setOpenWorkOrderCount(
+        new Set(
+          activeRequests
+            .map((request) => request.work_order_id)
+            .filter((id): id is string => Boolean(id)),
+        ).size,
+      );
+      const activeIds = new Set(activeRequests.map((request) => request.id));
+      setOpenItemCount(
+        items.filter((item) => activeIds.has(item.request_id)).length,
+      );
       setOpenPoCount(openPoRes.count ?? 0);
-      const receiveQueue = (receiveQueueRes.data ?? []).filter((r) => Number(r.qty_received ?? 0) < Number(r.qty_approved ?? 0)).length;
-      setReceiveQueueCount(receiveQueue);
+      setReceiveQueueCount(
+        items.filter((item) => {
+          const target = targetQty(item);
+          return (
+            activeIds.has(item.request_id) &&
+            target > 0 &&
+            Number(item.qty_received ?? 0) < target
+          );
+        }).length,
+      );
+
+      const nextFlow: FlowCounts = {
+        needsQuote: 0,
+        awaitingApproval: 0,
+        orderReceive: 0,
+        readyTech: 0,
+        complete: 0,
+      };
+      for (const request of requests) {
+        if (request.status === "fulfilled") {
+          nextFlow.complete += 1;
+          continue;
+        }
+        if (request.status === "requested") {
+          nextFlow.needsQuote += 1;
+          continue;
+        }
+        if (request.status === "quoted") {
+          nextFlow.awaitingApproval += 1;
+          continue;
+        }
+        const requestItems = itemsByRequest.get(request.id) ?? [];
+        const isReady =
+          requestItems.length > 0 &&
+          requestItems.every((item) => {
+            const target = targetQty(item);
+            return (
+              target > 0 &&
+              Number(item.qty_received ?? 0) >= target &&
+              Number(item.qty_consumed ?? 0) < target
+            );
+          });
+        if (isReady) nextFlow.readyTech += 1;
+        else nextFlow.orderReceive += 1;
+      }
+      setFlow(nextFlow);
       setLoading(false);
     })();
   }, [supabase]);
 
-  const openReqDisplay = openRequestsCount == null || loading ? "…" : openRequestsCount.toLocaleString();
-  const hasOpenRequests = (openRequestsCount ?? 0) > 0;
+  const display = (value: number) => (loading ? "…" : value.toLocaleString());
+  const attention = [
+    {
+      label: "parts requests need a quote",
+      value: flow.needsQuote,
+      context: "Quote queue",
+      action: "Start quoting",
+      href: "/parts/requests",
+    },
+    {
+      label: "requests await approval",
+      value: flow.awaitingApproval,
+      context: "Customer decision",
+      action: "Review approvals",
+      href: "/parts/requests",
+    },
+    {
+      label: "items need receiving",
+      value: receiveQueueCount,
+      context: "Receiving inbox",
+      action: "Receive parts",
+      href: "/parts/receiving",
+    },
+    {
+      label: "catalog records need review",
+      value: trustSummary.lowTrust + trustSummary.reviewStaging,
+      context: "Catalog quality",
+      action: "Review catalog",
+      href: "/parts/inventory",
+    },
+  ].filter((item) => item.value > 0);
+  const partsFlow = [
+    {
+      label: "Needs Quote",
+      value: flow.needsQuote,
+      href: "/parts/requests",
+      icon: ClipboardList,
+      tone: "text-blue-600",
+    },
+    {
+      label: "Awaiting Approval",
+      value: flow.awaitingApproval,
+      href: "/parts/requests",
+      icon: Clock3,
+      tone: "text-amber-600",
+    },
+    {
+      label: "Order & Receive",
+      value: flow.orderReceive,
+      href: "/parts/receiving",
+      icon: Truck,
+      tone: "text-orange-600",
+    },
+    {
+      label: "Ready for Tech",
+      value: flow.readyTech,
+      href: "/parts/requests",
+      icon: PackageCheck,
+      tone: "text-emerald-600",
+    },
+  ];
 
   return (
-    <div className="relative p-5 text-[color:var(--theme-text-primary)] fade-in md:p-6">
-      <PageShell
-        title="Parts Dashboard"
-        eyebrow="Parts command center"
-        description="Prioritize open requests, receiving, and recent movement from one operational surface."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <ActionButton href="/parts/requests" emphasis>Open requests</ActionButton>
-            <ActionButton href="/parts/receiving">Receiving inbox</ActionButton>
+    <main className="mx-auto w-full max-w-[1640px] space-y-4 p-4 text-[color:var(--theme-text-primary)] md:p-6">
+      <header className="flex flex-col gap-4 px-1 py-1 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Parts Overview</h1>
+          <div className="mt-1 flex items-center gap-2 text-sm text-[color:var(--theme-text-secondary)]">
+            <span>Requests, receiving, inventory, and purchasing</span>
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            <span>Live operations</span>
           </div>
-        }
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/parts/requests"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 text-sm font-semibold"
+          >
+            <ClipboardList className="h-4 w-4" /> Open requests
+          </Link>
+          <Link
+            href="/parts/po"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--brand-primary,#C1663B)] px-5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
+          >
+            <Plus className="h-4 w-4" /> Create purchase order
+          </Link>
+        </div>
+      </header>
+
+      <section
+        className={`${panelClass("p-3")} grid gap-2 sm:grid-cols-2 lg:grid-cols-5`}
       >
-      <div className="space-y-4 md:space-y-5">
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <OverviewCard title="SKUs in catalog" value={loading ? "…" : skuTotal.toLocaleString()} href="/parts/inventory" />
-        <OverviewCard title="New SKUs (7d)" value={loading ? "…" : skuNewThis7d} href="/parts/inventory" />
-        <OverviewCard title="Stock moves (7d)" value={loading ? "…" : moves7dCount.toLocaleString()} hint="Receive, adjust, consume" href="/parts/movements" />
-        <OverviewCard title="Open part requests" value={openReqDisplay} href="/parts/requests" />
+        <MetricCard
+          label="Active work orders"
+          value={display(openWorkOrderCount)}
+          hint="With open parts demand"
+          href="/parts/requests"
+          icon={Boxes}
+          tone="bg-blue-600"
+        />
+        <MetricCard
+          label="Open requests"
+          value={display(openRequestCount)}
+          hint="Request records"
+          href="/parts/requests"
+          icon={ClipboardList}
+          tone="bg-violet-600"
+        />
+        <MetricCard
+          label="Open items"
+          value={display(openItemCount)}
+          hint="Individual requested items"
+          href="/parts/requests"
+          icon={Package}
+          tone="bg-orange-600"
+        />
+        <MetricCard
+          label="Awaiting receiving"
+          value={display(receiveQueueCount)}
+          hint="Approved item quantities"
+          href="/parts/receiving"
+          icon={Truck}
+          tone="bg-teal-600"
+        />
+        <MetricCard
+          label="Open purchase orders"
+          value={display(openPoCount)}
+          hint="Draft, sent, or partial"
+          href="/parts/po/receive"
+          icon={ShoppingCart}
+          tone="bg-green-600"
+        />
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-[1.5fr_1fr]">
-        <div className="desktop-panel-soft px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Operational bottleneck</div>
-              <p className="text-sm text-[color:var(--theme-text-primary)]">{hasOpenRequests ? <>You have <span className="font-semibold">{openReqDisplay}</span> open parts request{openRequestsCount === 1 ? "" : "s"} pending fulfillment flow.</> : "No open parts request bottlenecks right now."}</p>
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.75fr)_minmax(300px,0.95fr)]">
+        <div className="space-y-3">
+          <section className={panelClass("overflow-hidden")}>
+            <div className="p-4">
+              <h2 className="text-xl font-bold">Needs attention</h2>
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                Parts work that can delay active repairs
+              </p>
             </div>
-            <ActionButton href="/parts/requests" emphasis>{hasOpenRequests ? "Resolve request queue" : "Review requests"}</ActionButton>
-          </div>
-        </div>
-
-        <div className="desktop-panel-soft p-4">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Primary actions</div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <ActionButton href="/parts/po" emphasis>Create PO</ActionButton>
-            <ActionButton href="/parts/requests">Open requests</ActionButton>
-            <ActionButton href="/parts/receiving">Receiving inbox</ActionButton>
-            <ActionButton href="/parts/receive">Scan to receive</ActionButton>
-            <ActionButton href="/parts/inventory">Inventory</ActionButton>
-            <ActionButton href="/parts/po/receive">Purchase orders</ActionButton>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-3 xl:grid-cols-[1.2fr_1fr]">
-        <div className="desktop-panel-soft px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Operational insights</h2>
-              <p className="text-xs text-[color:var(--theme-text-muted)]">Live queues and catalog trust posture.</p>
-            </div>
-            <Sparkline points={moves30Spark} />
-          </div>
-          <div className="mt-3 grid gap-2 text-sm">
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Receive queue</span><span className="font-semibold">{loading ? "…" : (receiveQueueCount ?? 0).toLocaleString()}</span></div>
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Open purchase orders</span><span className="font-semibold">{loading ? "…" : (openPoCount ?? 0).toLocaleString()}</span></div>
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Low-trust catalog records</span><span className="font-semibold text-rose-200">{loading ? "…" : trustSummary.lowTrust.toLocaleString()}</span></div>
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Review-needed imports</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.reviewStaging.toLocaleString()}</span></div>
-            <div className="desktop-item-card flex items-center justify-between px-3 py-2"><span className="text-[color:var(--theme-text-secondary)]">Ambiguous match candidates</span><span className="font-semibold text-sky-200">{loading ? "…" : trustSummary.ambiguousCandidates.toLocaleString()}</span></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="desktop-panel-soft px-5 py-4">
-        <div className="mb-2 flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold">Recent stock moves</h2>
-            <p className="text-xs text-[color:var(--theme-text-secondary)]">Most recent inventory movement with source traceability.</p>
-          </div>
-          <Link href="/parts/movements" className={ui.buttonSecondary}>View ledger</Link>
-        </div>
-
-        {loading ? (
-          <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
-        ) : recentMoves.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">No recent moves in the last 30 days.</div>
-        ) : (
-          <ul className="divide-y divide-[color:var(--theme-border-soft)] text-sm">
-            {recentMoves.map((m) => {
-              const qty = Number(m.qty_change ?? 0);
-              const part = partNameById[String(m.part_id)] ?? null;
-              return (
-                <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
-                  <div className="min-w-0">
-                    <div className="font-medium text-[color:var(--theme-text-primary)]">{part?.name ?? String(m.reason ?? "move").replaceAll("_", " ")}</div>
-                    <div className="text-xs text-[color:var(--theme-text-muted)]">{part?.sku ? `${part.sku} · ` : ""}{sourceLabel(m.reference_kind ?? null, m.reason ?? null)} · {new Date(String(m.created_at)).toLocaleString()}</div>
+            {attention.length ? (
+              <div className="divide-y divide-[color:var(--theme-border-soft)] border-y border-[color:var(--theme-border-soft)]">
+                {attention.map((item, index) => (
+                  <div
+                    key={item.label}
+                    className="grid gap-3 border-l-4 border-l-[var(--brand-accent,#E39A6E)] px-4 py-3 sm:grid-cols-[48px_minmax(0,1.4fr)_minmax(120px,0.8fr)_auto] sm:items-center"
+                  >
+                    <span className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--brand-accent,#E39A6E)]/15 font-bold text-[var(--brand-primary,#C1663B)]">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <div className="font-semibold">
+                        <span className="mr-1 text-lg">{item.value}</span>
+                        {item.label}
+                      </div>
+                      <div className="text-xs text-[color:var(--theme-text-muted)]">
+                        Operational priority
+                      </div>
+                    </div>
+                    <div className="text-sm text-[color:var(--theme-text-secondary)]">
+                      <div>{item.context}</div>
+                      <div className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--brand-primary,#C1663B)]">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Action available
+                      </div>
+                    </div>
+                    <Link
+                      href={item.href}
+                      className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] px-3 text-sm font-semibold hover:bg-[color:var(--theme-surface-subtle)]"
+                    >
+                      {item.action}
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
                   </div>
-                  <div className={`inline-flex min-w-[72px] items-center justify-center rounded-full border px-2 py-1 text-xs font-semibold ${moveTone(qty)}`}>{qty >= 0 ? "+" : ""}{qty}</div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                ))}
+              </div>
+            ) : (
+              <div className="border-y border-[color:var(--theme-border-soft)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
+                No parts bottlenecks need attention right now.
+              </div>
+            )}
+            <Link
+              href="/parts/requests"
+              className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold text-[var(--brand-primary,#C1663B)]"
+            >
+              View all parts requests <ArrowRight className="h-4 w-4" />
+            </Link>
+          </section>
+
+          <section className={panelClass("p-4")}>
+            <h2 className="text-lg font-bold">Parts flow</h2>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
+              Active requests by their next operational step
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {partsFlow.map(({ label, value, href, icon: Icon, tone }) => (
+                <Link
+                  key={label}
+                  href={href}
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 transition hover:border-[var(--brand-accent,#E39A6E)]/55"
+                >
+                  <div className="flex items-center gap-2 text-sm text-[color:var(--theme-text-secondary)]">
+                    <Icon className={`h-4 w-4 ${tone}`} />
+                    <span className="flex-1">{label}</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </div>
+                  <div className={`mt-2 text-2xl font-bold ${tone}`}>
+                    {display(value)}
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--theme-surface-inset)]">
+                    <div
+                      className="h-full rounded-full bg-[var(--brand-primary,#C1663B)]"
+                      style={{ width: `${Math.min(100, value * 20)}%` }}
+                    />
+                  </div>
+                </Link>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between border-t border-[color:var(--theme-border-soft)] pt-3 text-sm">
+              <span className="text-[color:var(--theme-text-secondary)]">
+                Completed requests are kept out of active counts.
+              </span>
+              <Link
+                href="/parts/requests"
+                className="inline-flex items-center gap-1 font-semibold text-[var(--brand-primary,#C1663B)]"
+              >
+                Completed history · {display(flow.complete)}
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </section>
+
+          <section className={panelClass("overflow-hidden")}>
+            <div className="flex items-center justify-between gap-3 p-4">
+              <div>
+                <h2 className="text-lg font-bold">Recent inventory movement</h2>
+                <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                  Latest stock changes with source traceability
+                </p>
+              </div>
+              <Link
+                href="/parts/movements"
+                className="inline-flex items-center gap-1 text-sm font-semibold"
+              >
+                View ledger <ChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
+            {loading ? (
+              <div className="border-t border-[color:var(--theme-border-soft)] p-5 text-sm text-[color:var(--theme-text-secondary)]">
+                Loading inventory activity…
+              </div>
+            ) : recentMoves.length === 0 ? (
+              <div className="border-t border-[color:var(--theme-border-soft)] p-5 text-sm text-[color:var(--theme-text-secondary)]">
+                No stock movement in the last 30 days.
+              </div>
+            ) : (
+              <ul className="divide-y divide-[color:var(--theme-border-soft)] border-t border-[color:var(--theme-border-soft)]">
+                {recentMoves.map((move) => {
+                  const qty = Number(move.qty_change ?? 0);
+                  const part = partNameById[String(move.part_id)] ?? null;
+                  return (
+                    <li
+                      key={move.id}
+                      className="flex items-center gap-3 px-4 py-3"
+                    >
+                      <span
+                        className={`grid h-9 w-9 place-items-center rounded-lg ${qty >= 0 ? "bg-emerald-500/12 text-emerald-600" : "bg-rose-500/12 text-rose-600"}`}
+                      >
+                        <Warehouse className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold">
+                          {part?.name ??
+                            String(move.reason ?? "Stock movement").replaceAll(
+                              "_",
+                              " ",
+                            )}
+                        </span>
+                        <span className="block truncate text-xs text-[color:var(--theme-text-muted)]">
+                          {part?.sku ? `${part.sku} · ` : ""}
+                          {sourceLabel(
+                            move.reference_kind ?? null,
+                            move.reason ?? null,
+                          )}{" "}
+                          · {new Date(String(move.created_at)).toLocaleString()}
+                        </span>
+                      </span>
+                      <strong
+                        className={
+                          qty >= 0 ? "text-emerald-600" : "text-rose-600"
+                        }
+                      >
+                        {qty >= 0 ? "+" : ""}
+                        {qty}
+                      </strong>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <aside className="space-y-3">
+          <section className={panelClass("p-4")}>
+            <h2 className="text-xl font-bold">Today&apos;s pulse</h2>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
+              Live parts activity and inventory posture
+            </p>
+            <div className="mt-3 space-y-2">
+              {[
+                {
+                  label: "Stock moves (7 days)",
+                  value: moves7dCount,
+                  icon: Warehouse,
+                  href: "/parts/movements",
+                },
+                {
+                  label: "New catalog SKUs (7 days)",
+                  value: skuNewThis7d,
+                  icon: Tags,
+                  href: "/parts/inventory",
+                },
+                {
+                  label: "Total catalog SKUs",
+                  value: skuTotal,
+                  icon: Boxes,
+                  href: "/parts/inventory",
+                },
+                {
+                  label: "Ready for technician",
+                  value: flow.readyTech,
+                  icon: CheckCircle2,
+                  href: "/parts/requests",
+                },
+              ].map(({ label, value, icon: Icon, href }) => (
+                <Link
+                  key={label}
+                  href={href}
+                  className="flex items-center gap-3 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2.5"
+                >
+                  <Icon className="h-5 w-5 text-[var(--brand-primary,#C1663B)]" />
+                  <span className="flex-1 text-sm text-[color:var(--theme-text-secondary)]">
+                    {label}
+                  </span>
+                  <strong className="text-xl">{display(value)}</strong>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className={panelClass("p-4")}>
+            <h2 className="text-xl font-bold">Action rail</h2>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
+              Shortcuts to keep parts moving
+            </p>
+            <div className="mt-3 space-y-2">
+              {[
+                {
+                  label: "Receive parts",
+                  detail: "Process the receiving inbox",
+                  href: "/parts/receiving",
+                  icon: Truck,
+                },
+                {
+                  label: "Scan to receive",
+                  detail: "Receive by barcode or part number",
+                  href: "/parts/receive",
+                  icon: ScanLine,
+                },
+                {
+                  label: "Manage inventory",
+                  detail: "Search and maintain catalog stock",
+                  href: "/parts/inventory",
+                  icon: Warehouse,
+                },
+                {
+                  label: "Review purchase orders",
+                  detail: "Open, partial, and completed POs",
+                  href: "/parts/po/receive",
+                  icon: ShoppingCart,
+                },
+              ].map(({ label, detail, href, icon: Icon }) => (
+                <Link
+                  key={label}
+                  href={href}
+                  className="group flex items-center gap-3 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2.5"
+                >
+                  <span className="grid h-9 w-9 place-items-center rounded-lg bg-[var(--brand-primary,#C1663B)]/12 text-[var(--brand-primary,#C1663B)]">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold">{label}</span>
+                    <span className="block truncate text-xs text-[color:var(--theme-text-muted)]">
+                      {detail}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className={panelClass("p-4")}>
+            <h2 className="text-xl font-bold">Catalog health</h2>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
+              Records that need cleanup or review
+            </p>
+            <div className="mt-3 space-y-2">
+              {[
+                ["Low-trust records", trustSummary.lowTrust],
+                ["Imports needing review", trustSummary.reviewStaging],
+                ["Ambiguous matches", trustSummary.ambiguousCandidates],
+              ].map(([label, value]) => (
+                <Link
+                  key={String(label)}
+                  href="/parts/inventory"
+                  className="flex items-center gap-3 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2.5"
+                >
+                  <AlertTriangle
+                    className={`h-4 w-4 ${Number(value) > 0 ? "text-amber-600" : "text-emerald-600"}`}
+                  />
+                  <span className="flex-1 text-sm text-[color:var(--theme-text-secondary)]">
+                    {label}
+                  </span>
+                  <strong>{display(Number(value))}</strong>
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
+              ))}
+            </div>
+          </section>
+        </aside>
       </div>
-      </PageShell>
-    </div>
+    </main>
   );
 }
