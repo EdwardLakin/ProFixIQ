@@ -371,7 +371,7 @@ export default function PayrollTimeClient() {
               <option value="monthly">Monthly</option>
             </select>
           </label>
-          {(settingsForm.cadence === "weekly" || settingsForm.cadence === "biweekly") ? (
+          {settingsForm.cadence === "weekly" ? (
             <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
               Week starts
               <select
