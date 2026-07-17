@@ -37,6 +37,10 @@ export function MobileShell({ children, title }: Props) {
 
   const resolvedTitle = title ?? getTitleFromPath(pathname);
 
+  if (pathname === "/mobile/sign-in" || pathname.startsWith("/mobile/sign-in/")) {
+    return children;
+  }
+
   const handleHome = () => {
     router.push("/mobile");
   };
