@@ -11,6 +11,12 @@ import {
 type DB = Database;
 
 export type QuoteApprovalDecision = "approve" | "decline" | "defer";
+export type QuoteDecisionSource = "customer" | "shop";
+export type QuoteDecisionContactMethod =
+  | "phone"
+  | "in_person"
+  | "email"
+  | "other";
 
 export type QuoteLineLearningResult = {
   quoteLineId: string;
@@ -32,7 +38,11 @@ export type RelinkQuoteLinePartsResult = {
   }>;
 };
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
@@ -93,6 +103,9 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   customerId: string | null;
   actorUserId: string;
   decision: QuoteApprovalDecision;
+  decisionSource?: QuoteDecisionSource;
+  contactMethod?: QuoteDecisionContactMethod;
+  decisionNote?: string | null;
   declineRemaining?: boolean;
   operationKey?: string;
 }): Promise<{
@@ -105,7 +118,9 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   idempotent?: boolean;
   error?: string;
 }> {
-  const quoteLineIds = [...new Set(params.quoteLineIds.map((id) => id.trim()).filter(Boolean))];
+  const quoteLineIds = [
+    ...new Set(params.quoteLineIds.map((id) => id.trim()).filter(Boolean)),
+  ];
   if (quoteLineIds.length === 0) {
     return {
       ok: false,
@@ -132,17 +147,31 @@ export async function applyWorkOrderQuoteLineDecision(params: {
     });
 
   const rpc = params.supabase as unknown as RpcClient;
-  const { data, error } = await rpc.rpc("apply_customer_quote_decision_atomic", {
-    p_shop_id: params.shopId,
-    p_work_order_id: params.workOrderId,
-    p_quote_line_ids: quoteLineIds,
-    p_decision: params.decision,
-    p_decline_remaining: declineRemaining,
-    p_customer_id: params.customerId,
-    p_actor_user_id: params.actorUserId,
-    p_operation_key: `${params.shopId}:quote-decision:${rawOperationKey}`,
-    p_at: new Date().toISOString(),
-  });
+  const isShopDecision = params.decisionSource === "shop";
+  const rpcResult = isShopDecision
+    ? await rpc.rpc("apply_shop_quote_decision_atomic", {
+        p_shop_id: params.shopId,
+        p_work_order_id: params.workOrderId,
+        p_quote_line_ids: quoteLineIds,
+        p_decision: params.decision,
+        p_actor_user_id: params.actorUserId,
+        p_contact_method: params.contactMethod ?? "other",
+        p_note: params.decisionNote?.trim() || null,
+        p_operation_key: `${params.shopId}:shop-quote-decision:${rawOperationKey}`,
+        p_at: new Date().toISOString(),
+      })
+    : await rpc.rpc("apply_customer_quote_decision_atomic", {
+        p_shop_id: params.shopId,
+        p_work_order_id: params.workOrderId,
+        p_quote_line_ids: quoteLineIds,
+        p_decision: params.decision,
+        p_decline_remaining: declineRemaining,
+        p_customer_id: params.customerId,
+        p_actor_user_id: params.actorUserId,
+        p_operation_key: `${params.shopId}:quote-decision:${rawOperationKey}`,
+        p_at: new Date().toISOString(),
+      });
+  const { data, error } = rpcResult;
 
   if (error) {
     return {
@@ -158,7 +187,9 @@ export async function applyWorkOrderQuoteLineDecision(params: {
 
   const result = data && typeof data === "object" ? (data as RpcResult) : {};
   const workOrderLineIds = Array.isArray(result.work_order_line_ids)
-    ? result.work_order_line_ids.filter((id): id is string => typeof id === "string")
+    ? result.work_order_line_ids.filter(
+        (id): id is string => typeof id === "string",
+      )
     : [];
   const committedQuoteLineIds = Array.isArray(result.quote_line_ids)
     ? result.quote_line_ids.filter((id): id is string => typeof id === "string")
