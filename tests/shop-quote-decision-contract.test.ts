@@ -58,5 +58,4 @@ describe("shop quote decision contract", () => {
     expect(legacyDecline).toContain('decisionSource: "shop"');
     expect(legacyDecline).not.toContain('.update({ status: "declined"');
   });
-  });
 });
