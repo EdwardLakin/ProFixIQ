@@ -57,6 +57,8 @@ describe("instant shop analysis guided onboarding handoff", () => {
     expect(handoff).toContain('parts: "parts"');
     expect(handoff).toContain('event_type: "instant_analysis_mapped"');
     expect(handoff).toContain("reviewPhasePending");
+    expect(handoff).toContain('select("step_key,status,answer")');
+    expect(handoff).toContain('!args.importSummary && existingStep?.status === "completed"');
   });
 
   it("binds activation to the unlocked email and provides a retry-safe handoff page", () => {
