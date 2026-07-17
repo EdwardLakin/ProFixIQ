@@ -8,7 +8,7 @@ import {
   type ShadowShopSnapshot,
 } from "@/features/integrations/shopBoost/shadowShop";
 import {
-  SHOP_BOOST_UPLOAD_DATASET_KEYS,
+  INSTANT_SHOP_ANALYSIS_DATASET_KEYS,
   type ShopBoostUploadDatasetKey,
 } from "@/features/integrations/shopBoost/uploadDatasets";
 
@@ -71,8 +71,22 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
         ? rawCountry
         : "US";
 
+    const rawQuestionnaire = formData.get("questionnaire");
+    let questionnaire: Record<string, unknown> = {};
+    if (typeof rawQuestionnaire === "string" && rawQuestionnaire.trim()) {
+      try {
+        const parsed = JSON.parse(rawQuestionnaire) as unknown;
+        if (isRecord(parsed)) questionnaire = parsed;
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "Shop profile answers were invalid. Please try again." },
+          { status: 400 },
+        );
+      }
+    }
+
     const filesByDataset: Partial<Record<ShopBoostUploadDatasetKey, File>> = {};
-    for (const key of SHOP_BOOST_UPLOAD_DATASET_KEYS) {
+    for (const key of INSTANT_SHOP_ANALYSIS_DATASET_KEYS) {
       const file = asFile(formData.get(`${key}File`));
       if (file) filesByDataset[key] = file;
     }
@@ -111,6 +125,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<DemoRunRespon
     const activationUploadPaths = Object.fromEntries(uploadedPathEntries);
     const snapshotWithActivation = {
       ...snapshot,
+      questionnaire,
       activationUploadPaths,
     };
 
