@@ -25,7 +25,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [mode, setMode] = useState<Mode>(initialMode);
-  const [identifier, setIdentifier] = useState("");
+  const [identifier, setIdentifier] = useState(() => searchParams.get("email")?.trim().toLowerCase() ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
