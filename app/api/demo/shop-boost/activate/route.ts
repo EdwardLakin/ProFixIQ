@@ -216,6 +216,11 @@ export async function POST(req: NextRequest) {
     existing.data?.status === "completed" || existing.data?.status === "completed_with_errors";
 
   if (existing.data?.id && terminalStatus && persistedImportSummary) {
+    await admin
+      .from("demo_shop_boosts")
+      .update({ shop_id: shopId, intake_id: intakeId })
+      .eq("id", demoId);
+
     const guided = await mapInstantAnalysisToGuidedOnboarding({
       shopId,
       userId: user.id,
