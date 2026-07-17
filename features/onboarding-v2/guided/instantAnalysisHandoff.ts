@@ -235,13 +235,14 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
 
   const { data: existingSteps, error: existingStepsError } = await admin
     .from("guided_onboarding_steps")
-    .select("step_key")
+    .select("step_key,status,answer")
     .eq("shop_id", args.shopId)
     .eq("session_id", sessionId);
 
   if (existingStepsError) throw new Error(existingStepsError.message);
 
-  const existingStepKeys = new Set((existingSteps ?? []).map((step) => step.step_key));
+  const existingStepByKey = new Map((existingSteps ?? []).map((step) => [step.step_key, step]));
+  const existingStepKeys = new Set(existingStepByKey.keys());
   const missingSteps = GUIDED_ONBOARDING_STEPS.filter((step) => !existingStepKeys.has(step.key));
 
   if (missingSteps.length > 0) {
@@ -268,6 +269,9 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
   });
 
   for (const { dataset, stepKey } of mappedDatasets) {
+    const existingStep = existingStepByKey.get(stepKey);
+    if (!args.importSummary && existingStep?.status === "completed") continue;
+
     const result = domainResult(args.importSummary, dataset);
     const { error: updateStepError } = await admin
       .from("guided_onboarding_steps")
