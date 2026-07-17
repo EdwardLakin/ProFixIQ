@@ -1,10 +1,136 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
 import type { ShopBoostUploadDatasetKey } from "@/features/integrations/shopBoost/uploadDatasets";
 import { GUIDED_ONBOARDING_STEPS } from "@/features/onboarding-v2/guided/steps";
 import type { GuidedOnboardingStepKey } from "@/features/onboarding-v2/guided/types";
+
+
+type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
+type GuidedDatabase = {
+  public: {
+    Tables: {
+      guided_onboarding_sessions: {
+        Row: {
+          id: string;
+          shop_id: string;
+          created_by: string | null;
+          status: string;
+          current_step_key: string | null;
+          existing_system: string | null;
+          started_at: string | null;
+          completed_at: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          shop_id: string;
+          created_by?: string | null;
+          status?: string;
+          current_step_key?: string | null;
+          existing_system?: string | null;
+          started_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          status?: string;
+          current_step_key?: string | null;
+          existing_system?: string | null;
+          completed_at?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      guided_onboarding_steps: {
+        Row: {
+          id: string;
+          session_id: string;
+          shop_id: string;
+          step_key: string;
+          destination_path: string;
+          title: string;
+          question: string;
+          description: string;
+          highlight_key: string;
+          status: string;
+          answer: Json;
+          started_at: string | null;
+          completed_at: string | null;
+          skipped_at: string | null;
+          created_at: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          shop_id: string;
+          step_key: string;
+          destination_path: string;
+          title: string;
+          question: string;
+          description?: string;
+          highlight_key: string;
+          status?: string;
+          answer?: Json;
+          started_at?: string | null;
+          completed_at?: string | null;
+          skipped_at?: string | null;
+          created_at?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          status?: string;
+          answer?: Json;
+          started_at?: string | null;
+          completed_at?: string | null;
+          skipped_at?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      guided_onboarding_events: {
+        Row: {
+          id: string;
+          session_id: string;
+          shop_id: string;
+          step_key: string | null;
+          event_type: string;
+          payload: Json;
+          created_by: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          session_id: string;
+          shop_id: string;
+          step_key?: string | null;
+          event_type: string;
+          payload?: Json;
+          created_by?: string | null;
+          created_at?: string | null;
+        };
+        Update: never;
+        Relationships: [];
+      };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
 
 const DATASET_TO_GUIDED_STEP: Partial<Record<ShopBoostUploadDatasetKey, GuidedOnboardingStepKey>> = {
   customers: "customers",
@@ -72,7 +198,7 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
   uploadedDatasets: ShopBoostUploadDatasetKey[];
   importSummary?: ShopBoostImportSummary;
 }): Promise<{ sessionId: string; redirectTo: string }> {
-  const admin = createAdminSupabase();
+  const admin = createAdminSupabase() as unknown as SupabaseClient<GuidedDatabase>;
   const now = new Date().toISOString();
 
   const { data: existingSession, error: existingSessionError } = await admin
