@@ -4,13 +4,17 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   clearSyncedOfflineMutations,
+  auditOfflineMutationAttachments,
   dismissOfflineMutation,
   getOfflineMutationScope,
+  getOfflinePersistenceHealth,
   hydrateOfflineMutationQueue,
   listOfflineMutations,
   pruneOfflineState,
   subscribeOfflineMutations,
   type PendingMutation,
+  type OfflineAttachmentAudit,
+  type OfflinePersistenceHealth,
 } from "@/features/shared/lib/offline/mutations";
 import {
   getOfflineDatabaseStats,
@@ -31,6 +35,10 @@ import {
   assessOfflineStorage,
   type OfflineStorageHealth,
 } from "@/features/shared/lib/offline/storage-health";
+import {
+  buildOfflinePilotDiagnostics,
+  downloadOfflinePilotDiagnostics,
+} from "@/features/shared/lib/offline/diagnostics";
 
 type BrowserStorage = {
   usage: number;
@@ -44,6 +52,19 @@ const EMPTY_DATABASE_STATS: OfflineDatabaseStats = {
   blobs: 0,
   blobBytes: 0,
 };
+const EMPTY_ATTACHMENT_AUDIT: OfflineAttachmentAudit = {
+  checked: 0,
+  missing: 0,
+  invalid: 0,
+};
+const EMPTY_PERSISTENCE_HEALTH: OfflinePersistenceHealth = {
+  expectedPendingMutations: 0,
+  storedPendingMutations: 0,
+  expectedPendingAttachments: 0,
+  suspectedEviction: false,
+};
+const APP_VERSION =
+  process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? "development";
 
 const ACTION_LABELS: Record<string, string> = {
   "inspection:save-session": "Inspection progress",
@@ -89,10 +110,24 @@ export default function OfflineSyncPage() {
     message: "Session verification has not run yet.",
   });
   const [updateWaiting, setUpdateWaiting] = useState(false);
+  const [attachmentAudit, setAttachmentAudit] = useState(
+    EMPTY_ATTACHMENT_AUDIT,
+  );
+  const [persistenceHealth, setPersistenceHealth] = useState(
+    EMPTY_PERSISTENCE_HEALTH,
+  );
 
   const refresh = useCallback(async () => {
     await hydrateOfflineMutationQueue();
     const scope = getOfflineMutationScope();
+    const [nextAttachmentAudit, nextPersistenceHealth] = scope
+      ? await Promise.all([
+          auditOfflineMutationAttachments(scope),
+          getOfflinePersistenceHealth(scope),
+        ])
+      : [EMPTY_ATTACHMENT_AUDIT, EMPTY_PERSISTENCE_HEALTH];
+    setAttachmentAudit(nextAttachmentAudit);
+    setPersistenceHealth(nextPersistenceHealth);
     setMutations(listOfflineMutations(scope));
     setDatabaseStats(
       scope ? await getOfflineDatabaseStats(scope) : EMPTY_DATABASE_STATS,
@@ -174,6 +209,32 @@ export default function OfflineSyncPage() {
     pendingBlobCount: databaseStats.blobs,
   });
   const pendingCount = mutations.filter((item) => item.status !== "synced").length;
+  const stagedFilesReady =
+    !persistenceHealth.suspectedEviction &&
+    attachmentAudit.missing === 0 &&
+    attachmentAudit.invalid === 0;
+
+  const exportDiagnostics = () => {
+    const installed =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    downloadOfflinePilotDiagnostics(
+      buildOfflinePilotDiagnostics({
+        appVersion: APP_VERSION,
+        online,
+        installed,
+        sessionHealth,
+        browserStorage,
+        storageHealth,
+        databaseStats,
+        attachmentAudit,
+        persistenceHealth,
+        updateWaiting,
+        mutations,
+      }),
+    );
+    setMessage("Privacy-safe pilot diagnostics exported.");
+  };
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
@@ -225,7 +286,7 @@ export default function OfflineSyncPage() {
 
         <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
           <h2 className="font-semibold">Pilot readiness</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <ReadinessItem
               label="Session"
               ready={sessionHealth.status === "verified"}
@@ -254,8 +315,40 @@ export default function OfflineSyncPage() {
                   : "No version-skew risk is currently detected."
               }
             />
+            <ReadinessItem
+              label="Staged files"
+              ready={stagedFilesReady}
+              value={
+                persistenceHealth.suspectedEviction
+                  ? "Storage cleared"
+                  : stagedFilesReady
+                    ? "Files verified"
+                    : `${attachmentAudit.missing + attachmentAudit.invalid} unavailable`
+              }
+              detail={
+                persistenceHealth.suspectedEviction
+                  ? `${persistenceHealth.expectedPendingMutations} saved updates were expected but are no longer in device storage.`
+                  : stagedFilesReady
+                    ? `${attachmentAudit.checked} pending photo files checked.`
+                    : "Open the affected queue item, capture the photo again, then remove the unavailable update."
+              }
+            />
           </div>
         </section>
+
+        {persistenceHealth.suspectedEviction && (
+          <section className="rounded-2xl border border-red-500/50 bg-red-950/30 p-5">
+            <h2 className="font-semibold text-red-100">
+              Device storage may have been cleared
+            </h2>
+            <p className="mt-2 text-sm text-red-100/80">
+              This device previously recorded {persistenceHealth.expectedPendingMutations}{" "}
+              pending update{persistenceHealth.expectedPendingMutations === 1 ? "" : "s"},
+              but the offline database is now empty. Reconnect, verify the server record,
+              and re-enter any missing work before continuing.
+            </p>
+          </section>
+        )}
 
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -445,7 +538,19 @@ export default function OfflineSyncPage() {
             >
               Clean expired data
             </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={exportDiagnostics}
+              className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-40"
+            >
+              Export pilot diagnostics
+            </button>
           </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Diagnostics contain aggregate device and queue health only—no customer,
+            vehicle, message, note, user, or shop data.
+          </p>
         </section>
       </div>
     </main>

@@ -3,6 +3,7 @@
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   clearOfflineDatabase,
+  getOfflineBlob,
   pruneOfflineDatabase,
   readStoredMutations,
   removeOfflineBlob,
@@ -46,6 +47,7 @@ const LEGACY_KEYS = [
   "profixiq.pending_mutations.v1",
 ];
 const SCOPE_KEY = "profixiq.pending_mutations.scope.v1";
+const PERSISTENCE_MARKER_KEY = "profixiq.offline.persistence.v1";
 const EVENT_NAME = "offline-mutations:updated";
 const MAX_HISTORY = 300;
 const TERMINAL_RETENTION_MS = 1000 * 60 * 60 * 24 * 7;
@@ -56,6 +58,27 @@ const PERMANENT_STATUS_CODES = new Set([
 
 let queueCache: PendingMutation[] = [];
 let hydrationPromise: Promise<void> | null = null;
+
+type OfflinePersistenceMarker = {
+  userId: string;
+  shopId: string;
+  pendingMutations: number;
+  pendingAttachments: number;
+  updatedAt: string;
+};
+
+export type OfflinePersistenceHealth = {
+  expectedPendingMutations: number;
+  storedPendingMutations: number;
+  expectedPendingAttachments: number;
+  suspectedEviction: boolean;
+};
+
+export type OfflineAttachmentAudit = {
+  checked: number;
+  missing: number;
+  invalid: number;
+};
 
 function clean(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -68,6 +91,59 @@ function browserReady(): boolean {
 function emitQueueUpdate(): void {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(EVENT_NAME));
+  }
+}
+
+function isAttachmentMutation(mutation: Pick<PendingMutation, "actionType">) {
+  return (
+    mutation.actionType === "upload_job_photo" ||
+    mutation.actionType === "inspection:upload-photo"
+  );
+}
+
+function updatePersistenceMarker(queue: PendingMutation[]): void {
+  if (!browserReady()) return;
+  const scope = getOfflineMutationScope();
+  if (!scope) return;
+  const pending = queue.filter(
+    (item) => item.status !== "synced" && scopeMatches(item, scope),
+  );
+  const marker: OfflinePersistenceMarker = {
+    userId: scope.userId,
+    shopId: scope.shopId,
+    pendingMutations: pending.length,
+    pendingAttachments: pending.filter(isAttachmentMutation).length,
+    updatedAt: new Date().toISOString(),
+  };
+  try {
+    localStorage.setItem(PERSISTENCE_MARKER_KEY, JSON.stringify(marker));
+  } catch {
+    // IndexedDB remains authoritative when localStorage is unavailable.
+  }
+}
+
+function readPersistenceMarker(): OfflinePersistenceMarker | null {
+  if (!browserReady()) return null;
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(PERSISTENCE_MARKER_KEY) ?? "null",
+    ) as Partial<OfflinePersistenceMarker> | null;
+    const userId = clean(value?.userId);
+    const shopId = clean(value?.shopId);
+    return userId && shopId
+      ? {
+          userId,
+          shopId,
+          pendingMutations: Math.max(0, Number(value?.pendingMutations) || 0),
+          pendingAttachments: Math.max(
+            0,
+            Number(value?.pendingAttachments) || 0,
+          ),
+          updatedAt: clean(value?.updatedAt),
+        }
+      : null;
+  } catch {
+    return null;
   }
 }
 
@@ -287,7 +363,88 @@ export async function hydrateOfflineMutationQueue(): Promise<void> {
 async function writeQueue(queue: PendingMutation[]): Promise<void> {
   queueCache = normalizeOfflineMutationQueue(queue);
   await replaceStoredMutations(queueCache);
+  updatePersistenceMarker(queueCache);
   emitQueueUpdate();
+}
+
+export async function getOfflinePersistenceHealth(
+  scope: OfflineMutationScope | null = getOfflineMutationScope(),
+): Promise<OfflinePersistenceHealth> {
+  await hydrateOfflineMutationQueue();
+  const storedPendingMutations = scope
+    ? queueCache.filter(
+        (item) => item.status !== "synced" && scopeMatches(item, scope),
+      ).length
+    : 0;
+  const marker = readPersistenceMarker();
+  const matches = Boolean(
+    scope &&
+      marker &&
+      marker.userId === scope.userId &&
+      marker.shopId === scope.shopId,
+  );
+  const expectedPendingMutations = matches ? marker!.pendingMutations : 0;
+  const expectedPendingAttachments = matches ? marker!.pendingAttachments : 0;
+  return {
+    expectedPendingMutations,
+    storedPendingMutations,
+    expectedPendingAttachments,
+    suspectedEviction:
+      expectedPendingMutations > 0 && storedPendingMutations === 0,
+  };
+}
+
+export async function auditOfflineMutationAttachments(
+  scope: OfflineMutationScope | null = getOfflineMutationScope(),
+): Promise<OfflineAttachmentAudit> {
+  await hydrateOfflineMutationQueue();
+  if (!scope) return { checked: 0, missing: 0, invalid: 0 };
+  const attachments = queueCache.filter(
+    (item) =>
+      item.status !== "synced" &&
+      scopeMatches(item, scope) &&
+      isAttachmentMutation(item),
+  );
+  let missing = 0;
+  let invalid = 0;
+  for (const mutation of attachments) {
+    const payload = mutation.payload as { blobId?: unknown } | null;
+    const blobId = clean(payload?.blobId);
+    const record = blobId ? await getOfflineBlob(blobId) : null;
+    const scopeMismatch = Boolean(
+      record &&
+        (record.userId !== mutation.userId || record.shopId !== mutation.shopId),
+    );
+    const invalidBlob = Boolean(
+      record &&
+        (!record.blob ||
+          typeof record.blob.size !== "number" ||
+          record.blob.size <= 0),
+    );
+    const reason = !blobId
+      ? "The staged file reference is missing. Capture the photo again, then remove this update."
+      : !record
+        ? "Browser storage removed the staged photo. Capture it again, then remove this update."
+        : scopeMismatch
+          ? "The staged photo belongs to a different user or shop and cannot be uploaded."
+          : invalidBlob
+            ? "The staged photo is empty or corrupted. Capture it again, then remove this update."
+            : null;
+    if (!reason) continue;
+    if (!record) missing += 1;
+    else invalid += 1;
+    if (
+      mutation.status !== "conflicted" ||
+      mutation.conflictReason !== reason
+    ) {
+      await markMutationStatus({
+        clientMutationId: mutation.clientMutationId,
+        status: "conflicted",
+        conflictReason: reason,
+      });
+    }
+  }
+  return { checked: attachments.length, missing, invalid };
 }
 
 export function sortOfflineMutationsForReplay(
@@ -555,6 +712,7 @@ export async function replayQueuedMutations(args: {
   const scope = args.scope ?? getOfflineMutationScope();
   if (!scope || !navigator.onLine)
     return { replayed: 0, failed: 0, conflicted: 0 };
+  await auditOfflineMutationAttachments(scope);
   const queue = sortOfflineMutationsForReplay(
     queueCache.filter(
       (item) =>
@@ -705,6 +863,7 @@ export async function clearOfflineState(): Promise<void> {
   hydrationPromise = null;
   setOfflineMutationScope(null);
   for (const key of LEGACY_KEYS) localStorage.removeItem(key);
+  localStorage.removeItem(PERSISTENCE_MARKER_KEY);
   await clearOfflineDatabase();
   emitQueueUpdate();
 }

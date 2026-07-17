@@ -21,6 +21,7 @@ Run this matrix against the production-like pilot shop before general offline re
 8. Lose the network during every server mutation and immediately after the server commits; verify retries do not duplicate records.
 9. Deploy an app update while work is queued; verify activation is held until the queue is synced or reviewed.
 10. Evict browser storage where the platform allows it; verify missing staged files become explicit conflicts rather than silent success.
+11. Export pilot diagnostics from Sync Center after each failure test; verify the report contains aggregate health only and no customer, vehicle, message, note, user, shop, or mutation identifiers.
 
 ## Release gate
 

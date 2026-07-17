@@ -1,5 +1,7 @@
 begin;
 
+-- Re-apply the advisor draft materializer so databases that already ran the
+-- original migration accept the canonical legacy `lead` role alias.
 create or replace function public.materialize_offline_work_order_draft_atomic(
   p_shop_id uuid,
   p_actor_user_id uuid,
