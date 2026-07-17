@@ -7,6 +7,8 @@ import {
 } from "@/features/shared/lib/offline/database";
 import {
   listPendingMutations,
+  getOfflineMutationScope,
+  hydrateOfflineMutationQueue,
   replayQueuedMutations,
   type OfflineMutationRunner,
   type PendingMutation,
@@ -22,6 +24,7 @@ import {
   reconcileOfflineTechnicianState,
   type OfflineReconciliationResult,
 } from "@/features/shared/lib/offline/reconciliation";
+import { assertOfflineReplaySession } from "@/features/shared/lib/offline/session";
 
 type ReplayPayload = Record<string, unknown>;
 
@@ -173,7 +176,14 @@ const handlers: Record<string, OfflineMutationRunner> = {
 let replayPromise: ReturnType<typeof replayQueuedMutations> | null = null;
 
 export function replayAllOfflineMutations() {
-  replayPromise ??= replayQueuedMutations({ handlers }).finally(() => {
+  replayPromise ??= (async () => {
+    await hydrateOfflineMutationQueue();
+    if (!navigator.onLine || listPendingMutations().length === 0) {
+      return replayQueuedMutations({ handlers });
+    }
+    await assertOfflineReplaySession(getOfflineMutationScope());
+    return replayQueuedMutations({ handlers });
+  })().finally(() => {
     replayPromise = null;
   });
   return replayPromise;

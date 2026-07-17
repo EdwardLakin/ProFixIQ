@@ -23,6 +23,14 @@ import {
   offlineMutationTarget,
   prepareOfflineMutationRetry,
 } from "@/features/shared/lib/offline/conflicts";
+import {
+  checkOfflineReplaySession,
+  type OfflineSessionHealth,
+} from "@/features/shared/lib/offline/session";
+import {
+  assessOfflineStorage,
+  type OfflineStorageHealth,
+} from "@/features/shared/lib/offline/storage-health";
 
 type BrowserStorage = {
   usage: number;
@@ -76,6 +84,11 @@ export default function OfflineSyncPage() {
   );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [sessionHealth, setSessionHealth] = useState<OfflineSessionHealth>({
+    status: "offline",
+    message: "Session verification has not run yet.",
+  });
+  const [updateWaiting, setUpdateWaiting] = useState(false);
 
   const refresh = useCallback(async () => {
     await hydrateOfflineMutationQueue();
@@ -91,6 +104,9 @@ export default function OfflineSyncPage() {
       quota: estimate?.quota ?? 0,
       persistent,
     });
+    setSessionHealth(await checkOfflineReplaySession(scope));
+    const registration = await navigator.serviceWorker?.getRegistration?.();
+    setUpdateWaiting(Boolean(registration?.waiting));
   }, []);
 
   useEffect(() => {
@@ -152,6 +168,12 @@ export default function OfflineSyncPage() {
   const quotaPercent = browserStorage.quota
     ? Math.min(100, (browserStorage.usage / browserStorage.quota) * 100)
     : 0;
+  const storageHealth: OfflineStorageHealth = assessOfflineStorage({
+    ...browserStorage,
+    pendingBlobBytes: databaseStats.blobBytes,
+    pendingBlobCount: databaseStats.blobs,
+  });
+  const pendingCount = mutations.filter((item) => item.status !== "synced").length;
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
@@ -199,6 +221,40 @@ export default function OfflineSyncPage() {
               {message}
             </p>
           )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+          <h2 className="font-semibold">Pilot readiness</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <ReadinessItem
+              label="Session"
+              ready={sessionHealth.status === "verified"}
+              value={
+                sessionHealth.status === "verified"
+                  ? "Verified"
+                  : sessionHealth.status === "offline"
+                    ? "Verify on reconnect"
+                    : "Sign-in required"
+              }
+              detail={sessionHealth.message}
+            />
+            <ReadinessItem
+              label="Storage"
+              ready={storageHealth.level === "ready"}
+              value={storageHealth.label}
+              detail={storageHealth.message}
+            />
+            <ReadinessItem
+              label="App update"
+              ready={!updateWaiting || pendingCount === 0}
+              value={updateWaiting ? "Update waiting" : "Current"}
+              detail={
+                updateWaiting && pendingCount > 0
+                  ? "Sync saved work before activating the update."
+                  : "No version-skew risk is currently detected."
+              }
+            />
+          </div>
         </section>
 
         <section className="space-y-3">
@@ -393,5 +449,22 @@ export default function OfflineSyncPage() {
         </section>
       </div>
     </main>
+  );
+}
+
+function ReadinessItem(props: {
+  label: string;
+  ready: boolean;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+      <p className="text-xs uppercase tracking-wider text-slate-400">{props.label}</p>
+      <p className={props.ready ? "mt-1 font-semibold text-emerald-300" : "mt-1 font-semibold text-amber-300"}>
+        {props.value}
+      </p>
+      <p className="mt-1 text-xs text-slate-400">{props.detail}</p>
+    </div>
   );
 }
