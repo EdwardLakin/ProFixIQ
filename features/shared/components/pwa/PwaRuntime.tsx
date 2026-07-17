@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   clearOfflineState,
@@ -10,6 +11,7 @@ import {
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
 import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
 
 type InstallPromptEvent = Event & {
   prompt(): Promise<void>;
@@ -17,6 +19,7 @@ type InstallPromptEvent = Event & {
 };
 
 export default function PwaRuntime() {
+  const pathname = usePathname() ?? "/";
   const [online, setOnline] = useState(true);
   const [summary, setSummary] = useState(() => getOfflineSyncSummary());
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(
@@ -173,12 +176,13 @@ export default function PwaRuntime() {
   };
 
   if (
-    online &&
-    pending === 0 &&
-    !installPrompt &&
-    !iosInstallAvailable &&
-    !updateReady &&
-    !syncBlocked
+    isStandalonePublicRoute(pathname) ||
+    (online &&
+      pending === 0 &&
+      !installPrompt &&
+      !iosInstallAvailable &&
+      !updateReady &&
+      !syncBlocked)
   ) {
     return null;
   }
