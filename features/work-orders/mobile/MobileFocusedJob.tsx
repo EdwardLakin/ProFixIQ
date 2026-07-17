@@ -43,6 +43,7 @@ import {
 } from "@/features/work-orders/lib/display/workOrderParts";
 
 import VehicleHistoryModal from "@/features/work-orders/components/workorders/VehicleHistoryModal";
+import VoiceDictationButton from "@/features/shared/voice/VoiceDictationButton";
 import {
   clearTechnicianJobEditorDraftFields,
   findProjectedTechnicianJob,
@@ -1373,9 +1374,29 @@ export default function MobileFocusedJob(props: {
 
                 {/* tech notes */}
                 <div className={`${panel} px-4 py-4`}>
-                  <label className="mb-1 block text-sm font-medium text-[color:var(--theme-text-primary)]">
-                    Tech Notes
-                  </label>
+                  <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <label className="block text-sm font-medium text-[color:var(--theme-text-primary)]">
+                        Tech Notes
+                      </label>
+                      <p className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
+                        Dictation appends to the draft and stays editable.
+                      </p>
+                    </div>
+                    <VoiceDictationButton
+                      disabled={savingNotes || mode === "view"}
+                      idleLabel="Dictate note"
+                      listeningLabel="Stop"
+                      onTranscript={(transcript) => {
+                        if (!transcript) return;
+                        setTechNotes((current) => {
+                          const existing = current.trim();
+                          return existing ? `${existing} ${transcript}` : transcript;
+                        });
+                        setNotesDirty(true);
+                      }}
+                    />
+                  </div>
                   <textarea
                     rows={4}
                     value={techNotes}
