@@ -160,6 +160,31 @@ export default function InboxModal({
   const draftTargetId = activeConversationId
     ? `conversation:${activeConversationId}`
     : `staff:new:${composeAudience}:${context.context_type ?? "general"}:${context.context_id ?? "none"}`;
+  const draftReady = Boolean(
+    draftScope &&
+      messageDraft &&
+      loadedDraftTarget === draftTargetId &&
+      messageDraft.targetId === draftTargetId,
+  );
+  const newConversationFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        audience: composeAudience,
+        customerId: composeAudience === "customer" ? selectedCustomerId : null,
+        recipientIds:
+          composeAudience === "internal" ? [...selectedRecipients].sort() : [],
+        contextType: useContext ? context.context_type : null,
+        contextId: useContext ? context.context_id : null,
+      }),
+    [
+      composeAudience,
+      context.context_id,
+      context.context_type,
+      selectedCustomerId,
+      selectedRecipients,
+      useContext,
+    ],
+  );
 
   const loadConversations = useCallback(async () => {
     const res = await fetch("/api/chat/my-conversations", { credentials: "include" });
@@ -193,11 +218,26 @@ export default function InboxModal({
   }, [open, supabase, loadConversations]);
 
   useEffect(() => {
-    if (!open || !me) return;
+    if (!open || !me) {
+      setDraftScope(null);
+      setMessageDraft(null);
+      setLoadedDraftTarget(null);
+      return;
+    }
     let cancelled = false;
+    setDraftScope(null);
+    setMessageDraft(null);
+    setLoadedDraftTarget(null);
     void resolveMessagingDraftScope(me).then(async (scope) => {
-      if (!scope || cancelled) return;
+      if (cancelled) return;
+      if (!scope) {
+        setSendError(
+          "Messaging storage could not verify your shop. Reconnect or sign in again.",
+        );
+        return;
+      }
       setDraftScope(scope);
+      setSendError(null);
       if (navigator.onLine) void warmMessagingRouteShells();
     });
     return () => {
@@ -228,6 +268,36 @@ export default function InboxModal({
       cancelled = true;
     };
   }, [activeConversationId, draftScope, draftTargetId, open]);
+
+  useEffect(() => {
+    if (
+      activeConversationId ||
+      !draftReady ||
+      !messageDraft?.conversationRequestFingerprint ||
+      messageDraft.conversationRequestFingerprint === newConversationFingerprint
+    ) {
+      return;
+    }
+
+    setMessageDraft((current) =>
+      current && current.targetId === draftTargetId
+        ? {
+            ...current,
+            conversationRequestId: crypto.randomUUID(),
+            conversationRequestFingerprint: null,
+            clientMessageId: crypto.randomUUID(),
+            updatedAt: new Date().toISOString(),
+          }
+        : current,
+    );
+    setDraftSaved(false);
+  }, [
+    activeConversationId,
+    draftReady,
+    draftTargetId,
+    messageDraft?.conversationRequestFingerprint,
+    newConversationFingerprint,
+  ]);
 
   useEffect(() => {
     if (
@@ -344,21 +414,59 @@ export default function InboxModal({
   const sendMessage = useCallback(async () => {
     const content = compose.trim();
     if (!content || sending || !me) return;
+    if (!draftReady || !draftScope || !messageDraft) {
+      setSendError("Wait for secure draft storage to finish loading.");
+      return;
+    }
 
     setSending(true);
     setSendError(null);
 
     if (!navigator.onLine) {
-      setSending(false);
-      setDraftSaved(true);
-      setSendError("Offline — this message is saved as a draft and has not been sent.");
+      const savedDraft: OfflineMessageDraft = {
+        ...messageDraft,
+        content,
+        audience: composeAudience,
+        recipientIds: selectedRecipients,
+        customerId: selectedCustomerId,
+        useContext,
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        await saveOfflineMessageDraft(savedDraft);
+        setMessageDraft(savedDraft);
+        setDraftSaved(true);
+        setSendError(
+          "Offline — this message is saved as a draft and has not been sent.",
+        );
+      } catch {
+        setDraftSaved(false);
+        setSendError(
+          "Offline draft could not be saved. Keep this window open and try again.",
+        );
+      } finally {
+        setSending(false);
+      }
       return;
     }
 
     try {
       let conversationId = activeConversationId;
+      let deliveryDraft = messageDraft;
 
       if (!conversationId) {
+        deliveryDraft = {
+          ...messageDraft,
+          content,
+          audience: composeAudience,
+          recipientIds: selectedRecipients,
+          customerId: selectedCustomerId,
+          useContext,
+          conversationRequestFingerprint: newConversationFingerprint,
+          updatedAt: new Date().toISOString(),
+        };
+        await saveOfflineMessageDraft(deliveryDraft);
+        setMessageDraft(deliveryDraft);
         const res = await fetch("/api/chat/start-conversation", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -373,7 +481,7 @@ export default function InboxModal({
                 ? context.context_label
                 : null,
             is_broadcast: composeAudience === "internal" && selectedRecipients.length > 3,
-            request_id: messageDraft?.conversationRequestId ?? crypto.randomUUID(),
+            request_id: deliveryDraft.conversationRequestId,
           }),
         });
 
@@ -390,7 +498,7 @@ export default function InboxModal({
           conversationId,
           senderId: me,
           content,
-          clientMessageId: messageDraft?.clientMessageId ?? crypto.randomUUID(),
+          clientMessageId: deliveryDraft.clientMessageId,
           metadata: {
             deep_link: useContext ? context.deep_link : null,
             context_type: context.context_type,
@@ -432,6 +540,8 @@ export default function InboxModal({
     messageDraft,
     draftScope,
     draftTargetId,
+    draftReady,
+    newConversationFingerprint,
   ]);
 
   if (!open) return null;
@@ -472,6 +582,7 @@ export default function InboxModal({
                 <button
                   key={audience}
                   type="button"
+                  disabled={!draftReady || sending}
                   onClick={() => {
                     setComposeAudience(audience);
                     setActiveConversationId(null);
@@ -596,6 +707,7 @@ export default function InboxModal({
                 </select>
                 <button
                   type="button"
+                  disabled={!draftReady || sending}
                   className="h-8 rounded border border-[color:var(--theme-border-soft)] px-2"
                   onClick={() => setSelectedRecipients(recipientOptions.map((u) => u.id))}
                 >
@@ -608,6 +720,7 @@ export default function InboxModal({
                   <label key={u.id} className="mb-1 flex items-center gap-2">
                     <input
                       type="checkbox"
+                      disabled={!draftReady || sending}
                       checked={selectedRecipients.includes(u.id)}
                       onChange={(e) =>
                         setSelectedRecipients((prev) =>
@@ -632,7 +745,7 @@ export default function InboxModal({
                     <button
                       key={customer.id}
                       type="button"
-                      disabled={!customer.can_message}
+                      disabled={!draftReady || sending || !customer.can_message}
                       onClick={() => setSelectedCustomerId(customer.id)}
                       className={`mb-1 flex w-full items-center justify-between rounded px-2 py-1.5 text-left ${
                         selectedCustomerId === customer.id
@@ -655,6 +768,7 @@ export default function InboxModal({
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
+                    disabled={!draftReady || sending}
                     checked={useContext}
                     onChange={(e) => setUseContext(e.target.checked)}
                   />
@@ -668,7 +782,14 @@ export default function InboxModal({
             <textarea
               value={compose}
               onChange={(e) => setCompose(e.target.value)}
-              placeholder={activeConversationId ? "Reply…" : "Compose…"}
+              disabled={!draftReady || sending}
+              placeholder={
+                draftReady
+                  ? activeConversationId
+                    ? "Reply…"
+                    : "Compose…"
+                  : "Loading saved draft…"
+              }
               className="h-14 flex-1 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1.5 text-xs"
             />
             <button
@@ -676,6 +797,7 @@ export default function InboxModal({
               onClick={() => void sendMessage()}
               disabled={
                 sending ||
+                !draftReady ||
                 (!activeConversationId &&
                   (composeAudience === "customer"
                     ? !selectedCustomerId

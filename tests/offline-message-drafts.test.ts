@@ -25,6 +25,12 @@ describe("offline messaging drafts", () => {
     expect(scopeRoute).toContain("resolveMessagingActor");
     expect(scopeRoute).toContain("shopId: actor.actor.shopId");
     expect(scopeRoute).not.toContain("req.json");
+    expect(repository.indexOf("!navigator.onLine")).toBeLessThan(
+      repository.indexOf("return cached"),
+    );
+    expect(repository.indexOf('fetch("/api/chat/offline-scope"')).toBeLessThan(
+      repository.indexOf("setOfflineMutationScope(scope)"),
+    );
   });
 
   it("restores and autosaves staff, customer, and reply composers", () => {
@@ -43,14 +49,29 @@ describe("offline messaging drafts", () => {
   it("uses stable delivery identities but does not queue or auto-send drafts", () => {
     expect(repository).toContain("conversationRequestId: crypto.randomUUID()");
     expect(repository).toContain("clientMessageId: crypto.randomUUID()");
-    expect(staffInbox).toContain("messageDraft?.conversationRequestId");
-    expect(staffInbox).toContain("messageDraft?.clientMessageId");
+    expect(staffInbox).toContain("request_id: deliveryDraft.conversationRequestId");
+    expect(staffInbox).toContain("clientMessageId: deliveryDraft.clientMessageId");
+    expect(repository).toContain("conversationRequestFingerprint?: string | null");
+    expect(staffInbox).toContain("conversationRequestFingerprint: newConversationFingerprint");
+    expect(staffInbox).toContain("newConversationFingerprint");
     expect(portal).toContain("newThreadDraft?.conversationRequestId");
-    expect(chatWindow).toContain("draft?.clientMessageId");
+    expect(chatWindow).toContain("const clientMessageId = draft.clientMessageId");
     expect(repository).not.toContain("runMutationWithOfflineQueue");
     expect(repository).not.toContain("replayAllOfflineMutations");
     for (const source of [staffInbox, portal, chatWindow]) {
       expect(source).toContain("!navigator.onLine");
+    }
+  });
+
+  it("waits for draft hydration and confirms offline persistence before claiming success", () => {
+    expect(staffInbox).toContain("disabled={!draftReady || sending}");
+    expect(chatWindow).toContain("disabled={!draftReady || sending}");
+    for (const source of [staffInbox, chatWindow]) {
+      const offlineBranch = source.indexOf("if (!navigator.onLine)");
+      const confirmedSave = source.indexOf("await saveOfflineMessageDraft", offlineBranch);
+      const savedState = source.indexOf("setDraftSaved(true)", confirmedSave);
+      expect(confirmedSave).toBeGreaterThan(offlineBranch);
+      expect(savedState).toBeGreaterThan(confirmedSave);
     }
   });
 

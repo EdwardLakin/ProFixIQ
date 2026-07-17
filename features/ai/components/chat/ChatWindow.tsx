@@ -79,7 +79,13 @@ export default function ChatWindow({
     let cancelled = false;
     setDraftReady(false);
     void resolveMessagingDraftScope(userId).then(async (scope) => {
-      if (!scope || cancelled) return;
+      if (cancelled) return;
+      if (!scope) {
+        setError(
+          "Messaging storage could not verify your shop. Reconnect or sign in again.",
+        );
+        return;
+      }
       const stored = await getOfflineMessageDraft({ scope, targetId: draftTargetId });
       if (cancelled) return;
       const next = stored ?? createMessageDraft({ scope, targetId: draftTargetId });
@@ -244,13 +250,30 @@ export default function ChatWindow({
   const sendMessage = useCallback(async () => {
     const content = newMessage.trim();
     if (!content || sending) return;
-
-    if (!navigator.onLine) {
-      setError("Offline — this message is saved as a draft and has not been sent.");
+    if (!draftReady || !draftScope || !draft) {
+      setError("Wait for secure draft storage to finish loading.");
       return;
     }
 
-    const clientMessageId = draft?.clientMessageId ?? crypto.randomUUID();
+    if (!navigator.onLine) {
+      const savedDraft = {
+        ...draft,
+        content,
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        await saveOfflineMessageDraft(savedDraft);
+        setDraft(savedDraft);
+        setDraftSaved(true);
+        setError("Offline — this message is saved as a draft and has not been sent.");
+      } catch {
+        setDraftSaved(false);
+        setError("Offline draft could not be saved. Keep this window open and try again.");
+      }
+      return;
+    }
+
+    const clientMessageId = draft.clientMessageId;
     const tempId = `temp-${clientMessageId}`;
     const optimistic: Message = {
       id: tempId,
@@ -312,7 +335,7 @@ export default function ChatWindow({
     } finally {
       setSending(false);
     }
-  }, [conversationId, draft, draftScope, draftTargetId, newMessage, sending, userId]);
+  }, [conversationId, draft, draftReady, draftScope, draftTargetId, newMessage, sending, userId]);
 
   const deleteMessage = useCallback(
     async (id: string) => {
@@ -483,13 +506,18 @@ export default function ChatWindow({
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           onKeyDown={handleKeyDown}
+          disabled={!draftReady || sending}
           rows={1}
-          placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+          placeholder={
+            draftReady
+              ? "Type a message… (Enter to send, Shift+Enter for new line)"
+              : "Loading saved draft…"
+          }
           className="flex-1 resize-none rounded bg-[color:var(--theme-surface-overlay)] border border-[var(--metal-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:outline-none"
         />
         <button
           onClick={() => void sendMessage()}
-          disabled={sending || !newMessage.trim()}
+          disabled={sending || !draftReady || !newMessage.trim()}
           className="rounded-full border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-sm font-semibold text-[var(--accent-copper-soft)] shadow-[var(--theme-shadow-medium)] hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}

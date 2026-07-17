@@ -27,6 +27,7 @@ export type OfflineMessageDraft = {
   customerId?: string | null;
   useContext?: boolean;
   conversationRequestId: string;
+  conversationRequestFingerprint?: string | null;
   clientMessageId: string;
   updatedAt: string;
 };
@@ -51,8 +52,11 @@ export async function resolveMessagingDraftScope(
   expectedUserId?: string | null,
 ): Promise<OfflineMutationScope | null> {
   const cached = getOfflineMutationScope();
-  if (cached && (!expectedUserId || cached.userId === expectedUserId)) return cached;
-  if (typeof navigator !== "undefined" && !navigator.onLine) return null;
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return cached && (!expectedUserId || cached.userId === expectedUserId)
+      ? cached
+      : null;
+  }
 
   try {
     const response = await fetch("/api/chat/offline-scope", {
