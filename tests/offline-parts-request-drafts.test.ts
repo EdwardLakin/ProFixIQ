@@ -9,9 +9,13 @@ const modal = read(
   "features/work-orders/components/workorders/PartsRequestModal.tsx",
 );
 const replay = read("features/shared/lib/offline/replay.ts");
+const mutations = read("features/shared/lib/offline/mutations.ts");
 const route = read("app/api/offline/parts-request-drafts/route.ts");
 const migration = read(
   "supabase/migrations/20260717100000_offline_parts_request_drafts.sql",
+);
+const leadAliasMigration = read(
+  "supabase/migrations/20260717110000_offline_parts_request_lead_alias.sql",
 );
 
 describe("offline parts-request drafts", () => {
@@ -34,11 +38,16 @@ describe("offline parts-request drafts", () => {
     expect(createPage).toContain("<AdvisorPartsDraftEditor");
     expect(createPage).toContain("materialization.lineIdMap");
     expect(createPage).toContain("resolveAndSubmitDependentPartsDrafts");
+    expect(createPage).toContain("const advisorScope = { userId: currentUserId, shopId }");
+    expect(createPage).not.toContain("const scope = getOfflineMutationScope()");
     expect(repository).toContain("args.lineIdMap[draft.tempLineId]");
     expect(repository).toContain(
       "A parts-request draft could not be matched to its saved job line.",
     );
     expect(createPage).toContain("pruneDependentPartsRequestDrafts");
+    expect(createPage.indexOf("await pruneDependentPartsRequestDrafts")).toBeLessThan(
+      createPage.indexOf("await materializeAdvisorWorkOrderDraft"),
+    );
   });
 
   it("uses the global ordered mutation queue for both advisor and technician requests", () => {
@@ -47,6 +56,11 @@ describe("offline parts-request drafts", () => {
     expect(repository).toContain("clientMutationId: draft.operationKey");
     expect(repository).toContain("orderKey:");
     expect(modal).toContain("submitOfflinePartsRequestDraft");
+    expect(modal).not.toContain("await saveOfflinePartsRequestDraft(draft)");
+    expect(repository).toContain("Online delivery must not depend on IndexedDB");
+    expect(repository).toContain("bestEffortOnlineHistory: true");
+    expect(mutations).toContain("if (args.bestEffortOnlineHistory)");
+    expect(repository).not.toContain("await saveOfflinePartsRequestDraft(resolved)");
     expect(modal).not.toContain('fetch("/api/parts/requests/create"');
     expect(replay).toContain('"parts-request:create-draft"');
     expect(replay).toContain("postOfflinePartsRequestDraft(draft)");
@@ -60,6 +74,8 @@ describe("offline parts-request drafts", () => {
     expect(route).toContain("draft.shopId !== profile.shop_id");
     expect(route).toContain('rpc("set_current_shop_id"');
     expect(route).toContain("materialize_offline_parts_request_draft_atomic");
+    expect(route).toContain("function isValidDraftItem(item: unknown)");
+    expect(route).toContain('typeof item !== "object"');
   });
 
   it("materializes through the canonical parts RPC with receipt-backed idempotency", () => {
@@ -74,5 +90,10 @@ describe("offline parts-request drafts", () => {
     expect(migration).toContain("wol.work_order_id = p_work_order_id");
     expect(migration).toContain("wolt.technician_id = p_actor_user_id");
     expect(migration).toContain("when unique_violation then");
+    expect(migration).toContain("'leadhand','lead','foreman'");
+    expect(leadAliasMigration).toContain(
+      "create or replace function public.materialize_offline_parts_request_draft_atomic",
+    );
+    expect(leadAliasMigration).toContain("'leadhand','lead','foreman'");
   });
 });

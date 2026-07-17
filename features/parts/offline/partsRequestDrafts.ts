@@ -181,7 +181,16 @@ export async function submitOfflinePartsRequestDraft(
   if (!draft.workOrderId || !draft.workOrderLineId) {
     throw new Error("Parts request is still waiting for its work-order line.");
   }
-  await saveOfflinePartsRequestDraft(draft);
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    try {
+      await saveOfflinePartsRequestDraft(draft);
+    } catch {
+      // Online delivery must not depend on IndexedDB availability or quota.
+    }
+  } else {
+    // Do not claim an offline queue is durable until device persistence succeeds.
+    await saveOfflinePartsRequestDraft(draft);
+  }
   let requestId: string | null = null;
   const result = await runMutationWithOfflineQueue({
     clientMutationId: draft.operationKey,
@@ -189,15 +198,20 @@ export async function submitOfflinePartsRequestDraft(
     payload: draft,
     scope: { userId: draft.userId, shopId: draft.shopId },
     orderKey: `${draft.workOrderId}:${draft.workOrderLineId}:parts:${draft.operationKey}`,
+    bestEffortOnlineHistory: true,
     runner: async () => {
       requestId = (await postOfflinePartsRequestDraft(draft)).requestId;
     },
   });
   if (!result.conflicted) {
-    await removeOfflinePartsRequestDraft({
-      scope: { userId: draft.userId, shopId: draft.shopId },
-      draftId: draft.id,
-    });
+    try {
+      await removeOfflinePartsRequestDraft({
+        scope: { userId: draft.userId, shopId: draft.shopId },
+        draftId: draft.id,
+      });
+    } catch {
+      // Cleanup is best-effort once the request was submitted or durably queued.
+    }
   }
   return { ...result, requestId };
 }
@@ -228,7 +242,6 @@ export async function resolveAndSubmitDependentPartsDrafts(args: {
       workOrderLineId: lineId,
       updatedAt: new Date().toISOString(),
     };
-    await saveOfflinePartsRequestDraft(resolved);
     const result = await submitOfflinePartsRequestDraft(resolved);
     if (result.queued) queued += 1;
     else if (!result.conflicted) submitted += 1;

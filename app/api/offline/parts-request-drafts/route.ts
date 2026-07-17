@@ -15,6 +15,20 @@ function statusFor(message: string): number {
   return 400;
 }
 
+function isValidDraftItem(item: unknown): boolean {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+  const value = item as Record<string, unknown>;
+  const description =
+    typeof value.description === "string" ? value.description.trim() : "";
+  const qty = Number(value.qty);
+  return (
+    description.length > 0 &&
+    Number.isFinite(qty) &&
+    qty >= 1 &&
+    qty <= 10000
+  );
+}
+
 export async function POST(request: NextRequest) {
   const operationKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
   const draft = (await request
@@ -35,15 +49,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  if (
-    draft.items.some(
-      (item) =>
-        !item.description?.trim() ||
-        !Number.isFinite(Number(item.qty)) ||
-        Number(item.qty) < 1 ||
-        Number(item.qty) > 10000,
-    )
-  ) {
+  if ((draft.items as unknown[]).some((item) => !isValidDraftItem(item))) {
     return NextResponse.json(
       {
         error:
