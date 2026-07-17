@@ -170,7 +170,7 @@ export default function InstantShopAnalysisPage() {
       : "/compare-plans";
     const signupHref = `/signup?redirect=${encodeURIComponent(next)}${
       demoId ? `&demoId=${encodeURIComponent(demoId)}` : ""
-    }${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}`;
+    }${intakeId ? `&intakeId=${encodeURIComponent(intakeId)}` : ""}${email.trim() ? `&email=${encodeURIComponent(email.trim().toLowerCase())}` : ""}`;
     window.location.href = activationContext
       ? appendActivationContextToHref(signupHref, activationContext)
       : signupHref;
