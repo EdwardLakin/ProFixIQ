@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { buildCanonicalIntakeTruth } from "@/features/integrations/shopBoost/canonicalTruth";
 import { confidenceLabelFromScore, deriveReviewRecommendation, type RecommendedAction, type ReviewRecommendation } from "@/features/integrations/shopBoost/reviewGuidance";
 
@@ -100,20 +100,9 @@ function deriveRecommendationExplanation(recommendation: RecommendationDto): str
 }
 
 export async function GET(req: Request) {
-  const supabaseUser = createServerSupabaseRoute();
-  const {
-    data: { user },
-  } = await supabaseUser.auth.getUser();
-
-  if (!user?.id) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-
-  const { data: profile } = await supabaseUser
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null }>();
-
-  if (!profile?.shop_id) return NextResponse.json({ ok: false, error: "No shop linked." }, { status: 400 });
+  const access = await requireShopScopedApiAccess({ allowRoles: ["owner", "admin"] });
+  if (!access.ok) return access.response;
+  const shopId = access.shopId!;
 
   const url = new URL(req.url);
   const domain = url.searchParams.get("domain");
@@ -129,7 +118,7 @@ export async function GET(req: Request) {
           await admin
             .from("shop_boost_intakes")
             .select("id")
-            .eq("shop_id", profile.shop_id)
+            .eq("shop_id", shopId)
             .order("created_at", { ascending: false })
             .limit(1)
             .maybeSingle<{ id: string }>()
@@ -174,7 +163,7 @@ export async function GET(req: Request) {
   let query = admin
     .from("shop_boost_review_items")
     .select("id,intake_id,domain,issue_type,summary,raw_payload,normalized_payload,target_domain,blocking_reason,dependency_refs,downstream_impact_count,cluster_key,cluster_confidence,suggested_matches,status,resolution_action,ignore_reason_code,ignore_note,ignored_at,resolved_at,materialized_at,materialization_error,materialized_record,created_at,recommended_action,recommendation_reason,recommendation_confidence,candidate_targets,recommendation_seen_at,recommendation_followed")
-    .eq("shop_id", profile.shop_id)
+    .eq("shop_id", shopId)
     .eq("intake_id", resolvedIntakeId)
     .order("created_at", { ascending: false })
     .limit(250);
@@ -223,7 +212,7 @@ export async function GET(req: Request) {
 
   const canonicalTruth = await buildCanonicalIntakeTruth({
     admin: admin as any,
-    shopId: profile.shop_id,
+    shopId: shopId,
     intakeId: resolvedIntakeId,
   });
 
@@ -234,7 +223,7 @@ export async function GET(req: Request) {
   const { data: intake } = await admin
     .from("shop_boost_intakes")
     .select("intake_basics")
-    .eq("shop_id", profile.shop_id)
+    .eq("shop_id", shopId)
     .eq("id", resolvedIntakeId)
     .maybeSingle();
   const migration = asRecord(asRecord(intake?.intake_basics).migrationProgress);
