@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/workOrderQuoteLineApproval";
 
 export const runtime = "nodejs";
 
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     const { data: q, error: qErr } = await supabase
       .from("work_order_quote_lines")
-      .select("id,shop_id")
+      .select("id,shop_id,work_order_id")
       .eq("id", id)
       .single();
 
@@ -54,16 +55,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { error: updErr } = await supabase
-      .from("work_order_quote_lines")
-      .update({ status: "declined", declined_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq("id", id);
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const result = await applyWorkOrderQuoteLineDecision({
+      supabase,
+      quoteLineIds: [q.id],
+      workOrderId: q.work_order_id,
+      shopId: q.shop_id,
+      customerId: null,
+      actorUserId: user.id,
+      decision: "decline",
+      decisionSource: "shop",
+      contactMethod: "other",
+      decisionNote:
+        typeof body.note === "string" ? body.note.trim().slice(0, 1000) : null,
+      operationKey:
+        typeof body.operationKey === "string"
+          ? body.operationKey.trim().slice(0, 160)
+          : undefined,
+    });
 
-    if (updErr) {
-      return NextResponse.json({ error: updErr.message }, { status: 500 });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error ?? "Failed to decline quote" },
+        { status: 400 },
+      );
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      approvalState: result.approvalState,
+      idempotent: result.idempotent === true,
+    });
   } catch {
     return NextResponse.json({ error: "Failed to decline quote" }, { status: 500 });
   }
