@@ -2,20 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { canonicalizeRole, getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   getMobileTilesForRole,
   type MobileRole,
 } from "@/features/mobile/config/mobile-tiles";
-
+import { buildAssistantHref } from "@/features/assistant/lib/buildAssistantHref";
+import { buildPlannerHref } from "@/features/assistant/lib/buildPlannerHref";
 import MobileShiftTracker from "@/features/mobile/components/MobileShiftTracker";
-
 
 type NavItem = {
   href: string;
   label: string;
+  subtitle?: string;
 };
 
 type Props = {
@@ -23,13 +24,48 @@ type Props = {
   onClose: () => void;
 };
 
+type InstallAvailability = {
+  available: boolean;
+  ios: boolean;
+};
+
 function isActivePath(pathname: string, href: string) {
-  const isRoot = href === "/mobile";
-  if (isRoot) return pathname === href;
-  return pathname.startsWith(href);
+  return href === "/mobile" ? pathname === href : pathname.startsWith(href);
 }
 
-function NavSection({
+function MenuLink({
+  item,
+  pathname,
+  onClose,
+}: {
+  item: NavItem;
+  pathname: string;
+  onClose: () => void;
+}) {
+  const active = isActivePath(pathname, item.href);
+  return (
+    <Link
+      href={item.href}
+      onClick={onClose}
+      className={`block rounded-xl border px-3 py-2.5 transition ${
+        active
+          ? "border-[var(--accent-copper)] bg-[color:var(--theme-surface-overlay)]"
+          : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] hover:border-[var(--accent-copper-soft)]"
+      }`}
+    >
+      <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+        {item.label}
+      </div>
+      {item.subtitle ? (
+        <div className="mt-0.5 text-[0.68rem] text-[color:var(--theme-text-muted)]">
+          {item.subtitle}
+        </div>
+      ) : null}
+    </Link>
+  );
+}
+
+function MenuSection({
   title,
   items,
   pathname,
@@ -40,52 +76,38 @@ function NavSection({
   pathname: string;
   onClose: () => void;
 }) {
+  if (items.length === 0) return null;
   return (
-    <div className="mb-3">
-      <div className="px-2 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
+    <section className="space-y-2">
+      <h2 className="px-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
         {title}
+      </h2>
+      <div className="space-y-1.5">
+        {items.map((item) => (
+          <MenuLink key={`${item.href}-${item.label}`} item={item} pathname={pathname} onClose={onClose} />
+        ))}
       </div>
-
-      <div className="space-y-1">
-        {items.map((item) => {
-          const active = isActivePath(pathname, item.href);
-
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onClose}
-              className={`metal-card block rounded-xl px-3 py-2 text-sm transition ${
-                active
-                  ? "border-[var(--accent-copper)] text-[color:var(--theme-text-primary)]"
-                  : "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-light)]"
-              }`}
-            >
-              {item.label}
-            </Link>
-          );
-        })}
-      </div>
-    </div>
+    </section>
   );
 }
 
 export function MobileBottomNav({ open, onClose }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const [userId, setUserId] = useState<string | null>(null);
   const [role, setRole] = useState<MobileRole | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [install, setInstall] = useState<InstallAvailability>({
+    available: false,
+    ios: false,
+  });
 
-  /* ---------------------------------------------------------------------- */
-  /* Load current user – shift logic is handled inside MobileShiftTracker   */
-  /* ---------------------------------------------------------------------- */
   useEffect(() => {
     const load = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-
       const id = session?.user?.id ?? null;
       setUserId(id);
       if (!id) {
@@ -98,7 +120,6 @@ export function MobileBottomNav({ open, onClose }: Props) {
         .select("role")
         .eq("id", id)
         .maybeSingle();
-
       const actor = getActorCapabilities({ role: profile?.role ?? null });
       const canonicalRole = canonicalizeRole(profile?.role ?? null);
       const allowedRole = actor.isKnownRole ? canonicalRole : null;
@@ -108,91 +129,166 @@ export function MobileBottomNav({ open, onClose }: Props) {
     void load();
   }, [supabase]);
 
-  const navItems = useMemo<NavItem[]>(() => {
+  useEffect(() => {
+    const onAvailability = (event: Event) => {
+      const custom = event as CustomEvent<InstallAvailability>;
+      setInstall(custom.detail);
+    };
+    window.addEventListener("profixiq:pwa-install-availability", onAvailability);
+    window.dispatchEvent(new Event("profixiq:pwa-install-availability-request"));
+    return () => {
+      window.removeEventListener("profixiq:pwa-install-availability", onAvailability);
+    };
+  }, [open]);
+
+  const navigationItems = useMemo<NavItem[]>(() => {
+    const home: NavItem = {
+      href: "/mobile",
+      label: "Dashboard",
+      subtitle: "Your role-specific mobile home",
+    };
     if (!role) {
-      return [
-        { href: "/mobile", label: "Home" },
-        { href: "/mobile/settings", label: "Me" },
-      ];
+      return [home, { href: "/mobile/settings", label: "My account" }];
     }
 
-    const primary = getMobileTilesForRole(role, ["home"]).slice(0, 2);
-    const dynamic = primary.map((tile) => ({
+    const dynamic = getMobileTilesForRole(role, ["all"]).map((tile) => ({
       href: tile.href,
       label: tile.title,
+      subtitle: tile.subtitle,
     }));
-
-    const items = [{ href: "/mobile", label: "Home" }, ...dynamic, { href: "/mobile/settings", label: "Me" }];
-    return items.filter((item, index) => items.findIndex((x) => x.href === item.href) === index);
+    return [home, ...dynamic].filter(
+      (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index,
+    );
   }, [role]);
 
-  /* ---------------------------------------------------------------------- */
-  /* UI – Slide-in drawer                                                    */
-  /* ---------------------------------------------------------------------- */
+  const assistantHref = useMemo(
+    () => buildAssistantHref({ pageType: "mobile", pageTitle: "Mobile" }),
+    [],
+  );
+  const plannerHref = useMemo(
+    () =>
+      buildPlannerHref({
+        planner: "ops",
+        allowCreate: false,
+        goal: "Build next operational plan",
+      }),
+    [],
+  );
+
+  const utilityItems: NavItem[] = [
+    {
+      href: assistantHref,
+      label: "Ask Assistant",
+      subtitle: "Get help using the current shop context",
+    },
+    {
+      href: plannerHref,
+      label: "Open Planner",
+      subtitle: "Plan the next operational steps",
+    },
+    {
+      href: "/offline/sync",
+      label: "Offline & sync",
+      subtitle: "Review queued work and sync status",
+    },
+  ];
+
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await supabase.auth.signOut();
+      onClose();
+      router.push("/sign-in");
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
   return (
     <>
-      {/* Backdrop */}
-      <div
+      <button
+        type="button"
+        aria-label="Close menu"
         onClick={onClose}
-        className={`fixed inset-0 z-40 bg-[color:var(--theme-surface-inset)] backdrop-blur-sm transition-opacity ${
-          open
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
+        className={`fixed inset-0 z-40 bg-black/45 backdrop-blur-sm transition-opacity ${
+          open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       />
 
-      {/* Side drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] transform shadow-[var(--theme-shadow-medium)] transition-transform duration-200 border-r border-[var(--metal-border-soft)] ${
+        aria-hidden={!open}
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(88vw,22rem)] transform flex-col border-r border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[var(--theme-shadow-medium)] transition-transform duration-200 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
-        style={{ background: "var(--theme-app-bg, var(--theme-surface-page))" }}
       >
-        {/* Header */}
-        <div className="metal-bar flex items-center justify-between px-4 py-3 border-b border-[var(--metal-border-soft)]">
-          <div className="flex flex-col">
-            <span className="font-blackops text-[0.65rem] tracking-[0.24em] text-[var(--accent-copper-light)]">
+        <header className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
+          <div>
+            <div className="font-blackops text-sm tracking-[0.18em] text-[var(--accent-copper)]">
               PROFIXIQ
-            </span>
-            <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Mobile Bench</span>
+            </div>
+            <div className="text-xs capitalize text-[color:var(--theme-text-secondary)]">
+              {role ? `${role.replaceAll("_", " ")} menu` : "Mobile menu"}
+            </div>
           </div>
-
           <button
             type="button"
             onClick={onClose}
             aria-label="Close menu"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] hover:bg-[color:var(--theme-surface-overlay)] active:scale-95"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-lg"
           >
-            ✕
+            ×
           </button>
-        </div>
+        </header>
 
-        {/* Shift tracker – copper / glass card */}
-        <div className="px-3 pt-3 pb-2 border-b border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)]">
-          {userId ? (
-            <MobileShiftTracker userId={userId} />
-          ) : (
-            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-              Sign in to start tracking your shift.
-            </div>
-          )}
-        </div>
+        <div className="flex-1 space-y-5 overflow-y-auto px-3 py-3">
+          {userId ? <MobileShiftTracker userId={userId} /> : null}
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-2 py-3">
-          <NavSection
-            title="Mobile"
-            items={navItems}
+          <MenuSection
+            title="Navigation"
+            items={navigationItems}
             pathname={pathname}
             onClose={onClose}
           />
-        </nav>
 
-        {/* Footer */}
-        <div className="border-t border-[var(--metal-border-soft)] px-4 py-2 text-[0.65rem] text-[color:var(--theme-text-muted)]">
-          <div>Tech Mode</div>
-          <div className="text-[0.6rem] text-[color:var(--theme-text-muted)]">v0.1 • Early Build</div>
+          <MenuSection
+            title="Tools"
+            items={utilityItems}
+            pathname={pathname}
+            onClose={onClose}
+          />
+
+          {install.available ? (
+            <section className="space-y-2">
+              <h2 className="px-1 text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
+                App
+              </h2>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event("profixiq:pwa-install-request"))}
+                className="w-full rounded-xl border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2.5 text-left"
+              >
+                <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+                  Install ProFixIQ
+                </div>
+                <div className="mt-0.5 text-[0.68rem] text-[color:var(--theme-text-muted)]">
+                  {install.ios ? "Add ProFixIQ to your Home Screen" : "Install the app on this device"}
+                </div>
+              </button>
+            </section>
+          ) : null}
         </div>
+
+        <footer className="border-t border-[color:var(--theme-border-soft)] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-3">
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
+            className="w-full rounded-xl border border-red-500/35 bg-red-500/10 px-3 py-2.5 text-sm font-medium text-red-700 disabled:opacity-60 dark:text-red-200"
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </button>
+        </footer>
       </aside>
     </>
   );
