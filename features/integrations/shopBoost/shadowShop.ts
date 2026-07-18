@@ -768,6 +768,7 @@ export async function buildShadowShopSnapshot(args: {
   intakeId: string;
   uploadedFiles?: Partial<Record<ShopBoostUploadDatasetKey, File>>;
   uploadedCsvs?: Partial<Record<ShopBoostUploadDatasetKey, ShadowShopCsvUpload>>;
+  questionnaire?: Record<string, unknown>;
 }): Promise<ShadowShopSnapshot> {
   const parsedRowsByDomain: Record<ShadowDomainKey, CsvRow[]> = {
     customers: [],
@@ -822,7 +823,15 @@ export async function buildShadowShopSnapshot(args: {
   const menuSuggestionCount = collectRecurringServicePatterns(stagedRowsByDomain.history);
   const inspectionSuggestionCount = Math.max(0, Math.round(stagedRowsByDomain.history.length * 0.28));
 
-  const preflightReport = buildShopBoostPreflightReport({
+  const historyAssessment = assessInstantAnalysisHistory(parsedRowsByDomain.history);
+  const domainCoverage = calculateInstantAnalysisDomainCoverage({
+    customers: parsedRowsByDomain.customers.length,
+    vehicles: parsedRowsByDomain.vehicles.length,
+    history: parsedRowsByDomain.history.length,
+    invoices: parsedRowsByDomain.invoices.length,
+    parts: parsedRowsByDomain.parts.length,
+  });
+  const rawPreflightReport = buildShopBoostPreflightReport({
     rows: preflightRows,
     hasHistoryData: stagedRowsByDomain.history.length > 0,
     hasVehicleData: stagedRowsByDomain.vehicles.length > 0,
@@ -830,6 +839,7 @@ export async function buildShadowShopSnapshot(args: {
     menuSuggestionCount,
     inspectionSuggestionCount,
   });
+  const preflightReport = reconcilePreflightReport(rawPreflightReport, historyAssessment);
 
   const setupIssues: ShadowSetupIssue[] = [
     ...preflightReport.blockers.map((blocker, index) => ({
@@ -849,13 +859,30 @@ export async function buildShadowShopSnapshot(args: {
   const operationalPayload = deriveOperationalPayload({
     rowsByDomain: stagedRowsByDomain,
     preflightReport,
+    historyAssessment,
+    domainCoverage,
+    questionnaire: args.questionnaire,
   });
 
   return {
     intakeId: args.intakeId,
     generatedAt: new Date().toISOString(),
+    questionnaire: args.questionnaire ?? {},
     uploadSummary,
     preflightReport,
+    importReadiness: {
+      detectedRecords: preflightReport.totals.detectedRecords,
+      readyRecords: preflightReport.totals.likelyAutoImportCount,
+      reviewRecords: preflightReport.totals.likelyReviewNeededCount,
+      blockedRecords: preflightReport.totals.likelyBlockerCount,
+      historyRows: historyAssessment.rowCount,
+      uniqueHistoryJobs: historyAssessment.uniqueJobCount,
+      readyHistoryJobs: historyAssessment.readyJobCount,
+      reviewHistoryJobs: historyAssessment.reviewJobCount,
+      blockedHistoryJobs: historyAssessment.blockedJobCount,
+      linkageAccuracy: historyAssessment.linkageAccuracy,
+      domainCoverage,
+    },
     dashboard: {
       estimatedImportedRecords: preflightReport.totals.likelyAutoImportCount,
       reviewQueueCount: preflightReport.totals.likelyReviewNeededCount,
