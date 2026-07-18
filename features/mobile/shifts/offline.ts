@@ -159,8 +159,22 @@ export async function runMobileShiftAction(args: {
     if (scope) await saveCachedMobileShiftState({ scope, state });
     return { state, queued: false, conflicted: false };
   }
-  if (!scope) throw new Error("Offline shop scope is unavailable.");
+
   if (!args.current?.shiftId) throw new Error("No active shift is available.");
+
+  // Online actions must use the same canonical server lifecycle as desktop.
+  // Offline scope is only required when the event actually needs to be queued.
+  if (navigator.onLine) {
+    const state = await postShiftAction(args.action, key);
+    if (scope) await saveCachedMobileShiftState({ scope, state });
+    return { state, queued: false, conflicted: false };
+  }
+
+  if (!scope) {
+    throw new Error(
+      "This device is missing its shop scope. Reconnect before recording this punch.",
+    );
+  }
 
   const occurredAt = new Date().toISOString();
   let serverState: MobileShiftState | null = null;
