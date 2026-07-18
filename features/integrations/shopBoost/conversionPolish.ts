@@ -45,57 +45,82 @@ export type ObjectionHandlingContent = {
 };
 
 export function formatUsd(value: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function importReadiness(snapshot: ShadowShopSnapshot) {
+  return snapshot.importReadiness ?? {
+    detectedRecords: snapshot.preflightReport.totals.detectedRecords,
+    readyRecords: snapshot.preflightReport.totals.likelyAutoImportCount,
+    reviewRecords: snapshot.preflightReport.totals.likelyReviewNeededCount,
+    blockedRecords: snapshot.preflightReport.totals.likelyBlockerCount,
+    historyRows: snapshot.operationalNarrative.historyRowsDetected ?? snapshot.operationalNarrative.jobsIdentified,
+    uniqueHistoryJobs: snapshot.operationalNarrative.jobsIdentified,
+    readyHistoryJobs: snapshot.operationalNarrative.workReadyCount,
+    reviewHistoryJobs: snapshot.operationalNarrative.reviewNeededCount,
+    blockedHistoryJobs: snapshot.operationalNarrative.estimatedOperationalBlockers,
+    linkageAccuracy: snapshot.projectionConfidence.factors.matchingAccuracy,
+    domainCoverage: snapshot.projectionConfidence.factors.domainCoverage,
+  };
 }
 
 export function buildConfidencePresentation(snapshot: ShadowShopSnapshot): ConfidencePresentation {
   const score = snapshot.projectionConfidence.score;
-  const reviewNeeded = snapshot.operationalNarrative.reviewNeededCount;
-  const blockers = snapshot.dashboard.blockerCount;
+  const readiness = importReadiness(snapshot);
 
-  if (score >= 80 && blockers === 0) {
+  if (score >= 80 && readiness.blockedHistoryJobs === 0 && readiness.reviewHistoryJobs === 0) {
     return {
       band: "HIGH",
-      title: "High confidence",
-      explanation: "Based on strong record coverage, low blockers, and stable matching across your uploaded domains.",
-      increasesConfidence: "More complete history, customer/vehicle links, and clean identifiers increase confidence.",
-      lowersConfidence: "Confidence drops if blocker volume rises or if key identifiers are missing.",
+      title: "High import confidence",
+      explanation: "The uploaded domains have stable identifiers and customer/vehicle links for controlled import.",
+      increasesConfidence: "Complete identifiers and linked repair orders increase confidence.",
+      lowersConfidence: "Missing identifiers and ambiguous customer/vehicle links reduce confidence.",
     };
   }
 
-  if (score >= 60) {
+  if (score >= 60 && readiness.blockedHistoryJobs === 0) {
     return {
       band: "MODERATE",
-      title: "Moderate confidence",
-      explanation: "Directional estimate with meaningful signal, but some records still need review before live operational use.",
-      increasesConfidence: "Resolving flagged rows and validating parts/customer links will tighten this estimate.",
-      lowersConfidence: "Unreviewed record clusters and unresolved blockers keep uncertainty elevated.",
+      title: "Moderate import confidence",
+      explanation: "Most data can proceed, with ambiguous repair orders held for guided review.",
+      increasesConfidence: "Confirming flagged customer and vehicle links will raise confidence.",
+      lowersConfidence: `${readiness.reviewHistoryJobs} repair order${readiness.reviewHistoryJobs === 1 ? "" : "s"} still need link review.`,
     };
   }
 
   return {
     band: "EARLY_ESTIMATE",
-    title: "Early estimate",
-    explanation: "Value is directional while coverage and matching quality are still limited in this preview dataset.",
-    increasesConfidence: "Adding missing exports and completing guided review will improve confidence.",
-    lowersConfidence: `High review load (${reviewNeeded}) and blocker count (${blockers}) keep this estimate early-stage.`,
+    title: "Import review required",
+    explanation: "Some repair orders lack the identifiers or links required for safe materialization.",
+    increasesConfidence: "Resolving the guided review queue will improve import confidence.",
+    lowersConfidence: `${readiness.blockedHistoryJobs} blocked and ${readiness.reviewHistoryJobs} review repair orders remain.`,
   };
 }
 
 export function buildConsequenceItems(snapshot: ShadowShopSnapshot): ConsequenceItem[] {
   const items: ConsequenceItem[] = [];
-  const reviewNeeded = snapshot.operationalNarrative.reviewNeededCount;
-  const blockerCount = snapshot.dashboard.blockerCount;
+  const readiness = importReadiness(snapshot);
   const partsConflicts = snapshot.operationalNarrative.partsInventoryConflicts;
-  const linkGaps = snapshot.operationalNarrative.unresolvedCustomerVehicleLinks;
-  const stalledJobs = snapshot.urgencySignals.stalledJobs;
 
-  if (reviewNeeded > 0) {
+  if (readiness.reviewHistoryJobs > 0) {
     items.push({
       key: "review-needed",
       severity: "warning",
-      title: `${reviewNeeded} records need guided review`,
-      detail: "Some records require review before they are safe to use in live approvals, invoicing, and service history.",
+      title: `${readiness.reviewHistoryJobs} repair order${readiness.reviewHistoryJobs === 1 ? "" : "s"} need guided review`,
+      detail: "These repair orders will be held until their customer and vehicle links are confirmed.",
+    });
+  }
+
+  if (readiness.blockedHistoryJobs > 0) {
+    items.push({
+      key: "blockers",
+      severity: "critical",
+      title: `${readiness.blockedHistoryJobs} repair order${readiness.blockedHistoryJobs === 1 ? "" : "s"} lack a stable identifier`,
+      detail: "A repair-order or invoice identifier is required before those rows can be materialized.",
     });
   }
 
@@ -103,35 +128,8 @@ export function buildConsequenceItems(snapshot: ShadowShopSnapshot): Consequence
     items.push({
       key: "parts-conflicts",
       severity: "warning",
-      title: `${partsConflicts} parts/inventory conflicts detected`,
-      detail: "Inventory counts may not reflect live stock until part mappings and quantities are reviewed.",
-    });
-  }
-
-  if (linkGaps > 0) {
-    items.push({
-      key: "link-gaps",
-      severity: "warning",
-      title: `${linkGaps} customer/vehicle linkage gaps`,
-      detail: "Service history may not attach cleanly to the right customer or vehicle until linkage review is complete.",
-    });
-  }
-
-  if (snapshot.workflowJobs.some((job) => job.status === "blocked")) {
-    items.push({
-      key: "work-order-linkage",
-      severity: "warning",
-      title: "Work-order lineage has unresolved gaps",
-      detail: "Past jobs may not fully support quoting, approvals, and historical lookup until unresolved links are reviewed.",
-    });
-  }
-
-  if (blockerCount > 0) {
-    items.push({
-      key: "blockers",
-      severity: "critical",
-      title: `${blockerCount} blockers currently prevent trusted go-live`,
-      detail: "Your shop is not yet ready for trusted go-live until blocker items are resolved in guided migration review.",
+      title: `${partsConflicts} parts row${partsConflicts === 1 ? "" : "s"} need mapping review`,
+      detail: "Those rows will be held from live inventory until their identifiers are confirmed.",
     });
   }
 
@@ -139,17 +137,17 @@ export function buildConsequenceItems(snapshot: ShadowShopSnapshot): Consequence
     items.push({
       key: "clean",
       severity: "info",
-      title: "No blocker patterns detected in this pass",
-      detail: "Most records look ready for guided activation with targeted review on edge cases only.",
+      title: "No import blockers detected",
+      detail: "The detected repair orders have stable identifiers and customer/vehicle links for controlled activation.",
     });
   }
 
-  if (stalledJobs > 0) {
+  if (snapshot.urgencySignals.stalledJobs > 0) {
     items.push({
       key: "stalled",
       severity: "warning",
-      title: `${stalledJobs} jobs are stalled today`,
-      detail: "Stalled jobs continue delaying approvals and customer communication until workflow bottlenecks are addressed.",
+      title: `${snapshot.urgencySignals.stalledJobs} explicitly stalled repair order${snapshot.urgencySignals.stalledJobs === 1 ? "" : "s"}`,
+      detail: "This count comes from status fields in the uploaded export, not an inferred workflow state.",
     });
   }
 
@@ -157,83 +155,116 @@ export function buildConsequenceItems(snapshot: ShadowShopSnapshot): Consequence
 }
 
 function buildTopDrivers(snapshot: ShadowShopSnapshot): string[] {
+  const readiness = importReadiness(snapshot);
   return [
-    `${snapshot.urgencySignals.stalledJobs} stalled jobs causing handoff friction`,
-    `${snapshot.operationalNarrative.unresolvedCustomerVehicleLinks} customer/vehicle link gaps`,
-    `${snapshot.operationalNarrative.partsInventoryConflicts} parts reconciliation issues`,
-  ].filter((entry) => !entry.startsWith("0 "));
+    readiness.reviewHistoryJobs > 0
+      ? `${readiness.reviewHistoryJobs} repair orders need customer/vehicle link review`
+      : "",
+    readiness.blockedHistoryJobs > 0
+      ? `${readiness.blockedHistoryJobs} repair orders need stable identifiers`
+      : "",
+    snapshot.operationalNarrative.partsInventoryConflicts > 0
+      ? `${snapshot.operationalNarrative.partsInventoryConflicts} parts rows need mapping review`
+      : "",
+  ].filter(Boolean);
 }
 
 export function buildDecisionSummary(context: ShadowPreviewContext): DecisionSummary {
   const { snapshot, shopName } = context;
   const confidence = buildConfidencePresentation(snapshot);
+  const readiness = importReadiness(snapshot);
+  const evidenceLevel = snapshot.roi.evidence_level ?? "insufficient";
+  const low = snapshot.roi.estimated_monthly_impact_low ?? 0;
+  const high = snapshot.roi.estimated_monthly_impact_high ?? snapshot.roi.estimated_monthly_impact;
   const recoverableValue = Math.max(0, snapshot.roi.estimated_monthly_impact);
-  const monthlyValueAtRisk = Math.max(snapshot.urgencySignals.revenueAtRiskNow, Math.round(recoverableValue * 0.6));
-  const blockers = snapshot.dashboard.blockerCount;
+  const monthlyValueAtRisk =
+    evidenceLevel === "observed" ? Math.max(0, snapshot.urgencySignals.revenueAtRiskNow) : 0;
+  const monthlyRos = Number(snapshot.questionnaire?.avgMonthlyRos ?? 0);
 
-  const readinessSummary = blockers > 0
-    ? "Activation is possible, but blocker resolution is required before trusted go-live."
-    : snapshot.dashboard.reviewQueueCount > 0
-      ? "Activation can proceed with guided review before full live confidence."
-      : "Dataset appears ready for controlled activation and guided import.";
+  const summary =
+    evidenceLevel === "observed"
+      ? `The uploaded status fields for ${shopName} show active workflow friction. The evidence-backed recovery scenario is ${formatUsd(low)}–${formatUsd(high)}/month.`
+      : evidenceLevel === "modeled"
+        ? `At the reported ${Math.round(monthlyRos)} repair orders/month, ProFixIQ models ${formatUsd(low)}–${formatUsd(high)}/month in recoverable capacity. This is a planning estimate, not measured current loss.`
+        : `${shopName}'s files show import readiness and review needs, but not enough operational evidence to claim a credible savings amount yet.`;
+
+  const readinessSummary =
+    readiness.blockedHistoryJobs > 0
+      ? "Activation can begin, but blocked repair orders must be resolved before full materialization."
+      : readiness.reviewHistoryJobs > 0
+        ? "Activation can proceed; ambiguous repair orders will enter guided review."
+        : "The detected repair orders are ready for controlled activation.";
 
   return {
     heading: "What your data says right now",
-    summary: `Your data suggests ${shopName} is currently losing approximately ${formatUsd(monthlyValueAtRisk)}/month from workflow friction, delayed approvals, and unresolved migration gaps.`,
+    summary,
     monthlyValueAtRisk,
     recoverableValue,
     topDrivers: buildTopDrivers(snapshot).slice(0, 3),
     readinessSummary,
-    blockerSummary: blockers > 0
-      ? `${blockers} blocker${blockers === 1 ? "" : "s"} must be resolved during guided migration review.`
-      : "No hard blockers detected in this preview pass.",
+    blockerSummary:
+      readiness.blockedHistoryJobs > 0
+        ? `${readiness.blockedHistoryJobs} repair-order blocker${readiness.blockedHistoryJobs === 1 ? "" : "s"} will be surfaced in guided review.`
+        : "No repair-order identifier blockers were detected.",
     confidence,
-    primaryActionLabel: blockers > 0 ? "Review and activate your migration" : "Start fixing these issues",
-    primaryActionHelper: blockers > 0
-      ? "Activation starts a real import with held-review controls for unsafe rows."
-      : `Estimated recoverable value after activation: ${formatUsd(recoverableValue)}/month.`,
-    secondaryActionLabel: "Share this findings report",
+    primaryActionLabel:
+      readiness.blockedHistoryJobs > 0 || readiness.reviewHistoryJobs > 0
+        ? "Activate and review your import"
+        : "Turn this analysis into a live system",
+    primaryActionHelper:
+      "Activation carries these five staged datasets and their review decisions into guided onboarding.",
+    secondaryActionLabel: "Share this analysis",
   };
 }
 
 export function buildStakeholderTakeaways(snapshot: ShadowShopSnapshot): StakeholderTakeaway[] {
+  const readiness = importReadiness(snapshot);
+  const range =
+    (snapshot.roi.estimated_monthly_impact_high ?? 0) > 0
+      ? ` The planning range is ${formatUsd(snapshot.roi.estimated_monthly_impact_low ?? 0)}–${formatUsd(snapshot.roi.estimated_monthly_impact_high ?? 0)}/month.`
+      : "";
+
   return [
     {
       role: "owner",
-      label: "Recommended next step for the owner",
-      message: `Activate guided migration to recover up to ${formatUsd(snapshot.roi.estimated_monthly_impact)}/month while maintaining review control before go-live.`,
+      label: "Owner next step",
+      message: `Activate the controlled import; ProFixIQ will carry the files into setup and hold ambiguous rows for review.${range}`,
     },
     {
       role: "manager",
-      label: "Manager takeaway",
-      message: `${snapshot.operationalNarrative.reviewNeededCount} records need review and ${snapshot.urgencySignals.stalledJobs} jobs are stalled, so queue cleanup should be prioritized during activation.`,
+      label: "Import manager takeaway",
+      message: `${readiness.readyHistoryJobs} repair orders are ready, ${readiness.reviewHistoryJobs} need review, and ${readiness.blockedHistoryJobs} are blocked.`,
     },
     {
       role: "advisor",
-      label: "Advisor/service-writer impact",
-      message: `${snapshot.operationalNarrative.unresolvedCustomerVehicleLinks} linkage gaps may affect quoting and history confidence until guided review is completed.`,
+      label: "Advisor impact",
+      message:
+        readiness.reviewHistoryJobs > 0
+          ? `${readiness.reviewHistoryJobs} repair orders need customer/vehicle confirmation before their history is trusted.`
+          : "Detected repair orders have the customer and vehicle links needed for history lookup.",
     },
   ];
 }
 
 export function buildObjectionHandlingContent(snapshot: ShadowShopSnapshot): ObjectionHandlingContent {
-  const blockerCount = snapshot.dashboard.blockerCount;
-  const reviewQueue = snapshot.dashboard.reviewQueueCount;
+  const readiness = importReadiness(snapshot);
+  const reviewQueue = readiness.reviewHistoryJobs + readiness.blockedHistoryJobs;
 
   return {
     title: "How activation stays safe",
     bullets: [
-      "Preview data is read-only and has not created a live shop workspace yet.",
-      "Activation starts a real import process, not a blind overwrite.",
-      "Flagged and ambiguous rows are held for guided review instead of silently written live.",
-      "You stay in control of go-live timing while review queues are cleared.",
-      blockerCount > 0
-        ? `${blockerCount} blocker${blockerCount === 1 ? " is" : "s are"} currently tracked and surfaced explicitly before trusted go-live.`
-        : "No blocker pattern is currently forcing hard stop conditions.",
+      "The preview is read-only and has not created live operational records.",
+      "Activation uses the same customers, vehicles, history, invoices, and parts flow as guided onboarding.",
+      "Ambiguous rows are held for review instead of silently written live.",
+      "The staged files and analysis context carry into setup, so the shop does not upload them again.",
+      readiness.blockedHistoryJobs > 0
+        ? `${readiness.blockedHistoryJobs} blocked repair order${readiness.blockedHistoryJobs === 1 ? "" : "s"} will remain held until resolved.`
+        : "No repair-order identifier blocker is forcing a hard stop.",
     ],
-    whyReviewExists: reviewQueue > 0
-      ? `Why some items need review: ${reviewQueue} records have missing identifiers or ambiguous matches that require confirmation before safe operational use.`
-      : "Why some items need review: edge cases are queued when matching confidence is below trusted thresholds.",
+    whyReviewExists:
+      reviewQueue > 0
+        ? `Why review exists: ${reviewQueue} repair orders have missing identifiers or ambiguous customer/vehicle links.`
+        : "Why review exists: only future ambiguous matches will be routed to the review queue.",
   };
 }
 
@@ -245,10 +276,15 @@ export function buildActivationCTAState(args: {
   confidence: number;
 }): { label: string; subtext: string; helper: string; urgencyTone: "low" | "medium" | "high" } {
   const monthlyImpact = Math.max(0, args.monthlyImpact);
+  const impactSubtext =
+    monthlyImpact > 0
+      ? `Modeled monthly capacity: ${formatUsd(monthlyImpact)}`
+      : "Establish a measurable baseline during activation";
+
   if (args.readiness === "READY") {
     return {
       label: "Turn this analysis into a live system",
-      subtext: `Estimated recoverable value: ${formatUsd(monthlyImpact)}/month`,
+      subtext: impactSubtext,
       helper: "Nothing has been written yet. Activation starts a controlled import.",
       urgencyTone: "low",
     };
@@ -256,9 +292,9 @@ export function buildActivationCTAState(args: {
 
   if (args.readiness === "REVIEW_REQUIRED") {
     return {
-      label: "Start fixing these issues",
-      subtext: `${args.reviewQueue} records are queued for guided review before go-live.`,
-      helper: `Estimated recoverable value: ${formatUsd(monthlyImpact)}/month. You review flagged records before live use.`,
+      label: "Activate and review your import",
+      subtext: `${args.reviewQueue} items are queued for guided review.`,
+      helper: "Safe rows can proceed while ambiguous rows remain held.",
       urgencyTone: "medium",
     };
   }
@@ -266,7 +302,7 @@ export function buildActivationCTAState(args: {
   return {
     label: "Review and activate your migration",
     subtext: `${args.blockers} blocker${args.blockers === 1 ? "" : "s"} must be resolved before trusted go-live.`,
-    helper: "Activation begins real import and holds unsafe rows for review instead of blind writes.",
+    helper: "Activation begins the real import and holds unsafe rows for review.",
     urgencyTone: "high",
   };
 }

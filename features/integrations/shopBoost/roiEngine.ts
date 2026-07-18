@@ -7,15 +7,29 @@ import type {
 } from "@/features/integrations/shopBoost/shadowShop";
 import type { ShopBoostPreflightReport } from "@/features/integrations/shopBoost/preflightAnalysis";
 
+export type ShopBoostROIEvidenceLevel = "observed" | "modeled" | "insufficient";
+
 export type ShopBoostROI = {
   revenue_opportunity: number;
   approval_speed_gain: number;
   labor_recovery_hours: number;
   parts_leakage_reduction: number;
   estimated_monthly_impact: number;
+  estimated_monthly_impact_low: number;
+  estimated_monthly_impact_high: number;
+  evidence_level: ShopBoostROIEvidenceLevel;
   confidence: number;
   assumptions: string[];
 };
+
+function numericQuestionnaireValue(
+  questionnaire: Record<string, unknown> | undefined,
+  key: string,
+): number {
+  const value = questionnaire?.[key];
+  const parsed = typeof value === "number" ? value : Number(String(value ?? "").trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
 
 export function buildShopBoostROI(args: {
   snapshotLike: {
@@ -27,50 +41,80 @@ export function buildShopBoostROI(args: {
     operationalNarrative: ShadowOperationalNarrative;
   };
   domainSummaries: Array<{ domain: string; total: number; reviewRequired: number; failed: number }>;
+  questionnaire?: Record<string, unknown>;
 }): ShopBoostROI {
   const { snapshotLike } = args;
+  const monthlyRepairOrders = numericQuestionnaireValue(args.questionnaire, "avgMonthlyRos");
+  const awaitingApproval = snapshotLike.operationalNarrative.approvalsLikelyNeeded;
+  const explicitlyStalled = snapshotLike.operationalNarrative.blockedCount;
+  const observedJobSignals = awaitingApproval + explicitlyStalled;
+  const hasObservedWorkflowEvidence = observedJobSignals > 0;
 
-  const stalledJobs = snapshotLike.workflowJobs.filter((job) => job.status === "blocked" || job.status === "awaiting_approval").length;
-  const approvalBacklog = snapshotLike.approvalFlow.waitingCustomerApproval;
-  const incompleteWorkOrders = snapshotLike.operationalNarrative.reviewNeededCount + snapshotLike.operationalNarrative.blockedCount;
-  const duplicateSignals = Math.max(0, Math.round((100 - snapshotLike.migrationStory.autoMatchedCustomersPct) * 0.08));
-  const missingPartsLinkage = snapshotLike.partsSignals.filter((signal) => signal.status !== "likely_stocked").length;
+  const observedRevenueOpportunity = Math.round(
+    awaitingApproval * 160 * 0.2 + explicitlyStalled * 210 * 0.25,
+  );
+  const modeledLaborHours =
+    monthlyRepairOrders > 0 ? Math.round((monthlyRepairOrders * 3.5 / 60) * 10) / 10 : 0;
+  const modeledCapacityValue = Math.round(modeledLaborHours * 90);
+  const estimatedMonthlyImpact = observedRevenueOpportunity + modeledCapacityValue;
 
-  const approvalRecovery = Math.round(approvalBacklog * 160 * 0.2);
-  const stalledRecovery = Math.round(stalledJobs * 210 * 0.25);
-  const dataHygieneRecovery = Math.round((incompleteWorkOrders + duplicateSignals) * 95 * 0.14);
+  const evidenceLevel: ShopBoostROIEvidenceLevel = hasObservedWorkflowEvidence
+    ? "observed"
+    : monthlyRepairOrders > 0
+      ? "modeled"
+      : "insufficient";
+  const lowEstimate = estimatedMonthlyImpact > 0
+    ? Math.round(estimatedMonthlyImpact * 0.6)
+    : 0;
+  const highEstimate = estimatedMonthlyImpact > 0
+    ? Math.round(estimatedMonthlyImpact * 1.2)
+    : 0;
+  const approvalSpeedGain = awaitingApproval > 0
+    ? Math.min(30, Math.max(1, Math.round((awaitingApproval / Math.max(snapshotLike.operationalNarrative.jobsIdentified, 1)) * 100 * 0.35)))
+    : 0;
 
-  const revenueOpportunity = Math.max(0, approvalRecovery + stalledRecovery + dataHygieneRecovery);
-  const approvalSpeedGain = Math.max(8, Math.min(34, Math.round((approvalBacklog / Math.max(snapshotLike.workflowJobs.length, 1)) * 100 * 0.45 + 8)));
-  const laborRecoveryHours = Math.max(2, Math.round((incompleteWorkOrders * 0.55 + duplicateSignals * 0.35) * 10) / 10);
-  const partsLeakageReduction = Math.max(5, Math.min(28, Math.round((missingPartsLinkage / Math.max(snapshotLike.partsSignals.length, 1)) * 100 * 0.4 + 5)));
-
-  const monthlyImpact = Math.round(revenueOpportunity + laborRecoveryHours * 90 + missingPartsLinkage * 45);
   const domainCoverage = args.domainSummaries.filter((domain) => domain.total > 0).length;
   const confidence = Math.max(
-    45,
+    20,
     Math.min(
-      96,
+      92,
       Math.round(
-        snapshotLike.preflightReport.confidence.score * 0.5 +
-          snapshotLike.migrationStory.autoMatchedCustomersPct * 0.25 +
+        snapshotLike.preflightReport.confidence.score * 0.55 +
+          snapshotLike.migrationStory.autoMatchedCustomersPct * 0.2 +
           (domainCoverage / Math.max(args.domainSummaries.length, 1)) * 100 * 0.25,
       ),
     ),
   );
 
+  const assumptions: string[] = [];
+  if (monthlyRepairOrders > 0) {
+    assumptions.push(
+      `Capacity scenario uses the shop-reported ${Math.round(monthlyRepairOrders)} repair orders/month and 3.5 minutes of avoidable admin time per repair order.`,
+      "Recovered capacity is valued at $90/hour; this is a planning assumption, not measured current loss.",
+    );
+  }
+  if (hasObservedWorkflowEvidence) {
+    assumptions.push(
+      `The uploaded status fields explicitly identify ${awaitingApproval} awaiting-approval and ${explicitlyStalled} stalled repair orders.`,
+      "Observed workflow recovery uses conservative lower-end recovery rates.",
+    );
+  }
+  if (assumptions.length === 0) {
+    assumptions.push(
+      "The files do not contain enough explicit operating-status or monthly-volume evidence to calculate a credible savings range yet.",
+    );
+  }
+
   return {
-    revenue_opportunity: revenueOpportunity,
+    revenue_opportunity: observedRevenueOpportunity,
     approval_speed_gain: approvalSpeedGain,
-    labor_recovery_hours: laborRecoveryHours,
-    parts_leakage_reduction: partsLeakageReduction,
-    estimated_monthly_impact: monthlyImpact,
+    labor_recovery_hours: modeledLaborHours,
+    parts_leakage_reduction: 0,
+    estimated_monthly_impact: estimatedMonthlyImpact,
+    estimated_monthly_impact_low: lowEstimate,
+    estimated_monthly_impact_high: highEstimate,
+    evidence_level: evidenceLevel,
     confidence,
-    assumptions: [
-      `Based on your data, ${approvalBacklog} jobs are currently waiting for approval and typically lose 15-25% if delayed.`,
-      `We detected ${missingPartsLinkage} parts linkage issues that commonly increase write-offs and rebill time.`,
-      `Stalled and incomplete jobs (${stalledJobs + incompleteWorkOrders}) were valued conservatively using lower-end shop recovery patterns.`,
-      "Ranges are directional and use conservative estimates from typical independent/fleet shop workflow patterns.",
-    ],
+    assumptions,
   };
 }

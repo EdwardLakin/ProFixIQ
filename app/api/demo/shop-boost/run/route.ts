@@ -226,6 +226,7 @@ export async function POST(
     const snapshot = await buildShadowShopSnapshot({
       intakeId,
       uploadedCsvs,
+      questionnaire,
     });
     const snapshotWithActivation = {
       ...snapshot,

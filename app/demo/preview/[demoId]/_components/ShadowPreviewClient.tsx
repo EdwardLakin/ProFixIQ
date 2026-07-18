@@ -378,129 +378,201 @@ function Dashboard({
   onGate: (action: GateActionContext) => void;
 }) {
   const { snapshot } = context;
+  const readiness = snapshot.importReadiness ?? {
+    detectedRecords: snapshot.preflightReport.totals.detectedRecords,
+    readyRecords: snapshot.preflightReport.totals.likelyAutoImportCount,
+    reviewRecords: snapshot.preflightReport.totals.likelyReviewNeededCount,
+    blockedRecords: snapshot.preflightReport.totals.likelyBlockerCount,
+    historyRows:
+      snapshot.operationalNarrative.historyRowsDetected ??
+      snapshot.operationalNarrative.jobsIdentified,
+    uniqueHistoryJobs: snapshot.operationalNarrative.jobsIdentified,
+    readyHistoryJobs: snapshot.operationalNarrative.workReadyCount,
+    reviewHistoryJobs: snapshot.operationalNarrative.reviewNeededCount,
+    blockedHistoryJobs: snapshot.operationalNarrative.estimatedOperationalBlockers,
+    linkageAccuracy: snapshot.projectionConfidence.factors.matchingAccuracy,
+    domainCoverage: snapshot.projectionConfidence.factors.domainCoverage,
+  };
+  const evidenceLevel = snapshot.roi.evidence_level ?? "insufficient";
+  const lowImpact = snapshot.roi.estimated_monthly_impact_low ?? 0;
+  const highImpact =
+    snapshot.roi.estimated_monthly_impact_high ?? snapshot.roi.estimated_monthly_impact;
+  const hasExplicitWorkflowSignals =
+    snapshot.urgencySignals.stalledJobs > 0 ||
+    snapshot.urgencySignals.customersWaiting > 0;
+  const domainRows = [
+    ["Customers", snapshot.uploadSummary.customers.count],
+    ["Vehicles", snapshot.uploadSummary.vehicles.count],
+    ["History", snapshot.uploadSummary.history.count],
+    ["Invoices", snapshot.uploadSummary.invoices.count],
+    ["Parts", snapshot.uploadSummary.parts.count],
+  ] as const;
 
   return (
     <section className="space-y-4">
       <div className="rounded-xl border border-[rgba(214,176,150,0.35)] bg-[rgba(145,90,60,0.14)] p-4">
-        <p className="text-[11px] uppercase tracking-[0.15em] text-[rgba(240,205,178,0.95)]">{decisionSummary.heading}</p>
-        <p className="mt-2 text-sm text-[color:var(--theme-text-primary)]">{decisionSummary.summary}</p>
-        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-          <p className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[color:var(--theme-text-primary)]">Monthly value at risk: <span className="font-semibold text-[color:var(--theme-text-primary)]">{formatUsd(decisionSummary.monthlyValueAtRisk)}</span></p>
-          <p className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[color:var(--theme-text-primary)]">Recoverable value: <span className="font-semibold text-emerald-300">{formatUsd(decisionSummary.recoverableValue)}</span></p>
+        <p className="text-[11px] uppercase tracking-[0.15em] text-[rgba(240,205,178,0.95)]">
+          {decisionSummary.heading}
+        </p>
+        <p className="mt-2 text-base font-semibold text-[color:var(--theme-text-primary)]">
+          {decisionSummary.summary}
+        </p>
+        <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+          {decisionSummary.readinessSummary}
+        </p>
+      </div>
+
+      <div>
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold">Your import snapshot</h3>
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+              History lines are grouped into unique repair orders before readiness is scored.
+            </p>
+          </div>
+          <p className="text-xs text-[color:var(--theme-text-muted)]">
+            {readiness.detectedRecords.toLocaleString()} total rows scanned
+          </p>
         </div>
-        <div className="mt-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
-          <p>{decisionSummary.readinessSummary}</p>
-          <p className="mt-1 text-[color:var(--theme-text-secondary)]">{decisionSummary.blockerSummary}</p>
-        </div>
-      </div>
-      <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-3 text-xs text-cyan-100">Operational preview: ProFixIQ inferred workflow states from your CSVs and preflight trust logic.</div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Trust score" value={`${snapshot.dashboard.trustScore}%`} />
-        <Metric label="Jobs identified" value={String(snapshot.operationalNarrative.jobsIdentified)} />
-        <Metric label="Ready to flow" value={String(snapshot.operationalNarrative.workReadyCount)} />
-        <Metric label="Needs review" value={String(snapshot.operationalNarrative.reviewNeededCount)} />
-      </div>
-
-      <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm">
-        <p className="font-semibold text-[color:var(--theme-text-primary)]">Your shop impact with ProFixIQ</p>
-        <div className="mt-2 grid gap-2 text-xs text-emerald-100 sm:grid-cols-2">
-          <p>+{formatUsd(snapshot.roi.estimated_monthly_impact)}/month recovered revenue</p>
-          <p>+{snapshot.roi.approval_speed_gain}% faster approvals</p>
-          <p>-{snapshot.roi.labor_recovery_hours} hrs wasted labor</p>
-          <p>+{snapshot.roi.parts_leakage_reduction}% parts accuracy</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Metric label="History rows" value={readiness.historyRows.toLocaleString()} />
+          <Metric label="Repair orders" value={readiness.uniqueHistoryJobs.toLocaleString()} />
+          <Metric label="Ready to import" value={readiness.readyHistoryJobs.toLocaleString()} />
+          <Metric label="Needs review" value={readiness.reviewHistoryJobs.toLocaleString()} />
+          <Metric label="Blocked" value={readiness.blockedHistoryJobs.toLocaleString()} />
         </div>
       </div>
 
-      <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-100">
-        <p className="font-semibold">Urgency signals</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>{snapshot.urgencySignals.stalledJobs} jobs currently stalled.</li>
-          <li>{formatUsd(snapshot.urgencySignals.revenueAtRiskNow)} at risk right now.</li>
-          <li>{snapshot.urgencySignals.customersWaiting} customers waiting on next-step communication.</li>
-        </ul>
-      </div>
-
-      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)]">
-        <p className="font-semibold text-[color:var(--theme-text-primary)]">Operational consequences from current state</p>
-        <div className="mt-2 space-y-2">
-          {consequenceItems.slice(0, 5).map((item) => (
-            <div key={item.key} className={`rounded-md border px-3 py-2 ${item.severity === "critical" ? "border-rose-500/35 bg-rose-500/10" : item.severity === "warning" ? "border-amber-500/35 bg-amber-500/10" : "border-emerald-500/35 bg-emerald-500/10"}`}>
-              <p className="font-semibold text-[color:var(--theme-text-primary)]">{item.title}</p>
-              <p className="mt-0.5 text-[color:var(--theme-text-secondary)]">{item.detail}</p>
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold">Five-dataset activation map</p>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                These are the same domains used by guided onboarding.
+              </p>
             </div>
-          ))}
+            <p className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-xs text-[color:var(--theme-text-secondary)]">
+              {readiness.domainCoverage}% coverage
+            </p>
+          </div>
+          <div className="mt-3 divide-y divide-[color:var(--theme-border-soft)] text-sm">
+            {domainRows.map(([label, count]) => (
+              <div key={label} className="flex items-center justify-between py-2">
+                <span>{label}</span>
+                <span className={count > 0 ? "text-emerald-300" : "text-amber-300"}>
+                  {count > 0 ? `${count.toLocaleString()} rows staged` : "Not provided"}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] p-3">
+              <p className="font-semibold">1. Activate</p>
+              <p className="mt-1 text-[color:var(--theme-text-secondary)]">Reuse these staged files—no second upload.</p>
+            </div>
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] p-3">
+              <p className="font-semibold">2. Materialize</p>
+              <p className="mt-1 text-[color:var(--theme-text-secondary)]">Write safe rows through the guided import pipeline.</p>
+            </div>
+            <div className="rounded-lg border border-[color:var(--theme-border-soft)] p-3">
+              <p className="font-semibold">3. Review</p>
+              <p className="mt-1 text-[color:var(--theme-text-secondary)]">Hold ambiguous or failed items for guided review.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 p-4">
+          <p className="font-semibold text-cyan-50">{decisionSummary.confidence.title}</p>
+          <p className="mt-1 text-xs text-cyan-50/80">{decisionSummary.confidence.explanation}</p>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg border border-cyan-300/20 bg-black/10 p-2">
+              <p className="text-xl font-semibold">{snapshot.dashboard.trustScore}%</p>
+              <p className="text-[10px] uppercase tracking-wide text-cyan-50/70">Import trust</p>
+            </div>
+            <div className="rounded-lg border border-cyan-300/20 bg-black/10 p-2">
+              <p className="text-xl font-semibold">{readiness.linkageAccuracy}%</p>
+              <p className="text-[10px] uppercase tracking-wide text-cyan-50/70">Link quality</p>
+            </div>
+            <div className="rounded-lg border border-cyan-300/20 bg-black/10 p-2">
+              <p className="text-xl font-semibold">{readiness.domainCoverage}%</p>
+              <p className="text-[10px] uppercase tracking-wide text-cyan-50/70">Data coverage</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-cyan-50/75">
+            {snapshot.operationalSignals.goLiveMomentumLabel}
+          </p>
         </div>
       </div>
 
-      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)]">
-        <p className="font-semibold text-[color:var(--theme-text-primary)]">Operational narrative</p>
-        <ul className="mt-2 space-y-1 text-xs text-[color:var(--theme-text-secondary)]">
-          <li>{snapshot.operationalNarrative.jobsIdentified} jobs were identified from your uploaded history.</li>
-          <li>{snapshot.operationalNarrative.approvalsLikelyNeeded} jobs look ready for approval routing.</li>
-          <li>{snapshot.operationalNarrative.partsInventoryConflicts} parts signals need inventory reconciliation.</li>
-          <li>{snapshot.operationalNarrative.unresolvedCustomerVehicleLinks} records need customer/vehicle link review before full history cleanup.</li>
-        </ul>
-      </div>
-
-      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)]">
-        <p className="font-semibold text-[color:var(--theme-text-primary)]">Why this is happening (based on your data)</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-[color:var(--theme-text-secondary)]">
+      <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-[color:var(--theme-text-primary)]">
+              {evidenceLevel === "observed"
+                ? "Evidence-backed recovery opportunity"
+                : evidenceLevel === "modeled"
+                  ? "Modeled capacity opportunity"
+                  : "Build your measurable baseline"}
+            </p>
+            <p className="mt-1 max-w-2xl text-xs text-emerald-50/80">
+              {evidenceLevel === "observed"
+                ? "This range uses explicit workflow statuses found in the uploaded files."
+                : evidenceLevel === "modeled"
+                  ? "This is a planning range based on reported monthly repair-order volume—not a claim about current losses."
+                  : "The files establish import readiness, but do not contain enough operating evidence for a credible savings claim yet."}
+            </p>
+          </div>
+          {highImpact > 0 ? (
+            <p className="text-2xl font-semibold text-emerald-200">
+              {formatUsd(lowImpact)}–{formatUsd(highImpact)}
+              <span className="ml-1 text-xs font-normal">/ month</span>
+            </p>
+          ) : null}
+        </div>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-emerald-50/80">
           {snapshot.roi.assumptions.map((assumption) => (
             <li key={assumption}>{assumption}</li>
           ))}
         </ul>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-          <p className="font-semibold text-[color:var(--theme-text-primary)]">Before vs after</p>
-          <p className="mt-2">Approval rate: {snapshot.impactComparison.before.approval_rate}% → {snapshot.impactComparison.after.approval_rate}%</p>
-          <p>Avg job completion time: {snapshot.impactComparison.before.avg_job_completion_time}d → {snapshot.impactComparison.after.avg_job_completion_time}d</p>
-          <p>Parts sync rate: {snapshot.impactComparison.before.parts_sync_rate}% → {snapshot.impactComparison.after.parts_sync_rate}%</p>
-        </div>
-        <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-          <p className="font-semibold text-[color:var(--theme-text-primary)]">{decisionSummary.confidence.title}</p>
-          <p className="mt-1">{decisionSummary.confidence.explanation}</p>
-          <p className="mt-1">Confidence score: <span className="font-semibold text-cyan-200">{snapshot.projectionConfidence.score}%</span></p>
-          <p className="mt-1">Data completeness: {snapshot.projectionConfidence.factors.dataCompleteness}%</p>
-          <p>Matching accuracy: {snapshot.projectionConfidence.factors.matchingAccuracy}%</p>
-          <p>Domain coverage: {snapshot.projectionConfidence.factors.domainCoverage}%</p>
-          <p className="mt-1 text-[color:var(--theme-text-secondary)]">Increases confidence: {decisionSummary.confidence.increasesConfidence}</p>
-          <p className="text-[color:var(--theme-text-muted)]">Lowers confidence: {decisionSummary.confidence.lowersConfidence}</p>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-        <p className="font-semibold text-[color:var(--theme-text-primary)]">Plan alignment</p>
-        <p className="mt-1">Starter unlocks {snapshot.planAlignment.starterImpactUnlockPct}% of this impact. Pro unlocks {snapshot.planAlignment.proImpactUnlockPct}% with workflow automation + approvals + parts sync.</p>
-      </div>
-
-      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-        <p className="font-semibold text-[color:var(--theme-text-primary)]">What we prepared for you</p>
-        <ul className="mt-2 list-disc space-y-1 pl-5">
-          {snapshot.migrationStory.highlights.map((highlight) => (
-            <li key={highlight}>{highlight}</li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs text-emerald-100">
-        <p className="font-semibold">Go-live confidence</p>
-        <p className="mt-1">{snapshot.operationalSignals.goLiveMomentumLabel}</p>
-        <p className="mt-1 text-emerald-50/80">{snapshot.activationConfidence.confidenceCopy}</p>
-      </div>
-
-      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-primary)]">
-        <p className="font-semibold text-[color:var(--theme-text-primary)]">Stakeholder framing</p>
-        <div className="mt-2 space-y-2">
-          {stakeholderTakeaways.map((takeaway) => (
-            <div key={takeaway.role} className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
-              <p className="font-semibold text-[color:var(--theme-text-primary)]">{takeaway.label}</p>
-              <p className="mt-1 text-[color:var(--theme-text-secondary)]">{takeaway.message}</p>
+      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+        <p className="font-semibold">What needs attention before go-live</p>
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          {consequenceItems.slice(0, 3).map((item) => (
+            <div
+              key={item.key}
+              className={`rounded-lg border p-3 text-xs ${
+                item.severity === "critical"
+                  ? "border-rose-500/35 bg-rose-500/10"
+                  : item.severity === "warning"
+                    ? "border-amber-500/35 bg-amber-500/10"
+                    : "border-emerald-500/35 bg-emerald-500/10"
+              }`}
+            >
+              <p className="font-semibold">{item.title}</p>
+              <p className="mt-1 text-[color:var(--theme-text-secondary)]">{item.detail}</p>
             </div>
           ))}
         </div>
+      </div>
+
+      {hasExplicitWorkflowSignals ? (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-xs text-amber-50">
+          <p className="font-semibold">Explicit workflow signals in the export</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-amber-50/80">
+            {snapshot.urgencySignals.explainer.map((signal) => (
+              <li key={signal}>{signal}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-xs text-emerald-50">
+        <p className="font-semibold">The handoff is prepared</p>
+        <p className="mt-1 text-emerald-50/80">{snapshot.activationConfidence.confidenceCopy}</p>
+        <p className="mt-2 text-emerald-50/80">{stakeholderTakeaways[0]?.message}</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
