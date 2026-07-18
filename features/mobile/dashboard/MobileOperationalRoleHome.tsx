@@ -29,21 +29,21 @@ const CONFIG: Record<Props["role"], RoleConfig> = {
     eyebrow: "Parts desk",
     title: (name) => `Keep parts moving, ${name}`,
     subtitle: "Quote, order, receive, and release parts without losing the work-order context.",
-    action: { href: "/parts/requests", label: "Review new requests" },
+    action: { href: "/mobile/parts", label: "Review new requests" },
     metrics: [
-      { label: "New requests", value: "Open", href: "/parts/requests", tone: "warning" },
-      { label: "Awaiting quote", value: "Review", href: "/parts/requests" },
-      { label: "On order", value: "Track", href: "/parts/orders" },
-      { label: "Ready for tech", value: "Release", href: "/parts/requests", tone: "positive" },
+      { label: "New requests", value: "Open", href: "/mobile/parts?view=requests", tone: "warning" },
+      { label: "Awaiting quote", value: "Review", href: "/mobile/parts?view=quotes" },
+      { label: "On order", value: "Track", href: "/mobile/parts?view=orders" },
+      { label: "Ready for tech", value: "Release", href: "/mobile/parts?view=ready", tone: "positive" },
     ],
     attention: [
-      { title: "Requests needing a quote", detail: "Prioritize unquoted parts before they block approvals.", href: "/parts/requests", action: "Review" },
-      { title: "Orders needing follow-up", detail: "Confirm ETA changes and backorders.", href: "/parts/orders", action: "Track" },
-      { title: "Received parts not released", detail: "Notify the assigned technician and update the request.", href: "/parts/requests", action: "Release" },
+      { title: "Requests needing a quote", detail: "Prioritize unquoted parts before they block approvals.", href: "/mobile/parts?view=quotes", action: "Review" },
+      { title: "Orders needing follow-up", detail: "Confirm ETA changes and backorders.", href: "/mobile/parts?view=orders", action: "Track" },
+      { title: "Received parts not released", detail: "Notify the assigned technician and update the request.", href: "/mobile/parts?view=ready", action: "Release" },
     ],
     actions: [
-      { title: "Parts requests", detail: "Open the live request board.", href: "/parts/requests" },
-      { title: "Orders", detail: "Track ordered and partially received parts.", href: "/parts/orders" },
+      { title: "Parts requests", detail: "Open the mobile request workspace.", href: "/mobile/parts?view=requests" },
+      { title: "Orders", detail: "Track ordered and partially received parts.", href: "/mobile/parts?view=orders" },
       { title: "Work orders", detail: "Review the repair context.", href: "/mobile/work-orders" },
       { title: "Team chat", detail: "Coordinate with advisors and technicians.", href: "/mobile/messages" },
     ],
@@ -52,20 +52,20 @@ const CONFIG: Record<Props["role"], RoleConfig> = {
     eyebrow: "Dispatch",
     title: (name) => `Balance today’s work, ${name}`,
     subtitle: "Keep technician assignments, bays, and incoming work aligned.",
-    action: { href: "/work-orders/board", label: "Open dispatch board" },
+    action: { href: "/mobile/dispatch", label: "Open dispatch board" },
     metrics: [
-      { label: "Unassigned", value: "Review", href: "/work-orders/board", tone: "warning" },
-      { label: "In progress", value: "Live", href: "/work-orders/board", tone: "positive" },
-      { label: "Blocked", value: "Resolve", href: "/work-orders/board", tone: "warning" },
+      { label: "Unassigned", value: "Review", href: "/mobile/dispatch?view=unassigned", tone: "warning" },
+      { label: "In progress", value: "Live", href: "/mobile/dispatch?view=active", tone: "positive" },
+      { label: "Blocked", value: "Resolve", href: "/mobile/dispatch?view=blocked", tone: "warning" },
       { label: "Appointments", value: "Today", href: "/mobile/appointments" },
     ],
     attention: [
-      { title: "Unassigned work", detail: "Match ready jobs to available technicians.", href: "/work-orders/board", action: "Assign" },
-      { title: "Stalled jobs", detail: "Review jobs that are active without recent progress.", href: "/work-orders/board", action: "Review" },
+      { title: "Unassigned work", detail: "Match ready jobs to available technicians.", href: "/mobile/dispatch?view=unassigned", action: "Assign" },
+      { title: "Stalled jobs", detail: "Review jobs that are active without recent progress.", href: "/mobile/dispatch?view=blocked", action: "Review" },
       { title: "Incoming appointments", detail: "Prepare the next arrivals and bay plan.", href: "/mobile/appointments", action: "Plan" },
     ],
     actions: [
-      { title: "Dispatch board", detail: "Balance technicians and bays.", href: "/work-orders/board" },
+      { title: "Dispatch board", detail: "Balance technicians and bays.", href: "/mobile/dispatch" },
       { title: "Appointments", detail: "Review today’s arrivals.", href: "/mobile/appointments" },
       { title: "Work orders", detail: "Open active repair orders.", href: "/mobile/work-orders" },
       { title: "Team chat", detail: "Coordinate shop-floor changes.", href: "/mobile/messages" },
@@ -124,12 +124,7 @@ export default function MobileOperationalRoleHome({ name, role }: Props) {
 
   return (
     <MobileDashboardPage>
-      <MobileDashboardHero
-        eyebrow={config.eyebrow}
-        title={config.title(firstName)}
-        subtitle={config.subtitle}
-        action={config.action}
-      />
+      <MobileDashboardHero eyebrow={config.eyebrow} title={config.title(firstName)} subtitle={config.subtitle} action={config.action} />
       <MobileMetricGrid items={config.metrics} />
       <MobileAttentionList subtitle="Highest-priority work for this role" items={config.attention} />
       <MobileActionGrid items={config.actions} />

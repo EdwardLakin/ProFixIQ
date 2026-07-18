@@ -38,11 +38,15 @@ export default function MobileManagerHome({ managerName, role, stats }: Props) {
     todayBilled: null,
   };
   const copy = ROLE_COPY[role] ?? ROLE_COPY.manager!;
-  const primaryHref = role === "admin" ? "/dashboard/workforce/attendance" : "/work-orders/board";
+  const primaryHref = role === "admin"
+    ? "/mobile/workforce/attendance"
+    : role === "manager" || role === "foreman"
+      ? "/mobile/dispatch"
+      : "/mobile/work-orders";
 
   const attention = [
     ...(waiters > 0 ? [{ title: "customers waiting", detail: "Front-counter work needs immediate follow-up.", href: "/mobile/work-orders", action: "Review", count: waiters }] : []),
-    ...(techniciansOnShift === 0 ? [{ title: "No technicians clocked in", detail: "Confirm attendance before assigning work.", href: "/dashboard/workforce/attendance", action: "Attendance" }] : []),
+    ...(techniciansOnShift === 0 ? [{ title: "No technicians clocked in", detail: "Confirm attendance before assigning work.", href: "/mobile/workforce/attendance", action: "Attendance" }] : []),
     ...(activeWos > 0 ? [{ title: "active work orders", detail: "Review flow and identify blocked work.", href: "/mobile/work-orders", action: "Open", count: activeWos }] : []),
   ];
 
@@ -52,13 +56,13 @@ export default function MobileManagerHome({ managerName, role, stats }: Props) {
       <MobileMetricGrid items={[
         { label: "Active work orders", value: activeWos, href: "/mobile/work-orders" },
         { label: "Customers waiting", value: waiters, href: "/mobile/work-orders", tone: waiters > 0 ? "warning" : "default" },
-        { label: "Technicians on shift", value: techniciansOnShift, href: "/dashboard/workforce/attendance", tone: techniciansOnShift > 0 ? "positive" : "warning" },
+        { label: "Technicians on shift", value: techniciansOnShift, href: "/mobile/workforce/attendance", tone: techniciansOnShift > 0 ? "positive" : "warning" },
         { label: "Today billed", value: todayBilled ?? "—", href: "/mobile/reports" },
       ]} />
       <MobileAttentionList subtitle="Only the items most likely to slow the shop down." items={attention} />
       <MobileActionGrid items={[
-        { title: "Work order board", detail: "Review live work and status flow.", href: "/work-orders/board" },
-        { title: "Attendance", detail: "See who is clocked in and active.", href: "/dashboard/workforce/attendance" },
+        { title: "Work order board", detail: "Review live work and status flow.", href: "/mobile/work-orders" },
+        { title: "Attendance", detail: "See who is clocked in and active.", href: "/mobile/workforce/attendance" },
         { title: "Appointments", detail: "Review today’s arrivals.", href: "/mobile/appointments" },
         { title: "Reports", detail: "Open revenue and efficiency views.", href: "/mobile/reports" },
       ]} />

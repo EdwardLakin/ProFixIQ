@@ -22,9 +22,8 @@ export type MobileScope =
   | "jobs"
   | "inspect"
   | "messages"
-  | "planner" // keep in case something else still references it
+  | "planner"
   | "settings"
-  // align mobile dashboards with desktop views
   | "work_orders"
   | "appointments"
   | "inspections"
@@ -41,25 +40,39 @@ export type MobileTile = {
 
 export const MOBILE_TILES: MobileTile[] = [
   {
-    href: "/dashboard",
+    href: "/mobile",
     title: "Shop Overview",
     subtitle: "Today at a glance",
     roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman", "parts", "dispatcher", "fleet_manager", "driver"],
     scopes: ["dashboard", "home", "all"],
   },
   {
-    href: "/work-orders/board",
+    href: "/mobile/work-orders",
     title: "Work Order Board",
     subtitle: "Live work flow",
     roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
     scopes: ["dashboard", "home", "jobs", "work_orders", "all"],
   },
   {
-    href: "/dashboard/workforce/attendance",
+    href: "/mobile/workforce/attendance",
     title: "Attendance & Activity",
     subtitle: "Live staff and job time",
     roles: ["owner", "admin", "manager"],
     scopes: ["dashboard", "home", "work_orders", "all"],
+  },
+  {
+    href: "/mobile/dispatch",
+    title: "Dispatch",
+    subtitle: "Technicians, bays and blockers",
+    roles: ["manager", "lead_hand", "foreman", "dispatcher"],
+    scopes: ["dashboard", "home", "jobs", "work_orders", "all"],
+  },
+  {
+    href: "/mobile/parts",
+    title: "Parts",
+    subtitle: "Requests, orders and receiving",
+    roles: ["parts", "owner", "admin", "manager"],
+    scopes: ["dashboard", "home", "jobs", "work_orders", "all"],
   },
   {
     href: "/mobile/tech/queue",
@@ -69,20 +82,12 @@ export const MOBILE_TILES: MobileTile[] = [
     scopes: ["home", "jobs", "work_orders", "all"],
   },
   {
-    href: "/mobile/work-orders",
-    title: "Work Orders",
-    subtitle: "Shop work order board",
-    roles: ["manager", "lead_hand", "foreman", "advisor", "owner", "admin"],
-    scopes: ["home", "jobs", "work_orders", "all"],
-  },
-  {
     href: "/mobile/inspections",
     title: "Inspections",
     subtitle: "Run checklists on vehicles",
     roles: ["mechanic", "advisor", "manager", "lead_hand", "foreman"],
     scopes: ["home", "inspect", "inspections", "work_orders", "all"],
   },
-  // 🔁 Planner → Appointments (mobile day planner)
   {
     href: "/mobile/appointments",
     title: "Appointments",
@@ -104,8 +109,6 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["mechanic", "advisor", "manager", "lead_hand", "owner", "admin", "parts"],
     scopes: ["home", "settings", "all"],
   },
-
-  // 🔶 Mobile owner/manager reports
   {
     href: "/mobile/reports",
     title: "Reports",
@@ -113,8 +116,6 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["owner", "admin", "manager"],
     scopes: ["home", "work_orders", "all"],
   },
-
-  // 🔧 Mobile technicians / leaderboard
   {
     href: "/mobile/technicians",
     title: "Technicians",
@@ -122,8 +123,6 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["owner", "admin", "manager"],
     scopes: ["home", "jobs", "work_orders", "all"],
   },
-
-  // 🚚 Fleet – management / dispatch view
   {
     href: "/mobile/fleet",
     title: "Fleet",
@@ -131,8 +130,6 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["owner", "admin", "manager", "fleet_manager", "dispatcher"],
     scopes: ["home", "fleet", "all"],
   },
-
-  // 📝 Driver daily pre-trip (mobile)
   {
     href: "/mobile/fleet/pretrip",
     title: "Pre-trip",
@@ -140,8 +137,6 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["driver"],
     scopes: ["home", "fleet", "inspect", "all"],
   },
-
-  // 👨‍🔧 Mobile tech self performance
   {
     href: "/mobile/tech/performance",
     title: "My Performance",
@@ -149,8 +144,6 @@ export const MOBILE_TILES: MobileTile[] = [
     roles: ["mechanic"],
     scopes: ["home", "jobs", "all"],
   },
-
-  // 🚨 Fleet service requests (mobile)
   {
     href: "/mobile/fleet/service-requests",
     title: "Service Requests",
