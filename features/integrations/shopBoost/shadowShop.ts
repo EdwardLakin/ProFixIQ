@@ -16,6 +16,11 @@ import {
   buildShopBoostROI,
   type ShopBoostROI,
 } from "@/features/integrations/shopBoost/roiEngine";
+import {
+  assessInstantAnalysisHistory,
+  calculateInstantAnalysisDomainCoverage,
+  type InstantHistoryAssessment,
+} from "@/features/integrations/shopBoost/analysisAccuracy";
 
 type CsvRow = Record<string, string>;
 
@@ -49,6 +54,7 @@ export type ShadowSetupIssue = {
 };
 
 export type ShadowOperationalNarrative = {
+  historyRowsDetected: number;
   jobsIdentified: number;
   approvalsLikelyNeeded: number;
   partsInventoryConflicts: number;
@@ -141,11 +147,27 @@ export type ShadowPlanAlignment = {
   summary: string;
 };
 
+export type ShadowImportReadiness = {
+  detectedRecords: number;
+  readyRecords: number;
+  reviewRecords: number;
+  blockedRecords: number;
+  historyRows: number;
+  uniqueHistoryJobs: number;
+  readyHistoryJobs: number;
+  reviewHistoryJobs: number;
+  blockedHistoryJobs: number;
+  linkageAccuracy: number;
+  domainCoverage: number;
+};
+
 export type ShadowShopSnapshot = {
   intakeId: string;
   generatedAt: string;
+  questionnaire?: Record<string, unknown>;
   uploadSummary: Record<ShadowDomainKey, { count: number; fileName: string | null }>;
   preflightReport: ShopBoostPreflightReport;
+  importReadiness: ShadowImportReadiness;
   dashboard: {
     estimatedImportedRecords: number;
     reviewQueueCount: number;
