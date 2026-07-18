@@ -1,15 +1,18 @@
 "use client";
 
-
-import Link from "next/link";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
-import { MobileRoleHub } from "@/features/mobile/components/MobileRoleHub";
+import {
+  MobileActionGrid,
+  MobileAttentionList,
+  MobileDashboardHero,
+  MobileDashboardPage,
+  MobileMetricGrid,
+} from "@/features/mobile/dashboard/MobileDashboardPrimitives";
 
 type ManagerStats = {
   activeWos: number;
   waiters: number;
   techniciansOnShift: number;
-  /** Optional: today’s billed total as a string (e.g. "$3,420") */
   todayBilled?: string | null;
 };
 
@@ -19,155 +22,46 @@ type Props = {
   stats?: ManagerStats;
 };
 
+const ROLE_COPY: Partial<Record<MobileRole, { eyebrow: string; subtitle: string; primary: string }>> = {
+  owner: { eyebrow: "Owner overview", subtitle: "Shop health, staffing and operational exceptions.", primary: "Review shop priorities" },
+  admin: { eyebrow: "Admin workspace", subtitle: "Attendance, workload and issues requiring action.", primary: "Review attendance" },
+  manager: { eyebrow: "Manager workspace", subtitle: "Work flow, customer waiters and technician coverage.", primary: "Open dispatch" },
+  foreman: { eyebrow: "Foreman workspace", subtitle: "Technician loading, blockers and work in motion.", primary: "Open dispatch" },
+};
+
 export default function MobileManagerHome({ managerName, role, stats }: Props) {
-  const firstName = managerName?.split(" ")[0] ?? managerName ?? "Manager";
+  const firstName = managerName?.split(" ")[0] || "Manager";
+  const { activeWos, waiters, techniciansOnShift, todayBilled } = stats ?? {
+    activeWos: 0,
+    waiters: 0,
+    techniciansOnShift: 0,
+    todayBilled: null,
+  };
+  const copy = ROLE_COPY[role] ?? ROLE_COPY.manager!;
+  const primaryHref = role === "admin" ? "/dashboard/workforce/attendance" : "/work-orders/board";
 
-  const { activeWos, waiters, techniciansOnShift, todayBilled } =
-    stats ?? {
-      activeWos: 0,
-      waiters: 0,
-      techniciansOnShift: 0,
-      todayBilled: null,
-    };
-
-  return (
-    <div className="space-y-6 px-4 py-4">
-      {/* Hero */}
-      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
-        <div className="space-y-4">
-          <div className="text-center">
-            <h1 className="text-xl font-semibold leading-tight">
-              <span className="text-[color:var(--theme-text-primary)]">Shop overview, </span>
-              <span className="text-[var(--accent-copper)]">{firstName}</span>{" "}
-              <span className="align-middle">📊</span>
-            </h1>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-              High-level view of workload, waiters and technician coverage.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3 text-xs">
-            <ManagerStatChip label="Active WOs" value={activeWos} />
-            <ManagerStatChip
-              label="Waiters"
-              value={waiters}
-              warn={waiters > 0}
-            />
-            <ManagerStatChip
-              label="Techs on shift"
-              value={techniciansOnShift}
-              accent={techniciansOnShift > 0}
-            />
-          </div>
-
-          <div className="mt-1 text-center text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-            Today billed:{" "}
-            <span className="font-semibold text-[var(--accent-copper-soft)]">
-              {todayBilled ?? "—"}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* Core flows – queue, create, appointments, messages (mirrors lead-hand) */}
-      <section className="space-y-3">
-        <FlowCard
-          title="Work order queue"
-          body="See jobs in flight and where capacity is tight."
-          href="/mobile/work-orders"
-          cta="Open work orders"
-        />
-        <FlowCard
-          title="Create work order"
-          body="Start a new job from the counter or bay."
-          href="/mobile/work-orders/create"
-          cta="New work order"
-        />
-        <FlowCard
-          title="Appointments"
-          body="Look at today’s bookings and add new appointments."
-          href="/mobile/appointments"
-          cta="Open appointments"
-        />
-        <FlowCard
-          title="Messages & chat"
-          body="Stay in sync with advisors, techs and parts."
-          href="/mobile/messages"
-          cta="Open messages"
-        />
-      </section>
-
-      {/* Shortcuts from config (aligned with WO + appointments) */}
-      <MobileRoleHub
-        role={role}
-        scopes={["work_orders", "appointments", "all"]}
-        title="Manager shortcuts"
-        subtitle="Quick links that mirror your desktop views."
-      />
-    </div>
-  );
-}
-
-function ManagerStatChip({
-  label,
-  value,
-  accent,
-  warn,
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-  warn?: boolean;
-}) {
-  const base =
-    "metal-card rounded-2xl px-3 py-3 shadow-[var(--theme-shadow-medium)] text-center border";
-
-  let color = "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)]";
-  if (accent) {
-    color =
-      "border-emerald-400/70 text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.55)]";
-  } else if (warn && value > 0) {
-    color =
-      "border-red-500/80 text-red-100 shadow-[0_0_18px_rgba(239,68,68,0.55)]";
-  }
+  const attention = [
+    ...(waiters > 0 ? [{ title: "customers waiting", detail: "Front-counter work needs immediate follow-up.", href: "/mobile/work-orders", action: "Review", count: waiters }] : []),
+    ...(techniciansOnShift === 0 ? [{ title: "No technicians clocked in", detail: "Confirm attendance before assigning work.", href: "/dashboard/workforce/attendance", action: "Attendance" }] : []),
+    ...(activeWos > 0 ? [{ title: "active work orders", detail: "Review flow and identify blocked work.", href: "/mobile/work-orders", action: "Open", count: activeWos }] : []),
+  ];
 
   return (
-    <div className={`${base} ${color}`}>
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-        {label}
-      </div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
-    </div>
-  );
-}
-
-function FlowCard({
-  title,
-  body,
-  href,
-  cta,
-}: {
-  title: string;
-  body: string;
-  href: string;
-  cta: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            {title}
-          </div>
-          <div className="mt-1 text-xs text-[color:var(--theme-text-primary)]">{body}</div>
-        </div>
-        <span className="text-[0.7rem] text-[var(--accent-copper-soft)]">
-          {cta} →
-        </span>
-      </div>
-    </Link>
+    <MobileDashboardPage>
+      <MobileDashboardHero eyebrow={copy.eyebrow} title={`Shop overview, ${firstName}`} subtitle={copy.subtitle} action={{ href: primaryHref, label: copy.primary }} />
+      <MobileMetricGrid items={[
+        { label: "Active work orders", value: activeWos, href: "/mobile/work-orders" },
+        { label: "Customers waiting", value: waiters, href: "/mobile/work-orders", tone: waiters > 0 ? "warning" : "default" },
+        { label: "Technicians on shift", value: techniciansOnShift, href: "/dashboard/workforce/attendance", tone: techniciansOnShift > 0 ? "positive" : "warning" },
+        { label: "Today billed", value: todayBilled ?? "—", href: "/mobile/reports" },
+      ]} />
+      <MobileAttentionList subtitle="Only the items most likely to slow the shop down." items={attention} />
+      <MobileActionGrid items={[
+        { title: "Work order board", detail: "Review live work and status flow.", href: "/work-orders/board" },
+        { title: "Attendance", detail: "See who is clocked in and active.", href: "/dashboard/workforce/attendance" },
+        { title: "Appointments", detail: "Review today’s arrivals.", href: "/mobile/appointments" },
+        { title: "Reports", detail: "Open revenue and efficiency views.", href: "/mobile/reports" },
+      ]} />
+    </MobileDashboardPage>
   );
 }

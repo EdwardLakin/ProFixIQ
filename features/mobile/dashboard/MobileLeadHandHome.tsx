@@ -1,9 +1,13 @@
 "use client";
 
-
-import Link from "next/link";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
-import { MobileRoleHub } from "@/features/mobile/components/MobileRoleHub";
+import {
+  MobileActionGrid,
+  MobileAttentionList,
+  MobileDashboardHero,
+  MobileDashboardPage,
+  MobileMetricGrid,
+} from "@/features/mobile/dashboard/MobileDashboardPrimitives";
 
 type LeadHandStats = {
   techsOnShift: number;
@@ -17,139 +21,35 @@ type Props = {
   stats?: LeadHandStats;
 };
 
-export default function MobileLeadHandHome({ leadName, role, stats }: Props) {
-  const firstName = leadName?.split(" ")[0] ?? leadName ?? "Lead";
+export default function MobileLeadHandHome({ leadName, stats }: Props) {
+  const firstName = leadName?.split(" ")[0] || "Lead";
+  const { techsOnShift, jobsInProgress, jobsBlocked } = stats ?? {
+    techsOnShift: 0,
+    jobsInProgress: 0,
+    jobsBlocked: 0,
+  };
 
-  const { techsOnShift, jobsInProgress, jobsBlocked } =
-    stats ?? {
-      techsOnShift: 0,
-      jobsInProgress: 0,
-      jobsBlocked: 0,
-    };
-
-  return (
-    <div className="space-y-6 px-4 py-4">
-      {/* Hero */}
-      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
-        <div className="space-y-4">
-          <div className="text-center">
-            <h1 className="text-xl font-semibold leading-tight">
-              <span className="text-[color:var(--theme-text-primary)]">Shop floor, </span>
-              <span className="text-[var(--accent-copper)]">{firstName}</span>{" "}
-              <span className="align-middle">🧰</span>
-            </h1>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-              Quick view of tech coverage, in-progress work and blockers.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3 text-xs">
-            <StatChip label="Techs on shift" value={techsOnShift} accent />
-            <StatChip label="In progress" value={jobsInProgress} />
-            <StatChip label="Blocked" value={jobsBlocked} warn />
-          </div>
-        </div>
-      </section>
-
-      {/* Core flows – mirrored with manager */}
-      <section className="space-y-3">
-        <ActionCard
-          title="Work order queue"
-          body="Review jobs in the queue and balance workload."
-          href="/mobile/work-orders"
-          cta="Open work orders"
-        />
-        <ActionCard
-          title="Create work order"
-          body="Spin up a new job when vehicles land."
-          href="/mobile/work-orders/create"
-          cta="New work order"
-        />
-        <ActionCard
-          title="Appointments"
-          body="Check today’s appointments and what’s arriving next."
-          href="/mobile/appointments"
-          cta="Open appointments"
-        />
-        <ActionCard
-          title="Messages & chat"
-          body="Coordinate with advisors, techs and parts."
-          href="/mobile/messages"
-          cta="Open messages"
-        />
-      </section>
-
-      {/* Shortcuts from config – same scopes as manager */}
-      <MobileRoleHub
-        role={role}
-        scopes={["work_orders", "appointments", "all"]}
-        title="Lead-hand shortcuts"
-        subtitle="Hands-on tools for keeping the floor moving."
-      />
-    </div>
-  );
-}
-
-function StatChip({
-  label,
-  value,
-  accent,
-  warn,
-}: {
-  label: string;
-  value: number;
-  accent?: boolean;
-  warn?: boolean;
-}) {
-  const base =
-    "metal-card rounded-2xl px-3 py-3 shadow-[var(--theme-shadow-medium)] text-center border";
-
-  let color = "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)]";
-  if (accent) {
-    color =
-      "border-emerald-400/70 text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.55)]";
-  } else if (warn && value > 0) {
-    color =
-      "border-red-500/80 text-red-100 shadow-[0_0_18px_rgba(239,68,68,0.55)]";
-  }
+  const attention = [
+    ...(jobsBlocked > 0 ? [{ title: "blocked jobs", detail: "Review holds, parts and technician constraints.", href: "/mobile/work-orders", action: "Resolve", count: jobsBlocked }] : []),
+    ...(techsOnShift > jobsInProgress ? [{ title: "technicians may need work", detail: "Balance assignments across the active team.", href: "/work-orders/board", action: "Dispatch", count: techsOnShift - jobsInProgress }] : []),
+  ];
 
   return (
-    <div className={`${base} ${color}`}>
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-        {label}
-      </div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
-    </div>
-  );
-}
-
-function ActionCard({
-  title,
-  body,
-  href,
-  cta,
-}: {
-  title: string;
-  body: string;
-  href: string;
-  cta: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-sm text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            {title}
-          </div>
-          <div className="mt-1 text-xs text-[color:var(--theme-text-primary)]">{body}</div>
-        </div>
-        <span className="text-[0.7rem] text-[var(--accent-copper-soft)]">
-          {cta} →
-        </span>
-      </div>
-    </Link>
+    <MobileDashboardPage>
+      <MobileDashboardHero eyebrow="Lead-hand workspace" title={`Shop floor, ${firstName}`} subtitle="Technician capacity, active work and blockers without dashboard clutter." action={{ href: "/work-orders/board", label: "Open dispatch" }} />
+      <MobileMetricGrid items={[
+        { label: "Technicians on shift", value: techsOnShift, href: "/dashboard/workforce/attendance", tone: techsOnShift > 0 ? "positive" : "warning" },
+        { label: "Jobs in progress", value: jobsInProgress, href: "/mobile/work-orders" },
+        { label: "Blocked jobs", value: jobsBlocked, href: "/mobile/work-orders", tone: jobsBlocked > 0 ? "warning" : "default" },
+        { label: "Available capacity", value: Math.max(0, techsOnShift - jobsInProgress), href: "/work-orders/board" },
+      ]} />
+      <MobileAttentionList subtitle="Floor conditions that need intervention." items={attention} />
+      <MobileActionGrid items={[
+        { title: "Dispatch board", detail: "Balance jobs and technicians.", href: "/work-orders/board" },
+        { title: "Work orders", detail: "Review active and blocked jobs.", href: "/mobile/work-orders" },
+        { title: "Inspections", detail: "Open inspection progress.", href: "/mobile/inspections" },
+        { title: "Team chat", detail: "Coordinate with advisors and parts.", href: "/mobile/messages" },
+      ]} />
+    </MobileDashboardPage>
   );
 }
