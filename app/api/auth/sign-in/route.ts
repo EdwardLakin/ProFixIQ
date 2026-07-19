@@ -2,10 +2,14 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+
 import { enforceAuthRateLimit } from "@/features/auth/server/authRateLimit";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import {
   buildShopUserAuthEmail,
   getAuthIdentifierStrategy,
@@ -46,7 +50,10 @@ export async function POST(req: Request) {
       : "shop";
 
   if (!identifier || !password) {
-    return NextResponse.json({ ok: false, error: GENERIC_ERROR }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: GENERIC_ERROR },
+      { status: 400 },
+    );
   }
 
   const rateLimit = enforceAuthRateLimit(req, `sign-in:${surface}`, identifier, {
@@ -56,21 +63,33 @@ export async function POST(req: Request) {
   if (!rateLimit.allowed) {
     return NextResponse.json(
       { ok: false, error: "Too many attempts. Wait a moment and try again." },
-      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+      },
     );
   }
 
   const supabase = createServerSupabaseRoute();
   const authEmail = await resolveAuthEmail(identifier);
-  const { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: authEmail,
+    password,
+  });
 
   if (error || !data.user) {
-    return NextResponse.json({ ok: false, error: GENERIC_ERROR }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: GENERIC_ERROR },
+      { status: 401 },
+    );
   }
 
   const deny = async () => {
     await supabase.auth.signOut();
-    return NextResponse.json({ ok: false, error: GENERIC_ERROR }, { status: 403 });
+    return NextResponse.json(
+      { ok: false, error: GENERIC_ERROR },
+      { status: 403 },
+    );
   };
 
   if (
@@ -104,7 +123,9 @@ export async function POST(req: Request) {
   }
 
   if (surface === "fleet") {
-    const actor = await resolveFleetActorContext(supabase, { userId: data.user.id });
+    const actor = await resolveFleetActorContext(supabase, {
+      userId: data.user.id,
+    });
     if (!actor.capabilities.canAccessPortalFleetWrappers) return deny();
     return NextResponse.json({ ok: true, destination: "/portal/fleet" });
   }
@@ -120,14 +141,14 @@ export async function POST(req: Request) {
   if (surface === "mobile") {
     const capabilities = getActorCapabilities({ role: profile.role });
     const canUseMobile =
-      capabilities.canRunInspections ||
-      capabilities.canManageWorkOrders ||
-      capabilities.canPerformAssignedWork;
+      capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
     if (!canUseMobile) return deny();
   }
 
   const destination = profile.must_change_password
-    ? "/auth/set-password"
+    ? surface === "mobile"
+      ? "/auth/set-password?redirect=%2Fmobile"
+      : "/auth/set-password"
     : surface === "mobile"
       ? "/mobile"
       : profile.completed_onboarding || profile.shop_id

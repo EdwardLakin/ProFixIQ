@@ -4,8 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { buildAssistantHref } from "@/features/assistant/lib/buildAssistantHref";
-import { buildPlannerHref } from "@/features/assistant/lib/buildPlannerHref";
 import MobileShiftTracker from "@/features/mobile/components/MobileShiftTracker";
 import {
   getMobileTilesForRole,
@@ -184,23 +182,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
     );
   }, [role]);
 
-  const assistantHref = useMemo(
-    () => buildAssistantHref({ pageType: "mobile", pageTitle: "Mobile" }),
-    [],
-  );
-  const plannerHref = useMemo(
-    () =>
-      buildPlannerHref({
-        planner: "ops",
-        allowCreate: false,
-        goal: "Build next operational plan",
-      }),
-    [],
-  );
-
   const utilityItems = useMemo<NavItem[]>(() => {
     const syncItem: NavItem = {
-      href: "/offline/sync",
+      href: "/mobile/offline",
       label: "Offline & sync",
       subtitle: "Review queued work and sync status",
     };
@@ -209,18 +193,18 @@ export function MobileBottomNav({ open, onClose }: Props) {
 
     return [
       {
-        href: assistantHref,
+        href: "/mobile/assistant",
         label: "Ask Assistant",
-        subtitle: "Get help using the current shop context",
+        subtitle: "Ask a deliberate question using shop context",
       },
       {
-        href: plannerHref,
-        label: "Open Planner",
-        subtitle: "Plan operational work",
+        href: "/mobile/planner",
+        label: "Operations planner",
+        subtitle: "Open mobile operational workspaces",
       },
       syncItem,
     ];
-  }, [assistantHref, plannerHref, role]);
+  }, [role]);
 
   const handleSignOut = async () => {
     if (signingOut) return;
@@ -228,7 +212,8 @@ export function MobileBottomNav({ open, onClose }: Props) {
     try {
       await supabase.auth.signOut();
       onClose();
-      router.push("/sign-in");
+      router.replace("/mobile/sign-in");
+      router.refresh();
     } finally {
       setSigningOut(false);
     }
@@ -288,7 +273,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
                 Ask ProFixIQ from a job
               </div>
               <p className="mt-1 text-[0.7rem] leading-4 text-[color:var(--theme-text-muted)]">
-                Open a job and tap AI Assist so your vehicle and job context are
+                Open a job and tap AI Assist so the vehicle and job context are
                 included with the question.
               </p>
             </section>

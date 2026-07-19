@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   hasSupabasePublicEnv,
@@ -18,6 +19,14 @@ function isAssetPath(p: string) {
     p.endsWith(".svg") ||
     /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(p)
   );
+}
+
+function isMobileDeviceRequest(req: NextRequest): boolean {
+  const clientHint = req.headers.get("sec-ch-ua-mobile");
+  if (clientHint === "?1") return true;
+
+  const userAgent = req.headers.get("user-agent") ?? "";
+  return /android|iphone|ipad|ipod|mobile|windows phone/i.test(userAgent);
 }
 
 function safeRedirectPath(v: string | null): string | null {
@@ -41,7 +50,6 @@ function isShopBoostOrchestratedRole(role: string | null | undefined): boolean {
 
 function createMiddlewareSupabase(req: NextRequest, res: NextResponse) {
   const { supabaseUrl, supabaseAnonKey } = readSupabasePublicEnv("middleware");
-
   return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -71,7 +79,6 @@ async function resolvePortalAccessServer(
       .eq("user_id", userId)
       .limit(1)
       .maybeSingle();
-
     customer = Boolean(cust?.id);
   } catch {
     // ignore
@@ -89,6 +96,7 @@ async function resolvePortalAccessServer(
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  const mobileDeviceRequest = isMobileDeviceRequest(req);
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-next-pathname", pathname);
 
@@ -137,7 +145,6 @@ export async function middleware(req: NextRequest) {
   }
 
   const supabase = createMiddlewareSupabase(req, res);
-
   const {
     data: { user },
     error: userError,
@@ -156,6 +163,7 @@ export async function middleware(req: NextRequest) {
   let canUseMobile = false;
   const isPortalOnlyAccount =
     user?.app_metadata?.profixiq_portal_only === true;
+
   if (user && !isPortal) {
     try {
       const { data: profile } = await supabase
@@ -168,9 +176,7 @@ export async function middleware(req: NextRequest) {
       completed = !!profile?.completed_onboarding || !!profile?.shop_id;
       const capabilities = getActorCapabilities({ role: profile?.role });
       canUseMobile =
-        capabilities.canRunInspections ||
-        capabilities.canManageWorkOrders ||
-        capabilities.canPerformAssignedWork;
+        capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
 
       if (
         profile?.completed_onboarding &&
@@ -184,7 +190,6 @@ export async function middleware(req: NextRequest) {
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
-
         needsShopBoostIntake = !intake?.id;
       }
     } catch {
@@ -208,7 +213,9 @@ export async function middleware(req: NextRequest) {
         ? "/onboarding"
         : needsShopBoostIntake
           ? "/onboarding/shop-boost"
-          : "/dashboard",
+          : mobileDeviceRequest
+            ? "/mobile"
+            : "/dashboard",
       req.url,
     );
     return NextResponse.redirect(target, { headers: res.headers });
@@ -218,7 +225,6 @@ export async function middleware(req: NextRequest) {
     const redirectParam = safeRedirectPath(
       req.nextUrl.searchParams.get("redirect"),
     );
-
     const isMainSignIn =
       pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
     const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
@@ -232,20 +238,15 @@ export async function middleware(req: NextRequest) {
         );
         return NextResponse.redirect(target, { headers: res.headers });
       }
-      const to =
-        redirectParam ??
-        (isMobileSignIn
-          ? completed && canUseMobile
-            ? "/mobile"
-            : completed
-              ? "/dashboard"
-              : "/onboarding"
-          : !completed
-            ? "/onboarding"
-            : needsShopBoostIntake
-              ? "/onboarding/shop-boost"
-              : "/dashboard");
 
+      const defaultAuthenticatedPath = !completed
+        ? "/onboarding"
+        : needsShopBoostIntake
+          ? "/onboarding/shop-boost"
+          : isMobileSignIn || mobileDeviceRequest
+            ? "/mobile"
+            : "/dashboard";
+      const to = redirectParam ?? defaultAuthenticatedPath;
       const target = new URL(to, req.url);
       return NextResponse.redirect(target, { headers: res.headers });
     }
@@ -258,11 +259,14 @@ export async function middleware(req: NextRequest) {
     ) {
       const access = await resolvePortalAccessServer(supabase, user.id);
       const requestedFleet = redirectParam?.startsWith("/portal/fleet") ?? false;
-
-      let to = redirectParam ?? (access.fleet && !access.customer ? "/portal/fleet" : "/portal");
+      let to =
+        redirectParam ??
+        (access.fleet && !access.customer ? "/portal/fleet" : "/portal");
 
       if (requestedFleet && !access.fleet) to = "/portal";
-      if (!requestedFleet && !access.customer && access.fleet) to = "/portal/fleet";
+      if (!requestedFleet && !access.customer && access.fleet) {
+        to = "/portal/fleet";
+      }
 
       const target = new URL(to, req.url);
       return NextResponse.redirect(target, { headers: res.headers });
@@ -282,7 +286,6 @@ export async function middleware(req: NextRequest) {
     const loginPath = isMobileRoute ? "/mobile/sign-in" : "/sign-in";
     const login = new URL(loginPath, req.url);
     login.searchParams.set("redirect", pathname + search);
-
     return NextResponse.redirect(login, { headers: res.headers });
   }
 
@@ -295,14 +298,38 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(target, { headers: res.headers });
   }
 
+  if (
+    mobileDeviceRequest &&
+    completed &&
+    !needsShopBoostIntake &&
+    !isPortal &&
+    !pathname.startsWith("/mobile")
+  ) {
+    const requestedHref = `${pathname}${search}`;
+    const mobileHref = resolveMobileHref(requestedHref);
+    if (mobileHref && mobileHref !== requestedHref) {
+      const target = new URL(mobileHref, req.url);
+      return NextResponse.redirect(target, { headers: res.headers });
+    }
+  }
+
   if (pathname.startsWith("/mobile") && !canUseMobile) {
-    const target = new URL(completed ? "/dashboard" : "/onboarding", req.url);
-    return NextResponse.redirect(target, { headers: res.headers });
+    if (!completed) {
+      const target = new URL("/onboarding", req.url);
+      return NextResponse.redirect(target, { headers: res.headers });
+    }
+
+    // Keep completed but unsupported/legacy roles inside the mobile surface.
+    // `/mobile` renders the role-not-configured state without exposing desktop.
+    if (pathname !== "/mobile") {
+      const target = new URL("/mobile", req.url);
+      return NextResponse.redirect(target, { headers: res.headers });
+    }
+    return res;
   }
 
   if (isPortal) {
     const access = await resolvePortalAccessServer(supabase, user.id);
-
     const isFleetPortalPath =
       pathname === "/portal/fleet" || pathname.startsWith("/portal/fleet/");
 

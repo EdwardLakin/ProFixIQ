@@ -87,4 +87,25 @@ describe("authentication and portal hardening", () => {
     expect(signup).toContain('initialMode="sign-up"');
     expect(shell).toContain("ThemeToggle");
   });
+
+  it("allows every known non-customer shop role to stay on mobile", () => {
+    const signInRoute = read("app/api/auth/sign-in/route.ts");
+    const middleware = read("middleware.ts");
+    const mobileHome = read("app/mobile/page.tsx");
+    const tiles = read("features/mobile/config/mobile-tiles.ts");
+
+    for (const source of [signInRoute, middleware]) {
+      expect(source).toContain("capabilities.isKnownRole");
+      expect(source).toContain('capabilities.canonicalRole !== "customer"');
+    }
+    expect(signInRoute).toContain(
+      '"/auth/set-password?redirect=%2Fmobile"',
+    );
+    expect(middleware).toContain('pathname !== "/mobile"');
+    expect(middleware).not.toContain('completed ? "/dashboard" : "/onboarding"');
+    expect(mobileHome).toContain(
+      'role === "advisor" || role === "service"',
+    );
+    expect(tiles).toContain('| "service"');
+  });
 });

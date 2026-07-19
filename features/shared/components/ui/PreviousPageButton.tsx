@@ -1,9 +1,10 @@
-// @shared/components/ui/PreviousPageButton.tsx
 "use client";
 
-import * as React from "react";
-import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
+import * as React from "react";
+
+import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import { cn } from "@shared/lib/utils";
 
 type PreviousPageButtonProps = {
@@ -24,24 +25,29 @@ export default function PreviousPageButton({
   const router = useRouter();
 
   const handleClick = React.useCallback(() => {
+    if (typeof window === "undefined") return;
+    const mobileSurface = window.location.pathname.startsWith("/mobile");
+
     if (to) {
-      router.push(to);
+      router.push(
+        mobileSurface ? resolveMobileHref(to) ?? "/mobile" : to,
+      );
       return;
     }
 
-    if (typeof window !== "undefined") {
-      if (window.history.length > 1) {
-        router.back();
-        return;
-      }
-
-      const pathname = window.location.pathname || "";
-      const fallback = pathname.startsWith("/mobile")
-        ? "/mobile/work-orders"
-        : "/work-orders";
-
-      router.push(fallback);
+    // A mobile Back button must never depend on browser history because a PWA,
+    // notification, old desktop tab, or copied URL can put a desktop route
+    // immediately behind the current page.
+    if (mobileSurface) {
+      router.push("/mobile/work-orders");
+      return;
     }
+
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/work-orders");
   }, [router, to]);
 
   return (

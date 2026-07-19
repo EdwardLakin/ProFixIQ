@@ -7,6 +7,7 @@ export type MobileRole = Extract<
   | "admin"
   | "manager"
   | "advisor"
+  | "service"
   | "mechanic"
   | "lead_hand"
   | "foreman"
@@ -38,19 +39,42 @@ export type MobileTile = {
   scopes: MobileScope[];
 };
 
+const ALL_MOBILE_ROLES: MobileRole[] = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "service",
+  "mechanic",
+  "lead_hand",
+  "foreman",
+  "parts",
+  "dispatcher",
+  "fleet_manager",
+  "driver",
+];
+
 export const MOBILE_TILES: MobileTile[] = [
   {
     href: "/mobile",
     title: "Shop Overview",
     subtitle: "Today at a glance",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman", "parts", "dispatcher", "fleet_manager", "driver"],
+    roles: ALL_MOBILE_ROLES,
     scopes: ["dashboard", "home", "all"],
   },
   {
     href: "/mobile/work-orders",
     title: "Work Order Board",
     subtitle: "Live work flow",
-    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "lead_hand",
+      "foreman",
+    ],
     scopes: ["dashboard", "home", "jobs", "work_orders", "all"],
   },
   {
@@ -85,28 +109,43 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/inspections",
     title: "Inspections",
     subtitle: "Run checklists on vehicles",
-    roles: ["mechanic", "advisor", "manager", "lead_hand", "foreman"],
+    roles: [
+      "mechanic",
+      "advisor",
+      "service",
+      "manager",
+      "lead_hand",
+      "foreman",
+    ],
     scopes: ["home", "inspect", "inspections", "work_orders", "all"],
   },
   {
     href: "/mobile/appointments",
     title: "Appointments",
     subtitle: "Today’s schedule",
-    roles: ["advisor", "manager", "lead_hand", "foreman", "owner", "admin"],
+    roles: [
+      "advisor",
+      "service",
+      "manager",
+      "lead_hand",
+      "foreman",
+      "owner",
+      "admin",
+    ],
     scopes: ["home", "appointments", "work_orders", "all"],
   },
   {
     href: "/mobile/messages",
     title: "Team Chat",
     subtitle: "Stay in sync",
-    roles: ["mechanic", "advisor", "manager", "lead_hand", "foreman", "owner", "admin", "parts"],
+    roles: ALL_MOBILE_ROLES,
     scopes: ["home", "messages", "all"],
   },
   {
     href: "/mobile/settings",
     title: "Settings",
     subtitle: "Account & mobile options",
-    roles: ["mechanic", "advisor", "manager", "lead_hand", "owner", "admin", "parts"],
+    roles: ALL_MOBILE_ROLES,
     scopes: ["home", "settings", "all"],
   },
   {
@@ -148,7 +187,17 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/fleet/service-requests",
     title: "Service Requests",
     subtitle: "Fleet issues & follow-up",
-    roles: ["owner", "admin", "manager", "lead_hand", "mechanic", "parts", "fleet_manager", "dispatcher"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "lead_hand",
+      "mechanic",
+      "parts",
+      "fleet_manager",
+      "dispatcher",
+      "driver",
+    ],
     scopes: ["home", "work_orders", "inspections", "fleet", "all"],
   },
 ];
