@@ -2,8 +2,9 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import { MobileBottomNav } from "./MobileBottomNav";
 
 type Props = {
@@ -27,8 +28,20 @@ function getTitleFromPath(pathname: string): string {
   if (pathname.startsWith("/mobile/tech/performance")) {
     return "My performance";
   }
+  if (pathname.startsWith("/mobile/workforce/attendance")) {
+    return "Attendance";
+  }
+  if (pathname.startsWith("/mobile/fleet/service-requests")) {
+    return "Service requests";
+  }
+  if (pathname.startsWith("/mobile/fleet/pretrip")) return "Pre-trip";
+  if (pathname.startsWith("/mobile/fleet")) return "Fleet";
+  if (pathname.startsWith("/mobile/assistant")) return "Assistant";
+  if (pathname.startsWith("/mobile/planner")) return "Planner";
+  if (pathname.startsWith("/mobile/offline")) return "Offline & sync";
   if (pathname.startsWith("/mobile/settings")) return "Settings";
   if (pathname.startsWith("/mobile/reports")) return "Reports";
+  if (pathname.startsWith("/mobile/technicians")) return "Technicians";
   if (pathname.startsWith("/mobile/dispatch")) return "Dispatch";
   return "ProFixIQ";
 }
@@ -41,11 +54,46 @@ function isImmersiveRoute(pathname: string): boolean {
   return /^\/mobile\/inspections\/[^/]+$/.test(pathname);
 }
 
+function shouldIgnoreAnchor(anchor: HTMLAnchorElement, event: MouseEvent): boolean {
+  if (event.defaultPrevented || event.button !== 0) return true;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return true;
+  if (anchor.hasAttribute("download")) return true;
+  if (anchor.dataset.mobileRouteBypass === "true") return true;
+
+  const target = anchor.getAttribute("target");
+  return Boolean(target && target !== "_self");
+}
+
 export function MobileShell({ children, title }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const resolvedTitle = title ?? getTitleFromPath(pathname);
+
+  useEffect(() => {
+    const keepNavigationMobile = (event: MouseEvent) => {
+      const element = event.target instanceof Element ? event.target : null;
+      const anchor = element?.closest("a[href]") as HTMLAnchorElement | null;
+      if (!anchor || shouldIgnoreAnchor(anchor, event)) return;
+      if (anchor.origin !== window.location.origin) return;
+
+      const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const requestedHref = `${anchor.pathname}${anchor.search}${anchor.hash}`;
+      const mobileHref = resolveMobileHref(requestedHref);
+      if (!mobileHref || mobileHref === requestedHref || mobileHref === currentHref) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      router.push(mobileHref);
+    };
+
+    // Listen at document level so links rendered by portals and shared modals
+    // cannot accidentally escape from the mobile application shell.
+    document.addEventListener("click", keepNavigationMobile, true);
+    return () => document.removeEventListener("click", keepNavigationMobile, true);
+  }, [router]);
 
   if (pathname === "/mobile/sign-in" || pathname.startsWith("/mobile/sign-in/")) {
     return children;
