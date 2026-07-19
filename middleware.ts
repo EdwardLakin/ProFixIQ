@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   hasSupabasePublicEnv,
@@ -18,6 +19,14 @@ function isAssetPath(p: string) {
     p.endsWith(".svg") ||
     /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(p)
   );
+}
+
+function isMobileDeviceRequest(req: NextRequest): boolean {
+  const clientHint = req.headers.get("sec-ch-ua-mobile");
+  if (clientHint === "?1") return true;
+
+  const userAgent = req.headers.get("user-agent") ?? "";
+  return /android|iphone|ipad|ipod|mobile|windows phone/i.test(userAgent);
 }
 
 function safeRedirectPath(v: string | null): string | null {
@@ -87,6 +96,7 @@ async function resolvePortalAccessServer(
 
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
+  const mobileDeviceRequest = isMobileDeviceRequest(req);
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-next-pathname", pathname);
 
@@ -203,7 +213,9 @@ export async function middleware(req: NextRequest) {
         ? "/onboarding"
         : needsShopBoostIntake
           ? "/onboarding/shop-boost"
-          : "/dashboard",
+          : mobileDeviceRequest
+            ? "/mobile"
+            : "/dashboard",
       req.url,
     );
     return NextResponse.redirect(target, { headers: res.headers });
@@ -227,17 +239,14 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(target, { headers: res.headers });
       }
 
-      const to =
-        redirectParam ??
-        (isMobileSignIn
-          ? completed
+      const defaultAuthenticatedPath = !completed
+        ? "/onboarding"
+        : needsShopBoostIntake
+          ? "/onboarding/shop-boost"
+          : isMobileSignIn || mobileDeviceRequest
             ? "/mobile"
-            : "/onboarding"
-          : !completed
-            ? "/onboarding"
-            : needsShopBoostIntake
-              ? "/onboarding/shop-boost"
-              : "/dashboard");
+            : "/dashboard";
+      const to = redirectParam ?? defaultAuthenticatedPath;
       const target = new URL(to, req.url);
       return NextResponse.redirect(target, { headers: res.headers });
     }
@@ -287,6 +296,21 @@ export async function middleware(req: NextRequest) {
       req.url,
     );
     return NextResponse.redirect(target, { headers: res.headers });
+  }
+
+  if (
+    mobileDeviceRequest &&
+    completed &&
+    !needsShopBoostIntake &&
+    !isPortal &&
+    !pathname.startsWith("/mobile")
+  ) {
+    const requestedHref = `${pathname}${search}`;
+    const mobileHref = resolveMobileHref(requestedHref);
+    if (mobileHref && mobileHref !== requestedHref) {
+      const target = new URL(mobileHref, req.url);
+      return NextResponse.redirect(target, { headers: res.headers });
+    }
   }
 
   if (pathname.startsWith("/mobile") && !canUseMobile) {
