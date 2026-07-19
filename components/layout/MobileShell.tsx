@@ -50,7 +50,7 @@ export function MobileShell({ children, title }: Props) {
 
   if (isImmersiveRoute(pathname)) {
     return (
-      <div className="min-h-screen overflow-x-hidden bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
+      <div className="min-h-screen overflow-x-hidden bg-[color:var(--theme-surface-page)] pt-[env(safe-area-inset-top,0px)] text-[color:var(--theme-text-primary)]">
         <main className="min-w-0 overflow-x-hidden">{children}</main>
       </div>
     );
