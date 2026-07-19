@@ -49,9 +49,12 @@ export default function AiAssistantModal({
       />
 
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={mobileRoute ? "Ask ProFixIQ" : "AI tech assistant"}
         className={`relative z-[610] w-full border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)] ${
           mobileRoute
-            ? "max-h-[calc(100dvh-env(safe-area-inset-top,0px))] rounded-t-[28px] border-b-0"
+            ? "max-h-[100dvh] rounded-t-[28px] border-b-0"
             : "max-w-3xl rounded-[28px]"
         }`}
       >
@@ -82,7 +85,7 @@ export default function AiAssistantModal({
         <div
           className={`overflow-y-auto ${
             mobileRoute
-              ? "max-h-[calc(100dvh-7rem-env(safe-area-inset-top,0px))] px-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3"
+              ? "max-h-[calc(100dvh-7rem)] px-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3"
               : "max-h-[calc(100vh-9rem)] px-5 py-4"
           }`}
           style={{ WebkitOverflowScrolling: "touch" }}
