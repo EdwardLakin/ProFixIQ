@@ -1,15 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useMemo, useState } from "react";
 
-import type { AssistantContext } from "../types/assistant";
-import { buildAssistantHref } from "../lib/buildAssistantHref";
-import { buildPlannerHref } from "../lib/buildPlannerHref";
-import { useAssistant } from "../hooks/useAssistant";
-import AssistantResponseCard from "./AssistantResponseCard";
-
+import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import { Button } from "@shared/components/ui/Button";
 import {
   Dialog,
@@ -18,6 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@shared/components/ui/dialog";
+import { useAssistant } from "../hooks/useAssistant";
+import { buildAssistantHref } from "../lib/buildAssistantHref";
+import { buildPlannerHref } from "../lib/buildPlannerHref";
+import type { AssistantContext } from "../types/assistant";
+import AssistantResponseCard from "./AssistantResponseCard";
 
 type Props = {
   mobile?: boolean;
@@ -26,7 +26,6 @@ type Props = {
 
 function deriveContextFromPath(pathname: string): AssistantContext {
   const context: AssistantContext = {};
-
   const workOrderMatch =
     pathname.match(/^\/work-orders\/([^/]+)$/i) ??
     pathname.match(/^\/work-orders\/([^/]+)\/quote-review$/i) ??
@@ -44,7 +43,6 @@ function deriveContextFromPath(pathname: string): AssistantContext {
   const customerMatch =
     pathname.match(/^\/customers\/([^/]+)$/i) ??
     pathname.match(/^\/mobile\/customers\/([^/]+)$/i);
-
   if (customerMatch?.[1]) {
     context.customerId = customerMatch[1];
     context.pageType = "customer";
@@ -55,7 +53,6 @@ function deriveContextFromPath(pathname: string): AssistantContext {
   const bookingMatch =
     pathname.match(/^\/portal\/bookings\/([^/]+)$/i) ??
     pathname.match(/^\/dashboard\/appointments\/([^/]+)$/i);
-
   if (bookingMatch?.[1]) {
     context.bookingId = bookingMatch[1];
     context.pageType = "booking";
@@ -66,7 +63,6 @@ function deriveContextFromPath(pathname: string): AssistantContext {
   const vehicleMatch =
     pathname.match(/^\/fleet\/assets\/([^/]+)$/i) ??
     pathname.match(/^\/portal\/fleet\/units\/([^/]+)$/i);
-
   if (vehicleMatch?.[1]) {
     context.vehicleId = vehicleMatch[1];
     context.pageType = "vehicle";
@@ -83,7 +79,6 @@ function deriveContextFromPath(pathname: string): AssistantContext {
   if (pathname.startsWith("/mobile")) {
     context.pageType = "mobile";
     context.pageTitle = "Mobile";
-    return context;
   }
 
   return context;
@@ -109,9 +104,7 @@ function getPlannerLabel(context: AssistantContext): string {
     case "work_order":
       return "Plan next steps";
     case "customer":
-      return "Open in Planner";
     case "vehicle":
-      return "Open in Planner";
     case "booking":
       return "Open in Planner";
     default:
@@ -155,23 +148,29 @@ export default function AskAssistantEntry({
 }: Props) {
   const pathname = usePathname();
   const context = useMemo(() => deriveContextFromPath(pathname), [pathname]);
+  const mobileSurface = mobile || pathname.startsWith("/mobile");
 
-  const assistantHref = useMemo(() => buildAssistantHref(context), [context]);
-  const plannerHref = useMemo(
-    () =>
-      buildPlannerHref({
-        planner: "ops",
-        allowCreate: false,
-        goal: getPlannerGoal(context),
-        workOrderId: context.workOrderId,
-        bookingId: context.bookingId,
-      }),
-    [context],
-  );
+  const assistantHref = useMemo(() => {
+    const built = buildAssistantHref(context);
+    return mobileSurface
+      ? resolveMobileHref(built) ?? "/mobile/assistant"
+      : built;
+  }, [context, mobileSurface]);
+  const plannerHref = useMemo(() => {
+    const built = buildPlannerHref({
+      planner: "ops",
+      allowCreate: false,
+      goal: getPlannerGoal(context),
+      workOrderId: context.workOrderId,
+      bookingId: context.bookingId,
+    });
+    return mobileSurface
+      ? resolveMobileHref(built) ?? "/mobile/planner"
+      : built;
+  }, [context, mobileSurface]);
 
   const assistantLabel = useMemo(() => getAssistantLabel(context), [context]);
   const plannerLabel = useMemo(() => getPlannerLabel(context), [context]);
-
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const contextKey = [
@@ -180,12 +179,13 @@ export default function AskAssistantEntry({
     context.customerId,
     context.vehicleId,
     context.bookingId,
-  ].filter(Boolean).join(":");
-  const { ask, loading, data, messages, clearConversation } = useAssistant(contextKey);
-  const transcriptMessages = messages.at(-1)?.role === "assistant"
-    ? messages.slice(0, -1)
-    : messages;
-
+  ]
+    .filter(Boolean)
+    .join(":");
+  const { ask, loading, data, messages, clearConversation } =
+    useAssistant(contextKey);
+  const transcriptMessages =
+    messages.at(-1)?.role === "assistant" ? messages.slice(0, -1) : messages;
   const effectiveQuery = query.trim() || getDefaultPrompt(context);
 
   if (placement === "header") {
@@ -195,9 +195,9 @@ export default function AskAssistantEntry({
           type="button"
           title={assistantLabel}
           onClick={() => setOpen(true)}
-          className="inline-flex h-8 items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2.5 text-xs font-medium text-[color:var(--theme-text-primary)] shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-[color:var(--theme-surface-panel)] hover:text-[color:var(--theme-text-primary)]"
+          className="inline-flex h-8 items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2.5 text-xs font-medium text-[color:var(--theme-text-primary)] shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-[color:var(--theme-surface-panel)]"
         >
-          <span>Assistant</span>
+          Assistant
         </button>
 
         <Dialog open={open} onOpenChange={setOpen}>
@@ -205,7 +205,10 @@ export default function AskAssistantEntry({
             <DialogHeader>
               <DialogTitle
                 className="text-[color:var(--accent-copper,#c1663b)]"
-                style={{ fontFamily: "Black Ops One, var(--font-blackops), system-ui" }}
+                style={{
+                  fontFamily:
+                    "Black Ops One, var(--font-blackops), system-ui",
+                }}
               >
                 AI Assistant
               </DialogTitle>
@@ -220,9 +223,11 @@ export default function AskAssistantEntry({
                   {transcriptMessages.slice(-8).map((message, index) => (
                     <div
                       key={`${message.role}-${index}-${message.content.slice(0, 24)}`}
-                      className={message.role === "user"
-                        ? "ml-8 rounded-xl bg-[color:var(--theme-surface-overlay)] p-3 text-sm text-[color:var(--theme-text-primary)]"
-                        : "mr-8 whitespace-pre-line rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-sm text-[color:var(--theme-text-secondary)]"}
+                      className={
+                        message.role === "user"
+                          ? "ml-8 rounded-xl bg-[color:var(--theme-surface-overlay)] p-3 text-sm text-[color:var(--theme-text-primary)]"
+                          : "mr-8 whitespace-pre-line rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-sm text-[color:var(--theme-text-secondary)]"
+                      }
                     >
                       {message.content}
                     </div>
@@ -232,16 +237,19 @@ export default function AskAssistantEntry({
 
               <textarea
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={getDefaultPrompt(context) || "Ask anything about your shop..."}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={
+                  getDefaultPrompt(context) || "Ask anything about your shop..."
+                }
                 className="min-h-[140px] w-full rounded-2xl border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] p-3 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent-copper-soft,#fdba74)]"
               />
 
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-[color:var(--theme-text-muted)]">
-                  {context.pageTitle ? `Context: ${context.pageTitle}` : "General shop context"}
+                  {context.pageTitle
+                    ? `Context: ${context.pageTitle}`
+                    : "General shop context"}
                 </div>
-
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -254,7 +262,6 @@ export default function AskAssistantEntry({
                   >
                     Clear
                   </Button>
-
                   <Button
                     type="button"
                     onClick={() => ask(effectiveQuery, context)}
@@ -274,40 +281,43 @@ export default function AskAssistantEntry({
     );
   }
 
+  const utilityLinks = (
+    <>
+      <Link
+        href={assistantHref}
+        className="mobile-tech-btn-utility inline-flex items-center rounded-full px-3 py-2 text-[0.72rem] leading-none"
+      >
+        {assistantLabel}
+      </Link>
+      <Link
+        href={plannerHref}
+        className="mobile-tech-btn-ghost inline-flex items-center rounded-full px-3 py-2 text-[0.7rem] leading-none"
+      >
+        {plannerLabel}
+      </Link>
+    </>
+  );
+
   if (placement === "dock") {
     return (
-      <div className="flex flex-wrap gap-2" role="navigation" aria-label="Utility actions">
-        <Link
-          href={assistantHref}
-          className="mobile-tech-btn-utility inline-flex items-center rounded-full px-3 py-2 text-[0.72rem] leading-none"
-        >
-          {assistantLabel}
-        </Link>
-        <Link
-          href={plannerHref}
-          className="mobile-tech-btn-ghost inline-flex items-center rounded-full px-3 py-2 text-[0.7rem] leading-none"
-        >
-          {plannerLabel}
-        </Link>
+      <div
+        className="flex flex-wrap gap-2"
+        role="navigation"
+        aria-label="Utility actions"
+      >
+        {utilityLinks}
       </div>
     );
   }
 
   if (mobile) {
     return (
-      <div className="mobile-tech-utility-dock" role="navigation" aria-label="Utility actions">
-        <Link
-          href={assistantHref}
-          className="mobile-tech-btn-utility inline-flex items-center rounded-full px-3 py-2 text-[0.72rem] leading-none"
-        >
-          {assistantLabel}
-        </Link>
-        <Link
-          href={plannerHref}
-          className="mobile-tech-btn-ghost inline-flex items-center rounded-full px-3 py-2 text-[0.7rem] leading-none"
-        >
-          {plannerLabel}
-        </Link>
+      <div
+        className="mobile-tech-utility-dock"
+        role="navigation"
+        aria-label="Utility actions"
+      >
+        {utilityLinks}
       </div>
     );
   }
