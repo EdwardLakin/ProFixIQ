@@ -26,9 +26,14 @@ describe("mobile role dashboard layout", () => {
     expect(source).not.toContain("/work-orders/board");
   });
 
-  it("gives advisor and lead hand dashboards one primary action and compact metrics", () => {
+  it("gives advisor, service and lead hand roles compact mobile dashboards", () => {
+    const home = read("app/mobile/page.tsx");
+    const tiles = read("features/mobile/config/mobile-tiles.ts");
     const advisor = read("features/mobile/dashboard/MobileAdvisorHome.tsx");
     const lead = read("features/mobile/dashboard/MobileLeadHandHome.tsx");
+
+    expect(home).toContain('role === "advisor" || role === "service"');
+    expect(tiles).toContain('| "service"');
     expect(advisor).toContain("+ Create work order");
     expect(lead).toContain("Open dispatch");
     expect(advisor).toContain("MobileMetricGrid");
