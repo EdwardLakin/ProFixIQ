@@ -25,7 +25,11 @@ const assistantModal = readFileSync(
   "features/work-orders/components/workorders/AiAssistantModal.tsx",
   "utf8",
 );
-const techAssistant = readFileSync(
+const mobileAssistant = readFileSync(
+  "features/mobile/technician/MobileTechnicianAssistant.tsx",
+  "utf8",
+);
+const desktopAssistant = readFileSync(
   "features/shared/components/TechAssistant.tsx",
   "utf8",
 );
@@ -48,7 +52,9 @@ describe("technician-first mobile UX", () => {
   it("uses a factual job queue without AI or prescribed next steps", () => {
     expect(queuePage).toContain("MobileTechnicianQueue");
     expect(queue).toContain('href={`/mobile/jobs/${line.id}`}');
-    expect(queue).toContain("Tap a job to open its timer, photos, parts, notes, history, and assistant.");
+    expect(queue).toContain(
+      "Tap a job to open its timer, photos, parts, notes, history, and assistant.",
+    );
     expect(queue).toContain("Download assigned work");
     expect(queue).not.toContain("Next action:");
     expect(queue).not.toContain("Start line when bay is free");
@@ -76,13 +82,25 @@ describe("technician-first mobile UX", () => {
   });
 
   it("keeps the assistant contextual, question-driven, and non-automatic", () => {
-    expect(mobileMenu).toContain('if (role === "mechanic") return [syncItem];');
+    expect(mobileMenu).toContain(
+      'if (role === "mechanic") return [syncItem];',
+    );
     expect(mobileMenu).toContain("Open a job and tap AI Assist");
     expect(assistantModal).toContain("Ask ProFixIQ");
     expect(assistantModal).toContain("Nothing is changed automatically.");
-    expect(assistantModal).toContain("questionOnly={mobileRoute}");
-    expect(techAssistant).toContain("the technician decides what is correct");
-    expect(techAssistant).toContain("!questionOnly && workOrderLineId");
+    expect(assistantModal).toContain("<MobileTechnicianAssistant");
+    expect(mobileAssistant).toContain(
+      "the technician decides what is correct",
+    );
+    expect(mobileAssistant).not.toContain("exportToWorkOrder");
+  });
+
+  it("preserves the established desktop assistant behavior", () => {
+    expect(assistantModal).toContain("<TechAssistant");
+    expect(desktopAssistant).toContain(
+      "Summarize &amp; Export to Work Order",
+    );
+    expect(desktopAssistant).toContain("exportToWorkOrder(workOrderLineId)");
   });
 
   it("does not auto-generate repair suggestions in the technician mobile view", () => {
