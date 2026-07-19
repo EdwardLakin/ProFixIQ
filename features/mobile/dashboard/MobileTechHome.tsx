@@ -1,19 +1,31 @@
-// /features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BriefcaseBusiness,
+  ClipboardCheck,
+  Gauge,
+  MessageCircle,
+  Wrench,
+} from "lucide-react";
+
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 import { fetchMobileShiftState } from "@/features/mobile/shifts/client";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & {
+  active_segment_started_at?: string | null;
+};
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 
 export type PeriodStats = {
   workedHours: number;
   billedHours: number;
-  /** 0–100, null if not computable */
   efficiencyPct: number | null;
 };
 
@@ -27,9 +39,9 @@ export type MobileTechStats = {
 
 export type MobileTechJob = {
   id: string;
-  label: string; // e.g. "2018 F-150 – Brakes"
-  status: string; // e.g. "in_progress"
-  href: string; // e.g. "/mobile/work-orders/123"
+  label: string;
+  status: string;
+  href: string;
 };
 
 type Props = {
@@ -42,11 +54,41 @@ type Props = {
 
 type ShiftStatus = "none" | "active" | "break" | "lunch" | "ended";
 
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & {
-  active_segment_started_at?: string | null;
+const emptyPeriod: PeriodStats = {
+  workedHours: 0,
+  billedHours: 0,
+  efficiencyPct: null,
 };
-type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
-type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
+
+function firstNameFrom(fullName: string): string {
+  return fullName.trim().split(/\s+/)[0] || "Tech";
+}
+
+function formatStatus(value: string): string {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function vehicleLabel(vehicle: Vehicle | null): string | null {
+  if (!vehicle) return null;
+  const base = [vehicle.year, vehicle.make, vehicle.model]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const plate = String(vehicle.license_plate ?? "").trim();
+  if (base && plate) return `${base} • ${plate}`;
+  return base || plate || null;
+}
+
+function efficiencyText(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  if (value > 250) return "250%+";
+  if (value < 0) return "0%";
+  return `${value.toFixed(0)}%`;
+}
 
 export function MobileTechHome({
   techName,
@@ -57,42 +99,23 @@ export function MobileTechHome({
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [userId, setUserId] = useState<string | null>(null);
-
   const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
   const [shiftStart, setShiftStart] = useState<string | null>(null);
   const [loadingShift, setLoadingShift] = useState(false);
-
-  // current punched-in job
   const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
   const [currentJobWorkOrder, setCurrentJobWorkOrder] =
     useState<WorkOrder | null>(null);
-  const [currentJobVehicle, setCurrentJobVehicle] = useState<Vehicle | null>(
-    null,
-  );
+  const [currentJobVehicle, setCurrentJobVehicle] =
+    useState<Vehicle | null>(null);
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
 
-  const firstName = techName?.split(" ")[0] ?? techName ?? "Tech";
-
-  const today: PeriodStats = stats?.today ?? {
-    workedHours: 0,
-    billedHours: 0,
-    efficiencyPct: null,
-  };
-  const week: PeriodStats = stats?.week ?? {
-    workedHours: 0,
-    billedHours: 0,
-    efficiencyPct: null,
-  };
-
+  const firstName = firstNameFrom(techName);
+  const today = stats?.today ?? emptyPeriod;
+  const week = stats?.week ?? emptyPeriod;
   const openJobs = stats?.openJobs ?? 0;
   const assignedJobs = stats?.assignedJobs ?? 0;
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
-
   const isOnShift = shiftStatus !== "none" && shiftStatus !== "ended";
-
-  /* ---------------------------------------------------------------------- */
-  /* Load / refresh shift state (aligned with MobileShiftTracker)           */
-  /* ---------------------------------------------------------------------- */
 
   const refreshShiftState = useCallback(async () => {
     setLoadingShift(true);
@@ -100,7 +123,6 @@ export function MobileTechHome({
       const {
         data: { session },
       } = await supabase.auth.getSession();
-
       const id = session?.user?.id ?? null;
       setUserId(id);
 
@@ -109,12 +131,13 @@ export function MobileTechHome({
         setShiftStart(null);
         return;
       }
-      const canonical = await fetchMobileShiftState();
-      setShiftStart(canonical.startTime ?? null);
-      if (canonical.mode === "shift") setShiftStatus("active");
-      else setShiftStatus(canonical.mode);
+
+      const state = await fetchMobileShiftState();
+      setShiftStart(state.startTime ?? null);
+      setShiftStatus(state.mode === "shift" ? "active" : state.mode);
     } catch (error) {
-      console.error("[MobileTechHome] shift state refresh failed:", error);
+      // eslint-disable-next-line no-console
+      console.error("[MobileTechHome] shift state refresh failed", error);
       setShiftStatus("none");
       setShiftStart(null);
     } finally {
@@ -122,12 +145,10 @@ export function MobileTechHome({
     }
   }, [supabase]);
 
-  // initial load
   useEffect(() => {
     void refreshShiftState();
   }, [refreshShiftState]);
 
-  // realtime: follow canonical shift persistence tables for this user
   useEffect(() => {
     if (!userId) return;
 
@@ -141,39 +162,25 @@ export function MobileTechHome({
           table: "tech_shifts",
           filter: `user_id=eq.${userId}`,
         },
-        () => {
-          void refreshShiftState();
-        },
+        () => void refreshShiftState(),
       )
       .subscribe();
 
     return () => {
-      try {
-        supabase.removeChannel(channel);
-      } catch {
-        // ignore
-      }
+      void supabase.removeChannel(channel);
     };
-  }, [supabase, userId, refreshShiftState]);
+  }, [refreshShiftState, supabase, userId]);
 
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      void refreshShiftState();
-    });
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [supabase, refreshShiftState]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Current job – job the tech is punched in on                            */
-  /* ---------------------------------------------------------------------- */
+    } = supabase.auth.onAuthStateChange(() => void refreshShiftState());
+    return () => subscription.unsubscribe();
+  }, [refreshShiftState, supabase]);
 
   const loadCurrentJob = useCallback(
-    async (uid: string | null) => {
-      if (!uid) {
+    async (technicianId: string | null) => {
+      if (!technicianId) {
         setCurrentJob(null);
         setCurrentJobWorkOrder(null);
         setCurrentJobVehicle(null);
@@ -182,33 +189,38 @@ export function MobileTechHome({
 
       setLoadingCurrentJob(true);
       try {
-        const { data: activeSegments, error: segmentError } = await supabase
+        const { data: segments, error: segmentError } = await supabase
           .from("work_order_line_labor_segments")
           .select("work_order_line_id, started_at")
-          .eq("technician_id", uid)
+          .eq("technician_id", technicianId)
           .is("ended_at", null)
           .order("started_at", { ascending: false })
           .limit(1);
 
-        const activeLineId = activeSegments?.[0]?.work_order_line_id ?? null;
+        if (segmentError) {
+          // eslint-disable-next-line no-console
+          console.error("[MobileTechHome] active segment load failed", segmentError);
+        }
 
+        const activeLineId = segments?.[0]?.work_order_line_id ?? null;
         let line: WorkOrderLine | null = null;
 
         if (activeLineId) {
-          const { data: activeLine, error } = await supabase
+          const { data, error } = await supabase
             .from("work_order_lines")
             .select(
-              "id, work_order_id, description, complaint, job_type, line_type, punched_in_at, punched_out_at, assigned_tech_id",
+              "id, work_order_id, description, complaint, job_type, line_type, status, punched_in_at, punched_out_at, assigned_tech_id",
             )
             .eq("id", activeLineId)
-            .maybeSingle();
+            .maybeSingle<WorkOrderLine>();
 
           if (error) {
-            console.error("[MobileTechHome] current job active-line load error:", error);
-          } else if (activeLine && (activeLine.line_type ?? "job") !== "info") {
+            // eslint-disable-next-line no-console
+            console.error("[MobileTechHome] active line load failed", error);
+          } else if (data && (data.line_type ?? "job") !== "info") {
             line = {
-              ...(activeLine as WorkOrderLine),
-              active_segment_started_at: activeSegments?.[0]?.started_at ?? null,
+              ...data,
+              active_segment_started_at: segments?.[0]?.started_at ?? null,
             };
           }
         }
@@ -217,73 +229,65 @@ export function MobileTechHome({
           const { data, error } = await supabase
             .from("work_order_lines")
             .select(
-              "id, work_order_id, description, complaint, job_type, line_type, punched_in_at, punched_out_at, assigned_tech_id",
+              "id, work_order_id, description, complaint, job_type, line_type, status, punched_in_at, punched_out_at, assigned_tech_id",
             )
-            .eq("assigned_tech_id", uid)
+            .eq("assigned_tech_id", technicianId)
             .or("line_type.eq.job,line_type.is.null")
             .not("punched_in_at", "is", null)
             .is("punched_out_at", null)
             .order("punched_in_at", { ascending: false })
             .limit(1)
-            .maybeSingle();
+            .maybeSingle<WorkOrderLine>();
 
           if (error) {
-            console.error("[MobileTechHome] current job fallback load error:", error);
-            setCurrentJob(null);
-            setCurrentJobWorkOrder(null);
-            setCurrentJobVehicle(null);
-            return;
+            // eslint-disable-next-line no-console
+            console.error("[MobileTechHome] current job fallback failed", error);
+          } else {
+            line = data ?? null;
           }
-
-          line = (data as WorkOrderLine | null) ?? null;
         }
 
-        if (segmentError) {
-          console.error("[MobileTechHome] active segment load error:", segmentError);
-        }
         setCurrentJob(line);
-
         if (!line?.work_order_id) {
           setCurrentJobWorkOrder(null);
           setCurrentJobVehicle(null);
           return;
         }
 
-        // Fetch the related work order
-        const { data: wo, error: woErr } = await supabase
+        const { data: workOrder, error: workOrderError } = await supabase
           .from("work_orders")
           .select("id, custom_id, vehicle_id")
           .eq("id", line.work_order_id)
           .maybeSingle<WorkOrder>();
 
-        if (woErr) {
-          console.error("[MobileTechHome] current job WO load error:", woErr);
+        if (workOrderError || !workOrder) {
+          if (workOrderError) {
+            // eslint-disable-next-line no-console
+            console.error("[MobileTechHome] current work order load failed", workOrderError);
+          }
           setCurrentJobWorkOrder(null);
           setCurrentJobVehicle(null);
           return;
         }
 
-        const workOrder = wo ?? null;
         setCurrentJobWorkOrder(workOrder);
-
-        if (workOrder?.vehicle_id) {
-          const { data: veh, error: vehErr } = await supabase
-            .from("vehicles")
-            .select("id, year, make, model, license_plate")
-            .eq("id", workOrder.vehicle_id)
-            .maybeSingle<Vehicle>();
-
-          if (vehErr) {
-            console.error(
-              "[MobileTechHome] current job vehicle load error:",
-              vehErr,
-            );
-            setCurrentJobVehicle(null);
-          } else {
-            setCurrentJobVehicle(veh ?? null);
-          }
-        } else {
+        if (!workOrder.vehicle_id) {
           setCurrentJobVehicle(null);
+          return;
+        }
+
+        const { data: vehicle, error: vehicleError } = await supabase
+          .from("vehicles")
+          .select("id, year, make, model, license_plate")
+          .eq("id", workOrder.vehicle_id)
+          .maybeSingle<Vehicle>();
+
+        if (vehicleError) {
+          // eslint-disable-next-line no-console
+          console.error("[MobileTechHome] current vehicle load failed", vehicleError);
+          setCurrentJobVehicle(null);
+        } else {
+          setCurrentJobVehicle(vehicle ?? null);
         }
       } finally {
         setLoadingCurrentJob(false);
@@ -292,366 +296,159 @@ export function MobileTechHome({
     [supabase],
   );
 
-  // load current job whenever user or shift status changes
   useEffect(() => {
     void loadCurrentJob(userId);
-  }, [userId, shiftStatus, loadCurrentJob]);
+  }, [loadCurrentJob, shiftStatus, userId]);
 
-  /* ---------------------------------------------------------------------- */
-  /* Derived labels for hero chip                                           */
-  /* ---------------------------------------------------------------------- */
+  const shiftCopy = useMemo(() => {
+    const start = shiftStart
+      ? new Date(shiftStart).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
 
-  let statusLabel: string = "Off shift";
-  let statusDetail: string | null = "Use the menu to start your day.";
-
-  let timeStr: string | null = null;
-  if (shiftStart) {
-    const dt = new Date(shiftStart);
-    timeStr = dt.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  if (loadingShift) {
-    statusLabel = "Checking shift…";
-    statusDetail = null;
-  } else {
-    switch (shiftStatus) {
-      case "none":
-        statusLabel = "Off shift";
-        statusDetail = "Use the menu to start your day.";
-        break;
-      case "active":
-        statusLabel = "On shift";
-        statusDetail = timeStr ? `since ${timeStr}` : null;
-        break;
-      case "break":
-        statusLabel = "On break";
-        statusDetail = timeStr ? `since ${timeStr}` : null;
-        break;
-      case "lunch":
-        statusLabel = "At lunch";
-        statusDetail = timeStr ? `since ${timeStr}` : null;
-        break;
-      case "ended":
-        statusLabel = "Shift ended";
-        statusDetail = "You can start a new shift from the menu.";
-        break;
-      default:
-        statusLabel = "Off shift";
-        statusDetail = "Use the menu to start your day.";
+    if (loadingShift) return { label: "Checking shift…", detail: null };
+    if (shiftStatus === "active") {
+      return { label: "On shift", detail: start ? `Started ${start}` : null };
     }
-  }
-
-  // Hints for “0” data that’s confusing to techs
-  const todayHint = !loadingStats
-    ? isOnShift && today.workedHours <= 0
-      ? "Clock in to track worked hours."
-      : jobsCompletedToday > 0 && today.billedHours <= 0
-        ? "No billed labor recorded yet today."
-        : today.workedHours > 0 && today.billedHours <= 0
-          ? "No billed labor recorded yet today."
-          : null
-    : null;
-
-  const weekHint = !loadingStats
-    ? week.workedHours > 0 && week.billedHours <= 0
-      ? "No billed labor recorded yet this week."
-      : null
-    : null;
+    if (shiftStatus === "break") {
+      return { label: "On break", detail: start ? `Shift started ${start}` : null };
+    }
+    if (shiftStatus === "lunch") {
+      return { label: "At lunch", detail: start ? `Shift started ${start}` : null };
+    }
+    if (shiftStatus === "ended") {
+      return { label: "Shift ended", detail: "Open the menu to start another shift." };
+    }
+    return { label: "Off shift", detail: "Open the menu when you are ready to clock in." };
+  }, [loadingShift, shiftStart, shiftStatus]);
 
   return (
-    <div className="mobile-tech-page space-y-5 px-4 py-4">
-      {/* hero – brushed metal panel */}
-      <section className="mobile-tech-panel px-4 py-4 text-[color:var(--theme-text-primary)]">
-        <div className="space-y-4">
-          <div className="text-center">
-            <h1 className="text-xl font-semibold leading-tight">
-              <span className="text-[color:var(--theme-text-primary)]">Welcome back, </span>
-              <span className="text-[var(--accent-copper)]">{firstName}</span>{" "}
-              <span className="align-middle">👋</span>
-            </h1>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-              Bench-side view of today’s work and efficiency.
-            </p>
-          </div>
+    <div className="mobile-tech-page mx-auto w-full max-w-3xl space-y-4 px-3 py-3 sm:px-4">
+      <section className="mobile-tech-panel p-4 text-[color:var(--theme-text-primary)]">
+        <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
+          Technician
+        </div>
+        <h1 className="mt-2 text-2xl font-semibold leading-tight">
+          Welcome back, {firstName}
+        </h1>
+        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+          Your jobs, inspections, and shop tools.
+        </p>
+        <ShiftStatusChip
+          status={shiftStatus}
+          label={shiftCopy.label}
+          detail={shiftCopy.detail}
+          loading={loadingShift}
+        />
+      </section>
 
-          <ShiftStatusChip
-            status={shiftStatus}
-            label={statusLabel}
-            detail={statusDetail}
-            loading={loadingShift}
+      <CurrentJobCard
+        loading={loadingCurrentJob}
+        onShift={isOnShift}
+        job={currentJob}
+        workOrder={currentJobWorkOrder}
+        vehicle={currentJobVehicle}
+      />
+
+      <section className="space-y-2">
+        <h2 className="px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+          Work
+        </h2>
+        <div className="grid grid-cols-2 gap-2">
+          <QuickLinkCard
+            href="/mobile/tech/queue"
+            title="My jobs"
+            detail={loadingStats ? "Loading…" : `${openJobs} open`}
+            icon={BriefcaseBusiness}
+          />
+          <QuickLinkCard
+            href="/mobile/inspections"
+            title="Inspections"
+            detail="Start or continue"
+            icon={ClipboardCheck}
           />
         </div>
       </section>
 
-      {/* current job pill – only while on shift */}
-      {isOnShift && (
-        <CurrentJobPill
-          loading={loadingCurrentJob}
-          job={currentJob}
-          workOrder={currentJobWorkOrder}
-          vehicle={currentJobVehicle}
-        />
-      )}
-
-      {/* summary cards – worked vs billed */}
-      <section className="space-y-3">
-        <SummaryCard
-          label="Today"
-          stats={today}
-          loading={loadingStats}
-          hint={todayHint}
-        />
-        <SummaryCard
-          label="This week"
-          stats={week}
-          loading={loadingStats}
-          hint={weekHint}
-        />
-      </section>
-
-      {/* stat chips – jobs overview */}
-      <section className="grid grid-cols-3 gap-2.5">
-        <StatCard
-          label="Open jobs"
-          value={loadingStats ? "…" : openJobs}
-          variant="accent"
-        />
-        <StatCard label="Assigned" value={loadingStats ? "…" : assignedJobs} />
-        <StatCard
-          label="Jobs done"
-          value={loadingStats ? "…" : jobsCompletedToday}
-        />
-      </section>
-
-      {/* stat chips – keep ONLY billed today (eff is already in the summary cards) */}
-
-      {/* today jobs */}
-      {jobs.length > 0 && (
+      {jobs.length > 0 ? (
         <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
               Today&apos;s jobs
             </h2>
             <Link
-              href="/mobile/work-orders"
-              className="text-[0.7rem] text-sky-300 underline-offset-4 hover:underline"
+              href="/mobile/tech/queue"
+              className="text-xs font-medium text-[var(--accent-copper)]"
             >
               View all
             </Link>
           </div>
-          <ul className="space-y-2">
-            {jobs.map((job) => (
-              <li key={job.id}>
-                <Link
-                  href={job.href}
-                  className="mobile-tech-subpanel block px-3 py-2 text-xs text-[color:var(--theme-text-primary)]"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="truncate font-medium">{job.label}</div>
-                    <span className="accent-chip rounded-full px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-sky-300">
-                      {job.status.replace(/_/g, " ")}
-                    </span>
+          <div className="space-y-2">
+            {jobs.slice(0, 4).map((job) => (
+              <Link
+                key={job.id}
+                href={job.href}
+                className="mobile-tech-subpanel flex min-h-14 items-center justify-between gap-3 px-3 py-2.5 active:scale-[0.99]"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                    {job.label}
                   </div>
-                </Link>
-              </li>
+                  <div className="mt-0.5 text-[0.68rem] text-[color:var(--theme-text-secondary)]">
+                    {formatStatus(job.status)}
+                  </div>
+                </div>
+                <span className="shrink-0 text-xs font-medium text-[var(--accent-copper)]">
+                  Open →
+                </span>
+              </Link>
             ))}
-          </ul>
+          </div>
         </section>
-      )}
+      ) : null}
 
-      {/* tools */}
       <section className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-          Tools
+        <h2 className="px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+          Shop tools
         </h2>
-        <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
-          Quick actions for your bench.
-        </p>
-        <div className="space-y-2">
-          <ToolCard
-            href="/mobile/tech/performance"
-            label="My performance"
-            description="Revenue, hours & efficiency"
-          />
-          <ToolCard
-            href="/mobile/tech/queue"
-            label="My jobs"
-            description="Assigned work orders"
-          />
-          <ToolCard
+        <div className="grid grid-cols-2 gap-2">
+          <QuickLinkCard
             href="/mobile/messages"
-            label="Team chat"
-            description="Stay in sync"
+            title="Team chat"
+            detail="Messages from the shop"
+            icon={MessageCircle}
+          />
+          <QuickLinkCard
+            href="/mobile/tech/performance"
+            title="My performance"
+            detail="Hours and efficiency"
+            icon={Gauge}
           />
         </div>
       </section>
-    </div>
-  );
-}
 
-/* ------------------------------------------------------------------------ */
-/* Pieces                                                                   */
-/* ------------------------------------------------------------------------ */
-
-function CurrentJobPill({
-  loading,
-  job,
-  workOrder,
-  vehicle,
-}: {
-  loading: boolean;
-  job: WorkOrderLine | null;
-  workOrder: WorkOrder | null;
-  vehicle: Vehicle | null;
-}) {
-  if (loading) {
-    return (
-      <div className="mobile-tech-subpanel inline-flex w-full items-center justify-between px-3 py-2 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-        <span className="uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-          Current job
-        </span>
-        <span>Loading…</span>
-      </div>
-    );
-  }
-
-  if (!job || !workOrder) {
-    return (
-      <div className="mobile-tech-subpanel inline-flex w-full items-center justify-between px-3 py-2 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-        <span className="uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-          Current job
-        </span>
-        <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
-          No active job punch
-        </span>
-      </div>
-    );
-  }
-
-  const jobLabel =
-    job.description || job.complaint || String(job.job_type ?? "Job in progress");
-
-  const vehicleLabel = vehicle
-    ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
-        .trim()
-        .replace(/\s+/g, " ")
-    : null;
-
-  const woLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
-
-  // 🔗 Include the line id so the mobile WO page can auto-focus that job
-  const href = `/mobile/work-orders/${workOrder.id}?focus=${job.id}`;
-
-  return (
-    <Link
-      href={href}
-      className="mobile-tech-subpanel flex items-center justify-between border border-sky-500/35 px-3 py-2 text-[0.8rem] text-[color:var(--theme-text-primary)]"
-    >
-      <div className="flex flex-col">
-        <span className="text-[0.65rem] uppercase tracking-[0.18em] text-sky-300">
-          Current job
-        </span>
-        <span className="mt-0.5 truncate text-sm font-medium">{jobLabel}</span>
-        <span className="mt-0.5 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-          WO {woLabel}
-          {vehicleLabel ? ` • ${vehicleLabel}` : ""}
-        </span>
-      </div>
-      <span className="ml-3 text-xs text-sky-300">
-        Go →
-      </span>
-    </Link>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  variant = "default",
-}: {
-  label: string;
-  value: number | string;
-  variant?: "default" | "accent";
-}) {
-  const base = "mobile-tech-stat px-3 py-3";
-
-  const variantClasses =
-    variant === "accent"
-      ? "border-sky-500/35"
-      : "border-[var(--metal-border-soft)]";
-
-  return (
-    <div className={`${base} ${variantClasses}`}>
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)] text-center">
-        {label}
-      </div>
-      <div className="mt-1 flex items-baseline justify-center gap-1 text-lg font-semibold text-[color:var(--theme-text-primary)]">
-        <span>{value}</span>
-      </div>
-    </div>
-  );
-}
-
-function clampEfficiencyText(efficiencyPct: number): string {
-  if (!Number.isFinite(efficiencyPct)) return "–";
-  if (efficiencyPct > 250) return "250%+";
-  if (efficiencyPct < 0) return "0%";
-  return `${efficiencyPct.toFixed(0)}%`;
-}
-
-function SummaryCard({
-  label,
-  stats,
-  loading,
-  hint,
-}: {
-  label: string;
-  stats: PeriodStats;
-  loading?: boolean;
-  hint?: string | null;
-}) {
-  const worked = stats.workedHours;
-  const billed = stats.billedHours;
-  const eff = stats.efficiencyPct;
-
-  const workedText = loading ? "…" : `${worked.toFixed(1)} h`;
-  const billedText = loading ? "…" : `${billed.toFixed(1)} h`;
-
-  const effText =
-    loading || eff === null ? "–" : clampEfficiencyText(Number(eff));
-
-  return (
-    <div className="mobile-tech-panel px-4 py-3">
-      <div className="text-center text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-        {label} – Worked vs Billed
-      </div>
-
-      <div className="mt-2 flex items-baseline justify-center gap-4 text-sm text-[color:var(--theme-text-primary)]">
-        <div className="text-center">
-          <span className="text-[color:var(--theme-text-secondary)]">Worked</span>{" "}
-          <span className="font-semibold text-[color:var(--theme-text-primary)]">{workedText}</span>
+      <details className="mobile-tech-panel group overflow-hidden">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+          <span>Hours &amp; efficiency</span>
+          <span className="text-xs text-[color:var(--theme-text-secondary)] group-open:rotate-180">
+            ▼
+          </span>
+        </summary>
+        <div className="space-y-3 border-t border-[color:var(--theme-border-soft)] px-4 py-4">
+          <PerformanceRow label="Today" stats={today} loading={loadingStats} />
+          <PerformanceRow label="This week" stats={week} loading={loadingStats} />
+          <div className="grid grid-cols-3 gap-2">
+            <Metric label="Open" value={loadingStats ? "…" : openJobs} />
+            <Metric label="Assigned" value={loadingStats ? "…" : assignedJobs} />
+            <Metric
+              label="Done today"
+              value={loadingStats ? "…" : jobsCompletedToday}
+            />
+          </div>
         </div>
-        <div className="text-center">
-          <span className="text-[color:var(--theme-text-secondary)]">Billed</span>{" "}
-          <span className="font-semibold text-[color:var(--theme-text-primary)]">{billedText}</span>
-        </div>
-      </div>
-
-      <div className="mt-2 text-center text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-        Efficiency:{" "}
-        <span className="font-semibold text-sky-300">
-          {effText}
-        </span>
-      </div>
-
-      {hint ? (
-        <div className="mt-2 text-center text-[0.7rem] text-[color:var(--theme-text-muted)]">
-          {hint}
-        </div>
-      ) : null}
+      </details>
     </div>
   );
 }
@@ -664,62 +461,202 @@ function ShiftStatusChip({
 }: {
   status: ShiftStatus;
   label: string;
-  detail?: string | null;
-  loading?: boolean;
+  detail: string | null;
+  loading: boolean;
 }) {
-  // full-width rectangular banner
-  const base =
-    "w-full border px-4 py-3 text-[0.75rem] font-medium rounded-md flex flex-col items-center justify-center text-center";
-
-  let classes = "";
-
-  if (loading) {
-    classes = "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)] bg-[color:var(--theme-surface-panel)]";
-  } else if (status === "active") {
-    classes = "border-sky-400/70 text-sky-100 bg-sky-500/12";
-  } else if (status === "break") {
-    classes = "border-amber-400/70 text-amber-100 bg-amber-500/12";
-  } else if (status === "lunch") {
-    classes = "border-amber-500/70 text-amber-100 bg-amber-500/14";
-  } else if (status === "ended") {
-    classes = "border-red-500/70 text-red-100 bg-red-500/12";
-  } else {
-    classes = "border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)] bg-[color:var(--theme-surface-panel)]";
-  }
+  const tone = loading
+    ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
+    : status === "active"
+      ? "border-emerald-400/45 bg-emerald-500/10"
+      : status === "break" || status === "lunch"
+        ? "border-amber-400/45 bg-amber-500/10"
+        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]";
 
   return (
-    <div className={`${base} ${classes}`}>
-      <span className="uppercase tracking-[0.2em]">{label}</span>
-      {detail ? (
-        <span className="mt-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]">{detail}</span>
-      ) : null}
+    <div className={`mt-4 flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 ${tone}`}>
+      <div>
+        <div className="text-sm font-semibold">{label}</div>
+        {detail ? (
+          <div className="mt-0.5 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
+            {detail}
+          </div>
+        ) : null}
+      </div>
+      <span
+        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+          status === "active"
+            ? "bg-emerald-400"
+            : status === "break" || status === "lunch"
+              ? "bg-amber-400"
+              : "bg-[color:var(--theme-text-muted)]"
+        }`}
+      />
     </div>
   );
 }
 
-function ToolCard({
+function CurrentJobCard({
+  loading,
+  onShift,
+  job,
+  workOrder,
+  vehicle,
+}: {
+  loading: boolean;
+  onShift: boolean;
+  job: WorkOrderLine | null;
+  workOrder: WorkOrder | null;
+  vehicle: Vehicle | null;
+}) {
+  if (!onShift) return null;
+
+  if (loading) {
+    return (
+      <section className="mobile-tech-panel p-4">
+        <div className="h-4 w-24 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
+        <div className="mt-3 h-8 animate-pulse rounded-lg bg-[color:var(--theme-surface-subtle)]" />
+      </section>
+    );
+  }
+
+  if (!job || !workOrder) {
+    return (
+      <section className="mobile-tech-panel p-4">
+        <div className="flex items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]">
+            <Wrench className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold">No active job</div>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+              Open your assigned work when you are ready to start a line.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/mobile/tech/queue"
+          className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-[color:var(--accent-copper)] px-4 text-sm font-semibold text-white"
+        >
+          Open my jobs
+        </Link>
+      </section>
+    );
+  }
+
+  const label =
+    job.description || job.complaint || String(job.job_type ?? "Job in progress");
+  const workOrderLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
+  const vehicleText = vehicleLabel(vehicle);
+
+  return (
+    <Link
+      href={`/mobile/jobs/${job.id}`}
+      className="mobile-tech-panel block border border-[var(--accent-copper-soft)]/70 p-4 active:scale-[0.99]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper)]">
+            Current job
+          </div>
+          <div className="mt-1 truncate text-base font-semibold text-[color:var(--theme-text-primary)]">
+            {label}
+          </div>
+          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+            WO {workOrderLabel}
+            {vehicleText ? ` • ${vehicleText}` : ""}
+          </div>
+        </div>
+        <span className="shrink-0 text-sm font-semibold text-[var(--accent-copper)]">
+          Open →
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+function QuickLinkCard({
   href,
-  label,
-  description,
+  title,
+  detail,
+  icon: Icon,
 }: {
   href: string;
-  label: string;
-  description: string;
+  title: string;
+  detail: string;
+  icon: typeof BriefcaseBusiness;
 }) {
   return (
     <Link
       href={href}
-      className="mobile-tech-subpanel block px-4 py-3 text-sm text-[color:var(--theme-text-primary)] transition hover:border-sky-500/45"
+      className="mobile-tech-subpanel min-w-0 p-3 active:scale-[0.99]"
     >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            {label}
-          </div>
-          <div className="mt-1 text-sm">{description}</div>
-        </div>
-        <span className="text-xs text-sky-300">›</span>
+      <div className="grid h-9 w-9 place-items-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[var(--accent-copper)]">
+        <Icon className="h-4.5 w-4.5" />
+      </div>
+      <div className="mt-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+        {title}
+      </div>
+      <div className="mt-1 text-[0.7rem] leading-4 text-[color:var(--theme-text-secondary)]">
+        {detail}
       </div>
     </Link>
+  );
+}
+
+function PerformanceRow({
+  label,
+  stats,
+  loading,
+}: {
+  label: string;
+  stats: PeriodStats;
+  loading: boolean;
+}) {
+  return (
+    <div className="mobile-tech-subpanel p-3">
+      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+        {label}
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+        <PerformanceValue
+          label="Worked"
+          value={loading ? "…" : `${stats.workedHours.toFixed(1)}h`}
+        />
+        <PerformanceValue
+          label="Billed"
+          value={loading ? "…" : `${stats.billedHours.toFixed(1)}h`}
+        />
+        <PerformanceValue
+          label="Efficiency"
+          value={loading ? "…" : efficiencyText(stats.efficiencyPct)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PerformanceValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[0.6rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-2 text-center">
+      <div className="text-base font-semibold text-[color:var(--theme-text-primary)]">
+        {value}
+      </div>
+      <div className="mt-0.5 text-[0.58rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+        {label}
+      </div>
+    </div>
   );
 }
