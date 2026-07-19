@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
+import MobileTechnicianAssistant from "@/features/mobile/technician/MobileTechnicianAssistant";
 import TechAssistant from "@/features/shared/components/TechAssistant";
 
 type AiAssistantModalProps = {
@@ -90,12 +91,17 @@ export default function AiAssistantModal({
           }`}
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          <TechAssistant
-            defaultVehicle={defaultVehicle}
-            workOrderLineId={workOrderLineId}
-            compact={mobileRoute}
-            questionOnly={mobileRoute}
-          />
+          {mobileRoute ? (
+            <MobileTechnicianAssistant
+              defaultVehicle={defaultVehicle}
+              workOrderLineId={workOrderLineId}
+            />
+          ) : (
+            <TechAssistant
+              defaultVehicle={defaultVehicle}
+              workOrderLineId={workOrderLineId}
+            />
+          )}
         </div>
       </div>
     </div>,
