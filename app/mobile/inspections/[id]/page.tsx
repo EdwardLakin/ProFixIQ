@@ -1,57 +1,42 @@
-// app/mobile/inspections/[id]/page.tsx
 "use client";
 
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 
 import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
-
-/* ------------------------------------------------------------------ */
-/* Types                                                              */
-/* ------------------------------------------------------------------ */
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type SectionItem = { item: string; unit?: string | null };
 type Section = { title: string; items: SectionItem[] };
 
-/* ------------------------------------------------------------------ */
-/* Regex helpers to detect existing “corner grid” sections             */
-/* ------------------------------------------------------------------ */
-
-// LF/RF/LR/RR ...
 const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
-
-// Steer/Drive/Tag/Trailer <N> Left|Right ...
 const AIR_ITEM_RE =
   /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
 
 function looksLikeCornerTitle(title: string | undefined | null): boolean {
   if (!title) return false;
-  const t = title.toLowerCase();
+  const value = title.toLowerCase();
   return (
-    t.includes("corner grid") ||
-    t.includes("tires & brakes") ||
-    t.includes("tires and brakes") ||
-    t.includes("air brake") ||
-    t.includes("hydraulic brake")
+    value.includes("corner grid") ||
+    value.includes("tires & brakes") ||
+    value.includes("tires and brakes") ||
+    value.includes("air brake") ||
+    value.includes("hydraulic brake")
   );
 }
 
 function stripExistingCornerGrids(sections: Section[]): Section[] {
-  return (sections ?? []).filter((s) => {
-    if (looksLikeCornerTitle(s.title)) return false;
-
-    const items = s.items ?? [];
-    const looksHyd = items.some((it) => HYD_ITEM_RE.test(it.item || ""));
-    const looksAir = items.some((it) => AIR_ITEM_RE.test(it.item || ""));
-    return !(looksHyd || looksAir);
+  return (sections ?? []).filter((section) => {
+    if (looksLikeCornerTitle(section.title)) return false;
+    const items = section.items ?? [];
+    const looksHydraulic = items.some((item) =>
+      HYD_ITEM_RE.test(item.item || ""),
+    );
+    const looksAir = items.some((item) => AIR_ITEM_RE.test(item.item || ""));
+    return !(looksHydraulic || looksAir);
   });
 }
-
-/* ------------------------------------------------------------------ */
-/* Canonical corner grid builders                                     */
-/* ------------------------------------------------------------------ */
 
 function buildHydraulicCornerSection(): Section {
   const metrics: Array<{ label: string; unit: string | null }> = [
@@ -63,11 +48,13 @@ function buildHydraulicCornerSection(): Section {
     { label: "Rotor Thickness", unit: "mm" },
     { label: "Wheel Torque", unit: "ft·lb" },
   ];
-  const corners = ["LF", "RF", "LR", "RR"];
   const items: SectionItem[] = [];
-  for (const c of corners) {
-    for (const m of metrics) {
-      items.push({ item: `${c} ${m.label}`, unit: m.unit });
+  for (const corner of ["LF", "RF", "LR", "RR"]) {
+    for (const metric of metrics) {
+      items.push({
+        item: `${corner} ${metric.label}`,
+        unit: metric.unit,
+      });
     }
   }
   return { title: "Corner Grid (Hydraulic)", items };
@@ -86,7 +73,6 @@ function buildAirCornerSection(): Section {
     { item: "Steer 1 Left Push Rod Travel", unit: "in" },
     { item: "Steer 1 Right Push Rod Travel", unit: "in" },
   ];
-
   const drive: SectionItem[] = [
     { item: "Drive 1 Left Tire Pressure", unit: "psi" },
     { item: "Drive 1 Right Tire Pressure", unit: "psi" },
@@ -101,73 +87,50 @@ function buildAirCornerSection(): Section {
     { item: "Drive 1 Left Push Rod Travel", unit: "in" },
     { item: "Drive 1 Right Push Rod Travel", unit: "in" },
   ];
-
   return { title: "Corner Grid (Air)", items: [...steer, ...drive] };
 }
-
-/* ------------------------------------------------------------------ */
-/* Deterministic grid selection                                       */
-/* ------------------------------------------------------------------ */
 
 function prepareSectionsWithCornerGrid(
   sections: Section[],
   vehicleType: string | null | undefined,
   gridParam: string | null,
 ): Section[] {
-  const s = Array.isArray(sections) ? sections : [];
-
-  // If template already has a corner grid title, don’t inject anything.
-  const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
-  if (hasCornerByTitle) return s;
-
-  const withoutGrids = stripExistingCornerGrids(s);
-  const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
-
-  if (gridMode === "none") return withoutGrids;
-
-  let injectAir: boolean;
-  if (gridMode === "air" || gridMode === "hyd") {
-    injectAir = gridMode === "air";
-  } else {
-    const vt = (vehicleType || "").toLowerCase();
-    injectAir =
-      vt.includes("truck") ||
-      vt.includes("bus") ||
-      vt.includes("coach") ||
-      vt.includes("trailer") ||
-      vt.includes("heavy") ||
-      vt.includes("medium-heavy") ||
-      vt.includes("air");
+  const source = Array.isArray(sections) ? sections : [];
+  if (source.some((section) => looksLikeCornerTitle(section.title))) {
+    return source;
   }
 
-  const injected = injectAir
-    ? buildAirCornerSection()
-    : buildHydraulicCornerSection();
+  const withoutGrids = stripExistingCornerGrids(source);
+  const gridMode = (gridParam || "").toLowerCase();
+  if (gridMode === "none") return withoutGrids;
 
-  return [injected, ...withoutGrids];
+  const injectAir =
+    gridMode === "air" ||
+    (gridMode !== "hyd" &&
+      ["truck", "bus", "coach", "trailer", "heavy", "medium-heavy", "air"].some(
+        (token) => (vehicleType || "").toLowerCase().includes(token),
+      ));
+
+  return [
+    injectAir ? buildAirCornerSection() : buildHydraulicCornerSection(),
+    ...withoutGrids,
+  ];
 }
-
-/* ------------------------------------------------------------------ */
-/* Mobile runner page                                                 */
-/* ------------------------------------------------------------------ */
 
 export default function MobileInspectionRunnerPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
-  const searchKey = search.toString(); // ✅ stable snapshot for deps
-
+  const searchKey = search.toString();
   const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const lineId = params?.id ? String(params.id) : null;
 
-  // pull values from the stable snapshot
   const { workOrderId, templateId, gridOverride } = useMemo(() => {
-    const sp = new URLSearchParams(searchKey);
+    const values = new URLSearchParams(searchKey);
     return {
-      workOrderId: sp.get("workOrderId"),
-      templateId: sp.get("templateId"),
-      gridOverride: sp.get("grid"), // air | hyd | none | null
+      workOrderId: values.get("workOrderId"),
+      templateId: values.get("templateId"),
+      gridOverride: values.get("grid"),
     };
   }, [searchKey]);
 
@@ -176,75 +139,67 @@ export default function MobileInspectionRunnerPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     if (!lineId || !templateId) {
       setError("Missing inspection line or template.");
       setLoading(false);
       return;
     }
 
-    (async () => {
+    void (async () => {
       try {
-        const { data, error: qErr } = await supabase
+        const { data, error: queryError } = await supabase
           .from("inspection_templates")
           .select("template_name, sections, vehicle_type")
           .eq("id", templateId)
           .maybeSingle();
-
         if (cancelled) return;
-
-        if (qErr || !data) {
-          console.error(qErr);
+        if (queryError || !data) {
+          // eslint-disable-next-line no-console
+          console.error(queryError);
           setError("Template not found.");
           toast.error("Template not found.");
           return;
         }
 
-        const rawSections = (data.sections ?? []) as Section[];
-        const title = data.template_name ?? "Inspection";
-        const vehicleType = String(data.vehicle_type ?? "");
-
         const sections = prepareSectionsWithCornerGrid(
-          rawSections,
-          vehicleType,
+          (data.sections ?? []) as Section[],
+          String(data.vehicle_type ?? ""),
           gridOverride,
         );
-
-        // rebuild params from searchKey (stable)
-        const sp = new URLSearchParams(searchKey);
-        const paramsObj: Record<string, string> = {};
-        sp.forEach((v, k) => {
-          paramsObj[k] = v;
+        const runtimeParams: Record<string, string> = {};
+        new URLSearchParams(searchKey).forEach((value, key) => {
+          runtimeParams[key] = value;
         });
+        runtimeParams.mode = "run";
+        runtimeParams.view = "mobile";
+        runtimeParams.workOrderLineId = lineId;
+        runtimeParams.lineId = lineId;
+        if (workOrderId) runtimeParams.workOrderId = workOrderId;
+        runtimeParams.templateId = templateId;
+        runtimeParams.template = "generic";
 
-        // ✅ Force runtime identity (desktop-aligned)
-        paramsObj.mode = "run";
-        paramsObj.view = "mobile";
-
-        // ✅ Canonical identifiers used by runtime/persistence
-        paramsObj.workOrderLineId = lineId;
-        paramsObj.lineId = lineId; // compat for older readers
-        if (workOrderId) paramsObj.workOrderId = workOrderId;
-        paramsObj.templateId = templateId;
-        paramsObj.template = "generic";
-
-        if (typeof window !== "undefined") {
-          // ✅ Runtime keys ONLY (desktop-aligned)
-          sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
-          sessionStorage.setItem("inspection:title", title);
-          sessionStorage.setItem("inspection:vehicleType", vehicleType);
-          sessionStorage.setItem("inspection:template", "generic");
-          sessionStorage.setItem("inspection:params", JSON.stringify(paramsObj));
-
-          // ❌ Kill legacy keys so builder UI can't “win”
-          sessionStorage.removeItem("customInspection:sections");
-          sessionStorage.removeItem("customInspection:title");
-          sessionStorage.removeItem("customInspection:includeOil");
-          sessionStorage.removeItem("customInspection:includeBatteryGrid");
-          sessionStorage.removeItem("customInspection:gridMode");
-        }
-      } catch (e) {
-        console.error(e);
+        sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+        sessionStorage.setItem(
+          "inspection:title",
+          data.template_name ?? "Inspection",
+        );
+        sessionStorage.setItem(
+          "inspection:vehicleType",
+          String(data.vehicle_type ?? ""),
+        );
+        sessionStorage.setItem("inspection:template", "generic");
+        sessionStorage.setItem(
+          "inspection:params",
+          JSON.stringify(runtimeParams),
+        );
+        sessionStorage.removeItem("customInspection:sections");
+        sessionStorage.removeItem("customInspection:title");
+        sessionStorage.removeItem("customInspection:includeOil");
+        sessionStorage.removeItem("customInspection:includeBatteryGrid");
+        sessionStorage.removeItem("customInspection:gridMode");
+      } catch (caught) {
+        // eslint-disable-next-line no-console
+        console.error(caught);
         if (cancelled) return;
         setError("Failed to prepare inspection.");
         toast.error("Failed to prepare inspection.");
@@ -256,7 +211,7 @@ export default function MobileInspectionRunnerPage() {
     return () => {
       cancelled = true;
     };
-  }, [lineId, templateId, workOrderId, gridOverride, searchKey, supabase]);
+  }, [gridOverride, lineId, searchKey, supabase, templateId, workOrderId]);
 
   if (!lineId) {
     return (
@@ -282,17 +237,22 @@ export default function MobileInspectionRunnerPage() {
     );
   }
 
+  const backHref = workOrderId
+    ? `/mobile/work-orders/${workOrderId}?focus=${encodeURIComponent(lineId)}`
+    : "/mobile/inspections";
+
   return (
     <div className="app-shell flex min-h-screen flex-col text-foreground">
-      {/* Mobile header (keeps theme, page not modal) */}
       <header className="metal-bar sticky top-0 z-40 flex items-center justify-between gap-2 px-3 py-2">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => router.push(backHref)}
           className="inline-flex items-center gap-1 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
         >
           <span>←</span>
-          <span className="uppercase tracking-[0.16em]">Back</span>
+          <span className="uppercase tracking-[0.16em]">
+            {workOrderId ? "Job" : "Inspections"}
+          </span>
         </button>
 
         <div className="flex-1 truncate px-2 text-center text-[11px] font-medium text-[color:var(--theme-text-primary)]">
@@ -301,7 +261,6 @@ export default function MobileInspectionRunnerPage() {
             {lineId.slice(0, 8)}
           </span>
         </div>
-
         <div className="w-14" />
       </header>
 
