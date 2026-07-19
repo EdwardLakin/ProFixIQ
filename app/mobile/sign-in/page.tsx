@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Eye, EyeOff, Loader2, Smartphone, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Loader2, Smartphone, WifiOff } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
 import AuthShell from "@/features/auth/components/AuthShell";
 import AuthStatus from "@/features/auth/components/AuthStatus";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
@@ -40,7 +41,11 @@ export default function MobileSignInPage() {
     setLoading(true);
     setError("");
     try {
-      const result = await signInWithIdentifier({ identifier, password, surface: "mobile" });
+      const result = await signInWithIdentifier({
+        identifier,
+        password,
+        surface: "mobile",
+      });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -83,7 +88,10 @@ export default function MobileSignInPage() {
 
       <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
         <div>
-          <label htmlFor="mobile-identifier" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+          <label
+            htmlFor="mobile-identifier"
+            className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]"
+          >
             Email or shop username
           </label>
           <input
@@ -99,10 +107,16 @@ export default function MobileSignInPage() {
 
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="mobile-password" className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+            <label
+              htmlFor="mobile-password"
+              className="text-xs font-semibold text-[color:var(--theme-text-secondary)]"
+            >
               Password
             </label>
-            <Link href="/forgot-password?redirect=%2Fmobile" className="text-xs font-semibold text-[var(--accent-copper)] hover:underline">
+            <Link
+              href="/forgot-password?redirect=%2Fmobile"
+              className="text-xs font-semibold text-[var(--accent-copper)] hover:underline"
+            >
               Forgot password?
             </Link>
           </div>
@@ -123,7 +137,11 @@ export default function MobileSignInPage() {
               aria-label={showPassword ? "Hide password" : "Show password"}
               className="absolute inset-y-0 right-0 grid w-12 place-items-center text-[color:var(--theme-text-muted)]"
             >
-              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              {showPassword ? (
+                <EyeOff className="h-5 w-5" />
+              ) : (
+                <Eye className="h-5 w-5" />
+              )}
             </button>
           </div>
         </div>
@@ -139,16 +157,17 @@ export default function MobileSignInPage() {
       </form>
 
       <div className="mt-5 flex items-start gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
-        <WifiOff className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-copper)]" aria-hidden />
-        Once signed in, supported inspection work can continue through brief connection drops.
+        <WifiOff
+          className="mt-0.5 h-4 w-4 shrink-0 text-[var(--accent-copper)]"
+          aria-hidden
+        />
+        Once signed in, supported inspection work can continue through brief
+        connection drops.
       </div>
 
-      <div className="mt-5 text-center text-xs text-[color:var(--theme-text-muted)]">
-        Need the full dashboard?{" "}
-        <Link href="/sign-in" className="font-semibold text-[var(--accent-copper)] hover:underline">
-          Shop sign in
-        </Link>
-      </div>
+      <p className="mt-5 text-center text-xs leading-5 text-[color:var(--theme-text-muted)]">
+        Signing in here always returns you to the role-specific mobile workspace.
+      </p>
     </AuthShell>
   );
 }
