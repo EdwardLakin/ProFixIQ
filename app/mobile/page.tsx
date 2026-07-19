@@ -231,7 +231,10 @@ export default function MobileHome() {
   }, [profile?.id, profile?.role, supabase]);
 
   const canonical = canonicalizeRole(profile?.role);
-  const role = canonical === "unknown" ? null : (canonical as MobileRole);
+  const role =
+    canonical === "unknown" || canonical === "customer"
+      ? null
+      : (canonical as MobileRole);
   const name = profile?.full_name || "Team member";
 
   if (loading) {
@@ -253,7 +256,7 @@ export default function MobileHome() {
       />
     );
   }
-  if (role === "advisor") {
+  if (role === "advisor" || role === "service") {
     return (
       <MobileAdvisorHome
         advisorName={name}
