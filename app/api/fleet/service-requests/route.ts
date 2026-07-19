@@ -1,12 +1,13 @@
 // app/api/fleet/service-requests/route.ts
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+
 import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
@@ -28,19 +29,20 @@ export type PortalServiceRequest = {
 };
 
 type Body = {
-  fleetId?: string | null; // optional for future fleet switching
+  fleetId?: string | null;
 };
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = createServerSupabaseRoute();
-
     const body = (await req.json().catch(() => ({}))) as Body;
 
     const actor = await resolveFleetActorContext(supabase, {
       requestedFleetId: body.fleetId ?? null,
     });
-    if (!actor.userId || !actor.capabilities.canSeeFleetWideUnits) {
+    const canReadRequests =
+      actor.capabilities.canSeeFleetWideUnits || actor.isFleetActor;
+    if (!actor.userId || !canReadRequests) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // RLS + membership policies enforce access
+    // RLS and fleet membership remain the final authorization boundary.
     const { data: requests, error: requestError } = await supabase
       .from("fleet_service_requests")
       .select(
@@ -86,9 +88,7 @@ export async function POST(req: NextRequest) {
       | "scheduled_for_date"
     >[];
 
-    const vehicleIds = Array.from(new Set(typed.map((r) => r.vehicle_id)));
-
-    // Optional enrichment (requires vehicles SELECT RLS for fleet members)
+    const vehicleIds = Array.from(new Set(typed.map((request) => request.vehicle_id)));
     const vehiclesMap = new Map<
       string,
       { unitLabel: string | null; plate: string | null }
@@ -104,42 +104,42 @@ export async function POST(req: NextRequest) {
         // eslint-disable-next-line no-console
         console.error("[fleet/service-requests] vehicles error:", vehiclesError);
       } else {
-        const vrows = (vehicleRows ?? []) as Pick<
+        const rows = (vehicleRows ?? []) as Pick<
           VehicleRow,
           "id" | "unit_number" | "license_plate" | "vin"
         >[];
 
-        for (const v of vrows) {
+        for (const vehicle of rows) {
           const primaryLabel =
-            (v.unit_number && v.unit_number.trim().length > 0
-              ? v.unit_number
-              : v.license_plate || v.vin) ?? null;
+            (vehicle.unit_number && vehicle.unit_number.trim().length > 0
+              ? vehicle.unit_number
+              : vehicle.license_plate || vehicle.vin) ?? null;
 
-          vehiclesMap.set(v.id, {
+          vehiclesMap.set(vehicle.id, {
             unitLabel: primaryLabel,
-            plate: v.license_plate ?? null,
+            plate: vehicle.license_plate ?? null,
           });
         }
       }
     }
 
-    const payload: PortalServiceRequest[] = typed.map((r) => {
-      const vehicle = vehiclesMap.get(r.vehicle_id) ?? {
+    const payload: PortalServiceRequest[] = typed.map((request) => {
+      const vehicle = vehiclesMap.get(request.vehicle_id) ?? {
         unitLabel: null,
         plate: null,
       };
 
       return {
-        id: r.id,
-        vehicleId: r.vehicle_id,
+        id: request.id,
+        vehicleId: request.vehicle_id,
         unitLabel: vehicle.unitLabel,
         plate: vehicle.plate,
-        title: r.title,
-        summary: r.summary,
-        severity: r.severity,
-        status: r.status,
-        createdAt: r.created_at,
-        scheduledForDate: r.scheduled_for_date,
+        title: request.title,
+        summary: request.summary,
+        severity: request.severity,
+        status: request.status,
+        createdAt: request.created_at,
+        scheduledForDate: request.scheduled_for_date,
       };
     });
 
