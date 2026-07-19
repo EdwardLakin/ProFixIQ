@@ -3,17 +3,8 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@shared/types/types/supabase";
 
-/**
- * SQL function:
- * public.sign_inspection(
- *   p_inspection_id uuid,
- *   p_role text,
- *   p_signed_name text,
- *   p_signature_image_path text default null,
- *   p_signature_hash text default null
- * )
- */
 type SignInspectionArgs = {
   p_inspection_id: string;
   p_role: "technician" | "customer" | "advisor";
@@ -23,6 +14,7 @@ type SignInspectionArgs = {
 };
 
 type Role = SignInspectionArgs["p_role"];
+type InspectionInsert = Database["public"]["Tables"]["inspections"]["Insert"];
 
 type SignRequestBody = {
   inspectionId?: string;
@@ -49,33 +41,20 @@ function cleanUuid(value: unknown): string | null {
 
 function isSignRequestBody(value: unknown): value is SignRequestBody {
   if (!isRecord(value)) return false;
-
-  const inspectionId = cleanUuid(value.inspectionId);
-  const workOrderLineId = cleanUuid(value.workOrderLineId);
-  const role = value.role;
-  const signedName = value.signedName;
-
-  if (!inspectionId && !workOrderLineId) return false;
-  if (typeof signedName !== "string") return false;
-  if (typeof role !== "string") return false;
-
-  return ALLOWED_ROLES.includes(role as Role);
+  if (!cleanUuid(value.inspectionId) && !cleanUuid(value.workOrderLineId)) {
+    return false;
+  }
+  if (typeof value.signedName !== "string") return false;
+  if (typeof value.role !== "string") return false;
+  return ALLOWED_ROLES.includes(value.role as Role);
 }
 
 type Supabase = ReturnType<typeof createServerSupabaseRoute>;
-
-type RpcReturn = {
-  data: unknown;
-  error: { message: string } | null;
-};
-
+type RpcReturn = { data: unknown; error: { message: string } | null };
 type ResolveInspectionResult =
   | { ok: true; inspectionId: string }
   | { ok: false; error: string; status: number };
 
-/**
- * Call RPC WITHOUT detaching `client.rpc` (it relies on `this.rest`).
- */
 async function callSignInspectionRpc(
   client: Supabase,
   args: SignInspectionArgs,
@@ -88,11 +67,11 @@ async function callSignInspectionRpc(
 /**
  * Resolve the canonical, shop-scoped inspection row.
  *
- * Mobile inspection screens start with a local UUID before the first database
- * save. A bare `{ id, shop_id }` insert violates `inspections_anchor_chk`, so a
- * missing mobile row is created only after its work-order line and work-order
- * anchors have been validated. Existing desktop callers that provide only an
- * inspection ID must already have a persisted inspection.
+ * Mobile inspections begin with a local UUID. Creating a bare row with only
+ * that ID and shop violates `inspections_anchor_chk`, so a missing mobile row
+ * is created only after its work-order line and work-order anchors have been
+ * validated. Existing desktop callers that provide only an inspection ID must
+ * already have a persisted row.
  */
 async function resolveInspectionForSigning(args: {
   supabase: Supabase;
@@ -135,21 +114,22 @@ async function resolveInspectionForSigning(args: {
         status: 409,
       };
     }
-
     return { ok: true, inspectionId: existing.data.id };
   }
 
-  const line = await supabase
+  const lineResult = await supabase
     .from("work_order_lines")
     .select("id, work_order_id")
     .eq("id", workOrderLineId)
     .eq("shop_id", shopId)
     .maybeSingle<{ id: string; work_order_id: string | null }>();
 
-  if (line.error) {
-    return { ok: false, error: line.error.message, status: 400 };
+  if (lineResult.error) {
+    return { ok: false, error: lineResult.error.message, status: 400 };
   }
-  if (!line.data?.id || !line.data.work_order_id) {
+
+  const line = lineResult.data;
+  if (!line?.id || !line.work_order_id) {
     return {
       ok: false,
       error: "Work-order line was not found for this shop.",
@@ -157,12 +137,14 @@ async function resolveInspectionForSigning(args: {
     };
   }
 
+  const canonicalLineId = line.id;
+  const canonicalWorkOrderId = line.work_order_id;
   const findCanonical = async () =>
     supabase
       .from("inspections")
       .select("id")
       .eq("shop_id", shopId)
-      .eq("work_order_line_id", line.data.id)
+      .eq("work_order_line_id", canonicalLineId)
       .order("updated_at", { ascending: false, nullsFirst: false })
       .limit(1)
       .maybeSingle<{ id: string }>();
@@ -175,10 +157,10 @@ async function resolveInspectionForSigning(args: {
     return { ok: true, inspectionId: existing.data.id };
   }
 
-  const insertPayload = {
+  const insertPayload: InspectionInsert = {
     ...(requestedInspectionId ? { id: requestedInspectionId } : {}),
-    work_order_id: line.data.work_order_id,
-    work_order_line_id: line.data.id,
+    work_order_id: canonicalWorkOrderId,
+    work_order_line_id: canonicalLineId,
     shop_id: shopId,
     user_id: actorUserId,
     summary: {},
@@ -217,10 +199,9 @@ async function resolveInspectionForSigning(args: {
 
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
-
-  const userRes = await supabase.auth.getUser();
-  const user = userRes.data.user;
-  if (userRes.error || !user) {
+  const userResult = await supabase.auth.getUser();
+  const user = userResult.data.user;
+  if (userResult.error || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -246,7 +227,7 @@ export async function POST(req: NextRequest) {
 
   let effectiveSignedName = signedName.trim();
   if (!effectiveSignedName && role === "technician") {
-    const profileNameRes = await supabase
+    const profileNameResult = await supabase
       .from("profiles")
       .select("full_name, first_name, last_name")
       .eq("id", user.id)
@@ -256,10 +237,10 @@ export async function POST(req: NextRequest) {
         last_name?: string | null;
       }>();
 
-    if (!profileNameRes.error) {
-      const full = (profileNameRes.data?.full_name ?? "").trim();
-      const joined = `${profileNameRes.data?.first_name ?? ""} ${
-        profileNameRes.data?.last_name ?? ""
+    if (!profileNameResult.error) {
+      const full = (profileNameResult.data?.full_name ?? "").trim();
+      const joined = `${profileNameResult.data?.first_name ?? ""} ${
+        profileNameResult.data?.last_name ?? ""
       }`.trim();
       effectiveSignedName = full || joined;
     }
@@ -272,20 +253,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const profile = await supabase
+  const profileResult = await supabase
     .from("profiles")
     .select("shop_id")
     .eq("id", user.id)
     .maybeSingle<{ shop_id: string | null }>();
 
-  if (profile.error) {
+  if (profileResult.error) {
     return NextResponse.json(
-      { error: `Unable to read profile: ${profile.error.message}` },
+      { error: `Unable to read profile: ${profileResult.error.message}` },
       { status: 400 },
     );
   }
 
-  const shopId = profile.data?.shop_id ?? null;
+  const shopId = profileResult.data?.shop_id ?? null;
   if (!shopId) {
     return NextResponse.json(
       { error: "Your profile is missing shop_id; cannot sign inspection." },
@@ -300,7 +281,6 @@ export async function POST(req: NextRequest) {
     shopId,
     actorUserId: user.id,
   });
-
   if (!resolved.ok) {
     return NextResponse.json(
       { error: resolved.error },
@@ -308,15 +288,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const rpcArgs: SignInspectionArgs = {
+  const { data, error } = await callSignInspectionRpc(supabase, {
     p_inspection_id: resolved.inspectionId,
     p_role: role,
     p_signed_name: effectiveSignedName,
     p_signature_image_path: signatureImagePath ?? null,
     p_signature_hash: signatureHash ?? null,
-  };
-
-  const { data, error } = await callSignInspectionRpc(supabase, rpcArgs);
+  });
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
