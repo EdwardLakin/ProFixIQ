@@ -73,12 +73,16 @@ describe("technician-first mobile UX", () => {
     expect(mobileShell).toContain("/^\\/mobile\\/inspections\\/[^/]+/");
   });
 
-  it("makes mobile photo capture a direct native-camera flow", () => {
+  it("makes mobile photo capture direct while preserving the desktop flow", () => {
+    expect(photoModal).toContain("<MobilePhotoCaptureModal");
+    expect(photoModal).toContain("<DesktopPhotoCaptureModal");
     expect(photoModal).toContain("Take photo");
     expect(photoModal).toContain("Choose existing");
     expect(photoModal).toContain('capture="environment"');
-    expect(photoModal).toContain("if (mobileRoute) void upload(selected);");
-    expect(photoModal).toContain("hideFooter={mobileRoute}");
+    expect(photoModal).toContain("void upload(selected);");
+    expect(photoModal).toContain("hideFooter");
+    expect(photoModal).toContain('title="Attach Photo"');
+    expect(photoModal).toContain('submitText={busy ? "Uploading…" : "Upload"}');
   });
 
   it("keeps the assistant contextual, question-driven, and non-automatic", () => {
