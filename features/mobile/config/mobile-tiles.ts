@@ -7,6 +7,7 @@ export type MobileRole = Extract<
   | "admin"
   | "manager"
   | "advisor"
+  | "service"
   | "mechanic"
   | "lead_hand"
   | "foreman"
@@ -43,6 +44,7 @@ const ALL_MOBILE_ROLES: MobileRole[] = [
   "admin",
   "manager",
   "advisor",
+  "service",
   "mechanic",
   "lead_hand",
   "foreman",
@@ -64,7 +66,15 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/work-orders",
     title: "Work Order Board",
     subtitle: "Live work flow",
-    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "lead_hand",
+      "foreman",
+    ],
     scopes: ["dashboard", "home", "jobs", "work_orders", "all"],
   },
   {
@@ -99,14 +109,29 @@ export const MOBILE_TILES: MobileTile[] = [
     href: "/mobile/inspections",
     title: "Inspections",
     subtitle: "Run checklists on vehicles",
-    roles: ["mechanic", "advisor", "manager", "lead_hand", "foreman"],
+    roles: [
+      "mechanic",
+      "advisor",
+      "service",
+      "manager",
+      "lead_hand",
+      "foreman",
+    ],
     scopes: ["home", "inspect", "inspections", "work_orders", "all"],
   },
   {
     href: "/mobile/appointments",
     title: "Appointments",
     subtitle: "Today’s schedule",
-    roles: ["advisor", "manager", "lead_hand", "foreman", "owner", "admin"],
+    roles: [
+      "advisor",
+      "service",
+      "manager",
+      "lead_hand",
+      "foreman",
+      "owner",
+      "admin",
+    ],
     scopes: ["home", "appointments", "work_orders", "all"],
   },
   {
