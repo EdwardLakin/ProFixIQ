@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { format } from "date-fns";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import type { Database } from "@shared/types/types/supabase";
-import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
+import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -16,14 +16,16 @@ type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
-type Row = WorkOrder & {
-  customers: Pick<Customer, "first_name" | "last_name" | "phone" | "email"> | null;
-  vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
+type WorkOrderListRow = WorkOrder & {
+  customers: Pick<
+    Customer,
+    "first_name" | "last_name" | "phone" | "email"
+  > | null;
+  vehicles: Pick<
+    Vehicle,
+    "year" | "make" | "model" | "license_plate"
+  > | null;
 };
-
-/* ------------------------------------------------------------------ */
-/* Status badges                                                      */
-/* ------------------------------------------------------------------ */
 
 type StatusKey =
   | "awaiting_approval"
@@ -37,31 +39,6 @@ type StatusKey =
   | "ready_to_invoice"
   | "invoiced";
 
-const BADGE_BASE =
-  "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]";
-
-const STATUS_BADGE: Record<StatusKey, string> = {
-  awaiting_approval: "bg-blue-500/10 border-blue-400/60 text-blue-100",
-  awaiting: "bg-sky-500/10 border-sky-400/60 text-sky-100",
-  queued: "bg-indigo-500/10 border-indigo-400/60 text-indigo-100",
-  in_progress:
-    "bg-[var(--accent-copper)]/15 border-[var(--accent-copper-light)]/70 text-[var(--accent-copper-light)]",
-  on_hold: "bg-amber-500/10 border-amber-400/70 text-amber-100",
-  planned: "bg-purple-500/10 border-purple-400/70 text-purple-100",
-  new: "bg-[color:var(--theme-surface-panel)] border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)]",
-  completed: "bg-green-500/10 border-green-400/70 text-green-100",
-  ready_to_invoice:
-    "bg-emerald-500/10 border-emerald-400/70 text-emerald-100",
-  invoiced: "bg-teal-500/10 border-teal-400/70 text-teal-100",
-};
-
-const statusChip = (s: string | null | undefined) => {
-  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey;
-  const cls = STATUS_BADGE[key] ?? STATUS_BADGE.awaiting;
-  return `${BADGE_BASE} ${cls}`;
-};
-
-/** “Normal flow” = tech/active; hides AA, completed, billing states */
 const NORMAL_FLOW_STATUSES: StatusKey[] = [
   "awaiting",
   "queued",
@@ -71,209 +48,209 @@ const NORMAL_FLOW_STATUSES: StatusKey[] = [
   "new",
 ];
 
-/* ------------------------------------------------------------------ */
-/* Input styles                                                        */
-/* ------------------------------------------------------------------ */
+const BADGE_BASE =
+  "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]";
 
-const INPUT_DARK =
-  "w-full rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] " +
-  "shadow-[var(--theme-shadow-medium)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
+const STATUS_BADGE: Record<StatusKey, string> = {
+  awaiting_approval: "border-blue-400/60 bg-blue-500/10 text-blue-100",
+  awaiting: "border-sky-400/60 bg-sky-500/10 text-sky-100",
+  queued: "border-indigo-400/60 bg-indigo-500/10 text-indigo-100",
+  in_progress:
+    "border-[var(--accent-copper-light)]/70 bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)]",
+  on_hold: "border-amber-400/70 bg-amber-500/10 text-amber-100",
+  planned: "border-purple-400/70 bg-purple-500/10 text-purple-100",
+  new: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]",
+  completed: "border-green-400/70 bg-green-500/10 text-green-100",
+  ready_to_invoice:
+    "border-emerald-400/70 bg-emerald-500/10 text-emerald-100",
+  invoiced: "border-teal-400/70 bg-teal-500/10 text-teal-100",
+};
 
-const SELECT_DARK =
-  "w-full rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] " +
-  "shadow-[var(--theme-shadow-medium)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
+function statusChip(status: string | null | undefined): string {
+  const key = (status ?? "awaiting")
+    .toLowerCase()
+    .replaceAll(" ", "_") as StatusKey;
+  return `${BADGE_BASE} ${STATUS_BADGE[key] ?? STATUS_BADGE.awaiting}`;
+}
 
-const BUTTON_MUTED =
-  "rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] " +
-  "transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15 hover:text-[color:var(--theme-text-primary)] active:opacity-80";
+function customerName(row: WorkOrderListRow): string {
+  return row.customers
+    ? [row.customers.first_name ?? "", row.customers.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ")
+    : "";
+}
 
-/* ------------------------------------------------------------------ */
-/* Page                                                                */
-/* ------------------------------------------------------------------ */
+function vehicleLabel(row: WorkOrderListRow): string {
+  if (!row.vehicles) return "";
+  return [row.vehicles.year, row.vehicles.make, row.vehicles.model]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+const inputClass =
+  "w-full rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:ring-1 focus:ring-[var(--accent-copper)]";
 
 export default function MobileWorkOrdersViewPage() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
-
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<WorkOrderListRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>("");
-  const [err, setErr] = useState<string | null>(null);
-
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [currentRole, setCurrentRole] = useState<string | null>(null);
-
-  // mechanics for AssignTechModal
+  const [shopId, setShopId] = useState<string | null>(null);
   const [mechanics, setMechanics] = useState<
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
-
-  // primary line per WO (for assigning via modal)
-  const [primaryLineByWo, setPrimaryLineByWo] = useState<Record<string, string>>(
-    {},
-  );
-
-  // assign-tech modal state
+  const [primaryLineByWorkOrder, setPrimaryLineByWorkOrder] = useState<
+    Record<string, string>
+  >({});
   const [assignModalOpen, setAssignModalOpen] = useState(false);
-  const [assignModalLineId, setAssignModalLineId] = useState<string | null>(
-    null,
-  );
+  const [assignModalLineId, setAssignModalLineId] = useState<string | null>(null);
 
-  // load role + mechanics once
   useEffect(() => {
-    (async () => {
+    let active = true;
+    void (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      if (!user?.id || !active) return;
 
-      if (user?.id) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-        setCurrentRole(prof?.role ?? null);
-      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, shop_id")
+        .eq("id", user.id)
+        .maybeSingle<{ role: string | null; shop_id: string | null }>();
+      if (!active) return;
+      setCurrentRole(profile?.role ?? null);
+      setShopId(profile?.shop_id ?? null);
 
       try {
-        const res = await fetch("/api/assignables");
-        const json = await res.json();
-        if (res.ok && Array.isArray(json.data)) {
-          setMechanics(json.data);
+        const response = await fetch("/api/assignables", { cache: "no-store" });
+        const body = (await response.json().catch(() => null)) as
+          | { data?: Array<Pick<Profile, "id" | "full_name" | "role">> }
+          | null;
+        if (active && response.ok && Array.isArray(body?.data)) {
+          setMechanics(body.data);
         }
       } catch {
-        // silent – modal can still fall back to its own fetch
+        // AssignTechModal can still load its own list if this preload fails.
       }
     })();
+
+    return () => {
+      active = false;
+    };
   }, [supabase]);
 
   const canAssign = getActorCapabilities({ role: currentRole }).canAssignWork;
 
   const load = useCallback(async () => {
     setLoading(true);
-    setErr(null);
+    setError(null);
+    try {
+      let workOrderQuery = supabase
+        .from("work_orders")
+        .select(
+          `
+          *,
+          customers:customers(first_name,last_name,phone,email),
+          vehicles:vehicles(year,make,model,license_plate)
+        `,
+        )
+        .order("created_at", { ascending: false })
+        .limit(75);
 
-    // 1) fetch work orders
-    let woQuery = supabase
-      .from("work_orders")
-      .select(
-        `
-        *,
-        customers:customers(first_name,last_name,phone,email),
-        vehicles:vehicles(year,make,model,license_plate)
-      `,
-      )
-      .order("created_at", { ascending: false })
-      .limit(50);
+      if (shopId) workOrderQuery = workOrderQuery.eq("shop_id", shopId);
+      workOrderQuery = status
+        ? workOrderQuery.eq("status", status)
+        : workOrderQuery.in(
+            "status",
+            NORMAL_FLOW_STATUSES as unknown as string[],
+          );
 
-    if (status === "") {
-      woQuery = woQuery.in(
-        "status",
-        NORMAL_FLOW_STATUSES as unknown as string[],
-      );
-    } else {
-      woQuery = woQuery.eq("status", status);
-    }
+      const { data, error: queryError } = await workOrderQuery;
+      if (queryError) throw queryError;
 
-    const { data, error } = await woQuery;
+      const workOrders = (data ?? []) as unknown as WorkOrderListRow[];
+      setRows(workOrders);
 
-    if (error) {
-      setErr(error.message);
-      setRows([]);
-      setPrimaryLineByWo({});
-      setLoading(false);
-      return;
-    }
+      const workOrderIds = workOrders.map((workOrder) => workOrder.id);
+      if (workOrderIds.length === 0) {
+        setPrimaryLineByWorkOrder({});
+        return;
+      }
 
-    const workOrders = (data ?? []) as Row[];
-
-    // 2) client-side text search
-    const qlc = q.trim().toLowerCase();
-    const filtered =
-      qlc.length === 0
-        ? workOrders
-        : workOrders.filter((r) => {
-            const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
-              .filter(Boolean)
-              .join(" ")
-              .toLowerCase();
-            const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
-            const ymm = [
-              r.vehicles?.year ?? "",
-              r.vehicles?.make ?? "",
-              r.vehicles?.model ?? "",
-            ]
-              .join(" ")
-              .toLowerCase();
-            const cid = (r.custom_id ?? "").toLowerCase();
-            return (
-              r.id.toLowerCase().includes(qlc) ||
-              cid.includes(qlc) ||
-              name.includes(qlc) ||
-              plate.includes(qlc) ||
-              ymm.includes(qlc)
-            );
-          });
-
-    setRows(filtered);
-
-    // 3) get a primary line id for each work order (first line)
-    const ids = filtered.map((r) => r.id);
-    if (ids.length > 0) {
-      const { data: lines, error: lineErr } = await supabase
+      let lineQuery = supabase
         .from("work_order_lines")
         .select("id, work_order_id, created_at")
-        .in("work_order_id", ids)
+        .in("work_order_id", workOrderIds)
         .eq("line_type", "job")
         .order("created_at", { ascending: true });
+      if (shopId) lineQuery = lineQuery.eq("shop_id", shopId);
 
-      if (!lineErr && lines) {
-        const map: Record<string, string> = {};
-        lines.forEach((ln) => {
-          const woId = ln.work_order_id as string;
-          if (!map[woId]) {
-            map[woId] = ln.id as string;
-          }
-        });
-        setPrimaryLineByWo(map);
-      } else {
-        setPrimaryLineByWo({});
+      const { data: lines, error: lineError } = await lineQuery;
+      if (lineError) throw lineError;
+
+      const nextPrimaryLines: Record<string, string> = {};
+      for (const line of lines ?? []) {
+        if (line.work_order_id && !nextPrimaryLines[line.work_order_id]) {
+          nextPrimaryLines[line.work_order_id] = line.id;
+        }
       }
-    } else {
-      setPrimaryLineByWo({});
+      setPrimaryLineByWorkOrder(nextPrimaryLines);
+    } catch (caught) {
+      setRows([]);
+      setPrimaryLineByWorkOrder({});
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Work orders could not be loaded.",
+      );
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-  }, [q, status, supabase]);
+  }, [shopId, status, supabase]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const total = rows.length;
-  const activeCount = useMemo(
-    () =>
-      rows.filter((r) =>
-        NORMAL_FLOW_STATUSES.includes(
-          (r.status ?? "awaiting").toLowerCase().replaceAll(
-            " ",
-            "_",
-          ) as StatusKey,
-        ),
-      ).length,
-    [rows],
-  );
-  const awaitingApprovalCount = useMemo(
-    () =>
-      rows.filter(
-        (r) => (r.status ?? "").toLowerCase() === "awaiting_approval",
-      ).length,
-    [rows],
-  );
+  const visibleRows = useMemo(() => {
+    const value = query.trim().toLowerCase();
+    if (!value) return rows;
+    return rows.filter((row) => {
+      const haystack = [
+        row.id,
+        row.custom_id,
+        customerName(row),
+        vehicleLabel(row),
+        row.vehicles?.license_plate,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(value);
+    });
+  }, [query, rows]);
 
-  const openAssignModalForWo = (woId: string) => {
-    const lineId = primaryLineByWo[woId];
+  const activeCount = rows.filter((row) =>
+    NORMAL_FLOW_STATUSES.includes(
+      (row.status ?? "awaiting")
+        .toLowerCase()
+        .replaceAll(" ", "_") as StatusKey,
+    ),
+  ).length;
+  const awaitingApprovalCount = rows.filter(
+    (row) => (row.status ?? "").toLowerCase() === "awaiting_approval",
+  ).length;
+
+  const openAssignModal = (workOrderId: string) => {
+    const lineId = primaryLineByWorkOrder[workOrderId];
     if (!lineId) {
-      toast.error("No job lines on this work order yet.");
+      toast.error("No job lines are available on this work order yet.");
       return;
     }
     setAssignModalLineId(lineId);
@@ -283,59 +260,45 @@ export default function MobileWorkOrdersViewPage() {
   return (
     <main className="min-h-screen bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pb-8 pt-4">
-        {/* Header */}
         <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-br from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-4 py-4 shadow-card">
-          <h1 className="font-blackops text-lg uppercase tracking-[0.2em] text-[var(--accent-copper-light)]">
-            Work orders
-          </h1>
-          <p className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-            Advisor view of active jobs and their tech assignments.
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="font-blackops text-lg uppercase tracking-[0.2em] text-[var(--accent-copper-light)]">
+                Work orders
+              </h1>
+              <p className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+                Advisor view of active jobs and technician assignments.
+              </p>
+            </div>
+            <Link
+              href="/mobile/work-orders/create"
+              className="shrink-0 rounded-full bg-[color:var(--accent-copper)] px-3 py-2 text-xs font-semibold text-white"
+            >
+              + Create
+            </Link>
+          </div>
 
-          <div className="mt-3 flex gap-4 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-            <div>
-              <div className="uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
-                Total
-              </div>
-              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{total}</div>
-            </div>
-            <div>
-              <div className="uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
-                Active
-              </div>
-              <div className="text-sm font-semibold text-sky-200">
-                {activeCount}
-              </div>
-            </div>
-            <div>
-              <div className="uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
-                Awaiting approval
-              </div>
-              <div className="text-sm font-semibold text-blue-200">
-                {awaitingApprovalCount}
-              </div>
-            </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <Metric label="Total" value={rows.length} />
+            <Metric label="Active" value={activeCount} />
+            <Metric label="Approval" value={awaitingApprovalCount} />
           </div>
         </section>
 
-        {/* Filters */}
         <section className="space-y-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs shadow-[var(--theme-shadow-medium)] backdrop-blur-md">
-          <div>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void load()}
-              placeholder="Search id, customer, plate, YMM…"
-              className={INPUT_DARK}
-            />
-          </div>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search ID, customer, plate, year, make, or model"
+            className={inputClass}
+          />
           <div className="flex gap-2">
             <select
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className={SELECT_DARK}
+              onChange={(event) => setStatus(event.target.value)}
+              className={inputClass}
             >
-              <option value="">Active (normal flow)</option>
+              <option value="">Active flow</option>
               <option value="awaiting_approval">Awaiting approval</option>
               <option value="awaiting">Awaiting</option>
               <option value="queued">Queued</option>
@@ -347,104 +310,85 @@ export default function MobileWorkOrdersViewPage() {
               <option value="ready_to_invoice">Ready to invoice</option>
               <option value="invoiced">Invoiced</option>
             </select>
-            <button type="button" onClick={() => void load()} className={BUTTON_MUTED}>
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+              className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-2 text-xs font-semibold disabled:opacity-50"
+            >
               Refresh
             </button>
           </div>
         </section>
 
-        {err && (
+        {error ? (
           <div className="rounded-xl border border-red-500/50 bg-red-950/60 px-3 py-2 text-xs text-red-100">
-            {err}
+            {error}
           </div>
-        )}
+        ) : null}
 
-        {/* List */}
         {loading ? (
           <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)] shadow-[var(--theme-shadow-medium)]">
             Loading work orders…
           </div>
-        ) : rows.length === 0 ? (
+        ) : visibleRows.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-sm text-[color:var(--theme-text-secondary)] shadow-[var(--theme-shadow-medium)]">
-            No work orders match your current filters.
+            No work orders match the current view.
           </div>
         ) : (
           <section className="space-y-2">
-            {rows.map((r) => {
-              const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
-
-              const customerName = r.customers
-                ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
-                    .filter(Boolean)
-                    .join(" ")
-                : "";
-
-              const vehicleLabel = r.vehicles
-                ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
-                    r.vehicles.model ?? ""
-                  }`.trim()
-                : "";
-
-              const plate = r.vehicles?.license_plate ?? "";
+            {visibleRows.map((row) => {
+              const href = `/mobile/work-orders/${row.id}?mode=view`;
+              const name = customerName(row);
+              const vehicle = vehicleLabel(row);
+              const plate = row.vehicles?.license_plate ?? "";
 
               return (
                 <article
-                  key={r.id}
+                  key={row.id}
                   className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-gradient-to-br from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-3 py-3 text-sm shadow-[var(--theme-shadow-medium)]"
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <Link href={href} className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <Link
-                          href={href}
-                          className="text-sm font-semibold text-[color:var(--theme-text-primary)] underline decoration-neutral-600/50 underline-offset-2 hover:decoration-[var(--accent-copper-light)]"
-                        >
-                          {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
-                        </Link>
-                        {r.custom_id && (
-                          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-1.5 py-0.5 text-[0.6rem] font-mono text-[color:var(--theme-text-secondary)]">
-                            #{r.id.slice(0, 6)}
-                          </span>
-                        )}
-                        <span className={statusChip(r.status)}>
-                          {(r.status ?? "awaiting").replaceAll("_", " ")}
+                        <span className="font-semibold text-[color:var(--theme-text-primary)]">
+                          {row.custom_id ?? `#${row.id.slice(0, 8)}`}
+                        </span>
+                        <span className={statusChip(row.status)}>
+                          {(row.status ?? "awaiting").replaceAll("_", " ")}
                         </span>
                       </div>
-
                       <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-                        {customerName || "No customer"}{" "}
-                        <span className="mx-1 text-[color:var(--theme-text-muted)]">•</span>
-                        {vehicleLabel || "No vehicle"}
-                        {plate ? (
-                          <span className="ml-1 text-[color:var(--theme-text-secondary)]">
-                            ({plate})
-                          </span>
-                        ) : null}
+                        {name || "No customer"}
+                        <span className="mx-1 text-[color:var(--theme-text-muted)]">
+                          •
+                        </span>
+                        {vehicle || "No vehicle"}
+                        {plate ? ` (${plate})` : ""}
                       </div>
-
                       <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">
-                        {r.created_at
-                          ? format(new Date(r.created_at), "PP p")
+                        {row.created_at
+                          ? format(new Date(row.created_at), "PP p")
                           : "—"}
                       </div>
-                    </div>
+                    </Link>
 
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex shrink-0 flex-col gap-1.5">
                       <Link
                         href={href}
-                        className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/20"
+                        className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-center text-[0.7rem] font-semibold text-[color:var(--theme-text-primary)]"
                       >
                         Open
                       </Link>
-                      {canAssign && (
+                      {canAssign ? (
                         <button
                           type="button"
-                          onClick={() => openAssignModalForWo(r.id)}
-                          className="rounded-full border border-sky-500/60 bg-sky-500/10 px-2.5 py-1 text-[0.7rem] text-sky-100 transition hover:bg-sky-500/25"
+                          onClick={() => openAssignModal(row.id)}
+                          className="rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-1.5 text-[0.7rem] font-semibold text-sky-100"
                         >
                           Assign tech
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </article>
@@ -453,9 +397,8 @@ export default function MobileWorkOrdersViewPage() {
           </section>
         )}
 
-        {/* Assign-tech modal – uses first job line on the WO */}
         <AssignTechModal
-          isOpen={assignModalOpen && !!assignModalLineId}
+          isOpen={assignModalOpen && Boolean(assignModalLineId)}
           onClose={() => {
             setAssignModalOpen(false);
             setAssignModalLineId(null);
@@ -463,11 +406,23 @@ export default function MobileWorkOrdersViewPage() {
           workOrderLineId={assignModalLineId ?? ""}
           mechanics={mechanics}
           onAssigned={async () => {
-            // after assigning, refresh the list
             await load();
           }}
         />
       </div>
     </main>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-2">
+      <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+        {value}
+      </div>
+      <div className="mt-0.5 text-[0.58rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+        {label}
+      </div>
+    </div>
   );
 }
