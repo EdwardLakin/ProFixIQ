@@ -94,11 +94,12 @@ describe("parts request inventory selection regression", () => {
     const fetchStart = requestPage.indexOf("/api/parts/requests/items/${input.itemId}/inventory", attachHandlerStart);
     const beforePersist = requestPage.slice(attachHandlerStart, fetchStart);
     expect(beforePersist).not.toContain("updateItem(r.req.id, input.itemId");
-    expect(beforePersist).toContain("toast.warning(\"Possible mismatch");
+    expect(beforePersist).toContain("Possible mismatch. Review the selected inventory part");
   });
 
   it("keeps package save and approval separate from automatic allocation or consumption", () => {
-    expect(commitRoute).toContain("parts_ensure_work_order_part");
+    expect(commitRoute).toContain("parts_commit_request_package_atomic");
+    expect(lifecycleSql).toContain("parts_ensure_work_order_part");
     expect(commitRoute).not.toContain("parts_allocate_request_item");
     expect(commitRoute).not.toContain("parts_issue_work_order_part");
     expect(lifecycleSql).toContain("values (v_wop.part_id, p_location_id, 0, 'wo_allocate'");

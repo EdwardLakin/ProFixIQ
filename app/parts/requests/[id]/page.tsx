@@ -47,6 +47,7 @@ import {
   loadStockOnHandByPartId,
   toStockSummaryRowsFromOnHand,
 } from "@/features/parts/lib/stock-on-hand";
+import { calculateOrderCoverage } from "@/features/parts/lib/order-quantity";
 
 type DB = Database;
 
@@ -61,15 +62,22 @@ type PartTrustFields = Pick<
 type LocationRow = DB["public"]["Tables"]["stock_locations"]["Row"];
 type PurchaseOrderRow = DB["public"]["Tables"]["purchase_orders"]["Row"];
 type SupplierRow = DB["public"]["Tables"]["suppliers"]["Row"];
-type PurchaseOrderLineInsert =
-  DB["public"]["Tables"]["purchase_order_lines"]["Insert"] & {
-    part_request_item_id?: string | null;
-  };
 
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type LineLite = Pick<WorkOrderLineRow, "id" | "complaint" | "description">;
 
 type Status = RequestRow["status"];
+
+const OPERATIONAL_REQUEST_STATUSES = new Set<string>([
+  "approved",
+  "partially_ordered",
+  "partially_consumed",
+  "partially_returned",
+]);
+
+function isRequestOperationallyReleased(status: unknown): boolean {
+  return OPERATIONAL_REQUEST_STATUSES.has(String(status ?? "").toLowerCase());
+}
 
 type UiItem = ItemRow & {
   ui_part_id: string | null;
@@ -1143,24 +1151,25 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     setRecvOpen(true);
   }
 
-  async function setItemPo(
-    itemId: string,
-    poId: string | null,
-  ): Promise<boolean> {
-    // ✅ Validate uuid (prevents PostgREST 400 on uuid cast)
-    if (poId && !isUuid(poId)) {
-      toast.error("Invalid PO id.");
+  async function clearItemPoAssignment(item: UiItem): Promise<boolean> {
+    const itemId = String(item.id);
+    const hasPhysicalProgress = [
+      item.qty_ordered,
+      item.qty_received,
+      item.qty_reserved,
+      item.qty_consumed,
+      item.qty_returned,
+    ].some((value) => toNum(value, 0) > 0);
+    if (hasPhysicalProgress) {
+      toast.error("This item already has ordering or inventory activity. Cancel or move its PO line through the PO workflow.");
       return false;
     }
 
     setSavingItemId(itemId);
     try {
-      // po_id exists in DB only if you added it; we still send it and rely on DB types at runtime.
       const { data: updated, error } = await supabase
         .from("part_request_items")
-        .update(
-          { po_id: poId } as unknown as DB["public"]["Tables"]["part_request_items"]["Update"],
-        )
+        .update({ po_id: null })
         .eq("id", itemId)
         .select("id")
         .maybeSingle();
@@ -1170,27 +1179,116 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         return false;
       }
       if (!updated?.id) {
-        toast.error("Update did not apply (no matching row or blocked).");
+        toast.error("PO assignment could not be cleared.");
         return false;
       }
 
-      // update UI state
       setRequests((prev) =>
-        prev.map((r) => ({
-          ...r,
-          items: r.items.map((it) =>
-            String(it.id) === String(itemId)
-              ? ({
-                  ...it,
-                  ui_po_id: poId ?? "",
-                  // keep raw column in sync for any other logic that reads it
-                  po_id: poId ?? null,
-                } as UiItem)
-              : it,
+        prev.map((request) => ({
+          ...request,
+          items: request.items.map((candidate) =>
+            String(candidate.id) === itemId
+              ? { ...candidate, ui_po_id: "", po_id: null }
+              : candidate,
           ),
         })),
       );
+      return true;
+    } finally {
+      setSavingItemId(null);
+    }
+  }
 
+  async function createPoLineForItem(item: UiItem, poId: string): Promise<boolean> {
+    const itemId = String(item.id);
+    if (!isUuid(poId)) {
+      toast.error("Invalid PO id.");
+      return false;
+    }
+
+    const parent = requests.find((request) => request.req.id === item.request_id);
+    if (!parent || !isRequestOperationallyReleased(parent.req.status)) {
+      toast.error("Pricing can be prepared now, but PO creation unlocks only after line approval.");
+      return false;
+    }
+
+    const coverage = calculateOrderCoverage({
+      qty: item.qty,
+      qtyRequested: item.qty_requested,
+      qtyApproved: item.qty_approved,
+      qtyOrdered: item.qty_ordered,
+      qtyReceived: item.qty_received,
+      qtyReserved: item.qty_reserved,
+      qtyConsumed: item.qty_consumed,
+      qtyReturned: item.qty_returned,
+    });
+    if (coverage.targetQty <= 0) {
+      toast.error("Enter an approved quantity before ordering this part.");
+      return false;
+    }
+    if (coverage.remainingToOrderQty <= 0) {
+      toast.info("This item is already covered by staged stock or existing PO quantity.");
+      return true;
+    }
+
+    const rawUnitCost = Number(item.unit_cost);
+    const unitCost = Number.isFinite(rawUnitCost) ? Math.max(rawUnitCost, 0) : null;
+    const idempotencyKey = [
+      "request-order",
+      itemId,
+      poId,
+      `target-${coverage.targetQty}`,
+      `shortage-${coverage.remainingToOrderQty}`,
+    ].join(":");
+
+    setSavingItemId(itemId);
+    try {
+      const response = await fetch(`/api/parts/requests/items/${itemId}/po-line`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          poId,
+          qty: coverage.remainingToOrderQty,
+          unitCost,
+          locationId: item.location_id ?? defaultLocationId ?? null,
+          idempotencyKey,
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        result?: {
+          ordered_qty?: number;
+          remaining_to_order?: number;
+          status?: string;
+        };
+      } | null;
+      if (!response.ok || !body?.ok) {
+        toast.error(body?.error || "Could not add this approved item to the purchase order.");
+        return false;
+      }
+
+      setRequests((prev) =>
+        prev.map((request) => ({
+          ...request,
+          items: request.items.map((candidate) =>
+            String(candidate.id) === itemId
+              ? ({
+                  ...candidate,
+                  po_id: poId,
+                  ui_po_id: poId,
+                  qty_ordered: body.result?.ordered_qty ?? candidate.qty_ordered,
+                  status: (body.result?.status ?? candidate.status) as ItemRow["status"],
+                } as UiItem)
+              : candidate,
+          ),
+        })),
+      );
+      toast.success(
+        body.result?.remaining_to_order
+          ? `${coverage.remainingToOrderQty} added to the PO; ${body.result.remaining_to_order} still needs ordering.`
+          : `${coverage.remainingToOrderQty} added to the purchase order.`,
+      );
       return true;
     } finally {
       setSavingItemId(null);
@@ -1198,8 +1296,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   }
 
   async function ensureSupplierExists(
-   // CONTINUE FROM HERE (starting at ensureSupplierExists)
-
     shopId: string,
     supplierName: string,
   ): Promise<string | null> {
@@ -1309,53 +1405,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       ));
     if (!poId) return;
 
-    const ok = await setItemPo(String(item.id), poId);
-    if (!ok) return;
-
-    const rawQty =
-      (item as unknown as { qty_approved?: unknown }).qty_approved ??
-      (item as unknown as { qty?: unknown }).qty;
-    const qty = Math.max(0, Math.floor(toNum(rawQty, 0)));
-    const description = String(item.description ?? "").trim();
-    const partId = isUuid(item.part_id) ? item.part_id : null;
-    const rawUnitCost =
-      (item as unknown as { unit_cost?: unknown }).unit_cost ??
-      (item as unknown as { quoted_price?: unknown }).quoted_price;
-    const unitCostNum = Number(rawUnitCost);
-    const unitCost = Number.isFinite(unitCostNum) ? Math.max(0, unitCostNum) : 0;
-
-    if (qty > 0 && description) {
-      const { data: existingLinkedLine, error: lineCheckErr } = await supabase
-        .from("purchase_order_lines")
-        .select("id")
-        .eq("po_id", poId)
-        .eq("part_request_item_id", String(item.id))
-        .limit(1);
-
-      if (lineCheckErr) {
-        toast.warning(`PO line linkage check skipped: ${lineCheckErr.message}`);
-      }
-
-      const hasLinkedLine =
-        Array.isArray(existingLinkedLine) && existingLinkedLine.length > 0;
-
-      if (!hasLinkedLine) {
-        const { error: lineInsertErr } = await supabase.from("purchase_order_lines").insert({
-          po_id: poId,
-          description,
-          qty,
-          unit_cost: unitCost,
-          part_id: partId,
-          part_request_item_id: String(item.id),
-        } as PurchaseOrderLineInsert);
-
-        if (lineInsertErr) {
-          toast.warning(`PO linked, but line insert failed: ${lineInsertErr.message}`);
-        }
-      }
-    }
-
-    toast.success(`Assigned PO ${poId.slice(0, 8)}.`);
+    await createPoLineForItem(item, poId);
   }
 
 
@@ -1582,24 +1632,24 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    let lineId = getEffectiveWorkOrderLineId(target.req, target.items);
+    const lineId = getEffectiveWorkOrderLineId(target.req, target.items);
     const durableLineId = resolveWorkOrderLineId(target.req, target.items);
-    const isPreApprovalQuoteItem = !!it.quote_line_id && !durableLineId;
+    const isPreApprovalQuoteItem =
+      Boolean(it.quote_line_id ?? target.req.quote_line_id) && !durableLineId;
     if (isPreApprovalQuoteItem) {
-      toast.error("Quote-originated parts can be priced or assigned to POs before approval, but stock allocation waits for approval.");
+      toast.error("Quote-originated parts can be priced before approval. Ordering and stock allocation unlock automatically after approval.");
       return;
     }
 
-// 🔥 Fallback: auto-pick first available line
-if ((!lineId || !isUuid(lineId)) && lineById.size > 0) {
-  lineId = Array.from(lineById.keys())[0];
-}
+    if (!isRequestOperationallyReleased(target.req.status)) {
+      toast.error("Pricing can be saved now, but ordering and work-order attachment unlock only after line approval.");
+      return;
+    }
 
-// Still block if truly nothing exists
-if (!lineId || !isUuid(lineId)) {
-  toast.error("No work order line available to attach this part.");
-  return;
-}
+    if (!lineId || !isUuid(lineId)) {
+      toast.error("This request has no durable repair-line link. Reload it from the originating work-order line before attaching parts.");
+      return;
+    }
 
     const locId = defaultLocationId || "";
 
@@ -1626,10 +1676,25 @@ if (!lineId || !isUuid(lineId)) {
         : lineId;
 
       const selectedStockAvailable = stockAvailableByPartId[String(partId)] ?? 0;
-      const shouldAllocateFromStock = Boolean(locId) && selectedStockAvailable > 0;
+      const allocationQty = locId
+        ? Math.min(qty, Math.max(selectedStockAvailable, 0))
+        : 0;
+      const shouldAllocateFromStock = allocationQty >= qty;
+      const hasPartialStock = allocationQty > 0 && allocationQty < qty;
       if (locId && selectedStockAvailable <= 0) {
         toast.warning("No available stock for the selected part. The item will be saved without blocking allocation/order follow-up.");
+      } else if (hasPartialStock) {
+        toast.info(`${allocationQty} can be reserved now; the remaining ${qty - allocationQty} still needs ordering.`);
       }
+
+      const attachIdempotencyKey = [
+        "attach-request-item",
+        itemId,
+        partId,
+        safeLineId,
+        qty,
+        price,
+      ].join(":");
 
       const res = await fetch(`/api/parts/requests/items/${itemId}/add`, {
         method: "POST",
@@ -1647,6 +1712,7 @@ if (!lineId || !isUuid(lineId)) {
           createAllocation: shouldAllocateFromStock,
           warningAccepted: Boolean(conflictOverrideByItemId[itemId]),
           warningReason: conflictOverrideByItemId[itemId] ? conflict?.message ?? null : null,
+          idempotencyKey: attachIdempotencyKey,
         }),
       });
       const body = (await res.json().catch(() => null)) as
@@ -1669,6 +1735,40 @@ if (!lineId || !isUuid(lineId)) {
 
       const updated = body.item;
 
+      if (hasPartialStock && locId) {
+        const allocationResponse = await fetch(
+          `/api/parts/requests/items/${itemId}/allocate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              locationId: locId,
+              qty: allocationQty,
+              idempotencyKey: [
+                "attach-partial-stock",
+                itemId,
+                partId,
+                locId,
+                allocationQty,
+                qty,
+              ].join(":"),
+            }),
+          },
+        );
+        const allocationBody = (await allocationResponse.json().catch(() => null)) as {
+          ok?: boolean;
+          error?: string;
+        } | null;
+        if (!allocationResponse.ok || !allocationBody?.ok) {
+          toast.warning(
+            allocationBody?.error ||
+              "The part was saved, but the available partial stock could not be reserved.",
+          );
+        } else {
+          toast.success(`${allocationQty} reserved from stock; ${qty - allocationQty} remains to order.`);
+        }
+      }
+
       const nextItems = target.items.map((x) => {
         if (x.id !== itemId) return x;
         return {
@@ -1687,6 +1787,9 @@ if (!lineId || !isUuid(lineId)) {
 
       const allNowQuoted =
         nextItems.length > 0 && nextItems.every((x) => isRowComplete(x));
+      const mayReconcileQuoteStatus = ["requested", "quoted"].includes(
+        String(target.req.status ?? "").toLowerCase(),
+      );
 
       setRequests((prev) =>
         prev.map((r) =>
@@ -1695,7 +1798,10 @@ if (!lineId || !isUuid(lineId)) {
             : {
                 req: {
                   ...r.req,
-                  status: allNowQuoted ? "quoted" : (r.req.status ?? "requested"),
+                  status:
+                    allNowQuoted && mayReconcileQuoteStatus
+                      ? "quoted"
+                      : r.req.status,
                 },
                 items: r.items.map((x) =>
                   x.id !== itemId
@@ -1717,16 +1823,7 @@ if (!lineId || !isUuid(lineId)) {
         ),
       );
 
-      if (allNowQuoted) {
-        const { error: statusErr } = await supabase.rpc(
-          "set_part_request_status",
-          {
-            p_request: reqId,
-            p_status: "quoted" satisfies Status,
-          },
-        );
-        if (statusErr) toast.warning(statusErr.message);
-      }
+      await syncRequestQuotedState(reqId, nextItems, target.req.status);
 
       if (it.quote_line_id) {
         await syncQuoteLineForItem(String(it.id));
@@ -1756,9 +1853,14 @@ if (!lineId || !isUuid(lineId)) {
   }
 
   async function commitPartsPackage(requestId: string): Promise<void> {
+    const request = requests.find((candidate) => candidate.req.id === requestId);
+    if (!request || !isRequestOperationallyReleased(request.req.status)) {
+      toast.error("Save the quote and wait for line approval. The parts package will unlock automatically after approval.");
+      return;
+    }
+
     setSavingReqId(requestId);
     try {
-      const request = requests.find((candidate) => candidate.req.id === requestId);
       const packageFingerprint = (request?.items ?? [])
         .slice()
         .sort((a, b) => String(a.id).localeCompare(String(b.id)))
@@ -2659,16 +2761,21 @@ if (!lineId || !isUuid(lineId)) {
                                           value={uiPoId}
                                           onChange={(e) => {
                                             const next = e.target.value || "";
-                                            updateItem(r.req.id, String(it.id), {
-                                              ui_po_id: next,
-                                            });
-                                            void setItemPo(
-                                              String(it.id),
-                                              next ? next : null,
-                                            );
+                                            if (next) {
+                                              void createPoLineForItem(it, next);
+                                            } else {
+                                              void clearItemPoAssignment(it);
+                                            }
                                           }}
-                                          disabled={rowBusy}
-                                          title="Assign this request item to a PO"
+                                          disabled={
+                                            rowBusy ||
+                                            !isRequestOperationallyReleased(r.req.status)
+                                          }
+                                          title={
+                                            isRequestOperationallyReleased(r.req.status)
+                                              ? "Add the uncovered approved quantity to this PO"
+                                              : "PO ordering unlocks after approval"
+                                          }
                                         >
                                           <option value="">— no PO —</option>
                                           {pos.map((po) => (

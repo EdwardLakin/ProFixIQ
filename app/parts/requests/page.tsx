@@ -1,609 +1,954 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  Check,
+  ClipboardList,
+  History,
+  ListChecks,
+  PackageCheck,
+  RefreshCw,
+  Search,
+  ShoppingCart,
+  SlidersHorizontal,
+  Wrench,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
-import { requestFlowLabel, toItemFlowDisplay, toRequestFlowDisplay } from "@/features/parts/lib/status-display";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  earliestPartsRequestStage,
+  isPartsRequestItemHandedOff,
+  isPartsRequestItemPriced,
+  isPartsRequestItemStaged,
+  partsRequestStageLabel,
+  toPartsRequestStage,
+  type PartsRequestStage,
+  type PartsRequestStageItem,
+} from "@/features/parts/lib/status-display";
 
 type DB = Database;
-
 type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
 type PartRequestItem = DB["public"]["Tables"]["part_request_items"]["Row"];
 
-type BucketStatus = "pending" | "in_progress" | "ready" | "complete";
+type QueueItem = Pick<
+  PartRequestItem,
+  | "id"
+  | "request_id"
+  | "description"
+  | "part_id"
+  | "quoted_price"
+  | "unit_price"
+  | "qty"
+  | "qty_requested"
+  | "qty_approved"
+  | "qty_ordered"
+  | "qty_received"
+  | "qty_reserved"
+  | "qty_consumed"
+  | "qty_returned"
+  | "status"
+  | "updated_at"
+>;
+
+type RequestModel = {
+  request: PartRequest;
+  items: QueueItem[];
+  stage: PartsRequestStage;
+};
+
+type WorkOrderListRow = {
+  id: string;
+  custom_id: string | null;
+  customers:
+    | { first_name: string | null; last_name: string | null }
+    | { first_name: string | null; last_name: string | null }[]
+    | null;
+  vehicles:
+    | {
+        year: string | number | null;
+        make: string | null;
+        model: string | null;
+      }
+    | {
+        year: string | number | null;
+        make: string | null;
+        model: string | null;
+      }[]
+    | null;
+};
 
 type WoBucket = {
   workOrderId: string;
   customId: string | null;
   customerName: string | null;
   vehicleLabel: string | null;
-  status: BucketStatus;
-  requests: PartRequest[];
-  itemsCount: number;
-  quoteOriginCount: number;
-  completeCount: number;
-  completionPct: number;
+  models: RequestModel[];
+  items: QueueItem[];
+  stage: PartsRequestStage;
   latestAt: string | null;
   searchBlob: string;
 };
 
-type WorkOrderListRow = {
-  id: string;
-  custom_id: string | null;
-  customer_id: string | null;
-  vehicle_id: string | null;
-  customers:
-    | { first_name: string | null; last_name: string | null }
-    | { first_name: string | null; last_name: string | null }[]
-    | null;
-  vehicles:
-    | { year: string | number | null; make: string | null; model: string | null }
-    | { year: string | number | null; make: string | null; model: string | null }[]
-    | null;
-};
+type QueueTab = "active" | "completed";
+type StageFilter = "all" | Exclude<PartsRequestStage, "completed">;
 
-const VISIBLE_STATUSES: PartRequest["status"][] = [
+const ACTIVE_STAGES: Exclude<PartsRequestStage, "completed">[] = [
+  "needs_quote",
+  "awaiting_approval",
+  "order_receive",
+  "ready_for_tech",
+];
+
+const REQUEST_STATUSES: PartRequest["status"][] = [
   "requested",
   "quoted",
   "approved",
+  "partially_ordered",
+  "partially_consumed",
+  "partially_returned",
+  "returned",
   "fulfilled",
+  "rejected",
+  "deferred",
+  "cancelled",
 ];
 
-function looksLikeUuid(s: string): boolean {
-  return s.includes("-") && s.length >= 36;
+const STAGE_META = {
+  needs_quote: {
+    icon: ClipboardList,
+    accent: "border-t-rose-500",
+    iconClass: "border-rose-300/40 bg-rose-500/10 text-rose-400",
+    pill: "border-rose-300/35 bg-rose-500/10 text-rose-300",
+    button:
+      "border-rose-400/45 bg-rose-500/12 text-rose-200 hover:bg-rose-500/20",
+    next: "Add pricing for every item and finish the parts quote.",
+    action: "Finish quote",
+  },
+  awaiting_approval: {
+    icon: ListChecks,
+    accent: "border-t-amber-500",
+    iconClass: "border-amber-300/40 bg-amber-500/10 text-amber-400",
+    pill: "border-amber-300/35 bg-amber-500/10 text-amber-300",
+    button:
+      "border-amber-400/45 bg-amber-500/12 text-amber-200 hover:bg-amber-500/20",
+    next: "Customer decision pending. Approval automatically releases Parts action.",
+    action: "View request",
+  },
+  order_receive: {
+    icon: ShoppingCart,
+    accent: "border-t-sky-500",
+    iconClass: "border-sky-300/40 bg-sky-500/10 text-sky-400",
+    pill: "border-sky-300/35 bg-sky-500/10 text-sky-300",
+    button: "border-sky-400/45 bg-sky-500/12 text-sky-200 hover:bg-sky-500/20",
+    next: "Pick and allocate available stock, or order and receive the shortage.",
+    action: "Order & receive",
+  },
+  ready_for_tech: {
+    icon: PackageCheck,
+    accent: "border-t-emerald-500",
+    iconClass: "border-emerald-300/40 bg-emerald-500/10 text-emerald-400",
+    pill: "border-emerald-300/35 bg-emerald-500/10 text-emerald-300",
+    button:
+      "border-emerald-400/45 bg-emerald-500/12 text-emerald-200 hover:bg-emerald-500/20",
+    next: "All approved parts are staged. Hand them to the technician.",
+    action: "Complete handoff",
+  },
+} as const;
+
+function num(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function toNum(v: unknown): number {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
+function stageItem(item: QueueItem): PartsRequestStageItem {
+  return {
+    description: item.description,
+    partId: item.part_id,
+    quotedPrice: item.quoted_price,
+    unitPrice: item.unit_price,
+    qty: item.qty,
+    qtyRequested: item.qty_requested,
+    qtyApproved: item.qty_approved,
+    qtyOrdered: item.qty_ordered,
+    qtyReceived: item.qty_received,
+    qtyReserved: item.qty_reserved,
+    qtyConsumed: item.qty_consumed,
+    qtyReturned: item.qty_returned,
+    rawStatus: item.status,
+  };
 }
 
-function isCompleteItem(
-  it: Pick<
-    PartRequestItem,
-    "part_id" | "qty" | "quoted_price" | "description"
-  >,
-): boolean {
-  const hasPart = typeof it.part_id === "string" && it.part_id.length > 0;
-  const qty = toNum(it.qty);
-  const hasQty = qty > 0;
-  const hasPrice =
-    it.quoted_price != null && Number.isFinite(Number(it.quoted_price));
-  return hasPart && hasQty && hasPrice;
+function firstJoin<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 }
 
-function buildCustomerName(input: {
-  first_name?: string | null;
-  last_name?: string | null;
-} | null | undefined): string | null {
-  const first = String(input?.first_name ?? "").trim();
-  const last = String(input?.last_name ?? "").trim();
-  const full = [first, last].filter(Boolean).join(" ").trim();
-  return full || null;
-}
-
-function buildVehicleLabel(input: {
-  year?: string | number | null;
-  make?: string | null;
-  model?: string | null;
-} | null | undefined): string | null {
-  const year = String(input?.year ?? "").trim();
-  const make = String(input?.make ?? "").trim();
-  const model = String(input?.model ?? "").trim();
-  const label = [year, make, model].filter(Boolean).join(" ").trim();
+function customerName(row: WorkOrderListRow | undefined): string | null {
+  const customer = firstJoin(row?.customers);
+  const label = [customer?.first_name, customer?.last_name]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
   return label || null;
+}
+
+function vehicleLabel(row: WorkOrderListRow | undefined): string | null {
+  const vehicle = firstJoin(row?.vehicles);
+  const label = [vehicle?.year, vehicle?.make, vehicle?.model]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return label || null;
+}
+
+function buildBuckets(
+  models: RequestModel[],
+  workOrders: Record<string, WorkOrderListRow>,
+): WoBucket[] {
+  const grouped = new Map<string, RequestModel[]>();
+  for (const model of models) {
+    const workOrderId = model.request.work_order_id;
+    if (!workOrderId) continue;
+    grouped.set(workOrderId, [...(grouped.get(workOrderId) ?? []), model]);
+  }
+
+  return [...grouped.entries()]
+    .map(([workOrderId, requestModels]) => {
+      const workOrder = workOrders[workOrderId];
+      const items = requestModels.flatMap((model) => model.items);
+      const latestAt =
+        [...requestModels]
+          .flatMap((model) => [
+            model.request.created_at,
+            ...model.items.map((item) => item.updated_at),
+          ])
+          .filter((value): value is string => typeof value === "string")
+          .sort()
+          .at(-1) ?? null;
+      const stage = earliestPartsRequestStage(
+        requestModels.map((model) => model.stage),
+      );
+      const customer = customerName(workOrder);
+      const vehicle = vehicleLabel(workOrder);
+      const searchBlob = [
+        workOrderId,
+        workOrder?.custom_id,
+        customer,
+        vehicle,
+        ...requestModels.map((model) => model.request.id),
+        ...items.map((item) => item.description),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return {
+        workOrderId,
+        customId: workOrder?.custom_id ?? null,
+        customerName: customer,
+        vehicleLabel: vehicle,
+        models: requestModels,
+        items,
+        stage,
+        latestAt,
+        searchBlob,
+      };
+    })
+    .sort((a, b) =>
+      String(b.latestAt ?? "").localeCompare(String(a.latestAt ?? "")),
+    );
+}
+
+function workOrderLabel(bucket: WoBucket): string {
+  return bucket.customId || `#${bucket.workOrderId.slice(0, 8)}`;
+}
+
+function requestHref(bucket: WoBucket): string {
+  return `/parts/requests/${encodeURIComponent(
+    bucket.customId || bucket.workOrderId,
+  )}`;
+}
+
+function completedSteps(bucket: WoBucket): number {
+  if (bucket.stage === "needs_quote") return 0;
+  if (bucket.stage === "awaiting_approval") return 1;
+  if (bucket.stage === "ready_for_tech") return 4;
+  if (bucket.stage === "completed") return 5;
+  if (bucket.items.some((item) => num(item.qty_received) > 0)) return 3;
+  return bucket.items.some((item) => num(item.qty_ordered) > 0) ? 3 : 2;
+}
+
+function itemStateSummary(bucket: WoBucket): string {
+  const items = bucket.items.map(stageItem);
+  if (bucket.stage === "needs_quote") {
+    const missing = items.filter(
+      (item) => !isPartsRequestItemPriced(item),
+    ).length;
+    return `${missing} need pricing`;
+  }
+  if (bucket.stage === "awaiting_approval") return "Customer pending";
+  if (bucket.stage === "ready_for_tech") {
+    return `${items.filter(isPartsRequestItemStaged).length} staged`;
+  }
+  if (bucket.stage === "completed") {
+    const terminal = new Set(
+      bucket.models.map((model) => String(model.request.status)),
+    );
+    if (terminal.has("rejected")) return "Declined";
+    if (terminal.has("deferred")) return "Deferred";
+    if (terminal.has("cancelled")) return "Cancelled";
+    return `${items.filter(isPartsRequestItemHandedOff).length} handed off`;
+  }
+
+  const ordered = bucket.items.filter(
+    (item) => num(item.qty_ordered) > 0,
+  ).length;
+  const partial = bucket.items.filter(
+    (item) =>
+      num(item.qty_received) > 0 &&
+      num(item.qty_received) < num(item.qty_requested),
+  ).length;
+  if (ordered || partial) {
+    return `${ordered} ordered${partial ? ` · ${partial} partial` : ""}`;
+  }
+  return `${bucket.items.length} need pick/order`;
+}
+
+function ProgressRail({ bucket }: { bucket: WoBucket }) {
+  const labels = ["Quote", "Approval", "Order", "Receive", "Handoff"];
+  const complete = completedSteps(bucket);
+  return (
+    <div className="mt-3">
+      <div className="mb-2 text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
+        Progress
+      </div>
+      <div className="grid grid-cols-5">
+        {labels.map((label, index) => {
+          const done = index < complete;
+          const current = index === complete && complete < labels.length;
+          return (
+            <div
+              key={label}
+              className="relative flex min-w-0 flex-col items-center"
+            >
+              {index > 0 ? (
+                <span
+                  className={`absolute right-1/2 top-[7px] h-px w-full ${
+                    index <= complete
+                      ? "bg-[color:var(--brand-accent,#c9733d)]"
+                      : "bg-[color:var(--theme-border-soft)]"
+                  }`}
+                />
+              ) : null}
+              <span
+                className={`relative z-10 flex h-4 w-4 items-center justify-center rounded-full border text-[9px] ${
+                  done
+                    ? "border-[color:var(--brand-accent,#c9733d)] bg-[color:var(--brand-accent,#c9733d)] text-white"
+                    : current
+                      ? "border-[color:var(--brand-accent,#c9733d)] bg-[color:var(--theme-surface-page)]"
+                      : "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-page)]"
+                }`}
+              >
+                {done ? <Check className="h-2.5 w-2.5" /> : null}
+              </span>
+              <span className="mt-1 truncate text-[9px] text-[color:var(--theme-text-muted)]">
+                {label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function QueueCard({
+  bucket,
+  handingOff,
+  onHandoff,
+}: {
+  bucket: WoBucket;
+  handingOff: boolean;
+  onHandoff: (bucket: WoBucket) => Promise<void>;
+}) {
+  const meta = bucket.stage === "completed" ? null : STAGE_META[bucket.stage];
+  const href = requestHref(bucket);
+  const nextAction = meta?.next ?? "Review the completed request history.";
+
+  return (
+    <article className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 shadow-[var(--theme-shadow-soft)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="truncate text-xl font-semibold tracking-tight text-[color:var(--theme-text-primary)]">
+            {workOrderLabel(bucket)}
+          </h3>
+          {bucket.customerName ? (
+            <p className="mt-1 truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
+              {bucket.customerName}
+            </p>
+          ) : null}
+          {bucket.vehicleLabel ? (
+            <p className="mt-0.5 truncate text-xs text-[color:var(--theme-text-secondary)]">
+              {bucket.vehicleLabel}
+            </p>
+          ) : null}
+        </div>
+        {meta ? (
+          <span
+            className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${meta.pill}`}
+          >
+            Next: {meta.action}
+          </span>
+        ) : (
+          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
+            Closed
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 divide-x divide-[color:var(--theme-border-soft)] border-y border-[color:var(--theme-border-soft)] py-3 text-center">
+        <div>
+          <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+            {bucket.models.length}
+          </div>
+          <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+            Request{bucket.models.length === 1 ? "" : "s"}
+          </div>
+        </div>
+        <div>
+          <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+            {bucket.items.length}
+          </div>
+          <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+            Item{bucket.items.length === 1 ? "" : "s"}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 min-h-[70px]">
+        <div className="text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
+          Next action
+        </div>
+        <p className="mt-1 text-sm leading-5 text-[color:var(--theme-text-primary)]">
+          {nextAction}
+        </p>
+      </div>
+
+      <div className="mt-3 border-t border-dashed border-[color:var(--theme-border-soft)] pt-3">
+        <div className="text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
+          Item status
+        </div>
+        <span
+          className={`mt-1.5 inline-flex rounded-md border px-2.5 py-1 text-xs font-medium ${
+            meta?.pill ??
+            "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]"
+          }`}
+        >
+          {itemStateSummary(bucket)}
+        </span>
+      </div>
+
+      <ProgressRail bucket={bucket} />
+
+      {bucket.stage === "ready_for_tech" ? (
+        <button
+          type="button"
+          onClick={() => void onHandoff(bucket)}
+          disabled={handingOff}
+          className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition disabled:cursor-wait disabled:opacity-60 ${meta?.button}`}
+        >
+          <Wrench className="h-4 w-4" />
+          {handingOff ? "Completing handoff…" : "Complete handoff"}
+        </button>
+      ) : (
+        <Link
+          href={href}
+          className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+            meta?.button ??
+            "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
+          }`}
+        >
+          {meta?.action ?? "Open history"} <span aria-hidden>→</span>
+        </Link>
+      )}
+    </article>
+  );
+}
+
+function Metric({
+  icon: Icon,
+  value,
+  label,
+  tone,
+}: {
+  icon: typeof ClipboardList;
+  value: number;
+  label: string;
+  tone: "copper" | "amber" | "green";
+}) {
+  const colors =
+    tone === "copper"
+      ? "border-orange-300/30 bg-orange-500/10 text-orange-400"
+      : tone === "amber"
+        ? "border-amber-300/30 bg-amber-500/10 text-amber-400"
+        : "border-emerald-300/30 bg-emerald-500/10 text-emerald-400";
+  return (
+    <div className="flex min-w-0 items-center gap-3 px-4 py-3 sm:px-6">
+      <span
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${colors}`}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-2xl font-semibold leading-none text-[color:var(--theme-text-primary)]">
+          {value}
+        </div>
+        <div className="mt-1 truncate text-sm text-[color:var(--theme-text-secondary)]">
+          {label}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PartsRequestsPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
-
+  const initialLoad = useRef(true);
+  const reloadSequence = useRef(0);
+  const [models, setModels] = useState<RequestModel[]>([]);
+  const [workOrders, setWorkOrders] = useState<
+    Record<string, WorkOrderListRow>
+  >({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
-    "all" | "pending" | "in_progress" | "ready" | "complete"
-  >("all");
+  const [tab, setTab] = useState<QueueTab>("active");
+  const [stageFilter, setStageFilter] = useState<StageFilter>("all");
+  const [handingOffWorkOrder, setHandingOffWorkOrder] = useState<string | null>(
+    null,
+  );
 
-  const [buckets, setBuckets] = useState<WoBucket[]>([]);
-  const [deletingWoId, setDeletingWoId] = useState<string | null>(null);
-
-  const ACCENT_BORDER = "border-[color:var(--desktop-border-strong)]";
-  const ACCENT_TEXT = "text-[var(--theme-text-primary,var(--theme-text-primary))]";
-  const ACCENT_HOVER_BG = "hover:bg-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_12%,transparent)]";
-  const ACCENT_FOCUS_RING = "focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#38bdf8)_35%,transparent)]";
-
-  const PAGE = "w-full space-y-4 px-3 py-4 text-[color:var(--theme-text-primary)] sm:px-5 lg:px-8 xl:px-12";
-  const CARD =
-    "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] backdrop-blur-xl shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset]";
-  const CARD_PAD = `${CARD} p-4`;
-  const INPUT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none ${ACCENT_FOCUS_RING}`;
-  const SELECT = `w-full rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none ${ACCENT_FOCUS_RING}`;
-  const BTN_BASE =
-    "inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-60";
-  const BTN_GHOST = `${BTN_BASE} border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_80%,_var(--theme-surface-page))]`;
-  const BTN_ACCENT = `${BTN_BASE} ${ACCENT_BORDER} ${ACCENT_TEXT} bg-[color:var(--theme-surface-page)] ${ACCENT_HOVER_BG}`;
-  const BTN_DANGER = `${BTN_BASE} border-red-500/30 bg-red-950/25 text-red-200 hover:bg-red-950/40`;
-
-  const PILL_BASE =
-    "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold";
-  const PILL_NEEDS = `${PILL_BASE} border-red-500/35 bg-red-950/35 text-red-200`;
-  const PILL_QUOTED = `${PILL_BASE} border-teal-500/35 bg-teal-950/25 text-teal-200`;
-  const PILL_APPROVED = `${PILL_BASE} border-sky-500/45 bg-sky-950/25 text-sky-100`;
-  const PILL_FULFILLED = `${PILL_BASE} border-emerald-500/35 bg-emerald-950/25 text-emerald-200`;
-
-  function pillFor(status: BucketStatus): string {
-    if (status === "pending") return PILL_NEEDS;
-    if (status === "in_progress") return PILL_APPROVED;
-    if (status === "ready") return PILL_QUOTED;
-    return PILL_FULFILLED;
-  }
-
-  function labelFor(status: BucketStatus): string {
-    return requestFlowLabel(status);
-  }
-
-
-  const reload = async (): Promise<void> => {
-    setLoading(true);
-
-    const { data: reqs, error } = await supabase
-      .from("part_requests")
-      .select("*")
-      .in("status", VISIBLE_STATUSES)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("[parts/requests] load part_requests failed:", error);
-      toast.error("Failed to load parts requests");
-      setLoading(false);
-      return;
-    }
-
-    const requestList = (reqs ?? []) as PartRequest[];
-
-    const requestIds = requestList.map((r) => r.id);
-    const itemsCountByRequest: Record<string, number> = {};
-    const completeCountByRequest: Record<string, number> = {};
-    const descByRequest: Record<string, string[]> = {};
-    const itemStatesByRequest: Record<string, ReturnType<typeof toItemFlowDisplay>[]> = {};
-
-    if (requestIds.length) {
-      const { data: items, error: itemsErr } = await supabase
-        .from("part_request_items")
-        .select("request_id, description, part_id, qty, quoted_price, status, qty_approved, qty_received, qty_consumed")
-        .in("request_id", requestIds);
-
-      if (itemsErr) {
-        console.error(
-          "[parts/requests] load part_request_items failed:",
-          itemsErr,
-        );
-      } else {
-        (items ?? []).forEach((it) => {
-          const row = it as Pick<
-            PartRequestItem,
-            "request_id" | "description" | "part_id" | "qty" | "quoted_price"
-          >;
-
-          itemsCountByRequest[row.request_id] =
-            (itemsCountByRequest[row.request_id] ?? 0) + 1;
-
-          if (isCompleteItem(row)) {
-            completeCountByRequest[row.request_id] =
-              (completeCountByRequest[row.request_id] ?? 0) + 1;
-          }
-
-          const d = (row.description ?? "").trim();
-          if (d) (descByRequest[row.request_id] ||= []).push(d);
-
-          (itemStatesByRequest[row.request_id] ||= []).push(
-            toItemFlowDisplay({
-              rawStatus: (row as { status?: string | null }).status ?? null,
-              qty: row.qty,
-              qtyApproved: (row as { qty_approved?: unknown }).qty_approved ?? row.qty,
-              qtyReceived: (row as { qty_received?: unknown }).qty_received ?? 0,
-              qtyAllocated: (row as { qty_consumed?: unknown }).qty_consumed ?? 0,
-            }),
-          );
-        });
-      }
-    }
-
-    const woIds = Array.from(
-      new Set(
-        requestList
-          .map((r) => r.work_order_id)
-          .filter((x): x is string => typeof x === "string" && x.length > 0),
-      ),
-    );
-
-    const woById: Record<string, WorkOrderListRow> = {};
-
-    if (woIds.length) {
-      const { data: wos, error: woErr } = await supabase
-        .from("work_orders")
-        .select(`
-          id,
-          custom_id,
-          customer_id,
-          vehicle_id,
-          customers (
-            first_name,
-            last_name
-          ),
-          vehicles (
-            year,
-            make,
-            model
-          )
-        `)
-        .in("id", woIds);
-
-      if (woErr) {
-        console.error("[parts/requests] load work_orders failed:", woErr);
-      } else {
-        (wos ?? []).forEach((w) => {
-          const row = w as WorkOrderListRow;
-          woById[row.id] = row;
-        });
-      }
-    }
-
-    const byWo: Record<string, WoBucket> = {};
-
-    for (const r of requestList) {
-      const workOrderId = r.work_order_id;
-      if (!workOrderId) continue;
-
-      const wo = woById[workOrderId];
-      const customId = wo?.custom_id ?? null;
-
-      const customerRecord = Array.isArray(wo?.customers)
-        ? (wo.customers[0] ?? null)
-        : (wo?.customers ?? null);
-
-      const vehicleRecord = Array.isArray(wo?.vehicles)
-        ? (wo.vehicles[0] ?? null)
-        : (wo?.vehicles ?? null);
-
-      const customerName = buildCustomerName(customerRecord);
-      const vehicleLabel = buildVehicleLabel(vehicleRecord);
-
-      if (!byWo[workOrderId]) {
-        byWo[workOrderId] = {
-          workOrderId,
-          customId,
-          customerName,
-          vehicleLabel,
-          status: "pending",
-          requests: [],
-          itemsCount: 0,
-          quoteOriginCount: 0,
-          completeCount: 0,
-          completionPct: 0,
-          latestAt: null,
-          searchBlob: "",
-        };
-      }
-
-      byWo[workOrderId].requests.push(r);
-      if (r.quote_line_id) byWo[workOrderId].quoteOriginCount += 1;
-
-      const itemsCount = itemsCountByRequest[r.id] ?? 0;
-      const completeCount = completeCountByRequest[r.id] ?? 0;
-
-      byWo[workOrderId].itemsCount += itemsCount;
-      byWo[workOrderId].completeCount += completeCount;
-
-      const createdAt = r.created_at ? String(r.created_at) : null;
-      if (createdAt) {
-        if (!byWo[workOrderId].latestAt) {
-          byWo[workOrderId].latestAt = createdAt;
-        } else if (
-          new Date(createdAt).getTime() >
-          new Date(byWo[workOrderId].latestAt!).getTime()
-        ) {
-          byWo[workOrderId].latestAt = createdAt;
-        }
-      }
-    }
-
-    Object.values(byWo).forEach((b) => {
-      const combined = b.requests.flatMap((r) => itemStatesByRequest[r.id] ?? []);
-      b.status = toRequestFlowDisplay({
-        rawStatus: b.requests[0]?.status ?? "requested",
-        itemStates: combined,
-      });
-
-      const pct =
-        b.itemsCount > 0
-          ? Math.round((b.completeCount / b.itemsCount) * 100)
-          : 0;
-      b.completionPct = Math.max(0, Math.min(100, pct));
-
-      const reqIdsBlob = b.requests.map((r) => r.id).join(" ");
-      const descBlob = b.requests
-        .flatMap((r) => descByRequest[r.id] ?? [])
-        .join(" ");
-      const woBlob = `${b.customId ?? ""} ${b.workOrderId}`;
-      const customerBlob = b.customerName ?? "";
-      const vehicleBlob = b.vehicleLabel ?? "";
-
-      b.searchBlob =
-        `${woBlob} ${customerBlob} ${vehicleBlob} ${reqIdsBlob} ${descBlob}`.toLowerCase();
-    });
-
-    const list = Object.values(byWo).sort((a, b) => {
-      const ta = a.latestAt ? new Date(a.latestAt).getTime() : 0;
-      const tb = b.latestAt ? new Date(b.latestAt).getTime() : 0;
-      return tb - ta;
-    });
-
-    setBuckets(list);
-    setLoading(false);
-  };
-
-  const deleteBucket = async (b: WoBucket): Promise<void> => {
-    const woLabel =
-      b.customId ||
-      (looksLikeUuid(b.workOrderId)
-        ? `#${b.workOrderId.slice(0, 8)}`
-        : b.workOrderId);
-
-    const requestIds = b.requests
-      .map((r) => r.id)
-      .filter((id): id is string => typeof id === "string" && id.length > 0);
-
-    if (requestIds.length === 0) {
-      toast.error("Nothing to delete for this work order");
-      return;
-    }
-
-    const ok = window.confirm(
-      `Delete ${requestIds.length} parts request${
-        requestIds.length === 1 ? "" : "s"
-      } for Work Order ${woLabel}?\n\nThis will delete the requests and their line items.`,
-    );
-    if (!ok) return;
-
-    setDeletingWoId(b.workOrderId);
-    const t = toast.loading("Deleting requests…");
+  const reload = useCallback(async () => {
+    const sequence = ++reloadSequence.current;
+    if (initialLoad.current) setLoading(true);
+    else setRefreshing(true);
 
     try {
-      const { error: itemsErr } = await supabase
-        .from("part_request_items")
-        .delete()
-        .in("request_id", requestIds);
-
-      if (itemsErr) {
-        console.error("[parts/requests] delete items failed:", itemsErr);
-        toast.error("Failed to delete request items", { id: t });
-        return;
+      const requestRows: PartRequest[] = [];
+      const requestPageSize = 500;
+      for (let offset = 0; ; offset += requestPageSize) {
+        const { data: requests, error: requestError } = await supabase
+          .from("part_requests")
+          .select("*")
+          .in("status", REQUEST_STATUSES)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(offset, offset + requestPageSize - 1);
+        if (requestError) throw requestError;
+        const requestPage = (requests ?? []) as PartRequest[];
+        requestRows.push(...requestPage);
+        if (requestPage.length < requestPageSize) break;
       }
 
-      const { error: reqErr } = await supabase
-        .from("part_requests")
-        .delete()
-        .in("id", requestIds);
+      const requestIds = requestRows.map((request) => request.id);
+      const itemRows: QueueItem[] = [];
 
-      if (reqErr) {
-        console.error("[parts/requests] delete requests failed:", reqErr);
-        toast.error("Failed to delete requests", { id: t });
-        return;
+      if (requestIds.length > 0) {
+        const pageSize = 1000;
+        for (
+          let chunkStart = 0;
+          chunkStart < requestIds.length;
+          chunkStart += 200
+        ) {
+          const requestChunk = requestIds.slice(chunkStart, chunkStart + 200);
+          for (let offset = 0; ; offset += pageSize) {
+            const { data: items, error: itemError } = await supabase
+              .from("part_request_items")
+              .select(
+                "id,request_id,description,part_id,quoted_price,unit_price,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
+              )
+              .in("request_id", requestChunk)
+              .order("id", { ascending: true })
+              .range(offset, offset + pageSize - 1);
+            if (itemError) throw itemError;
+            const itemPage = (items ?? []) as QueueItem[];
+            itemRows.push(...itemPage);
+            if (itemPage.length < pageSize) break;
+          }
+        }
       }
 
-      toast.success("Deleted", { id: t });
-      await reload();
-    } catch (e) {
-      console.error("[parts/requests] deleteBucket exception:", e);
-      toast.error("Delete failed", { id: t });
+      const itemsByRequest = new Map<string, QueueItem[]>();
+      for (const item of itemRows) {
+        itemsByRequest.set(item.request_id, [
+          ...(itemsByRequest.get(item.request_id) ?? []),
+          item,
+        ]);
+      }
+
+      const nextModels = requestRows.map((request) => {
+        const items = itemsByRequest.get(request.id) ?? [];
+        return {
+          request,
+          items,
+          stage: toPartsRequestStage({
+            rawStatus: request.status,
+            items: items.map(stageItem),
+          }),
+        } satisfies RequestModel;
+      });
+
+      const workOrderIds = [
+        ...new Set(
+          requestRows
+            .map((request) => request.work_order_id)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ];
+      const nextWorkOrders: Record<string, WorkOrderListRow> = {};
+      if (workOrderIds.length > 0) {
+        for (
+          let chunkStart = 0;
+          chunkStart < workOrderIds.length;
+          chunkStart += 200
+        ) {
+          const { data: rows, error: workOrderError } = await supabase
+            .from("work_orders")
+            .select(
+              "id,custom_id,customers(first_name,last_name),vehicles(year,make,model)",
+            )
+            .in("id", workOrderIds.slice(chunkStart, chunkStart + 200));
+          if (workOrderError) throw workOrderError;
+          for (const row of rows ?? []) {
+            const workOrder = row as WorkOrderListRow;
+            nextWorkOrders[workOrder.id] = workOrder;
+          }
+        }
+      }
+
+      if (sequence === reloadSequence.current) {
+        setModels(nextModels);
+        setWorkOrders(nextWorkOrders);
+      }
+    } catch (error) {
+      if (sequence === reloadSequence.current) {
+        console.error("[parts/requests] queue load failed", error);
+        toast.error("Unable to load the Parts request queue.");
+      }
     } finally {
-      setDeletingWoId(null);
+      if (sequence === reloadSequence.current) {
+        initialLoad.current = false;
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     void reload();
 
-    const onRefresh = () => void reload();
-    window.addEventListener("parts-request:submitted", onRefresh);
-    window.addEventListener("parts:received", onRefresh);
+    const channel = supabase
+      .channel("parts-request-queue")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "part_requests" },
+        () => void reload(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "part_request_items" },
+        () => void reload(),
+      )
+      .subscribe();
+    const fallback = window.setInterval(() => void reload(), 45_000);
+
+    const onLocalChange = () => void reload();
+    window.addEventListener("parts-request:submitted", onLocalChange);
+    window.addEventListener("parts:received", onLocalChange);
+
     return () => {
-      window.removeEventListener("parts-request:submitted", onRefresh);
-      window.removeEventListener("parts:received", onRefresh);
+      window.clearInterval(fallback);
+      window.removeEventListener("parts-request:submitted", onLocalChange);
+      window.removeEventListener("parts:received", onLocalChange);
+      void supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reload, supabase]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  const activeModels = useMemo(
+    () => models.filter((model) => model.stage !== "completed"),
+    [models],
+  );
+  const completedModels = useMemo(
+    () => models.filter((model) => model.stage === "completed"),
+    [models],
+  );
+  const activeBuckets = useMemo(
+    () => buildBuckets(activeModels, workOrders),
+    [activeModels, workOrders],
+  );
+  const completedBuckets = useMemo(
+    () => buildBuckets(completedModels, workOrders),
+    [completedModels, workOrders],
+  );
 
-    let list = buckets;
-
-    if (statusFilter !== "all") {
-      list = list.filter((b) => b.status === statusFilter);
+  const visibleBuckets = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    let buckets = tab === "active" ? activeBuckets : completedBuckets;
+    if (tab === "active" && stageFilter !== "all") {
+      buckets = buckets.filter((bucket) => bucket.stage === stageFilter);
     }
+    return query
+      ? buckets.filter((bucket) => bucket.searchBlob.includes(query))
+      : buckets;
+  }, [activeBuckets, completedBuckets, search, stageFilter, tab]);
 
-    if (!q) return list;
-    return list.filter((b) => b.searchBlob.includes(q));
-  }, [buckets, search, statusFilter]);
+  const activeItemCount = activeModels.reduce(
+    (total, model) =>
+      total +
+      model.items.filter((item) => String(item.status) !== "cancelled").length,
+    0,
+  );
+
+  const completeHandoff = useCallback(
+    async (bucket: WoBucket) => {
+      if (handingOffWorkOrder) return;
+      const readyRequests = bucket.models.filter(
+        (model) => model.stage === "ready_for_tech",
+      );
+      if (readyRequests.length !== bucket.models.length) {
+        toast.error(
+          "Every active request on this work order must be staged first.",
+        );
+        return;
+      }
+
+      setHandingOffWorkOrder(bucket.workOrderId);
+      const toastId = toast.loading("Completing technician handoff…");
+      try {
+        for (const model of readyRequests) {
+          const operationKey = `${model.request.id}:${crypto.randomUUID()}`;
+          const response = await fetch(
+            `/api/parts/requests/${model.request.id}/handoff`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Idempotency-Key": operationKey,
+              },
+              body: JSON.stringify({ idempotencyKey: operationKey }),
+            },
+          );
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          if (!response.ok) {
+            throw new Error(payload?.error || "Parts handoff failed.");
+          }
+        }
+        toast.success("Parts handed off and moved to Completed.", {
+          id: toastId,
+        });
+        await reload();
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Parts handoff failed.",
+          { id: toastId },
+        );
+      } finally {
+        setHandingOffWorkOrder(null);
+      }
+    },
+    [handingOffWorkOrder, reload],
+  );
+
+  const metricModels = tab === "active" ? activeModels : completedModels;
+  const metricBuckets = tab === "active" ? activeBuckets : completedBuckets;
+  const metricItems = metricModels.reduce(
+    (total, model) => total + model.items.length,
+    0,
+  );
 
   return (
-    <div className={PAGE}>
-      <section className="overflow-hidden rounded-[28px] border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)]">
-        <div className="border-b border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] px-4 py-5 sm:px-6">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-            Parts
-          </div>
-          <h1
-            className="text-2xl font-semibold text-[color:var(--theme-text-primary)]"
-            style={{ fontFamily: "var(--font-blackops), system-ui" }}
-          >
-            Requests
-          </h1>
-          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-            One card per work order. Completion % is based on items with part + qty
-            + price.
-          </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Link href="/parts" className={BTN_ACCENT}>
-                Parts Dashboard
-              </Link>
+    <main className="w-full space-y-5 px-3 py-4 text-[color:var(--theme-text-primary)] sm:px-5 lg:px-8 xl:px-10">
+      <section className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Parts Requests
+            </h1>
+            <div className="mt-4 flex items-center gap-6 border-b border-[color:var(--theme-border-soft)]">
               <button
                 type="button"
-                className={BTN_GHOST}
-                onClick={() => void reload()}
+                onClick={() => setTab("active")}
+                className={`border-b-2 px-3 pb-3 text-sm font-semibold transition ${
+                  tab === "active"
+                    ? "border-[color:var(--brand-accent,#c9733d)] text-[color:var(--brand-accent,#c9733d)]"
+                    : "border-transparent text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+                }`}
               >
-                Refresh
+                Active
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("completed")}
+                className={`flex items-center gap-2 border-b-2 px-3 pb-3 text-sm font-semibold transition ${
+                  tab === "completed"
+                    ? "border-[color:var(--brand-accent,#c9733d)] text-[color:var(--brand-accent,#c9733d)]"
+                    : "border-transparent text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+                }`}
+              >
+                Completed <History className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
-        </div>
 
-        <div className="px-4 py-4 sm:px-6">
-          <div className="grid gap-3 md:grid-cols-12 md:items-end">
-            <div className="md:col-span-6">
-              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                Search queue
-              </div>
+          <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+            <label className="relative min-w-0 flex-1 lg:w-[360px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]" />
+              <span className="sr-only">Search requests</span>
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="WO#, customer, vehicle, request id, part description…"
-                className={INPUT}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search work orders, customers, parts…"
+                className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[color:var(--brand-accent,#c9733d)]"
               />
-            </div>
-
-            <div className="md:col-span-3">
-              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Flow state</div>
-              <select
-                className={SELECT}
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter((e.target.value as typeof statusFilter) ?? "all")
-                }
-              >
-                <option value="all">All</option>
-                <option value="pending">Pending</option>
-                <option value="in_progress">In Progress</option>
-                <option value="ready">Ready</option>
-                <option value="complete">Complete</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-3">
-              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Visible cards</div>
-              <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">
-                <span className="font-semibold text-[color:var(--theme-text-primary)]">{filtered.length}</span>{" "}
-                work order{filtered.length === 1 ? "" : "s"}
-              </div>
-            </div>
+            </label>
+            {tab === "active" ? (
+              <label className="relative">
+                <SlidersHorizontal className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-secondary)]" />
+                <span className="sr-only">Filter workflow stage</span>
+                <select
+                  value={stageFilter}
+                  onChange={(event) =>
+                    setStageFilter(event.target.value as StageFilter)
+                  }
+                  className="h-full min-h-10 appearance-none rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] py-2 pl-10 pr-8 text-sm outline-none focus:border-[color:var(--brand-accent,#c9733d)]"
+                >
+                  <option value="all">All stages</option>
+                  {ACTIVE_STAGES.map((stage) => (
+                    <option key={stage} value={stage}>
+                      {partsRequestStageLabel(stage)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void reload()}
+              disabled={refreshing}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm font-medium transition hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+              />
+              <span className="sm:hidden">Refresh</span>
+            </button>
           </div>
+        </div>
+
+        <div className="grid overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] sm:grid-cols-3 sm:divide-x sm:divide-[color:var(--theme-border-soft)]">
+          <Metric
+            icon={ClipboardList}
+            value={metricBuckets.length}
+            label={
+              tab === "active" ? "Active work orders" : "Completed work orders"
+            }
+            tone="copper"
+          />
+          <Metric
+            icon={ListChecks}
+            value={metricModels.length}
+            label={tab === "active" ? "Open requests" : "Closed requests"}
+            tone="amber"
+          />
+          <Metric
+            icon={PackageCheck}
+            value={tab === "active" ? activeItemCount : metricItems}
+            label="Items"
+            tone="green"
+          />
         </div>
       </section>
 
       {loading ? (
-        <div className={`${CARD_PAD} text-sm text-[color:var(--theme-text-secondary)]`}>Loading active request buckets…</div>
-      ) : filtered.length === 0 ? (
-        <div className={`${CARD_PAD} border-dashed text-sm text-[color:var(--theme-text-secondary)]`}>
-          No active parts requests match this filter.
+        <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-8 text-center text-sm text-[color:var(--theme-text-secondary)]">
+          Loading the live Parts workflow…
         </div>
-      ) : (
-        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((b) => {
-            const woLabel =
-              b.customId ||
-              (looksLikeUuid(b.workOrderId)
-                ? `#${b.workOrderId.slice(0, 8)}`
-                : b.workOrderId);
-
-            const href = `/parts/requests/${encodeURIComponent(
-              b.customId || b.workOrderId,
-            )}`;
-
-            const isDeleting = deletingWoId === b.workOrderId;
-
+      ) : tab === "active" ? (
+        <div
+          className={`grid gap-3 ${stageFilter === "all" ? "lg:grid-cols-2 2xl:grid-cols-4" : "max-w-xl"}`}
+        >
+          {ACTIVE_STAGES.filter(
+            (stage) => stageFilter === "all" || stageFilter === stage,
+          ).map((stage) => {
+            const meta = STAGE_META[stage];
+            const Icon = meta.icon;
+            const stageBuckets = visibleBuckets.filter(
+              (bucket) => bucket.stage === stage,
+            );
             return (
-              <div key={b.workOrderId} className={CARD_PAD}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-lg font-semibold tracking-wide text-[color:var(--theme-text-primary)]">
-                      {woLabel}
+              <section
+                key={stage}
+                className={`min-w-0 rounded-2xl border border-t-4 border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5 ${meta.accent}`}
+              >
+                <header className="flex items-center justify-between gap-3 px-1 py-1.5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${meta.iconClass}`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <h2 className="truncate text-sm font-semibold">
+                      {partsRequestStageLabel(stage)}
+                    </h2>
+                  </div>
+                  <span className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-0.5 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+                    {stageBuckets.length}
+                  </span>
+                </header>
+
+                <div className="mt-2 space-y-2.5">
+                  {stageBuckets.length ? (
+                    stageBuckets.map((bucket) => (
+                      <QueueCard
+                        key={bucket.workOrderId}
+                        bucket={bucket}
+                        handingOff={handingOffWorkOrder === bucket.workOrderId}
+                        onHandoff={completeHandoff}
+                      />
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-8 text-center text-xs text-[color:var(--theme-text-muted)]">
+                      No matching work orders
                     </div>
-
-                    {b.customerName && (
-                      <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
-                        {b.customerName}
-                      </div>
-                    )}
-
-                    {b.vehicleLabel && (
-                      <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                        {b.vehicleLabel}
-                      </div>
-                    )}
-
-                    <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-                      {b.requests.length} request
-                      {b.requests.length === 1 ? "" : "s"} · {b.itemsCount} item
-                      {b.itemsCount === 1 ? "" : "s"}
-                      {b.quoteOriginCount > 0 ? (
-                        <>
-                          <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
-                          {b.quoteOriginCount} quote-originated
-                        </>
-                      ) : null}
-                      {b.itemsCount > 0 ? (
-                        <>
-                          <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
-                          {b.completeCount}/{b.itemsCount} complete
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <span className={pillFor(b.status)}>{labelFor(b.status)}</span>
+                  )}
                 </div>
-
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-[11px] text-[color:var(--theme-text-secondary)]">
-                    <span>Completion</span>
-                    <span className={ACCENT_TEXT}>{b.completionPct}%</span>
-                  </div>
-                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,rgba(56,189,248,0.45),rgba(197,122,74,0.65))]"
-                      style={{ width: `${b.completionPct}%` }}
-                      aria-hidden="true"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[color:var(--desktop-border)] pt-3">
-                  <button
-                    type="button"
-                    className={BTN_DANGER}
-                    onClick={() => void deleteBucket(b)}
-                    disabled={isDeleting}
-                    title="Delete all requests under this work order"
-                  >
-                    {isDeleting ? "Deleting…" : "Delete"}
-                  </button>
-
-                  <Link href={href} className={BTN_ACCENT}>
-                    Open requests →
-                  </Link>
-                </div>
-              </div>
+              </section>
             );
           })}
         </div>
+      ) : visibleBuckets.length ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {visibleBuckets.map((bucket) => (
+            <QueueCard
+              key={bucket.workOrderId}
+              bucket={bucket}
+              handingOff={false}
+              onHandoff={completeHandoff}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-10 text-center">
+          <History className="mx-auto h-7 w-7 text-[color:var(--theme-text-muted)]" />
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
+            No completed requests match this search.
+          </p>
+        </div>
       )}
-    </div>
+    </main>
   );
 }

@@ -1,8 +1,8 @@
 // app/api/parts/requests/create/route.ts
 
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type DB = Database;
 
@@ -20,9 +20,13 @@ type Body = {
   notes?: string | null;
 };
 
-export async function POST(req: Request) {
-  const supabase = createServerSupabaseRoute();
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
 
+export async function POST(req: Request) {
   // 1) parse + validate
   const body = (await req.json().catch(() => null)) as Body | null;
   if (
@@ -38,9 +42,9 @@ export async function POST(req: Request) {
   }
 
   const workOrderId = body.workOrderId.trim();
-  if (!workOrderId) {
+  if (!workOrderId || !isUuid(workOrderId)) {
     return NextResponse.json(
-      { error: "workOrderId is required." },
+      { error: "A valid workOrderId is required." },
       { status: 400 },
     );
   }
@@ -50,6 +54,12 @@ export async function POST(req: Request) {
     typeof body.jobId === "string" && body.jobId.trim().length > 0
       ? body.jobId.trim()
       : undefined;
+  if (jobId && !isUuid(jobId)) {
+    return NextResponse.json(
+      { error: "jobId must be a valid work-order line id." },
+      { status: 400 },
+    );
+  }
 
   const notes =
     typeof body.notes === "string" && body.notes.trim().length > 0
@@ -76,17 +86,62 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No valid items." }, { status: 400 });
   }
 
-  // 2) auth (return 401 cleanly instead of DB/RLS exception)
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+  // 2) auth + tenant boundary. Technicians, Parts, and shop operators may
+  // create requests only against work orders in their current shop.
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "parts",
+      "mechanic",
+      "lead_hand",
+      "foreman",
+    ],
+  });
+  if (!access.ok) return access.response;
 
-  if (userErr) {
-    return NextResponse.json({ error: userErr.message }, { status: 401 });
+  const supabase = access.supabase;
+  const shopId = access.profile.shop_id;
+
+  const { data: workOrder, error: workOrderError } = await supabase
+    .from("work_orders")
+    .select("id")
+    .eq("id", workOrderId)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+  if (workOrderError) {
+    return NextResponse.json(
+      { error: workOrderError.message },
+      { status: 500 },
+    );
   }
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (!workOrder) {
+    return NextResponse.json(
+      { error: "Work order not found for the current shop." },
+      { status: 404 },
+    );
+  }
+
+  if (jobId) {
+    const { data: line, error: lineError } = await supabase
+      .from("work_order_lines")
+      .select("id")
+      .eq("id", jobId)
+      .eq("work_order_id", workOrderId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
+    if (lineError) {
+      return NextResponse.json({ error: lineError.message }, { status: 500 });
+    }
+    if (!line) {
+      return NextResponse.json(
+        { error: "Work-order line not found for this work order and shop." },
+        { status: 404 },
+      );
+    }
   }
 
   // 3) atomic RPC
@@ -113,5 +168,15 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({ requestId: data });
+  const { data: created } = await supabase
+    .from("part_requests")
+    .select("status")
+    .eq("id", data)
+    .eq("shop_id", shopId)
+    .maybeSingle();
+
+  return NextResponse.json({
+    requestId: data,
+    status: created?.status ?? null,
+  });
 }

@@ -9016,11 +9016,14 @@ export type Database = {
           po_id: string | null
           qty: number
           qty_approved: number
+          qty_assigned: number
           qty_consumed: number
+          qty_ordered: number
           qty_picked: number
           qty_received: number
           qty_requested: number
           qty_reserved: number
+          qty_returned: number
           quoted_price: number | null
           quote_line_id: string | null
           request_id: string
@@ -9048,11 +9051,14 @@ export type Database = {
           po_id?: string | null
           qty: number
           qty_approved?: number
+          qty_assigned?: number
           qty_consumed?: number
+          qty_ordered?: number
           qty_picked?: number
           qty_received?: number
           qty_requested?: number
           qty_reserved?: number
+          qty_returned?: number
           quoted_price?: number | null
           quote_line_id?: string | null
           request_id: string
@@ -9080,11 +9086,14 @@ export type Database = {
           po_id?: string | null
           qty?: number
           qty_approved?: number
+          qty_assigned?: number
           qty_consumed?: number
+          qty_ordered?: number
           qty_picked?: number
           qty_received?: number
           qty_requested?: number
           qty_reserved?: number
+          qty_returned?: number
           quoted_price?: number | null
           quote_line_id?: string | null
           request_id?: string
@@ -9206,6 +9215,8 @@ export type Database = {
         Row: {
           assigned_to: string | null
           created_at: string
+          handoff_completed_at: string | null
+          handoff_completed_by: string | null
           id: string
           job_id: string | null
           notes: string | null
@@ -9218,6 +9229,8 @@ export type Database = {
         Insert: {
           assigned_to?: string | null
           created_at?: string
+          handoff_completed_at?: string | null
+          handoff_completed_by?: string | null
           id?: string
           job_id?: string | null
           notes?: string | null
@@ -9230,6 +9243,8 @@ export type Database = {
         Update: {
           assigned_to?: string | null
           created_at?: string
+          handoff_completed_at?: string | null
+          handoff_completed_by?: string | null
           id?: string
           job_id?: string | null
           notes?: string | null
@@ -9753,6 +9768,58 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_request_handoff_keys: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          id: string
+          operation_key: string
+          request_id: string
+          result: Json
+          shop_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          operation_key: string
+          request_id: string
+          result?: Json
+          shop_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          id?: string
+          operation_key?: string
+          request_id?: string
+          result?: Json
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_request_handoff_keys_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "part_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_request_handoff_keys_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_request_handoff_keys_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -23737,6 +23804,24 @@ export type Database = {
           vehicle_year: number
         }[]
       }
+      parts_complete_request_handoff_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_operation_key: string
+          p_request_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
+      parts_reconcile_request_lifecycle: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
+      parts_request_operational_stage: {
+        Args: { p_request_id: string }
+        Returns: string
+      }
       maybe_release_line_hold_for_parts: {
         Args: { p_work_order_line_id: string }
         Returns: undefined
@@ -24093,16 +24178,25 @@ export type Database = {
         | "picking"
         | "picked"
         | "ordered"
+        | "partially_ordered"
         | "partially_received"
         | "received"
+        | "partially_consumed"
         | "consumed"
+        | "partially_returned"
+        | "returned"
         | "cancelled"
       part_request_status:
         | "requested"
         | "quoted"
         | "approved"
+        | "partially_ordered"
+        | "partially_consumed"
+        | "partially_returned"
+        | "returned"
         | "fulfilled"
         | "rejected"
+        | "deferred"
         | "cancelled"
       plan_t: "free" | "diy" | "pro" | "pro_plus"
       publication_status:
@@ -24438,17 +24532,26 @@ export const Constants = {
         "picking",
         "picked",
         "ordered",
+        "partially_ordered",
         "partially_received",
         "received",
+        "partially_consumed",
         "consumed",
+        "partially_returned",
+        "returned",
         "cancelled",
       ],
       part_request_status: [
         "requested",
         "quoted",
         "approved",
+        "partially_ordered",
+        "partially_consumed",
+        "partially_returned",
+        "returned",
         "fulfilled",
         "rejected",
+        "deferred",
         "cancelled",
       ],
       plan_t: ["free", "diy", "pro", "pro_plus"],

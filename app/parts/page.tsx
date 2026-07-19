@@ -21,6 +21,12 @@ import {
 } from "lucide-react";
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  earliestPartsRequestStage,
+  toPartsRequestStage,
+  type PartsRequestStage,
+  type PartsRequestStageItem,
+} from "@/features/parts/lib/status-display";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -28,6 +34,23 @@ type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type StockMoveRow = DB["public"]["Tables"]["stock_moves"]["Row"];
 type RequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
 type RequestItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
+type DashboardRequestItem = Pick<
+  RequestItemRow,
+  | "request_id"
+  | "status"
+  | "description"
+  | "part_id"
+  | "quoted_price"
+  | "unit_price"
+  | "qty"
+  | "qty_requested"
+  | "qty_approved"
+  | "qty_ordered"
+  | "qty_received"
+  | "qty_reserved"
+  | "qty_consumed"
+  | "qty_returned"
+>;
 
 type RecentMove = Pick<
   StockMoveRow,
@@ -57,10 +80,18 @@ type FlowCounts = {
   complete: number;
 };
 
-const ACTIVE_REQUEST_STATUSES: RequestRow["status"][] = [
+const PARTS_REQUEST_STATUSES: RequestRow["status"][] = [
   "requested",
   "quoted",
   "approved",
+  "partially_ordered",
+  "partially_consumed",
+  "partially_returned",
+  "returned",
+  "fulfilled",
+  "rejected",
+  "deferred",
+  "cancelled",
 ];
 
 function panelClass(extra = "") {
@@ -73,31 +104,30 @@ function approvedReceivingQty(
   return Math.max(0, Number(item.qty_approved ?? 0));
 }
 
-function approvedRequestFlow(
-  items: Array<
-    Pick<RequestItemRow, "qty_approved" | "qty_received" | "qty_consumed">
-  >,
-): "awaitingApproval" | "orderReceive" | "readyTech" | "complete" {
-  if (items.length === 0 || items.some((item) => approvedReceivingQty(item) <= 0)) {
-    return "awaitingApproval";
-  }
-  if (
-    items.every(
-      (item) => Number(item.qty_consumed ?? 0) >= approvedReceivingQty(item),
-    )
-  ) {
-    return "complete";
-  }
-  if (
-    items.every(
-      (item) =>
-        Number(item.qty_received ?? 0) >= approvedReceivingQty(item) &&
-        Number(item.qty_consumed ?? 0) < approvedReceivingQty(item),
-    )
-  ) {
-    return "readyTech";
-  }
-  return "orderReceive";
+function requestStageItem(item: DashboardRequestItem): PartsRequestStageItem {
+  return {
+    description: item.description,
+    partId: item.part_id,
+    quotedPrice: item.quoted_price,
+    unitPrice: item.unit_price,
+    qty: item.qty,
+    qtyRequested: item.qty_requested,
+    qtyApproved: item.qty_approved,
+    qtyOrdered: item.qty_ordered,
+    qtyReceived: item.qty_received,
+    qtyReserved: item.qty_reserved,
+    qtyConsumed: item.qty_consumed,
+    qtyReturned: item.qty_returned,
+    rawStatus: item.status,
+  };
+}
+
+function incrementFlow(flow: FlowCounts, stage: PartsRequestStage): void {
+  if (stage === "needs_quote") flow.needsQuote += 1;
+  else if (stage === "awaiting_approval") flow.awaitingApproval += 1;
+  else if (stage === "order_receive") flow.orderReceive += 1;
+  else if (stage === "ready_for_tech") flow.readyTech += 1;
+  else flow.complete += 1;
 }
 
 function sourceLabel(kind: string | null, reason: string | null) {
@@ -296,7 +326,7 @@ export default function PartsDashboardPage(): JSX.Element {
         const page = await supabase
           .from("part_requests")
           .select("id,status,work_order_id")
-          .in("status", ["requested", "quoted", "approved", "fulfilled"])
+          .in("status", PARTS_REQUEST_STATUSES)
           .order("id", { ascending: true })
           .range(offset, offset + pageSize - 1);
         if (page.error) throw page.error;
@@ -306,25 +336,14 @@ export default function PartsDashboardPage(): JSX.Element {
       }
 
       const requestIds = requests.map((request) => request.id);
-      const items: Array<
-        Pick<
-          RequestItemRow,
-          | "request_id"
-          | "status"
-          | "qty"
-          | "qty_requested"
-          | "qty_approved"
-          | "qty_received"
-          | "qty_consumed"
-        >
-      > = [];
+      const items: DashboardRequestItem[] = [];
       for (let chunkStart = 0; chunkStart < requestIds.length; chunkStart += 200) {
         const requestIdChunk = requestIds.slice(chunkStart, chunkStart + 200);
         for (let offset = 0; ; offset += pageSize) {
           const page = await supabase
             .from("part_request_items")
             .select(
-              "request_id,status,qty,qty_requested,qty_approved,qty_received,qty_consumed",
+              "request_id,status,description,part_id,quoted_price,unit_price,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned",
             )
             .in("request_id", requestIdChunk)
             .order("id", { ascending: true })
@@ -342,9 +361,16 @@ export default function PartsDashboardPage(): JSX.Element {
         itemsByRequest.set(item.request_id, current);
       }
 
-      const activeRequests = requests.filter((request) =>
-        ACTIVE_REQUEST_STATUSES.includes(request.status),
-      );
+      const requestStages = requests.map((request) => ({
+        request,
+        stage: toPartsRequestStage({
+          rawStatus: request.status,
+          items: (itemsByRequest.get(request.id) ?? []).map(requestStageItem),
+        }),
+      }));
+      const activeRequests = requestStages
+        .filter((model) => model.stage !== "completed")
+        .map((model) => model.request);
       setOpenRequestCount(activeRequests.length);
       setOpenWorkOrderCount(
         new Set(
@@ -355,7 +381,11 @@ export default function PartsDashboardPage(): JSX.Element {
       );
       const activeIds = new Set(activeRequests.map((request) => request.id));
       setOpenItemCount(
-        items.filter((item) => activeIds.has(item.request_id)).length,
+        items.filter(
+          (item) =>
+            activeIds.has(item.request_id) &&
+            String(item.status).toLowerCase() !== "cancelled",
+        ).length,
       );
       setOpenPoCount(openPoRes.count ?? 0);
       setReceiveQueueCount(
@@ -363,6 +393,7 @@ export default function PartsDashboardPage(): JSX.Element {
           const target = approvedReceivingQty(item);
           return (
             activeIds.has(item.request_id) &&
+            String(item.status).toLowerCase() !== "cancelled" &&
             target > 0 &&
             Number(item.qty_received ?? 0) < target &&
             Number(item.qty_consumed ?? 0) < target
@@ -377,21 +408,16 @@ export default function PartsDashboardPage(): JSX.Element {
         readyTech: 0,
         complete: 0,
       };
-      for (const request of requests) {
-        if (request.status === "fulfilled") {
-          nextFlow.complete += 1;
-          continue;
-        }
-        if (request.status === "requested") {
-          nextFlow.needsQuote += 1;
-          continue;
-        }
-        if (request.status === "quoted") {
-          nextFlow.awaitingApproval += 1;
-          continue;
-        }
-        const requestItems = itemsByRequest.get(request.id) ?? [];
-        nextFlow[approvedRequestFlow(requestItems)] += 1;
+      const stagesByWorkOrder = new Map<string, PartsRequestStage[]>();
+      for (const model of requestStages) {
+        const key = model.request.work_order_id ?? `request:${model.request.id}`;
+        stagesByWorkOrder.set(key, [
+          ...(stagesByWorkOrder.get(key) ?? []),
+          model.stage,
+        ]);
+      }
+      for (const stages of stagesByWorkOrder.values()) {
+        incrementFlow(nextFlow, earliestPartsRequestStage(stages));
       }
       setFlow(nextFlow);
       setLoading(false);
