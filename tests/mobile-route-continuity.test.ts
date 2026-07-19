@@ -45,13 +45,21 @@ describe("mobile route continuity", () => {
     expect(requireMobileHref("/unknown-internal-route")).toBe("/mobile");
   });
 
-  it("installs a document-level guard for links rendered by shared components", () => {
+  it("installs client and server guards for desktop links opened on mobile", () => {
     const shell = read("components/layout/MobileShell.tsx");
+    const middleware = read("middleware.ts");
+
     expect(shell).toContain("resolveMobileHref");
     expect(shell).toContain('document.addEventListener("click"');
     expect(shell).toContain("anchor.origin !== window.location.origin");
     expect(shell).toContain("event.preventDefault()");
     expect(shell).toContain("router.push(mobileHref)");
+
+    expect(middleware).toContain("isMobileDeviceRequest");
+    expect(middleware).toContain('req.headers.get("sec-ch-ua-mobile")');
+    expect(middleware).toContain("resolveMobileHref(requestedHref)");
+    expect(middleware).toContain("mobileDeviceRequest &&");
+    expect(middleware).toContain('mobileDeviceRequest\n            ? "/mobile"');
   });
 
   it("keeps authentication and mobile utilities inside mobile routes", () => {
@@ -70,6 +78,7 @@ describe("mobile route continuity", () => {
     const chat = read("app/mobile/messages/[chatId]/page.tsx");
     const newMessage = read("features/mobile/messages/new/page.client.tsx");
     const vehicle = read("app/mobile/work-orders/[id]/vehicle/page.tsx");
+    const pretrip = read("app/mobile/fleet/pretrip/[unitId]/page.tsx");
     const previous = read("features/shared/components/ui/PreviousPageButton.tsx");
 
     expect(job).toContain('router.push("/mobile/tech/queue")');
@@ -82,6 +91,7 @@ describe("mobile route continuity", () => {
     expect(vehicle).toContain(
       'href={`/mobile/work-orders/${workOrderId}`}',
     );
+    expect(pretrip).toContain('href="/mobile/fleet/pretrip"');
     expect(previous).toContain('router.push("/mobile/work-orders")');
   });
 
