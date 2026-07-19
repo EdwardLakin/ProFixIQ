@@ -196,7 +196,7 @@ export default function MobileJobPage() {
           initialCause={line.cause ?? ""}
           initialCorrection={line.correction ?? ""}
           onSaveDraft={saveStory}
-          onDraftChange={({ cause, correction }) => {
+          onDraftChange={(cause, correction) => {
             setLine((current) =>
               current ? { ...current, cause, correction } : current,
             );
