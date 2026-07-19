@@ -35,7 +35,10 @@ function getTitleFromPath(pathname: string): string {
 
 function isImmersiveRoute(pathname: string): boolean {
   if (pathname.startsWith("/mobile/jobs/")) return true;
-  return /^\/mobile\/inspections\/[^/]+/.test(pathname);
+
+  // Single-screen inspection runners provide their own Back/header bar. Deeper
+  // routes such as /[id]/run still rely on the shared mobile header.
+  return /^\/mobile\/inspections\/[^/]+$/.test(pathname);
 }
 
 export function MobileShell({ children, title }: Props) {
