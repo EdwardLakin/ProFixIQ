@@ -1,10 +1,9 @@
-// components/layout/MobileShell.tsx
-
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+
 import { MobileBottomNav } from "./MobileBottomNav";
 
 type Props = {
@@ -14,15 +13,32 @@ type Props = {
 
 function getTitleFromPath(pathname: string): string {
   if (!pathname.startsWith("/mobile")) return "ProFixIQ";
-  if (pathname === "/mobile") return "Dashboard";
-  if (pathname.startsWith("/mobile/work-orders/create")) return "Create work order";
+  if (pathname === "/mobile") return "Home";
+  if (pathname.startsWith("/mobile/jobs/")) return "Job";
+  if (pathname.startsWith("/mobile/work-orders/create")) {
+    return "Create work order";
+  }
   if (pathname.startsWith("/mobile/work-orders")) return "Work orders";
   if (pathname.startsWith("/mobile/appointments")) return "Appointments";
   if (pathname.startsWith("/mobile/inspections")) return "Inspections";
+  if (pathname.startsWith("/mobile/parts")) return "Parts";
   if (pathname.startsWith("/mobile/messages")) return "Inbox";
   if (pathname.startsWith("/mobile/tech/queue")) return "My jobs";
+  if (pathname.startsWith("/mobile/tech/performance")) {
+    return "My performance";
+  }
   if (pathname.startsWith("/mobile/settings")) return "Settings";
+  if (pathname.startsWith("/mobile/reports")) return "Reports";
+  if (pathname.startsWith("/mobile/dispatch")) return "Dispatch";
   return "ProFixIQ";
+}
+
+function isImmersiveRoute(pathname: string): boolean {
+  if (pathname.startsWith("/mobile/jobs/")) return true;
+
+  // Single-screen inspection runners provide their own Back/header bar. Deeper
+  // routes such as /[id]/run still rely on the shared mobile header.
+  return /^\/mobile\/inspections\/[^/]+$/.test(pathname);
 }
 
 export function MobileShell({ children, title }: Props) {
@@ -33,6 +49,14 @@ export function MobileShell({ children, title }: Props) {
 
   if (pathname === "/mobile/sign-in" || pathname.startsWith("/mobile/sign-in/")) {
     return children;
+  }
+
+  if (isImmersiveRoute(pathname)) {
+    return (
+      <div className="min-h-screen overflow-x-hidden bg-[color:var(--theme-surface-page)] pt-[env(safe-area-inset-top,0px)] text-[color:var(--theme-text-primary)]">
+        <main className="min-w-0 overflow-x-hidden">{children}</main>
+      </div>
+    );
   }
 
   return (
@@ -69,7 +93,7 @@ export function MobileShell({ children, title }: Props) {
               onClick={() => router.push("/mobile")}
               className="shrink-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-medium"
             >
-              Dashboard
+              Home
             </button>
           ) : (
             <span className="font-blackops shrink-0 text-xs tracking-[0.18em] text-[var(--accent-copper)]">

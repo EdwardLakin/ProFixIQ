@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
-import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
-import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
-import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  runMutationWithOfflineQueue,
+} from "@/features/shared/lib/offline/mutations";
+import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
 type StoryLine = {
   id: string;
@@ -54,8 +56,8 @@ export default function MobileJobPage() {
       if (error) throw error;
       setLine(data ?? null);
     } catch (error) {
-      // The focused job owns the primary load/error state; this supplemental
-      // editor should not replace it with a second blocking screen.
+      // The focused job owns the primary load/error state. This supplemental
+      // editor must never replace it with a second blocking screen.
       // eslint-disable-next-line no-console
       console.error("[mobile job story] load failed", error);
     } finally {
@@ -168,24 +170,27 @@ export default function MobileJobPage() {
     line?.complaint?.trim() || line?.description?.trim() || "Job story";
 
   return (
-    <>
+    <div className="pb-20">
       <MobileFocusedJob
         workOrderLineId={lineId}
         onChanged={loadStory}
         onBack={() => {
           if (window.history.length > 1) router.back();
-          else router.push("/mobile/work-orders");
+          else router.push("/mobile/tech/queue");
         }}
       />
 
-      <button
-        type="button"
-        onClick={openStory}
-        aria-label="Open cause and correction editor"
-        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-[120] inline-flex min-h-11 items-center justify-center rounded-full border border-[color:var(--accent-copper)] bg-[color:var(--theme-surface-panel-strong)] px-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
-      >
-        Cause / Correction
-      </button>
+      <div className="fixed inset-x-0 bottom-0 z-[120] border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+        <button
+          type="button"
+          onClick={openStory}
+          aria-label="Open cause and correction editor"
+          disabled={loadingStory}
+          className="mx-auto flex min-h-12 w-full max-w-3xl items-center justify-center rounded-2xl border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-panel-strong)] px-4 text-sm font-semibold text-[color:var(--theme-text-primary)] active:scale-[0.99] disabled:opacity-50"
+        >
+          {loadingStory ? "Loading job story…" : "Cause & Correction"}
+        </button>
+      </div>
 
       {storyOpen && line ? (
         <CauseCorrectionModal
@@ -204,6 +209,6 @@ export default function MobileJobPage() {
           onSubmit={completeJob}
         />
       ) : null}
-    </>
+    </div>
   );
 }

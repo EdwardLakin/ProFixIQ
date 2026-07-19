@@ -1,7 +1,8 @@
-// features/work-orders/components/workorders/extras/PhotoCaptureModal.tsx
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import ModalShell from "@/features/shared/components/ModalShell";
 
 type Source = "camera" | "photos_files";
@@ -12,23 +13,254 @@ interface Props {
   onCapture: (file: File) => void | Promise<void>;
 }
 
+const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+const PHOTO_EXTENSION_RE = /\.(avif|heic|heif|jpe?g|png|webp)$/i;
+
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"] as const;
-  let i = 0;
-  let n = bytes;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
-    i += 1;
+  let index = 0;
+  let value = bytes;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
   }
-  return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function isImageFile(file: File): boolean {
   return typeof file.type === "string" && file.type.startsWith("image/");
 }
 
-export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
+function isMobilePhotoFile(file: File): boolean {
+  return isImageFile(file) || PHOTO_EXTENSION_RE.test(file.name);
+}
+
+function validateMobilePhoto(file: File): string | null {
+  if (!isMobilePhotoFile(file)) return "Choose an image file.";
+  if (file.size > MAX_PHOTO_BYTES) {
+    return `This photo is ${formatBytes(file.size)}. Choose one smaller than 15 MB.`;
+  }
+  return null;
+}
+
+export default function PhotoCaptureModal(props: Props) {
+  const pathname = usePathname();
+  return pathname.startsWith("/mobile") ? (
+    <MobilePhotoCaptureModal {...props} />
+  ) : (
+    <DesktopPhotoCaptureModal {...props} />
+  );
+}
+
+function MobilePhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+  const pickerRef = useRef<HTMLInputElement | null>(null);
+
+  const previewUrl = useMemo(() => {
+    if (!file || !isMobilePhotoFile(file)) return null;
+    return URL.createObjectURL(file);
+  }, [file]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setError(null);
+      return;
+    }
+    setFile(null);
+    setBusy(false);
+    setError(null);
+    if (cameraRef.current) cameraRef.current.value = "";
+    if (pickerRef.current) pickerRef.current.value = "";
+  }, [isOpen]);
+
+  const reset = () => {
+    setFile(null);
+    setBusy(false);
+    setError(null);
+    if (cameraRef.current) cameraRef.current.value = "";
+    if (pickerRef.current) pickerRef.current.value = "";
+  };
+
+  const close = () => {
+    if (busy) return;
+    reset();
+    onClose();
+  };
+
+  const upload = async (selected: File) => {
+    if (busy) return;
+    setFile(selected);
+    setBusy(true);
+    setError(null);
+    try {
+      await onCapture(selected);
+      reset();
+      onClose();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Photo upload failed.");
+      setFile(selected);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectFile = (selected: File | null) => {
+    if (!selected || busy) return;
+    const validationError = validateMobilePhoto(selected);
+    if (validationError) {
+      setFile(null);
+      setError(validationError);
+      return;
+    }
+    setFile(selected);
+    setError(null);
+    void upload(selected);
+  };
+
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      onClose={close}
+      title="ADD PHOTO"
+      size="sm"
+      hideFooter
+    >
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper-light)]">
+            Job evidence
+          </div>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+            Take a new photo or attach one already on this device. It uploads as
+            soon as you confirm it.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => cameraRef.current?.click()}
+            disabled={busy}
+            className="min-h-24 rounded-2xl border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-overlay)] p-3 text-left transition active:scale-[0.98] disabled:opacity-55"
+          >
+            <div className="text-2xl" aria-hidden="true">
+              📷
+            </div>
+            <div className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              Take photo
+            </div>
+            <div className="mt-1 text-[0.68rem] text-[color:var(--theme-text-secondary)]">
+              Open the rear camera
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => pickerRef.current?.click()}
+            disabled={busy}
+            className="min-h-24 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 text-left transition active:scale-[0.98] disabled:opacity-55"
+          >
+            <div className="text-2xl" aria-hidden="true">
+              🖼️
+            </div>
+            <div className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              Choose existing
+            </div>
+            <div className="mt-1 text-[0.68rem] text-[color:var(--theme-text-secondary)]">
+              Photos or files
+            </div>
+          </button>
+        </div>
+
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
+          className="hidden"
+        />
+        <input
+          ref={pickerRef}
+          type="file"
+          accept="image/*,.heic,.heif"
+          onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
+          className="hidden"
+        />
+
+        {busy ? (
+          <div className="rounded-xl border border-[var(--accent-copper-soft)]/50 bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]">
+            <div className="font-semibold">Uploading photo…</div>
+            <div className="mt-1 truncate text-xs text-[color:var(--theme-text-secondary)]">
+              {file?.name ?? "Selected photo"}
+            </div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="rounded-xl border border-red-500/40 bg-red-950/35 px-3 py-2 text-xs text-red-100">
+            {error}
+          </div>
+        ) : null}
+
+        {file && !busy ? (
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+            <div className="flex items-start gap-3">
+              {previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={previewUrl}
+                  alt="Selected job photo"
+                  className="h-16 w-16 rounded-xl border border-[color:var(--theme-border-soft)] object-cover"
+                />
+              ) : (
+                <div className="grid h-16 w-16 place-items-center rounded-xl border border-[color:var(--theme-border-soft)] text-xs text-[color:var(--theme-text-secondary)]">
+                  Photo
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  {file.name}
+                </div>
+                <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                  {formatBytes(file.size)}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void upload(file)}
+                    className="rounded-full bg-[color:var(--accent-copper)] px-3 py-1.5 text-xs font-semibold text-white"
+                  >
+                    Retry upload
+                  </button>
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)]"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </ModalShell>
+  );
+}
+
+function DesktopPhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [source, setSource] = useState<Source>("camera");
   const [busy, setBusy] = useState(false);
@@ -43,14 +275,12 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
     return URL.createObjectURL(file);
   }, [file]);
 
-  // cleanup preview blob URL
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
 
-  // reset when modal opens/closes
   useEffect(() => {
     if (!isOpen) {
       setFile(null);
@@ -65,34 +295,26 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
 
   const handlePick = () => {
     setErr(null);
-
     if (source === "camera") {
-      // camera forced
       cameraRef.current?.click();
       return;
     }
-
-    // photos/files picker (no capture)
     pickerRef.current?.click();
   };
 
-  const handleFile = (f: File | null) => {
-    if (!f) return;
-
-    // basic guardrails
-    if (!isImageFile(f)) {
+  const handleFile = (selected: File | null) => {
+    if (!selected) return;
+    if (!isImageFile(selected)) {
       setErr("Please select an image file.");
       return;
     }
-
-    // optional: soft limit (adjust or remove)
-    const maxBytes = 15 * 1024 * 1024;
-    if (f.size > maxBytes) {
-      setErr(`Image is too large (${formatBytes(f.size)}). Please use a smaller photo.`);
+    if (selected.size > MAX_PHOTO_BYTES) {
+      setErr(
+        `Image is too large (${formatBytes(selected.size)}). Please use a smaller photo.`,
+      );
       return;
     }
-
-    setFile(f);
+    setFile(selected);
     setErr(null);
   };
 
@@ -105,15 +327,14 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
 
   const submit = async () => {
     if (!file || busy) return;
-
     setBusy(true);
     setErr(null);
     try {
       await onCapture(file);
       onClose();
       clearFile();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Upload failed.");
+    } catch (caught) {
+      setErr(caught instanceof Error ? caught.message : "Upload failed.");
     } finally {
       setBusy(false);
     }
@@ -137,7 +358,8 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
             Job photo
           </div>
           <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Attach supporting evidence for the job card, approval flow, and future history.
+            Attach supporting evidence for the job card, approval flow, and future
+            history.
           </div>
         </div>
 
@@ -148,7 +370,7 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
             </label>
             <select
               value={source}
-              onChange={(e) => setSource(e.target.value as Source)}
+              onChange={(event) => setSource(event.target.value as Source)}
               className="w-full rounded-md border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/60"
             >
               <option value="camera">Camera</option>
@@ -165,30 +387,28 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
           </button>
         </div>
 
-        {/* hidden inputs (we programmatically click them) */}
         <input
           ref={cameraRef}
           type="file"
           accept="image/*"
           capture="environment"
-          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+          onChange={(event) => handleFile(event.target.files?.[0] ?? null)}
           className="hidden"
         />
         <input
           ref={pickerRef}
           type="file"
           accept="image/*"
-          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+          onChange={(event) => handleFile(event.target.files?.[0] ?? null)}
           className="hidden"
         />
 
-        {err && (
+        {err ? (
           <div className="rounded-lg border border-red-500/40 bg-red-950/35 px-3 py-2 text-xs text-red-100">
             {err}
           </div>
-        )}
+        ) : null}
 
-        {/* preview */}
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           {file ? (
             <div className="flex items-start gap-3">
@@ -234,22 +454,26 @@ export default function PhotoCaptureModal({ isOpen, onClose, onCapture }: Props)
             </div>
           ) : (
             <div className="text-xs text-[color:var(--theme-text-secondary)]">
-              Pick a job photo. On mobile, “Camera” opens the camera. “Photos / Files” opens your library or file picker.
+              Pick a job photo. On mobile, “Camera” opens the camera. “Photos /
+              Files” opens your library or file picker.
             </div>
           )}
         </div>
 
-        {/* small helper */}
         <p className="text-[11px] text-[color:var(--theme-text-muted)]">
-          Tip: Use <span className="text-[color:var(--theme-text-secondary)]">Photos / Files</span> if you need to select an existing picture instead of capturing a new one.
+          Tip: Use{" "}
+          <span className="text-[color:var(--theme-text-secondary)]">
+            Photos / Files
+          </span>{" "}
+          if you need to select an existing picture instead of capturing a new
+          one.
         </p>
 
-        {/* soft-disable submit by messaging (ModalShell likely controls button; we still guard in submit) */}
-        {!file && (
+        {!file ? (
           <div className="text-[11px] text-amber-200/90">
             Choose a photo to enable upload.
           </div>
-        )}
+        ) : null}
       </div>
     </ModalShell>
   );
