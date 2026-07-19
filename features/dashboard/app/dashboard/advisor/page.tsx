@@ -59,10 +59,10 @@ function Tile({ href, title, subtitle, cta }: TileProps) {
 
 export default function AdvisorDashboardPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-3 py-8 text-foreground">
-      <div className="mx-auto max-w-6xl">
+    <div className="min-h-screen bg-gradient-to-b from-[color:var(--theme-surface-page)] via-[color:var(--theme-surface-panel)] to-[color:var(--theme-surface-page)] px-3 py-4 text-foreground sm:px-5 lg:px-6">
+      <div className="mx-auto w-full max-w-[1800px]">
         {/* Page header */}
-        <header className="mb-8 space-y-2">
+        <header className="mb-5 space-y-2">
           <div className="inline-flex items-center rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--theme-text-secondary)]">
             Advisor Console
           </div>
@@ -86,7 +86,7 @@ export default function AdvisorDashboardPage() {
             </h2>
             <span className="h-px flex-1 bg-gradient-to-r from-[var(--accent-copper-soft)]/70 via-[color:var(--theme-surface-panel)] to-transparent" />
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Tile
               href="/work-orders/create"
               title="Create Work Order"
@@ -129,7 +129,7 @@ export default function AdvisorDashboardPage() {
             </h2>
             <span className="h-px flex-1 bg-gradient-to-r from-[var(--accent-copper-soft)]/70 via-[color:var(--theme-surface-panel)] to-transparent" />
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Tile
               href="/inspections/templates"
               title="Templates"

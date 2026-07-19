@@ -76,11 +76,11 @@ export default function NavFromTiles({
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8">
+      <div className="mx-auto w-full max-w-[1800px] px-3 py-4 sm:px-5 lg:px-6">
         <h1 className="mb-2 text-3xl font-blackops tracking-[0.08em] text-[var(--accent-copper-light)]">
           {heading}
         </h1>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}

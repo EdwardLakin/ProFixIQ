@@ -514,7 +514,9 @@ export default function AppShell({
 
           <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-4 md:pb-6 md:pt-16 lg:px-6 lg:pt-[4.25rem] xl:px-8 2xl:px-10">
             <TabsBridge tabsSubdued={chatOpen}>
-              <div className="relative z-0 min-w-0">{children}</div>
+              <div className="relative z-0 mx-auto w-full max-w-[1800px] min-w-0">
+                {children}
+              </div>
             </TabsBridge>
           </main>
 

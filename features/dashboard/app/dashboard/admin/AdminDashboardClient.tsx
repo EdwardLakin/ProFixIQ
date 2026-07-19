@@ -15,7 +15,7 @@ export default function AdminDashboardClient() {
   ];
 
   return (
-    <div className="min-h-screen p-6 text-[color:var(--theme-text-primary)]">
+    <div className="mx-auto min-h-screen w-full max-w-[1800px] px-3 py-4 text-[color:var(--theme-text-primary)] sm:px-5 lg:px-6">
       <header className="mb-6 flex items-end justify-between">
         <div>
           <h1 className="text-3xl font-bold text-orange-400">Admin Dashboard</h1>
@@ -29,7 +29,7 @@ export default function AdminDashboardClient() {
         <AdminQuickPanel />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((t) => (
           <Link key={t.href} href={t.href} className="block">
             <div className="p-4 bg-surface rounded shadow-card transition hover:-translate-y-0.5 hover:shadow-lg">

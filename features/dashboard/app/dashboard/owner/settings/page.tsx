@@ -1395,7 +1395,7 @@ export default function OwnerSettingsPage() {
   if (loading) {
     return (
       <div
-        className="mx-auto max-w-[1600px] animate-pulse space-y-5 p-4 sm:p-5 lg:p-6"
+        className="mx-auto max-w-[1800px] animate-pulse space-y-5 p-4 sm:p-5 lg:p-6"
         aria-label="Loading shop settings"
       >
         <div className="h-28 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
@@ -1564,7 +1564,7 @@ export default function OwnerSettingsPage() {
               : [];
 
   return (
-    <div className="mx-auto flex max-w-[1600px] flex-col gap-5 p-4 text-foreground sm:p-5 lg:p-6">
+    <div className="mx-auto flex max-w-[1800px] flex-col gap-5 p-4 text-foreground sm:p-5 lg:p-6">
       <OwnerSettingsHeader
         shopName={shopName}
         roleLabel={ownerRole === "admin" ? "Admin" : "Owner"}

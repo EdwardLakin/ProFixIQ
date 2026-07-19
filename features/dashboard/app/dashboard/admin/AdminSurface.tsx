@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 const shellFrame =
-  "mx-auto w-full max-w-7xl space-y-5 px-4 pb-8 pt-6 text-[color:var(--theme-text-primary)] sm:px-6 lg:px-8";
+  "mx-auto w-full max-w-[1800px] space-y-4 px-3 pb-6 pt-4 text-[color:var(--theme-text-primary)] sm:px-5 lg:px-6";
 
 const panelFrame =
   "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015))] shadow-[var(--theme-shadow-medium)] backdrop-blur-md";
