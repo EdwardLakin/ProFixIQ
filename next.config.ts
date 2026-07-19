@@ -11,6 +11,8 @@ const withSerwist = withSerwistInit({
   additionalPrecacheEntries: [
     { url: "/offline", revision: null },
     { url: "/offline/sync", revision: null },
+    { url: "/mobile", revision: null },
+    { url: "/mobile/offline", revision: null },
     { url: "/mobile/tech/queue", revision: null },
   ],
 });
