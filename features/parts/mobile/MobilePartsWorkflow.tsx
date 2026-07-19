@@ -8,13 +8,11 @@ import ReceiveDrawer, {
   type ReceiveDrawerItem,
 } from "@/features/parts/components/ReceiveDrawer";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { Button } from "@shared/components/ui/Button";
 
 type Lane = "requests" | "approval" | "ordered" | "ready";
 
 type RequestLite = {
   id: string;
-  shop_id: string | null;
   work_order_id: string | null;
   job_id: string | null;
   status: string | null;
@@ -51,8 +49,6 @@ type LocationLite = {
 type WorkflowEntry = {
   key: string;
   requestId: string;
-  requestStatus: string;
-  requestNotes: string | null;
   workOrderId: string | null;
   workOrderLineId: string | null;
   workOrderLabel: string;
@@ -65,7 +61,6 @@ type WorkflowEntry = {
   qtyReceived: number;
   qtyAllocated: number;
   targetQty: number;
-  createdAt: string | null;
   lane: Lane | "complete";
 };
 
@@ -75,10 +70,7 @@ type AllocationDraft = {
   qty: number;
 };
 
-type ApiResult = {
-  ok?: boolean;
-  error?: string;
-};
+type ApiResult = { ok?: boolean; error?: string };
 
 const ACTIVE_REQUEST_STATUSES = ["requested", "quoted", "approved"] as const;
 const CANCELLED_ITEM_STATUSES = new Set([
@@ -87,6 +79,9 @@ const CANCELLED_ITEM_STATUSES = new Set([
   "declined",
   "rejected",
 ]);
+const actionClass =
+  "inline-flex min-h-10 items-center justify-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--accent-copper)] disabled:cursor-not-allowed disabled:opacity-50";
+const primaryActionClass = `${actionClass} border-[color:var(--accent-copper)] bg-[color:var(--accent-copper)] text-white`;
 
 function numberValue(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -99,18 +94,13 @@ function clean(value: unknown): string {
 
 function resolveLane(args: {
   requestStatus: string;
-  itemStatus: string;
   targetQty: number;
   qtyReceived: number;
   qtyAllocated: number;
 }): Lane | "complete" {
-  const requestStatus = args.requestStatus.toLowerCase();
-  if (requestStatus === "requested") return "requests";
-  if (requestStatus === "quoted") return "approval";
-
-  if (args.targetQty <= 0 || args.qtyReceived < args.targetQty) {
-    return "ordered";
-  }
+  if (args.requestStatus === "requested") return "requests";
+  if (args.requestStatus === "quoted") return "approval";
+  if (args.targetQty <= 0 || args.qtyReceived < args.targetQty) return "ordered";
   if (args.qtyAllocated < args.targetQty) return "ready";
   return "complete";
 }
@@ -153,9 +143,7 @@ export default function MobilePartsWorkflow(): JSX.Element {
       const [requestResult, locationResult] = await Promise.all([
         supabase
           .from("part_requests")
-          .select(
-            "id, shop_id, work_order_id, job_id, status, notes, created_at",
-          )
+          .select("id, work_order_id, job_id, status, notes, created_at")
           .in("status", [...ACTIVE_REQUEST_STATUSES])
           .order("created_at", { ascending: false })
           .limit(300),
@@ -178,29 +166,29 @@ export default function MobilePartsWorkflow(): JSX.Element {
         ),
       );
 
-      const [itemResult, workOrderResult] = await Promise.all([
-        requestIds.length
-          ? supabase
-              .from("part_request_items")
-              .select(
-                "id, request_id, work_order_line_id, part_id, description, status, qty, qty_requested, qty_approved, qty_received, qty_consumed, created_at",
-              )
-              .in("request_id", requestIds)
-              .order("created_at", { ascending: false })
-          : Promise.resolve({ data: [], error: null }),
-        workOrderIds.length
-          ? supabase
-              .from("work_orders")
-              .select("id, custom_id")
-              .in("id", workOrderIds)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
+      let items: ItemLite[] = [];
+      if (requestIds.length > 0) {
+        const itemResult = await supabase
+          .from("part_request_items")
+          .select(
+            "id, request_id, work_order_line_id, part_id, description, status, qty, qty_requested, qty_approved, qty_received, qty_consumed, created_at",
+          )
+          .in("request_id", requestIds)
+          .order("created_at", { ascending: false });
+        if (itemResult.error) throw itemResult.error;
+        items = (itemResult.data ?? []) as ItemLite[];
+      }
 
-      if (itemResult.error) throw itemResult.error;
-      if (workOrderResult.error) throw workOrderResult.error;
+      let workOrders: WorkOrderLite[] = [];
+      if (workOrderIds.length > 0) {
+        const workOrderResult = await supabase
+          .from("work_orders")
+          .select("id, custom_id")
+          .in("id", workOrderIds);
+        if (workOrderResult.error) throw workOrderResult.error;
+        workOrders = (workOrderResult.data ?? []) as WorkOrderLite[];
+      }
 
-      const items = (itemResult.data ?? []) as ItemLite[];
-      const workOrders = (workOrderResult.data ?? []) as WorkOrderLite[];
       const workOrderById = new Map(
         workOrders.map((workOrder) => [workOrder.id, workOrder]),
       );
@@ -218,39 +206,34 @@ export default function MobilePartsWorkflow(): JSX.Element {
         const workOrder = request.work_order_id
           ? workOrderById.get(request.work_order_id)
           : null;
-        const workOrderLabel = workOrder?.custom_id?.trim()
-          ? workOrder.custom_id.trim()
-          : request.work_order_id
+        const workOrderLabel =
+          clean(workOrder?.custom_id) ||
+          (request.work_order_id
             ? `WO ${request.work_order_id.slice(0, 8)}`
-            : "Unlinked request";
+            : "Unlinked request");
 
         if (requestItems.length === 0) {
-          const emptyLane = resolveLane({
-            requestStatus,
-            itemStatus: "",
-            targetQty: 0,
-            qtyReceived: 0,
-            qtyAllocated: 0,
-          });
           nextEntries.push({
             key: `request:${request.id}`,
             requestId: request.id,
-            requestStatus,
-            requestNotes: request.notes,
             workOrderId: request.work_order_id,
             workOrderLineId: request.job_id,
             workOrderLabel,
             itemId: null,
             partId: null,
-            description: request.notes?.trim() || "Parts request",
+            description: clean(request.notes) || "Parts request",
             itemStatus: "No items yet",
             qtyRequested: 0,
             qtyApproved: 0,
             qtyReceived: 0,
             qtyAllocated: 0,
             targetQty: 0,
-            createdAt: request.created_at,
-            lane: emptyLane,
+            lane: resolveLane({
+              requestStatus,
+              targetQty: 0,
+              qtyReceived: 0,
+              qtyAllocated: 0,
+            }),
           });
           continue;
         }
@@ -267,33 +250,28 @@ export default function MobilePartsWorkflow(): JSX.Element {
           const qtyReceived = Math.max(0, numberValue(item.qty_received));
           const qtyAllocated = Math.max(0, numberValue(item.qty_consumed));
           const targetQty = Math.max(qtyApproved, qtyRequested);
-          const entryLane = resolveLane({
-            requestStatus,
-            itemStatus,
-            targetQty,
-            qtyReceived,
-            qtyAllocated,
-          });
 
           nextEntries.push({
             key: item.id,
             requestId: request.id,
-            requestStatus,
-            requestNotes: request.notes,
             workOrderId: request.work_order_id,
             workOrderLineId: item.work_order_line_id ?? request.job_id,
             workOrderLabel,
             itemId: item.id,
             partId: item.part_id,
-            description: item.description?.trim() || "Requested part",
+            description: clean(item.description) || "Requested part",
             itemStatus: itemStatus || requestStatus,
             qtyRequested,
             qtyApproved,
             qtyReceived,
             qtyAllocated,
             targetQty,
-            createdAt: item.created_at ?? request.created_at,
-            lane: entryLane,
+            lane: resolveLane({
+              requestStatus,
+              targetQty,
+              qtyReceived,
+              qtyAllocated,
+            }),
           });
         }
       }
@@ -331,12 +309,10 @@ export default function MobilePartsWorkflow(): JSX.Element {
     }),
     [entries],
   );
-
   const visibleEntries = useMemo(
     () => entries.filter((entry) => entry.lane === lane),
     [entries, lane],
   );
-
   const locationOptions = useMemo(
     () =>
       locations.map((location) => ({
@@ -345,7 +321,6 @@ export default function MobilePartsWorkflow(): JSX.Element {
       })),
     [locations],
   );
-
   const defaultLocationId = useMemo(() => {
     const main = locations.find(
       (location) => clean(location.code).toUpperCase() === "MAIN",
@@ -354,28 +329,27 @@ export default function MobilePartsWorkflow(): JSX.Element {
   }, [locations]);
 
   const openAllocation = (entry: WorkflowEntry) => {
-    if (!entry.itemId) {
-      toast.error("This request does not have an actionable item yet.");
+    if (!entry.itemId || !defaultLocationId) {
+      toast.error("Select an actionable item and stock location first.");
       return;
     }
-    if (!defaultLocationId) {
-      toast.error("Create or select a stock location before allocating parts.");
-      return;
-    }
-
-    const availableToAllocate = Math.max(
+    const available = Math.max(
       0,
       Math.min(entry.qtyReceived, entry.targetQty) - entry.qtyAllocated,
     );
     setAllocation({
       entry,
       locationId: defaultLocationId,
-      qty: availableToAllocate || 1,
+      qty: available || 1,
     });
   };
 
   const submitAllocation = async () => {
     if (!allocation?.entry.itemId) return;
+    const remaining = Math.max(
+      0,
+      allocation.entry.targetQty - allocation.entry.qtyAllocated,
+    );
     if (!allocation.locationId) {
       toast.error("Select a stock location.");
       return;
@@ -384,13 +358,8 @@ export default function MobilePartsWorkflow(): JSX.Element {
       toast.error("Allocation quantity must be greater than zero.");
       return;
     }
-
-    const remaining = Math.max(
-      0,
-      allocation.entry.targetQty - allocation.entry.qtyAllocated,
-    );
     if (remaining > 0 && allocation.qty > remaining) {
-      toast.error(`Allocation exceeds the remaining quantity (${formatQty(remaining)}).`);
+      toast.error(`Allocation exceeds remaining quantity (${formatQty(remaining)}).`);
       return;
     }
 
@@ -416,7 +385,7 @@ export default function MobilePartsWorkflow(): JSX.Element {
         },
       );
       const json = (await response.json().catch(() => null)) as ApiResult | null;
-      if (!response.ok || json?.error || json?.ok === false) {
+      if (!response.ok || json?.ok === false || json?.error) {
         throw new Error(json?.error || "Unable to allocate the part.");
       }
 
@@ -463,7 +432,7 @@ export default function MobilePartsWorkflow(): JSX.Element {
             className={[
               "min-h-20 rounded-2xl border p-3 text-left transition",
               lane === laneKey
-                ? "border-[color:var(--accent-copper)] bg-[color:color-mix(in_srgb,var(--accent-copper)_10%,var(--theme-surface-panel))]"
+                ? "border-[color:var(--accent-copper)] bg-[color:var(--theme-surface-panel)]"
                 : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]",
             ].join(" ")}
           >
@@ -487,9 +456,14 @@ export default function MobilePartsWorkflow(): JSX.Element {
               {counts[lane]} active {counts[lane] === 1 ? "item" : "items"}
             </h2>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+          <button
+            type="button"
+            className={actionClass}
+            onClick={() => void load()}
+            disabled={loading}
+          >
             {loading ? "Loading…" : "Refresh"}
-          </Button>
+          </button>
         </div>
 
         {error ? (
@@ -538,65 +512,58 @@ export default function MobilePartsWorkflow(): JSX.Element {
                 </div>
 
                 <div className="mt-3 grid grid-cols-4 gap-1.5 text-center text-[10px] text-[color:var(--theme-text-secondary)]">
-                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2">
-                    <span className="block">Requested</span>
-                    <strong className="mt-0.5 block text-sm text-[color:var(--theme-text-primary)]">
-                      {formatQty(entry.qtyRequested)}
-                    </strong>
-                  </div>
-                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2">
-                    <span className="block">Approved</span>
-                    <strong className="mt-0.5 block text-sm text-[color:var(--theme-text-primary)]">
-                      {formatQty(entry.qtyApproved)}
-                    </strong>
-                  </div>
-                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2">
-                    <span className="block">Received</span>
-                    <strong className="mt-0.5 block text-sm text-[color:var(--theme-text-primary)]">
-                      {formatQty(entry.qtyReceived)}
-                    </strong>
-                  </div>
-                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2">
-                    <span className="block">Allocated</span>
-                    <strong className="mt-0.5 block text-sm text-[color:var(--theme-text-primary)]">
-                      {formatQty(entry.qtyAllocated)}
-                    </strong>
-                  </div>
+                  {[
+                    ["Requested", entry.qtyRequested],
+                    ["Approved", entry.qtyApproved],
+                    ["Received", entry.qtyReceived],
+                    ["Allocated", entry.qtyAllocated],
+                  ].map(([label, value]) => (
+                    <div
+                      key={String(label)}
+                      className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2"
+                    >
+                      <span className="block">{label}</span>
+                      <strong className="mt-0.5 block text-sm text-[color:var(--theme-text-primary)]">
+                        {formatQty(Number(value))}
+                      </strong>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   {lane === "ordered" && entry.itemId ? (
-                    <Button
+                    <button
                       type="button"
-                      size="sm"
+                      className={primaryActionClass}
                       onClick={() => setReceiveEntry(entry)}
                       disabled={remainingReceive <= 0 || locations.length === 0}
                     >
                       Receive {remainingReceive > 0 ? formatQty(remainingReceive) : ""}
-                    </Button>
+                    </button>
                   ) : null}
 
                   {lane === "ready" && entry.itemId ? (
-                    <Button
+                    <button
                       type="button"
-                      size="sm"
+                      className={primaryActionClass}
                       onClick={() => openAllocation(entry)}
                       disabled={remainingAllocate <= 0 || locations.length === 0}
                     >
                       Allocate {remainingAllocate > 0 ? formatQty(remainingAllocate) : ""}
-                    </Button>
+                    </button>
                   ) : null}
 
-                  <Button asChild type="button" size="sm" variant="outline">
-                    <Link href={workbenchHref}>Open parts workbench</Link>
-                  </Button>
+                  <Link className={actionClass} href={workbenchHref}>
+                    Open parts workbench
+                  </Link>
 
                   {entry.workOrderLineId ? (
-                    <Button asChild type="button" size="sm" variant="outline">
-                      <Link href={`/mobile/jobs/${entry.workOrderLineId}`}>
-                        Open job
-                      </Link>
-                    </Button>
+                    <Link
+                      className={actionClass}
+                      href={`/mobile/jobs/${entry.workOrderLineId}`}
+                    >
+                      Open job
+                    </Link>
                   ) : null}
                 </div>
               </article>
@@ -615,7 +582,7 @@ export default function MobilePartsWorkflow(): JSX.Element {
 
       {allocation ? (
         <div
-          className="fixed inset-0 z-[700] flex items-end justify-center bg-[color:color-mix(in_srgb,var(--theme-surface-overlay)_78%,transparent)] p-3 backdrop-blur-sm sm:items-center"
+          className="fixed inset-0 z-[700] flex items-end justify-center bg-[color:var(--theme-surface-overlay)] p-3 backdrop-blur-sm sm:items-center"
           onClick={() => {
             if (!allocating) setAllocation(null);
           }}
@@ -675,21 +642,22 @@ export default function MobilePartsWorkflow(): JSX.Element {
             </label>
 
             <div className="mt-5 flex justify-end gap-2">
-              <Button
+              <button
                 type="button"
-                variant="outline"
+                className={actionClass}
                 disabled={allocating}
                 onClick={() => setAllocation(null)}
               >
                 Cancel
-              </Button>
-              <Button
+              </button>
+              <button
                 type="button"
+                className={primaryActionClass}
                 disabled={allocating}
                 onClick={() => void submitAllocation()}
               >
                 {allocating ? "Allocating…" : "Allocate to job"}
-              </Button>
+              </button>
             </div>
           </div>
         </div>
