@@ -1,15 +1,15 @@
-// app/mobile/messages/new/page.client.tsx
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 const ROLE_OPTIONS = [
   { value: "all", label: "All roles" },
-  { value: "tech", label: "Tech" },
+  { value: "mechanic", label: "Technician" },
   { value: "advisor", label: "Advisor" },
   { value: "parts", label: "Parts" },
   { value: "foreman", label: "Foreman" },
@@ -23,206 +23,199 @@ type UserRow = {
   email?: string | null;
 };
 
+type UsersResponse =
+  | UserRow[]
+  | { users?: UserRow[]; data?: UserRow[]; error?: string };
+
+function normalizeUsers(input: UsersResponse | null): UserRow[] {
+  if (Array.isArray(input)) return input;
+  if (Array.isArray(input?.users)) return input.users;
+  if (Array.isArray(input?.data)) return input.data;
+  return [];
+}
+
 export default function MobileNewMessagePage() {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-
   const [search, setSearch] = useState("");
-  const [role, setRole] = useState<"all" | string>("all");
+  const [role, setRole] = useState("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
 
-  // Load current user
   useEffect(() => {
-    (async () => {
+    let active = true;
+    void (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-      }
+      if (active) setCurrentUserId(user?.id ?? null);
     })();
+    return () => {
+      active = false;
+    };
   }, [supabase]);
 
-  // Load users (same pattern as desktop modal)
   useEffect(() => {
-    (async () => {
+    let active = true;
+    void (async () => {
       setLoadingUsers(true);
       setApiError(null);
-
-      let gotUsers = false;
       try {
-        const res = await fetch("/api/chat/users", {
-          method: "GET",
+        const response = await fetch("/api/chat/users", {
           credentials: "include",
+          cache: "no-store",
         });
-        const json = await res.json().catch(() => ({} as any));
-
-        if (res.ok) {
-          const list: UserRow[] = Array.isArray(json)
-            ? json
-            : Array.isArray(json.users)
-            ? json.users
-            : Array.isArray(json.data)
-            ? json.data
-            : [];
-          setUsers(list ?? []);
-          gotUsers = true;
-        } else if (res.status !== 401) {
-          setApiError(json?.error || `HTTP ${res.status}`);
+        const body = (await response.json().catch(() => null)) as
+          | UsersResponse
+          | null;
+        if (response.ok) {
+          if (active) setUsers(normalizeUsers(body));
+          return;
         }
-      } catch (err) {
-        console.warn("[MobileNewMessage] /api/chat/users failed:", err);
-      }
-
-      if (!gotUsers) {
-        try {
-          const { data: profiles, error } = await supabase
-            .from("profiles")
-            .select("id, user_id, full_name, role, email")
-            .order("full_name", { ascending: true })
-            .limit(200);
-
-          if (error) {
-            setApiError("Could not load users.");
-            setUsers([]);
-          } else {
-            setUsers(
-              (profiles ?? []).map((p) => ({
-                id: p.user_id ?? p.id,
-                full_name: p.full_name,
-                role: p.role,
-                email: p.email,
-              })),
-            );
-          }
-        } catch {
-          setApiError("Could not load users.");
-          setUsers([]);
+        if (response.status !== 401) {
+          throw new Error(
+            !Array.isArray(body) && body?.error
+              ? body.error
+              : `Could not load users (${response.status}).`,
+          );
         }
-      }
 
-      setLoadingUsers(false);
+        const { data: profiles, error } = await supabase
+          .from("profiles")
+          .select("id, user_id, full_name, role, email")
+          .order("full_name", { ascending: true })
+          .limit(200);
+        if (error) throw error;
+        if (active) {
+          setUsers(
+            (profiles ?? []).map((profile) => ({
+              id: profile.user_id ?? profile.id,
+              full_name: profile.full_name,
+              role: profile.role,
+              email: profile.email,
+            })),
+          );
+        }
+      } catch (caught) {
+        if (!active) return;
+        setUsers([]);
+        setApiError(
+          caught instanceof Error ? caught.message : "Could not load users.",
+        );
+      } finally {
+        if (active) setLoadingUsers(false);
+      }
     })();
+    return () => {
+      active = false;
+    };
   }, [supabase]);
 
-  // Filtered users
   const filteredUsers = useMemo(() => {
-    const t = search.trim().toLowerCase();
-    return users.filter((u) => {
-      if (role !== "all" && (u.role ?? "") !== role) return false;
-      if (!t) return true;
-      return (
-        (u.full_name ?? "").toLowerCase().includes(t) ||
-        (u.role ?? "").toLowerCase().includes(t) ||
-        (u.email ?? "").toLowerCase().includes(t)
-      );
+    const term = search.trim().toLowerCase();
+    return users.filter((user) => {
+      if (role !== "all" && (user.role ?? "") !== role) return false;
+      if (!term) return true;
+      return [user.full_name, user.role, user.email]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
     });
-  }, [users, search, role]);
+  }, [role, search, users]);
 
   const toggleSelected = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id],
     );
   };
 
   const handleSend = useCallback(async () => {
     const text = message.trim();
-    if (!text) return;
-    if (sending) return;
-
+    if (!text || sending) return;
     if (!currentUserId) {
       toast.error("No authenticated user.");
       return;
     }
-
     if (selectedIds.length === 0) {
       toast.error("Select at least one recipient.");
       return;
     }
 
     setSending(true);
-
     try {
-      // 1) Create conversation via canonical lifecycle API
-      const conversationRes = await fetch("/api/chat/start-conversation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participant_ids: selectedIds }),
-      });
-
-      const conversationJson = await conversationRes.json().catch(() => ({} as { id?: string; error?: string }));
-      if (!conversationRes.ok || !conversationJson.id) {
-        throw new Error(conversationJson?.error || "Could not start conversation.");
+      const conversationResponse = await fetch(
+        "/api/chat/start-conversation",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ participant_ids: selectedIds }),
+        },
+      );
+      const conversationBody = (await conversationResponse
+        .json()
+        .catch(() => null)) as { id?: string; error?: string } | null;
+      if (!conversationResponse.ok || !conversationBody?.id) {
+        throw new Error(
+          conversationBody?.error || "Could not start conversation.",
+        );
       }
 
-      const conversationId = conversationJson.id;
-
-      // 2) Insert first message via existing API route
-      const msgRes = await fetch("/api/chat/send-message", {
+      const messageResponse = await fetch("/api/chat/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conversationId,
+          conversationId: conversationBody.id,
           senderId: currentUserId,
           content: text,
         }),
       });
-
-      if (!msgRes.ok) {
-        console.error(
-          "[MobileNewMessage] send-message failed:",
-          await msgRes.text(),
-        );
-        toast.error("Message failed to send.");
-        setSending(false);
-        return;
+      if (!messageResponse.ok) {
+        const body = (await messageResponse.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        throw new Error(body?.error || "Message failed to send.");
       }
 
-      // 3) Jump into the live conversation thread
-      router.replace(`/mobile/messages/${conversationId}`);
-    } catch (e) {
-      console.error("[MobileNewMessage] startConversation failed:", e);
-      toast.error("Could not start conversation.");
+      router.replace(`/mobile/messages/${conversationBody.id}`);
+    } catch (caught) {
+      toast.error(
+        caught instanceof Error
+          ? caught.message
+          : "Could not start conversation.",
+      );
       setSending(false);
     }
-  }, [message, sending, currentUserId, selectedIds, router]);
+  }, [currentUserId, message, router, selectedIds, sending]);
 
   return (
     <div className="min-h-screen bg-background px-4 py-4 text-foreground">
       <div className="mx-auto max-w-2xl space-y-4">
-        {/* Header */}
         <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-overlay)]"
+          <Link
+            href="/mobile/messages"
+            className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-secondary)]"
           >
-            ← Back
-          </button>
+            ← Messages
+          </Link>
           <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
             New chat
           </h1>
-          <div className="w-[60px]" />{/* spacer */}
+          <div className="w-[78px]" aria-hidden="true" />
         </div>
 
-        {apiError && (
+        {apiError ? (
           <div className="rounded-md border border-red-500/60 bg-red-950/40 px-3 py-2 text-xs text-red-200">
             {apiError}
           </div>
-        )}
+        ) : null}
 
-        {/* Recipient + role selectors */}
-        <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] px-3 py-3 space-y-3">
-          {/* Selected pills */}
+        <section className="metal-card space-y-3 rounded-xl border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] px-3 py-3">
           <div className="space-y-1">
             <div className="text-[0.7rem] font-medium text-[color:var(--theme-text-secondary)]">
               Recipients
@@ -234,16 +227,17 @@ export default function MobileNewMessagePage() {
                 </span>
               ) : (
                 users
-                  .filter((u) => selectedIds.includes(u.id))
-                  .map((u) => (
+                  .filter((user) => selectedIds.includes(user.id))
+                  .map((user) => (
                     <span
-                      key={u.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)] border border-[var(--metal-border-soft)]"
+                      key={user.id}
+                      className="inline-flex items-center gap-1 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)]"
                     >
-                      {u.full_name ?? "(no name)"}
+                      {user.full_name ?? "No name"}
                       <button
                         type="button"
-                        onClick={() => toggleSelected(u.id)}
+                        onClick={() => toggleSelected(user.id)}
+                        aria-label={`Remove ${user.full_name ?? "recipient"}`}
                         className="ml-1 text-[0.75rem] text-[color:var(--theme-text-muted)] hover:text-red-400"
                       >
                         ✕
@@ -254,29 +248,27 @@ export default function MobileNewMessagePage() {
             </div>
           </div>
 
-          {/* Role filter + search */}
           <div className="flex gap-2">
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="h-9 rounded border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 text-[0.75rem] text-[color:var(--theme-text-primary)] focus:border-[var(--accent-copper-soft)] focus:outline-none"
+              onChange={(event) => setRole(event.target.value)}
+              className="h-10 rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 text-[0.75rem] text-[color:var(--theme-text-primary)] outline-none focus:border-[var(--accent-copper-soft)]"
             >
-              {ROLE_OPTIONS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
+              {ROLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, role, email…"
-              className="flex-1 h-9 rounded border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-2 text-[0.75rem] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:outline-none"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search name, role, or email"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 text-[0.75rem] text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)]"
             />
           </div>
 
-          {/* User list */}
-          <div className="mt-2 max-h-64 overflow-y-auto rounded border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)]">
+          <div className="max-h-64 overflow-y-auto rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)]">
             {loadingUsers ? (
               <div className="px-3 py-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
                 Loading users…
@@ -287,13 +279,13 @@ export default function MobileNewMessagePage() {
               </div>
             ) : (
               <ul className="divide-y divide-[color:var(--theme-border-soft)]">
-                {filteredUsers.map((u) => {
-                  const checked = selectedIds.includes(u.id);
+                {filteredUsers.map((user) => {
+                  const checked = selectedIds.includes(user.id);
                   return (
-                    <li key={u.id}>
+                    <li key={user.id}>
                       <button
                         type="button"
-                        onClick={() => toggleSelected(u.id)}
+                        onClick={() => toggleSelected(user.id)}
                         className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[0.75rem] ${
                           checked
                             ? "bg-[var(--accent-copper-soft)]/10"
@@ -311,11 +303,11 @@ export default function MobileNewMessagePage() {
                         </div>
                         <div className="min-w-0">
                           <div className="truncate text-[color:var(--theme-text-primary)]">
-                            {u.full_name ?? "(no name)"}
+                            {user.full_name ?? "No name"}
                           </div>
                           <div className="truncate text-[0.65rem] text-[color:var(--theme-text-secondary)]">
-                            {u.role ?? "—"}
-                            {u.email ? ` • ${u.email}` : ""}
+                            {user.role ?? "—"}
+                            {user.email ? ` • ${user.email}` : ""}
                           </div>
                         </div>
                       </button>
@@ -325,37 +317,28 @@ export default function MobileNewMessagePage() {
               </ul>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* First message composer */}
-        <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] px-3 py-3 space-y-3">
+        <section className="metal-card space-y-3 rounded-xl border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] px-3 py-3">
           <div className="text-[0.7rem] font-medium text-[color:var(--theme-text-secondary)]">
             First message
           </div>
           <textarea
             rows={4}
             value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            onChange={(event) => setMessage(event.target.value)}
             placeholder="Type your message…"
-            className="w-full resize-none rounded border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:outline-none"
+            className="w-full resize-none rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)]"
           />
           <button
             type="button"
             onClick={() => void handleSend()}
-            disabled={
-              sending || !message.trim() || selectedIds.length === 0
-            }
-            className="
-              w-full rounded-full border border-[var(--accent-copper-soft)]
-              bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-sm font-semibold
-              text-[var(--accent-copper-soft)]
-              shadow-[var(--theme-shadow-medium)]
-              hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50
-            "
+            disabled={sending || !message.trim() || selectedIds.length === 0}
+            className="min-h-11 w-full rounded-xl bg-[color:var(--accent-copper)] px-4 text-sm font-semibold text-white disabled:opacity-45"
           >
-            {sending ? "Starting…" : "Start chat"}
+            {sending ? "Sending…" : "Start conversation"}
           </button>
-        </div>
+        </section>
       </div>
     </div>
   );
