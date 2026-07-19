@@ -88,6 +88,11 @@ describe("parts request lifecycle automation", () => {
     expect(migration).toContain(
       "revoke all on function public.parts_publish_request_notification",
     );
+    expect(migration).toContain("select * into v_request");
+    expect(migration).toContain("where wo.id = v_request.work_order_id");
+    expect(migration).not.toMatch(
+      /select\s+pr\s*,[\s\S]*?into\s+v_request\s*,\s*v_work_order_label/i,
+    );
   });
 
   it("keeps ordering and issue explicit while making handoff idempotent", () => {
