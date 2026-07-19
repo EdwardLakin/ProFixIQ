@@ -41,7 +41,10 @@ export const DASHBOARD_WIDGET_RESPONSIVE_META: Record<DashboardWidgetId, Dashboa
 export function getDashboardViewport(width: number): DashboardViewport {
   if (width < 640) return "mobile";
   if (width < 1200) return "tablet";
-  if (width < 1536) return "laptop";
+  // Large wall displays are commonly rendered at 125–150% OS scaling. Treat
+  // the resulting 1280px+ CSS viewport as desktop so dashboards retain their
+  // dense control-room layout instead of falling back to laptop density.
+  if (width < 1280) return "laptop";
   return "desktop";
 }
 

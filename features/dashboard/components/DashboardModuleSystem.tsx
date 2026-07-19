@@ -66,7 +66,7 @@ export function DashboardMetric({ label, value, tone = "default" }: { label: str
 }
 
 export function DashboardMetricRow({ children, columns = 3 }: { children: ReactNode; columns?: 2 | 3 | 4 }) {
-  return <div className={cn("grid gap-2.5", columns === 2 ? "grid-cols-2" : columns === 4 ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-3")}>{children}</div>;
+  return <div className={cn("grid gap-2.5", columns === 2 ? "grid-cols-2" : columns === 4 ? "grid-cols-2 xl:grid-cols-4" : "grid-cols-3")}>{children}</div>;
 }
 
 export function DashboardSignalList({ items }: { items: Array<{ label: string; value?: string; tone?: "default" | "accent"; }>; }) {

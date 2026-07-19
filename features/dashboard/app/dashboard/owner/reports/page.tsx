@@ -309,7 +309,7 @@ export default function ReportsPage() {
       title="Owner Reports"
       description="Performance dashboards + Shop Health (AI snapshot) in one place."
     >
-      <div className="mx-auto max-w-6xl space-y-6 text-foreground">
+      <div className="mx-auto w-full max-w-[1800px] space-y-4 text-foreground">
         {/* Header + tabs */}
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 backdrop-blur">
           <div className="flex flex-wrap items-start justify-between gap-3">

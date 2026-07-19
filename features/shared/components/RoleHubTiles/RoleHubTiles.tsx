@@ -104,7 +104,7 @@ export default function RoleHubTiles({
   const { open, setOpen } = useSectionOpenState(sections);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 space-y-4">
+    <div className="mx-auto w-full max-w-[1800px] space-y-4 px-3 py-4 sm:px-5 lg:px-6">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">{heading}</h1>
         {description ? <p className="text-sm text-muted-foreground mt-1">{description}</p> : null}
@@ -125,7 +125,7 @@ export default function RoleHubTiles({
             </button>
 
             {isOpen && (
-              <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 xl:grid-cols-4">
                 {tiles.map((t) => (
                   <Link
                     key={t.href}

@@ -487,7 +487,7 @@ export default function PartsDashboardPage(): JSX.Element {
   ];
 
   return (
-    <main className="mx-auto w-full max-w-[1640px] space-y-4 p-4 text-[color:var(--theme-text-primary)] md:p-6">
+    <main className="mx-auto w-full max-w-[1800px] space-y-4 p-3 text-[color:var(--theme-text-primary)] sm:p-4 lg:p-5">
       <header className="flex flex-col gap-4 px-1 py-1 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Parts Overview</h1>

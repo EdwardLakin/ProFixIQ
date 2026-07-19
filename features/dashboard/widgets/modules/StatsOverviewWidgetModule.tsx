@@ -53,7 +53,7 @@ function StatsOverviewWidget({ context }: { context: DashboardRenderContext }) {
   const tech = isTechRole(context.role);
 
   return (
-    <div className="grid gap-2.5 md:grid-cols-2 2xl:grid-cols-4">
+    <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
       <MetricCard
         label="Appointments"
         value={context.counts.appointments}

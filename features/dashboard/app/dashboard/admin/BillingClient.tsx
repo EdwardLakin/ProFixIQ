@@ -439,7 +439,7 @@ export default function BillingClient() {
       "
       style={{ ["--copper" as never]: COPPER }}
     >
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto w-full max-w-[1800px]">
         {/* Header */}
         <div className={cx(card, "px-5 py-4")}>
           <div className="text-xs uppercase tracking-[0.25em] text-[color:var(--theme-text-secondary)]">
