@@ -80,13 +80,14 @@ export function MobileShell({ children, title }: Props) {
       const currentHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       const requestedHref = `${anchor.pathname}${anchor.search}${anchor.hash}`;
       const mobileHref = resolveMobileHref(requestedHref);
-      if (!mobileHref || mobileHref === requestedHref || mobileHref === currentHref) {
-        return;
-      }
+      if (!mobileHref || mobileHref === requestedHref) return;
 
+      // Always cancel a desktop-surface link once it has a mobile equivalent.
+      // When the equivalent is the current page, cancelling is still required;
+      // otherwise the browser would continue to the desktop route.
       event.preventDefault();
       event.stopPropagation();
-      router.push(mobileHref);
+      if (mobileHref !== currentHref) router.push(mobileHref);
     };
 
     // Listen at document level so links rendered by portals and shared modals
