@@ -50,6 +50,7 @@ describe("mobile route continuity", () => {
     expect(shell).toContain("resolveMobileHref");
     expect(shell).toContain('document.addEventListener("click"');
     expect(shell).toContain("anchor.origin !== window.location.origin");
+    expect(shell).toContain("event.preventDefault()");
     expect(shell).toContain("router.push(mobileHref)");
   });
 
@@ -61,6 +62,27 @@ describe("mobile route continuity", () => {
     expect(menu).toContain('href: "/mobile/offline"');
     expect(menu).toContain('router.replace("/mobile/sign-in")');
     expect(signIn).not.toContain('href="/sign-in"');
+  });
+
+  it("uses deterministic mobile back routes instead of browser history", () => {
+    const job = read("app/mobile/jobs/[lineId]/page.tsx");
+    const inspection = read("app/mobile/inspections/[id]/page.tsx");
+    const chat = read("app/mobile/messages/[chatId]/page.tsx");
+    const newMessage = read("features/mobile/messages/new/page.client.tsx");
+    const vehicle = read("app/mobile/work-orders/[id]/vehicle/page.tsx");
+    const previous = read("features/shared/components/ui/PreviousPageButton.tsx");
+
+    expect(job).toContain('router.push("/mobile/tech/queue")');
+    expect(job).not.toContain("router.back()");
+    expect(inspection).toContain("const backHref = workOrderId");
+    expect(inspection).not.toContain("router.back()");
+    expect(chat).toContain('href="/mobile/messages"');
+    expect(chat).not.toContain("router.back()");
+    expect(newMessage).toContain('href="/mobile/messages"');
+    expect(vehicle).toContain(
+      'href={`/mobile/work-orders/${workOrderId}`}',
+    );
+    expect(previous).toContain('router.push("/mobile/work-orders")');
   });
 
   it("allows scoped drivers and fleet managers to read mobile service requests", () => {
