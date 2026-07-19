@@ -28,7 +28,9 @@ const mobilePartsWorkflow = readFileSync(
 
 describe("mobile technician stabilization", () => {
   it("resolves pgcrypto from the Supabase extensions schema", () => {
-    expect(migration).toContain("create extension if not exists pgcrypto with schema extensions");
+    expect(migration).toContain(
+      "create extension if not exists pgcrypto with schema extensions",
+    );
     expect(migration).toContain(
       "alter function public.record_offline_photo_receipt_atomic",
     );
@@ -50,12 +52,18 @@ describe("mobile technician stabilization", () => {
 
   it("anchors a mobile inspection before signing instead of inserting a bare row", () => {
     expect(signRoute).toContain("resolveInspectionForSigning");
-    expect(signRoute).toContain("work_order_line_id: line.data.id");
-    expect(signRoute).toContain("work_order_id: line.data.work_order_id");
-    expect(signRoute).not.toContain("Unable to auto-create inspection before signing");
+    expect(signRoute).toContain("work_order_line_id: canonicalLineId");
+    expect(signRoute).toContain("work_order_id: canonicalWorkOrderId");
+    expect(signRoute).not.toContain(
+      "Unable to auto-create inspection before signing",
+    );
     expect(signRoute).not.toContain(".upsert(");
-    expect(signaturePanel).toContain("workOrderLineId: resolvedWorkOrderLineId");
-    expect(signaturePanel).toContain('sessionStorage.getItem("inspection:params")');
+    expect(signaturePanel).toContain(
+      "workOrderLineId: resolvedWorkOrderLineId",
+    );
+    expect(signaturePanel).toContain(
+      'sessionStorage.getItem("inspection:params")',
+    );
   });
 
   it("exposes cause and correction independently from the finish button", () => {
