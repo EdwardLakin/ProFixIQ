@@ -1,13 +1,14 @@
 "use client";
 
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+
+import ChatWindow from "@/features/ai/components/chat/ChatWindow";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
-import ChatWindow from "@/features/ai/components/chat/ChatWindow";
 
 type DB = Database;
-
 type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
 type Participant = { id: string; full_name: string | null };
 
@@ -20,73 +21,74 @@ type ConversationPayload = {
 
 export default function MobileChatThreadPage() {
   const params = useParams<{ chatId: string }>();
-  const router = useRouter();
   const conversationId = params.chatId;
-
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [userId, setUserId] = useState<string | null>(null);
-  const [title, setTitle] = useState<string>("Conversation");
+  const [title, setTitle] = useState("Conversation");
 
-  // who am I + build a nice title
   useEffect(() => {
-    (async () => {
+    let active = true;
+    void (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const uid = user?.id ?? null;
-      setUserId(uid);
+      const currentUserId = user?.id ?? null;
+      if (!active) return;
+      setUserId(currentUserId);
 
       try {
-        const res = await fetch("/api/chat/my-conversations", {
-          method: "GET",
+        const response = await fetch("/api/chat/my-conversations", {
           credentials: "include",
+          cache: "no-store",
         });
-        if (!res.ok) return;
-
-        const data = (await res.json()) as ConversationPayload[];
+        if (!response.ok) return;
+        const data = (await response.json()) as ConversationPayload[];
         const found = data.find(
           (item) => item.conversation.id === conversationId,
         );
-        if (!found) return;
+        if (!found || !active) return;
 
         const others =
-          uid == null
+          currentUserId == null
             ? found.participants
-            : found.participants.filter((p) => p.id !== uid);
-
-        const label =
+            : found.participants.filter(
+                (participant) => participant.id !== currentUserId,
+              );
+        setTitle(
           others[0]?.full_name ??
-          found.conversation.context_type ??
-          found.conversation.title ??
-          `Conversation ${conversationId.slice(0, 6)}`;
-
-        setTitle(label);
+            found.conversation.context_type ??
+            found.conversation.title ??
+            `Conversation ${conversationId.slice(0, 6)}`,
+        );
       } catch {
-        // keep default title
+        // Keep the generic title when the conversation list is unavailable.
       }
     })();
-  }, [supabase, conversationId]);
+
+    return () => {
+      active = false;
+    };
+  }, [conversationId, supabase]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background px-4 py-3 text-foreground">
-      {/* Top bar */}
       <div className="metal-bar mb-3 flex items-center justify-between gap-2 border-b border-[var(--metal-border-soft)] pb-2">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          className="inline-flex items-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] hover:bg-[color:var(--theme-surface-overlay)]"
+        <Link
+          href="/mobile/messages"
+          className="inline-flex items-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]"
         >
-          ← Back
-        </button>
+          ← Messages
+        </Link>
         <div className="min-w-0 text-right">
           <h1 className="truncate text-sm font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
             {title}
           </h1>
-          <p className="mt-0.5 text-[0.65rem] text-[color:var(--theme-text-muted)]">Chat</p>
+          <p className="mt-0.5 text-[0.65rem] text-[color:var(--theme-text-muted)]">
+            Chat
+          </p>
         </div>
       </div>
 
-      {/* Chat window */}
       {!userId ? (
         <div className="metal-card mt-4 rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
           Loading…
