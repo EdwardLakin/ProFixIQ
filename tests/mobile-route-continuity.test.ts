@@ -59,7 +59,8 @@ describe("mobile route continuity", () => {
     expect(middleware).toContain('req.headers.get("sec-ch-ua-mobile")');
     expect(middleware).toContain("resolveMobileHref(requestedHref)");
     expect(middleware).toContain("mobileDeviceRequest &&");
-    expect(middleware).toContain('mobileDeviceRequest\n            ? "/mobile"');
+    expect(middleware).toContain("defaultAuthenticatedPath");
+    expect(middleware).toContain('? "/mobile"');
   });
 
   it("keeps authentication and mobile utilities inside mobile routes", () => {
