@@ -1,21 +1,13 @@
 export type RequestFlowDisplay = "pending" | "in_progress" | "ready" | "complete";
-export type ItemFlowDisplay =
-  | "requested"
-  | "ordered"
-  | "partially_received"
-  | "received"
-  | "consumed";
+export type PartsRequestStage = "needs_quote" | "awaiting_approval" | "order_receive" | "ready_for_tech" | "completed";
+export type ItemFlowDisplay = "requested" | "ordered" | "partially_received" | "received" | "consumed";
 
 export type ReceiveProgressDisplay = "not_received" | "partial" | "received" | "allocated";
 
 export const REQUEST_STATUS_CANONICAL: RequestFlowDisplay[] = ["pending", "in_progress", "ready", "complete"];
-export const ITEM_STATUS_CANONICAL: ItemFlowDisplay[] = [
-  "requested",
-  "ordered",
-  "partially_received",
-  "received",
-  "consumed",
-];
+export const ITEM_STATUS_CANONICAL: ItemFlowDisplay[] = ["requested", "ordered", "partially_received", "received", "consumed"];
+
+export const PARTS_REQUEST_STAGE_ORDER: PartsRequestStage[] = ["needs_quote", "awaiting_approval", "order_receive", "ready_for_tech", "completed"];
 
 function asNum(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -43,7 +35,9 @@ export function receiveProgressLabel(status: ReceiveProgressDisplay): string {
 }
 
 export function canonicalStatusLabel(rawStatus?: string | null): string {
-  const status = String(rawStatus ?? "").trim().toLowerCase();
+  const status = String(rawStatus ?? "")
+    .trim()
+    .toLowerCase();
   if (!status) return "Pending";
   if (status === "requested") return "Requested";
   if (status === "quoted") return "Quoted";
@@ -53,17 +47,89 @@ export function canonicalStatusLabel(rawStatus?: string | null): string {
   if (status === "received") return "Received";
   if (status === "fulfilled") return "Allocated / Consumed";
   if (status === "consumed") return "Allocated / Consumed";
-  return status
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+  return status.replaceAll("_", " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
-export function toReceiveProgressDisplay(input: {
+export function partsRequestStageLabel(stage: PartsRequestStage): string {
+  if (stage === "needs_quote") return "Needs Quote";
+  if (stage === "awaiting_approval") return "Awaiting Approval";
+  if (stage === "order_receive") return "Order & Receive";
+  if (stage === "ready_for_tech") return "Ready for Tech";
+  return "Completed";
+}
+
+export type PartsRequestStageItem = {
+  description?: string | null;
+  partId?: string | null;
+  quotedPrice?: unknown;
+  unitPrice?: unknown;
   qty?: unknown;
+  qtyRequested?: unknown;
   qtyApproved?: unknown;
+  qtyOrdered?: unknown;
   qtyReceived?: unknown;
-  qtyAllocated?: unknown;
-}): ReceiveProgressDisplay {
+  qtyReserved?: unknown;
+  qtyConsumed?: unknown;
+  qtyReturned?: unknown;
+  rawStatus?: string | null;
+};
+
+function targetQty(item: PartsRequestStageItem): number {
+  const approved = asNum(item.qtyApproved);
+  const requested = asNum(item.qtyRequested);
+  const qty = asNum(item.qty);
+  return Math.max(approved, requested, qty, 0);
+}
+
+function requestedQty(item: PartsRequestStageItem): number {
+  return Math.max(asNum(item.qtyRequested), asNum(item.qty), 0);
+}
+
+export function isPartsRequestItemPriced(item: PartsRequestStageItem): boolean {
+  const description = String(item.description ?? "").trim();
+  const hasPart = String(item.partId ?? "").trim().length > 0;
+  const hasPrice = item.quotedPrice != null || item.unitPrice != null;
+  return description.length > 0 && hasPart && requestedQty(item) > 0 && hasPrice;
+}
+
+export function isPartsRequestItemStaged(item: PartsRequestStageItem): boolean {
+  const target = targetQty(item);
+  const netConsumed = Math.max(asNum(item.qtyConsumed) - asNum(item.qtyReturned), 0);
+  return target > 0 && asNum(item.qtyReserved) + netConsumed >= target;
+}
+
+export function isPartsRequestItemHandedOff(item: PartsRequestStageItem): boolean {
+  const target = targetQty(item);
+  const netConsumed = Math.max(asNum(item.qtyConsumed) - asNum(item.qtyReturned), 0);
+  return target > 0 && netConsumed >= target;
+}
+
+export function toPartsRequestStage(input: { rawStatus?: string | null; items?: PartsRequestStageItem[] }): PartsRequestStage {
+  const status = String(input.rawStatus ?? "")
+    .trim()
+    .toLowerCase();
+  const items = (input.items ?? []).filter((item) => String(item.rawStatus ?? "").toLowerCase() !== "cancelled");
+
+  if (["fulfilled", "rejected", "cancelled", "deferred", "returned"].includes(status)) {
+    return "completed";
+  }
+  if (items.length === 0 || !items.every(isPartsRequestItemPriced)) {
+    return "needs_quote";
+  }
+  if (items.every(isPartsRequestItemHandedOff)) return "completed";
+  if (status === "requested" || status === "quoted") {
+    return "awaiting_approval";
+  }
+  if (items.every(isPartsRequestItemStaged)) return "ready_for_tech";
+  return "order_receive";
+}
+
+export function earliestPartsRequestStage(stages: PartsRequestStage[]): PartsRequestStage {
+  if (stages.length === 0) return "needs_quote";
+  return stages.reduce((earliest, current) => (PARTS_REQUEST_STAGE_ORDER.indexOf(current) < PARTS_REQUEST_STAGE_ORDER.indexOf(earliest) ? current : earliest));
+}
+
+export function toReceiveProgressDisplay(input: { qty?: unknown; qtyApproved?: unknown; qtyReceived?: unknown; qtyAllocated?: unknown }): ReceiveProgressDisplay {
   const qty = asNum(input.qty);
   const approved = asNum(input.qtyApproved);
   const received = asNum(input.qtyReceived);
@@ -76,13 +142,7 @@ export function toReceiveProgressDisplay(input: {
   return "not_received";
 }
 
-export function toItemFlowDisplay(input: {
-  rawStatus?: string | null;
-  qty?: unknown;
-  qtyApproved?: unknown;
-  qtyReceived?: unknown;
-  qtyAllocated?: unknown;
-}): ItemFlowDisplay {
+export function toItemFlowDisplay(input: { rawStatus?: string | null; qty?: unknown; qtyApproved?: unknown; qtyReceived?: unknown; qtyAllocated?: unknown }): ItemFlowDisplay {
   const status = String(input.rawStatus ?? "").toLowerCase();
   const receiveState = toReceiveProgressDisplay(input);
 
@@ -91,23 +151,14 @@ export function toItemFlowDisplay(input: {
   if (receiveState === "received") return "received";
   if (receiveState === "partial") return "partially_received";
 
-  if (
-    status.includes("ordered") ||
-    status === "approved" ||
-    status === "reserved" ||
-    status === "picking" ||
-    status === "picked"
-  ) {
+  if (status.includes("ordered") || status === "approved" || status === "reserved" || status === "picking" || status === "picked") {
     return "ordered";
   }
 
   return "requested";
 }
 
-export function toRequestFlowDisplay(input: {
-  rawStatus?: string | null;
-  itemStates?: ItemFlowDisplay[];
-}): RequestFlowDisplay {
+export function toRequestFlowDisplay(input: { rawStatus?: string | null; itemStates?: ItemFlowDisplay[] }): RequestFlowDisplay {
   const status = String(input.rawStatus ?? "").toLowerCase();
   const itemStates = input.itemStates ?? [];
 

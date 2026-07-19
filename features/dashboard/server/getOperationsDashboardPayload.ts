@@ -5,7 +5,30 @@ import {
   getDashboardIdentity,
 } from "@/features/dashboard/server/dashboard-shell-data";
 
-const OPEN_PART_STATUSES = ["requested", "quoted", "approved"] as const;
+const OPEN_PART_STATUSES = [
+  "requested",
+  "quoted",
+  "approved",
+  "partially_ordered",
+  "partially_consumed",
+  "partially_returned",
+] as const;
+
+type OpenPartRow = {
+  id: string;
+  status: string;
+  work_order_id: string | null;
+  job_id: string | null;
+  created_at: string;
+  requested_by: string | null;
+  assigned_to: string | null;
+};
+
+type OpenPartScope =
+  | { kind: "shop" }
+  | { kind: "job"; ids: string[] }
+  | { kind: "work_order"; ids: string[] }
+  | { kind: "owner"; userId: string };
 const CLOSED_LINE_STATUSES = [
   "completed",
   "ready_to_invoice",
@@ -221,15 +244,44 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       .eq("shop_id", identity.shopId)
       .in("status", OPEN_PART_STATUSES as unknown as string[]);
 
-  let partsRows: Array<{
-    id: string;
-    status: string;
-    work_order_id: string | null;
-    job_id: string | null;
-    created_at: string;
-    requested_by: string | null;
-    assigned_to: string | null;
-  }> = [];
+  const fetchOpenParts = async (
+    scope: OpenPartScope,
+  ): Promise<{ data: OpenPartRow[]; error: { message: string } | null }> => {
+    const data: OpenPartRow[] = [];
+    const pageSize = 500;
+    const idChunks =
+      scope.kind === "job" || scope.kind === "work_order"
+        ? Array.from(
+            { length: Math.ceil(scope.ids.length / 200) },
+            (_, index) => scope.ids.slice(index * 200, index * 200 + 200),
+          )
+        : [null];
+
+    for (const ids of idChunks) {
+      for (let offset = 0; ; offset += pageSize) {
+        let query = buildOpenPartsQuery()
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (scope.kind === "job") query = query.in("job_id", ids ?? []);
+        else if (scope.kind === "work_order") {
+          query = query.in("work_order_id", ids ?? []);
+        } else if (scope.kind === "owner") {
+          query = query.or(
+            `requested_by.eq.${scope.userId},assigned_to.eq.${scope.userId}`,
+          );
+        }
+
+        const result = await query;
+        if (result.error) return { data: [], error: result.error };
+        const page = (result.data ?? []) as OpenPartRow[];
+        data.push(...page);
+        if (page.length < pageSize) break;
+      }
+    }
+    return { data, error: null };
+  };
+
+  let partsRows: OpenPartRow[] = [];
   let partsQueryFailed = false;
 
   if (isTechnicianScoped && identity.userId) {
@@ -248,18 +300,12 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     const [partsByJobResult, partsByWorkOrderResult, partsByOwnerResult] =
       await Promise.all([
         assignedLineIds.length > 0
-          ? buildOpenPartsQuery().in("job_id", assignedLineIds).limit(200)
+          ? fetchOpenParts({ kind: "job", ids: assignedLineIds })
           : Promise.resolve({ data: [], error: null }),
         assignedWorkOrderIds.length > 0
-          ? buildOpenPartsQuery()
-              .in("work_order_id", assignedWorkOrderIds)
-              .limit(200)
+          ? fetchOpenParts({ kind: "work_order", ids: assignedWorkOrderIds })
           : Promise.resolve({ data: [], error: null }),
-        buildOpenPartsQuery()
-          .or(
-            `requested_by.eq.${identity.userId},assigned_to.eq.${identity.userId}`,
-          )
-          .limit(120),
+        fetchOpenParts({ kind: "owner", userId: identity.userId }),
       ]);
 
     if (
@@ -289,7 +335,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
 
     partsRows = [...partRowsById.values()];
   } else {
-    const shopPartsResult = await buildOpenPartsQuery().limit(240);
+    const shopPartsResult = await fetchOpenParts({ kind: "shop" });
     if (shopPartsResult.error) {
       partsQueryFailed = true;
       console.error("[Dashboard][Operations] parts query failed", {
@@ -418,7 +464,9 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
       "Parts blocker signal is temporarily unavailable.",
     );
   } else {
-    payload.topSummary.waitingParts = partsRows.length;
+    payload.topSummary.waitingParts = new Set(
+      partsRows.map((row) => row.work_order_id ?? `request:${row.id}`),
+    ).size;
   }
 
   const recentApprovalLine = approvalsResult.error
@@ -447,7 +495,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
         )[0] ?? null);
   const waitingPartsTargetHref = recentPartsRequest?.work_order_id
     ? `/work-orders/${recentPartsRequest.work_order_id}`
-    : "/parts/requests?status=requested,quoted,approved";
+    : "/parts/requests";
   const waitingPartsTargetKind: "item" | "filtered" =
     recentPartsRequest?.work_order_id ? "item" : "filtered";
 
@@ -468,8 +516,8 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     },
     {
       label: isTechnicianScoped
-        ? "My open parts requests"
-        : "Open parts requests",
+        ? "My jobs with open parts"
+        : "Jobs with open parts",
       value: String(payload.topSummary.waitingParts),
       tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
       href: waitingPartsTargetHref,
@@ -511,7 +559,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           targetKind: approvalTargetKind,
         },
         {
-          label: "My open parts requests",
+          label: "My jobs with open parts",
           value: String(payload.topSummary.waitingParts),
           tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
           href: waitingPartsTargetHref,
@@ -535,7 +583,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
           targetKind: approvalTargetKind,
         },
         {
-          label: "Open parts requests",
+          label: "Jobs with open parts",
           value: String(payload.topSummary.waitingParts),
           tone: payload.topSummary.waitingParts > 0 ? "accent" : "default",
           href: waitingPartsTargetHref,
@@ -641,8 +689,8 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
             ? "My parts constraints active"
             : "Parts constraints active",
           detail: isTechnicianScoped
-            ? `${payload.topSummary.waitingParts} of your part requests are still unresolved.`
-            : `${payload.topSummary.waitingParts} open part requests still unresolved.`,
+            ? `${payload.topSummary.waitingParts} of your jobs still have unresolved parts work.`
+            : `${payload.topSummary.waitingParts} jobs still have unresolved parts work.`,
           tone: "warning",
           href: waitingPartsTargetHref,
           targetKind: waitingPartsTargetKind,
@@ -655,7 +703,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
             ? "Your assigned jobs currently have no open parts blockers."
             : "Parts flow is currently clear.",
           tone: "info",
-          href: "/parts/requests?status=requested,quoted,approved",
+          href: "/parts/requests",
           targetKind: "filtered",
         },
   ];
@@ -739,7 +787,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     targetKind: approvalTargetKind,
   };
   const waitingPartsCard = {
-    label: "Waiting for parts",
+    label: "Jobs with open parts",
     value: String(payload.topSummary.waitingParts),
     tone: "accent" as const,
     href: waitingPartsTargetHref,

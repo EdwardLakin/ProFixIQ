@@ -10,6 +10,12 @@ type RpcClient = {
   ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
 };
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 const nullableUuid = z.string().uuid().nullable().optional();
 const Payload = z.object({
   partId: z.string().uuid(),
@@ -102,5 +108,21 @@ export async function POST(
     return NextResponse.json({ ok: false, error: message }, { status });
   }
 
-  return NextResponse.json(data);
+  const { data: item, error: itemError } = await access.supabase
+    .from("part_request_items")
+    .select("*")
+    .eq("id", itemId)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle();
+  if (itemError || !item) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: itemError?.message || "Part was saved, but the refreshed request item could not be loaded.",
+      },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ...asRecord(data), ok: true, item });
 }
