@@ -34,14 +34,56 @@ export default function AiAssistantModal({
 
   if (!isOpen || !mounted) return null;
 
+  if (!mobileRoute) {
+    return createPortal(
+      <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto pb-10 pt-10">
+        <div
+          className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+
+        <div className="relative z-[210] mx-4 w-full max-w-3xl">
+          <div className="var(--theme-gradient-panel)">
+            <div className="flex items-start justify-between border-b border-[color:var(--theme-border-soft)] px-5 py-3">
+              <div>
+                <h2
+                  className="text-xs font-semibold uppercase tracking-[0.24em] text-[color:var(--theme-text-secondary)]"
+                  style={{ fontFamily: "var(--font-blackops), system-ui" }}
+                >
+                  AI / Tech Assistant
+                </h2>
+                <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                  Scoped to this job and vehicle where possible.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
+                aria-label="Close AI assistant"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)]">
+                <TechAssistant
+                  defaultVehicle={defaultVehicle}
+                  workOrderLineId={workOrderLineId}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
   return createPortal(
-    <div
-      className={`fixed inset-0 z-[600] flex justify-center overflow-hidden ${
-        mobileRoute
-          ? "items-end"
-          : "items-start overflow-y-auto px-4 pb-10 pt-10"
-      }`}
-    >
+    <div className="fixed inset-0 z-[600] flex items-end justify-center overflow-hidden">
       <button
         type="button"
         className="absolute inset-0 bg-black/55 backdrop-blur-sm"
@@ -52,25 +94,20 @@ export default function AiAssistantModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={mobileRoute ? "Ask ProFixIQ" : "AI tech assistant"}
-        className={`relative z-[610] w-full border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)] ${
-          mobileRoute
-            ? "max-h-[100dvh] rounded-t-[28px] border-b-0"
-            : "max-w-3xl rounded-[28px]"
-        }`}
+        aria-label="Ask ProFixIQ"
+        className="relative z-[610] max-h-[100dvh] w-full rounded-t-[28px] border border-b-0 border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 sm:px-5">
+        <div className="flex items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
           <div className="min-w-0">
             <h2
               className="text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops), system-ui" }}
             >
-              {mobileRoute ? "Ask ProFixIQ" : "AI / Tech Assistant"}
+              Ask ProFixIQ
             </h2>
             <p className="mt-1 text-[0.72rem] leading-5 text-[color:var(--theme-text-secondary)]">
-              {mobileRoute
-                ? "Ask diagnosis, testing, specification, or repair questions using this job and vehicle context. Nothing is changed automatically."
-                : "Scoped to this job and vehicle where possible."}
+              Ask diagnosis, testing, specification, or repair questions using
+              this job and vehicle context. Nothing is changed automatically.
             </p>
           </div>
           <button
@@ -84,24 +121,13 @@ export default function AiAssistantModal({
         </div>
 
         <div
-          className={`overflow-y-auto ${
-            mobileRoute
-              ? "max-h-[calc(100dvh-7rem)] px-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3"
-              : "max-h-[calc(100vh-9rem)] px-5 py-4"
-          }`}
+          className="max-h-[calc(100dvh-7rem)] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          {mobileRoute ? (
-            <MobileTechnicianAssistant
-              defaultVehicle={defaultVehicle}
-              workOrderLineId={workOrderLineId}
-            />
-          ) : (
-            <TechAssistant
-              defaultVehicle={defaultVehicle}
-              workOrderLineId={workOrderLineId}
-            />
-          )}
+          <MobileTechnicianAssistant
+            defaultVehicle={defaultVehicle}
+            workOrderLineId={workOrderLineId}
+          />
         </div>
       </div>
     </div>,
