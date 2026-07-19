@@ -67,10 +67,11 @@ describe("technician-first mobile UX", () => {
     expect(jobPage).toContain('router.push("/mobile/tech/queue")');
   });
 
-  it("opens focused work and inspection routes without a duplicate shell header", () => {
+  it("uses immersive headers only where the focused route owns navigation", () => {
     expect(mobileShell).toContain('pathname.startsWith("/mobile/jobs/")');
     expect(mobileShell).toContain("isImmersiveRoute(pathname)");
-    expect(mobileShell).toContain("/^\\/mobile\\/inspections\\/[^/]+/");
+    expect(mobileShell).toContain("/^\\/mobile\\/inspections\\/[^/]+$/");
+    expect(mobileShell).toContain("Deeper routes such as /[id]/run");
   });
 
   it("makes mobile photo capture direct while preserving the desktop flow", () => {
