@@ -486,15 +486,18 @@ declare
   v_now timestamptz := now();
   v_existing_count integer := 0;
 begin
-  select pr, coalesce(nullif(trim(wo.custom_id), ''), wo.id::text)
-    into v_request, v_work_order_label
-  from public.part_requests pr
-  left join public.work_orders wo on wo.id = pr.work_order_id
-  where pr.id = p_request_id;
+  select * into v_request
+  from public.part_requests
+  where id = p_request_id;
 
   if not found then
     return;
   end if;
+
+  select coalesce(nullif(trim(wo.custom_id), ''), wo.id::text)
+    into v_work_order_label
+  from public.work_orders wo
+  where wo.id = v_request.work_order_id;
 
   select count(*) into v_item_count
   from public.part_request_items
