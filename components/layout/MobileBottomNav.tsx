@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { canonicalizeRole, getActorCapabilities } from "@/features/shared/lib/rbac";
+import { useEffect, useMemo, useState } from "react";
+
+import { buildAssistantHref } from "@/features/assistant/lib/buildAssistantHref";
+import { buildPlannerHref } from "@/features/assistant/lib/buildPlannerHref";
+import MobileShiftTracker from "@/features/mobile/components/MobileShiftTracker";
 import {
   getMobileTilesForRole,
   type MobileRole,
 } from "@/features/mobile/config/mobile-tiles";
-import { buildAssistantHref } from "@/features/assistant/lib/buildAssistantHref";
-import { buildPlannerHref } from "@/features/assistant/lib/buildPlannerHref";
-import MobileShiftTracker from "@/features/mobile/components/MobileShiftTracker";
+import {
+  canonicalizeRole,
+  getActorCapabilities,
+} from "@/features/shared/lib/rbac";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type NavItem = {
   href: string;
@@ -84,7 +88,12 @@ function MenuSection({
       </h2>
       <div className="space-y-1.5">
         {items.map((item) => (
-          <MenuLink key={`${item.href}-${item.label}`} item={item} pathname={pathname} onClose={onClose} />
+          <MenuLink
+            key={`${item.href}-${item.label}`}
+            item={item}
+            pathname={pathname}
+            onClose={onClose}
+          />
         ))}
       </div>
     </section>
@@ -123,7 +132,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
       const actor = getActorCapabilities({ role: profile?.role ?? null });
       const canonicalRole = canonicalizeRole(profile?.role ?? null);
       const allowedRole = actor.isKnownRole ? canonicalRole : null;
-      setRole((allowedRole === "unknown" ? null : allowedRole) as MobileRole | null);
+      setRole(
+        (allowedRole === "unknown" ? null : allowedRole) as MobileRole | null,
+      );
     };
 
     void load();
@@ -134,18 +145,29 @@ export function MobileBottomNav({ open, onClose }: Props) {
       const custom = event as CustomEvent<InstallAvailability>;
       setInstall(custom.detail);
     };
-    window.addEventListener("profixiq:pwa-install-availability", onAvailability);
-    window.dispatchEvent(new Event("profixiq:pwa-install-availability-request"));
+    window.addEventListener(
+      "profixiq:pwa-install-availability",
+      onAvailability,
+    );
+    window.dispatchEvent(
+      new Event("profixiq:pwa-install-availability-request"),
+    );
     return () => {
-      window.removeEventListener("profixiq:pwa-install-availability", onAvailability);
+      window.removeEventListener(
+        "profixiq:pwa-install-availability",
+        onAvailability,
+      );
     };
   }, [open]);
 
   const navigationItems = useMemo<NavItem[]>(() => {
+    const mechanic = role === "mechanic";
     const home: NavItem = {
       href: "/mobile",
-      label: "Dashboard",
-      subtitle: "Your role-specific mobile home",
+      label: mechanic ? "Home" : "Dashboard",
+      subtitle: mechanic
+        ? "Current job and assigned work"
+        : "Your role-specific mobile home",
     };
     if (!role) {
       return [home, { href: "/mobile/settings", label: "My account" }];
@@ -157,7 +179,8 @@ export function MobileBottomNav({ open, onClose }: Props) {
       subtitle: tile.subtitle,
     }));
     return [home, ...dynamic].filter(
-      (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index,
+      (item, index, items) =>
+        items.findIndex((candidate) => candidate.href === item.href) === index,
     );
   }, [role]);
 
@@ -175,23 +198,29 @@ export function MobileBottomNav({ open, onClose }: Props) {
     [],
   );
 
-  const utilityItems: NavItem[] = [
-    {
-      href: assistantHref,
-      label: "Ask Assistant",
-      subtitle: "Get help using the current shop context",
-    },
-    {
-      href: plannerHref,
-      label: "Open Planner",
-      subtitle: "Plan the next operational steps",
-    },
-    {
+  const utilityItems = useMemo<NavItem[]>(() => {
+    const syncItem: NavItem = {
       href: "/offline/sync",
       label: "Offline & sync",
       subtitle: "Review queued work and sync status",
-    },
-  ];
+    };
+
+    if (role === "mechanic") return [syncItem];
+
+    return [
+      {
+        href: assistantHref,
+        label: "Ask Assistant",
+        subtitle: "Get help using the current shop context",
+      },
+      {
+        href: plannerHref,
+        label: "Open Planner",
+        subtitle: "Plan operational work",
+      },
+      syncItem,
+    ];
+  }, [assistantHref, plannerHref, role]);
 
   const handleSignOut = async () => {
     if (signingOut) return;
@@ -212,7 +241,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
         aria-label="Close menu"
         onClick={onClose}
         className={`fixed inset-0 z-40 bg-black/45 backdrop-blur-sm transition-opacity ${
-          open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          open
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
         }`}
       />
 
@@ -251,8 +282,20 @@ export function MobileBottomNav({ open, onClose }: Props) {
             onClose={onClose}
           />
 
+          {role === "mechanic" ? (
+            <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Ask ProFixIQ from a job
+              </div>
+              <p className="mt-1 text-[0.7rem] leading-4 text-[color:var(--theme-text-muted)]">
+                Open a job and tap AI Assist so your vehicle and job context are
+                included with the question.
+              </p>
+            </section>
+          ) : null}
+
           <MenuSection
-            title="Tools"
+            title={role === "mechanic" ? "Device" : "Tools"}
             items={utilityItems}
             pathname={pathname}
             onClose={onClose}
@@ -265,14 +308,20 @@ export function MobileBottomNav({ open, onClose }: Props) {
               </h2>
               <button
                 type="button"
-                onClick={() => window.dispatchEvent(new Event("profixiq:pwa-install-request"))}
+                onClick={() =>
+                  window.dispatchEvent(
+                    new Event("profixiq:pwa-install-request"),
+                  )
+                }
                 className="w-full rounded-xl border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2.5 text-left"
               >
                 <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
                   Install ProFixIQ
                 </div>
                 <div className="mt-0.5 text-[0.68rem] text-[color:var(--theme-text-muted)]">
-                  {install.ios ? "Add ProFixIQ to your Home Screen" : "Install the app on this device"}
+                  {install.ios
+                    ? "Add ProFixIQ to your Home Screen"
+                    : "Install the app on this device"}
                 </div>
               </button>
             </section>
