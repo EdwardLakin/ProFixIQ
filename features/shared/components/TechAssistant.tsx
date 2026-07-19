@@ -1,25 +1,44 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 import {
   useTechAssistant,
   type Vehicle,
 } from "@/features/ai/hooks/useTechAssistant";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+
+type TechAssistantProps = {
+  defaultVehicle?: Vehicle;
+  workOrderLineId?: string;
+  compact?: boolean;
+  questionOnly?: boolean;
+};
+
+function vehicleLabel(vehicle?: Vehicle): string {
+  return [vehicle?.year, vehicle?.make, vehicle?.model]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
 
 export default function TechAssistant({
   defaultVehicle,
   workOrderLineId,
-}: {
-  defaultVehicle?: Vehicle;
-  workOrderLineId?: string;
-}) {
+  compact = false,
+  questionOnly = false,
+}: TechAssistantProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
   const [noteForPhoto, setNoteForPhoto] = useState("");
+  const [exportResult, setExportResult] = useState<{
+    cause: string;
+    correction: string;
+    estimatedLaborTime: number | null;
+  } | null>(null);
 
   const {
     vehicle,
@@ -38,7 +57,6 @@ export default function TechAssistant({
     cancel,
   } = useTechAssistant({ defaultVehicle, workOrderLineId });
 
-  // Seed default vehicle once (without clobbering restored vehicle)
   useEffect(() => {
     if (
       defaultVehicle &&
@@ -46,213 +64,263 @@ export default function TechAssistant({
     ) {
       setVehicle(defaultVehicle);
     }
+    // Seed once without replacing context restored for the current tab.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicle]);
 
-  // Auto-scroll to latest inside the conversation area
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    const element = scrollRef.current;
+    if (!element) return;
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
   }, [messages, partial, sending]);
 
   const canSend = useMemo(
     () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
     [vehicle],
   );
+  const currentVehicleLabel = vehicleLabel(vehicle);
 
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
+  const inputClass =
+    "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/35";
+
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
     const text = inputRef.current?.value?.trim();
     if (!text) return;
-
-    sendChat(text);
-
+    void sendChat(text);
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const inputBase =
-    "w-full rounded-md bg-[color:var(--theme-surface-overlay)] border border-[var(--metal-border-soft)] text-[color:var(--theme-text-primary)] " +
-    "placeholder:text-[color:var(--theme-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]";
+  const handlePhoto = (file: File | null, input: HTMLInputElement | null) => {
+    if (!file) return;
+    void sendPhoto(file, noteForPhoto).finally(() => {
+      if (input) input.value = "";
+      setNoteForPhoto("");
+    });
+  };
 
   return (
-    <div className="space-y-5 text-sm text-[color:var(--theme-text-primary)]">
-      {/* CARD: Vehicle + Notes + Attach */}
-      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-4 shadow-[var(--theme-shadow-medium)]">
-        <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-          Vehicle &amp; Context
-        </div>
+    <div className={`text-sm text-[color:var(--theme-text-primary)] ${compact ? "space-y-3" : "space-y-5"}`}>
+      <details
+        open={!compact || !canSend}
+        className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)]"
+      >
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-3 sm:px-4">
+          <div className="min-w-0">
+            <div className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+              Vehicle &amp; job context
+            </div>
+            <div className="mt-0.5 truncate text-xs text-[color:var(--theme-text-primary)]">
+              {currentVehicleLabel || "Vehicle details required"}
+            </div>
+          </div>
+          <span className="shrink-0 text-xs text-[color:var(--theme-text-muted)]">
+            Edit
+          </span>
+        </summary>
 
-        <div className="mb-3">
-          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            Vehicle
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <input
-              className={`${inputBase} py-2`}
-              placeholder="Year"
-              value={vehicle?.year ?? ""}
-              onChange={(e) =>
-                setVehicle({
-                  ...(vehicle ?? { make: "", model: "" }),
-                  year: e.target.value,
-                })
-              }
-            />
-            <input
-              className={`${inputBase} py-2`}
-              placeholder="Make"
-              value={vehicle?.make ?? ""}
-              onChange={(e) =>
-                setVehicle({
-                  ...(vehicle ?? { year: "", model: "" }),
-                  make: e.target.value,
-                })
-              }
-            />
-            <input
-              className={`${inputBase} py-2`}
-              placeholder="Model"
-              value={vehicle?.model ?? ""}
-              onChange={(e) =>
-                setVehicle({
-                  ...(vehicle ?? { year: "", make: "" }),
-                  model: e.target.value,
-                })
-              }
-            />
-          </div>
-        </div>
-
-        <div className="mb-3">
-          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            Notes
-          </div>
-          <textarea
-            className={`${inputBase} h-20`}
-            placeholder="Shop notes / context (symptoms, readings, conditions, DTCs)."
-            value={context}
-            onChange={(e) => setContext(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <div className="mb-1 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            Attach
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="cursor-pointer rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60">
+        <div className="space-y-3 border-t border-[color:var(--theme-border-soft)] px-3 py-3 sm:px-4">
+          <div>
+            <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+              Vehicle
+            </div>
+            <div className="grid grid-cols-3 gap-2">
               <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  void sendPhoto(f, noteForPhoto).finally(() => {
-                    if (fileRef.current) fileRef.current.value = "";
-                    setNoteForPhoto("");
-                  });
-                }}
-                disabled={sending || uploading}
+                className={`${inputClass} py-2 text-sm`}
+                placeholder="Year"
+                value={vehicle?.year ?? ""}
+                onChange={(event) =>
+                  setVehicle({
+                    ...(vehicle ?? { make: "", model: "" }),
+                    year: event.target.value,
+                  })
+                }
               />
-              {uploading ? "Saving Photo…" : "Attach Photo"}
-            </label>
+              <input
+                className={`${inputClass} py-2 text-sm`}
+                placeholder="Make"
+                value={vehicle?.make ?? ""}
+                onChange={(event) =>
+                  setVehicle({
+                    ...(vehicle ?? { year: "", model: "" }),
+                    make: event.target.value,
+                  })
+                }
+              />
+              <input
+                className={`${inputClass} py-2 text-sm`}
+                placeholder="Model"
+                value={vehicle?.model ?? ""}
+                onChange={(event) =>
+                  setVehicle({
+                    ...(vehicle ?? { year: "", make: "" }),
+                    model: event.target.value,
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+              Symptoms, readings, or DTCs
+            </div>
+            <textarea
+              className={`${inputClass} min-h-20 py-2 text-sm`}
+              placeholder="Add the details that matter for this question."
+              value={context}
+              onChange={(event) => setContext(event.target.value)}
+            />
+          </div>
+
+          <div>
+            <div className="mb-1 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+              Diagnostic photo
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                disabled={sending || uploading || !workOrderLineId}
+                className="min-h-11 rounded-xl border border-[var(--accent-copper-soft)]/60 bg-[color:var(--theme-surface-inset)] px-3 text-xs font-semibold disabled:opacity-50"
+              >
+                {uploading ? "Uploading…" : "Take photo"}
+              </button>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={sending || uploading || !workOrderLineId}
+                className="min-h-11 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-xs font-semibold disabled:opacity-50"
+              >
+                Choose photo
+              </button>
+            </div>
             <input
-              className={`${inputBase} min-w-44 flex-1 py-1.5 text-xs`}
-              placeholder="Optional note for this photo"
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(event) =>
+                handlePhoto(
+                  event.target.files?.[0] ?? null,
+                  cameraRef.current,
+                )
+              }
+            />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,.heic,.heif"
+              className="hidden"
+              onChange={(event) =>
+                handlePhoto(event.target.files?.[0] ?? null, fileRef.current)
+              }
+            />
+            <input
+              className={`${inputClass} mt-2 py-2 text-xs`}
+              placeholder="Optional note for the photo"
               value={noteForPhoto}
-              onChange={(e) => setNoteForPhoto(e.target.value)}
+              onChange={(event) => setNoteForPhoto(event.target.value)}
               disabled={sending || uploading}
             />
-            <button
-              className="rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
-              onClick={resetConversation}
-              type="button"
-              disabled={sending || uploading}
-            >
-              Reset
-            </button>
-            <button
-              className="rounded-full border border-red-600/80 bg-red-900/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-red-100 hover:bg-red-900/60 disabled:opacity-60"
-              onClick={cancel}
-              type="button"
-              disabled={!sending}
-            >
-              Cancel
-            </button>
+            {!workOrderLineId ? (
+              <p className="mt-1 text-[0.68rem] text-[color:var(--theme-text-muted)]">
+                Open the assistant from a job before adding a diagnostic photo.
+              </p>
+            ) : null}
           </div>
         </div>
-      </div>
+      </details>
 
-      {/* CARD: Conversation */}
-      <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-medium)]">
-        {/* Scrollable messages */}
+      <section className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-soft)]">
         <div
           ref={scrollRef}
-          className="flex-1 min-h-[140px] max-h-[50vh] overflow-y-auto p-4 space-y-3"
+          className={`${compact ? "min-h-[220px] max-h-[46dvh]" : "min-h-[180px] max-h-[50vh]"} space-y-3 overflow-y-auto p-3 sm:p-4`}
           style={{ WebkitOverflowScrolling: "touch" }}
         >
-          {messages.map((m, i) => {
-            const mine = m.role === "user";
-            const bubble =
-              "max-w-[95%] rounded-xl px-3 py-2 text-sm whitespace-pre-wrap break-words";
-            return mine ? (
-              <div key={i} className="flex justify-end">
+          {messages.length === 0 && !sending ? (
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+              Ask a direct question about diagnosis, testing, specifications, or
+              the repair procedure. ProFixIQ will use the vehicle and job context
+              above; the technician decides what is correct and what is used.
+            </div>
+          ) : null}
+
+          {messages.map((message, index) => {
+            const mine = message.role === "user";
+            return (
+              <div
+                key={`${message.role}-${index}`}
+                className={`flex ${mine ? "justify-end" : "justify-start"}`}
+              >
                 <div
-                  className={`${bubble} bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] font-semibold`}
+                  className={`max-w-[94%] rounded-2xl px-3 py-2 text-sm leading-5 ${
+                    mine
+                      ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] font-medium text-[color:var(--theme-text-on-accent)]"
+                      : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]"
+                  }`}
                 >
-                  {m.content}
-                  {m.attachments?.length ? (
-                    <div className="mt-2 space-y-1 text-[11px] font-medium text-[color:var(--theme-text-on-accent)]">
-                      {m.attachments.map((attachment) => (
-                        <div key={attachment.id} className="flex items-center gap-2 rounded-lg bg-[color:var(--theme-surface-inset)] p-1">
-                          {attachment.url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={attachment.url} alt={attachment.fileName ?? "Attached diagnostic photo"} className="h-12 w-12 rounded object-cover" />
-                          ) : null}
-                          <span className="truncate">{attachment.fileName ?? "Diagnostic photo saved"}</span>
+                  {mine ? (
+                    <>
+                      <div className="whitespace-pre-wrap break-words">
+                        {message.content}
+                      </div>
+                      {message.attachments?.length ? (
+                        <div className="mt-2 space-y-1 text-[0.68rem]">
+                          {message.attachments.map((attachment) => (
+                            <div
+                              key={attachment.id}
+                              className="flex items-center gap-2 rounded-lg bg-black/10 p-1"
+                            >
+                              {attachment.url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={attachment.url}
+                                  alt={
+                                    attachment.fileName ??
+                                    "Attached diagnostic photo"
+                                  }
+                                  className="h-12 w-12 rounded-lg object-cover"
+                                />
+                              ) : null}
+                              <span className="truncate">
+                                {attachment.fileName ?? "Diagnostic photo"}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="prose prose-invert prose-sm max-w-none !text-[color:var(--theme-text-primary)]">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          p: ({ children }) => <p className="my-1">{children}</p>,
+                          li: ({ children }) => (
+                            <li className="my-0.5">{children}</li>
+                          ),
+                          ul: ({ children }) => (
+                            <ul className="my-1 list-disc pl-5">{children}</ul>
+                          ),
+                          ol: ({ children }) => (
+                            <ol className="my-1 list-decimal pl-5">{children}</ol>
+                          ),
+                          h3: ({ children }) => (
+                            <h3 className="mb-1 mt-2 text-sm font-semibold">
+                              {children}
+                            </h3>
+                          ),
+                          strong: ({ children }) => (
+                            <strong className="font-semibold">{children}</strong>
+                          ),
+                        }}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
                     </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div key={i} className="flex justify-start">
-                <div className={`${bubble} bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]`}>
-                  <div className="prose prose-invert prose-sm !text-[color:var(--theme-text-primary)]">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        li: ({ children }) => (
-                          <li className="my-0.5">{children}</li>
-                        ),
-                        ul: ({ children }) => (
-                          <ul className="my-1 list-disc pl-5">{children}</ul>
-                        ),
-                        ol: ({ children }) => (
-                          <ol className="my-1 list-decimal pl-5">
-                            {children}
-                          </ol>
-                        ),
-                        h3: ({ children }) => (
-                          <h3 className="mt-2 mb-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                            {children}
-                          </h3>
-                        ),
-                        p: ({ children }) => <p className="my-1">{children}</p>,
-                        strong: ({ children }) => (
-                          <strong className="font-semibold text-[color:var(--theme-text-primary)]">
-                            {children}
-                          </strong>
-                        ),
-                      }}
-                    >
-                      {m.content}
-                    </ReactMarkdown>
-                  </div>
+                  )}
                 </div>
               </div>
             );
@@ -260,66 +328,100 @@ export default function TechAssistant({
 
           {(sending || partial.length > 0) && (
             <div className="flex justify-start">
-              <div className="max-w-[95%] rounded-xl bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)] opacity-90">
-                {partial.length > 0 ? partial : "Assistant is thinking…"}
+              <div className="max-w-[94%] rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)]">
+                {partial || "ProFixIQ is checking the available context…"}
               </div>
             </div>
           )}
         </div>
 
-        {/* Composer */}
         <form
           onSubmit={onSubmit}
-          className="flex gap-2 border-t border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3"
+          className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
         >
-          <input
-            ref={inputRef}
-            className={`${inputBase} flex-1 py-2.5 text-sm`}
-            placeholder={
-              canSend ? "Ask the assistant…" : "Enter year, make, model first"
-            }
-            disabled={sending || uploading}
-          />
-          <button
-            className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_20px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
-            disabled={sending || !canSend}
-            type="submit"
-          >
-            {sending ? "…" : "Send"}
-          </button>
-        </form>
-      </div>
-
-      {/* Export to Work Order (optional) */}
-      {workOrderLineId && (
-        <div className="pt-1">
-          <button
-            className="rounded-full bg-purple-600 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] shadow-[0_0_18px_rgba(147,51,234,0.7)] hover:bg-purple-500 disabled:opacity-60"
-            disabled={sending || uploading}
-            onClick={async () => {
-              try {
-                const res = await exportToWorkOrder(workOrderLineId);
-                alert(
-                  `Exported:\nCause: ${res.cause}\nCorrection: ${
-                    res.correction
-                  }\nLabor: ${res.estimatedLaborTime ?? "—"}h`,
-                );
-              } catch (e: unknown) {
-                alert(e instanceof Error ? e.message : "Export failed");
+          <div className="flex gap-2">
+            <input
+              ref={inputRef}
+              className={`${inputClass} min-h-11 flex-1 py-2.5 text-sm`}
+              placeholder={
+                canSend
+                  ? "Ask about this vehicle or job…"
+                  : "Add year, make, and model above"
               }
-            }}
-          >
-            Summarize &amp; Export to Work Order
-          </button>
-        </div>
-      )}
+              disabled={sending || uploading}
+            />
+            <button
+              className="min-h-11 rounded-xl bg-[color:var(--accent-copper)] px-4 text-xs font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-50"
+              disabled={sending || uploading || !canSend}
+              type="submit"
+            >
+              {sending ? "…" : "Send"}
+            </button>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                resetConversation();
+                setExportResult(null);
+              }}
+              disabled={sending || uploading || messages.length === 0}
+              className="text-[0.68rem] font-medium text-[color:var(--theme-text-secondary)] disabled:opacity-45"
+            >
+              Clear conversation
+            </button>
+            {sending ? (
+              <button
+                type="button"
+                onClick={cancel}
+                className="text-[0.68rem] font-medium text-red-300"
+              >
+                Stop response
+              </button>
+            ) : null}
+          </div>
+        </form>
+      </section>
 
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg border border-red-600 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+      {!questionOnly && workOrderLineId ? (
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3">
+          <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+            Work-order draft
+          </div>
+          <p className="mt-1 text-[0.7rem] leading-5 text-[color:var(--theme-text-secondary)]">
+            Generate a cause, correction, and labor estimate from this
+            conversation. Review the result before relying on it.
+          </p>
+          <button
+            type="button"
+            disabled={sending || uploading || messages.length === 0}
+            onClick={() => {
+              void exportToWorkOrder(workOrderLineId)
+                .then((result) => setExportResult(result))
+                .catch((caught: unknown) => {
+                  window.alert(
+                    caught instanceof Error ? caught.message : "Export failed",
+                  );
+                });
+            }}
+            className="mt-3 min-h-10 rounded-xl border border-purple-400/50 bg-purple-500/10 px-4 text-xs font-semibold text-purple-100 disabled:opacity-50"
+          >
+            Summarize &amp; export to work order
+          </button>
+          {exportResult ? (
+            <div className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
+              Work-order story updated. Cause, correction, and labor remain
+              editable in the job.
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-xl border border-red-500/40 bg-red-950/50 px-3 py-2 text-xs text-red-100">
           {error}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
