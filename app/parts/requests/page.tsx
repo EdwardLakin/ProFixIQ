@@ -320,8 +320,8 @@ function ProgressRail({ bucket }: { bucket: WoBucket }) {
   const labels = ["Quote", "Approval", "Order", "Receive", "Handoff"];
   const complete = completedSteps(bucket);
   return (
-    <div className="mt-3">
-      <div className="mb-2 text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
+    <div className="mt-2.5">
+      <div className="mb-1.5 text-[10px] font-medium text-[color:var(--theme-text-secondary)]">
         Progress
       </div>
       <div className="grid grid-cols-5">
@@ -378,14 +378,14 @@ function QueueCard({
   const nextAction = meta?.next ?? "Review the completed request history.";
 
   return (
-    <article className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 shadow-[var(--theme-shadow-soft)]">
+    <article className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3 shadow-[var(--theme-shadow-soft)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-xl font-semibold tracking-tight text-[color:var(--theme-text-primary)]">
+          <h3 className="truncate text-lg font-semibold tracking-tight text-[color:var(--theme-text-primary)]">
             {workOrderLabel(bucket)}
           </h3>
           {bucket.customerName ? (
-            <p className="mt-1 truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
+            <p className="mt-0.5 truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
               {bucket.customerName}
             </p>
           ) : null}
@@ -397,7 +397,7 @@ function QueueCard({
         </div>
         {meta ? (
           <span
-            className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${meta.pill}`}
+            className={`max-w-[48%] truncate rounded-md border px-2 py-1 text-[10px] font-semibold ${meta.pill}`}
           >
             Next: {meta.action}
           </span>
@@ -408,9 +408,9 @@ function QueueCard({
         )}
       </div>
 
-      <div className="mt-4 grid grid-cols-2 divide-x divide-[color:var(--theme-border-soft)] border-y border-[color:var(--theme-border-soft)] py-3 text-center">
+      <div className="mt-2.5 grid grid-cols-2 divide-x divide-[color:var(--theme-border-soft)] border-y border-[color:var(--theme-border-soft)] py-2 text-center">
         <div>
-          <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+          <div className="text-base font-semibold leading-none text-[color:var(--theme-text-primary)]">
             {bucket.models.length}
           </div>
           <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
@@ -418,7 +418,7 @@ function QueueCard({
           </div>
         </div>
         <div>
-          <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+          <div className="text-base font-semibold leading-none text-[color:var(--theme-text-primary)]">
             {bucket.items.length}
           </div>
           <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
@@ -427,21 +427,21 @@ function QueueCard({
         </div>
       </div>
 
-      <div className="mt-3 min-h-[70px]">
+      <div className="mt-2.5">
         <div className="text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
           Next action
         </div>
-        <p className="mt-1 text-sm leading-5 text-[color:var(--theme-text-primary)]">
+        <p className="mt-0.5 min-h-9 text-xs leading-[18px] text-[color:var(--theme-text-primary)]">
           {nextAction}
         </p>
       </div>
 
-      <div className="mt-3 border-t border-dashed border-[color:var(--theme-border-soft)] pt-3">
+      <div className="mt-2 border-t border-dashed border-[color:var(--theme-border-soft)] pt-2">
         <div className="text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
           Item status
         </div>
         <span
-          className={`mt-1.5 inline-flex rounded-md border px-2.5 py-1 text-xs font-medium ${
+          className={`mt-1 inline-flex rounded-md border px-2 py-0.5 text-[11px] font-medium ${
             meta?.pill ??
             "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]"
           }`}
@@ -457,7 +457,7 @@ function QueueCard({
           type="button"
           onClick={() => void onHandoff(bucket)}
           disabled={handingOff}
-          className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition disabled:cursor-wait disabled:opacity-60 ${meta?.button}`}
+          className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${meta?.button}`}
         >
           <Wrench className="h-4 w-4" />
           {handingOff ? "Completing handoff…" : "Complete handoff"}
@@ -465,7 +465,7 @@ function QueueCard({
       ) : (
         <Link
           href={href}
-          className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+          className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
             meta?.button ??
             "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
           }`}
@@ -495,14 +495,14 @@ function Metric({
         ? "border-amber-300/30 bg-amber-500/10 text-amber-400"
         : "border-emerald-300/30 bg-emerald-500/10 text-emerald-400";
   return (
-    <div className="flex min-w-0 items-center gap-3 px-4 py-3 sm:px-6">
+    <div className="flex min-w-0 items-center gap-3 px-4 py-2.5 sm:px-5">
       <span
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${colors}`}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border ${colors}`}
       >
         <Icon className="h-5 w-5" />
       </span>
       <div className="min-w-0">
-        <div className="text-2xl font-semibold leading-none text-[color:var(--theme-text-primary)]">
+        <div className="text-xl font-semibold leading-none text-[color:var(--theme-text-primary)]">
           {value}
         </div>
         <div className="mt-1 truncate text-sm text-[color:var(--theme-text-secondary)]">
@@ -771,14 +771,14 @@ export default function PartsRequestsPage(): JSX.Element {
   );
 
   return (
-    <main className="w-full space-y-5 px-3 py-4 text-[color:var(--theme-text-primary)] sm:px-5 lg:px-8 xl:px-10">
-      <section className="space-y-4">
+    <main className="w-full space-y-3 px-3 py-3 text-[color:var(--theme-text-primary)] sm:px-5 lg:px-8 xl:px-10">
+      <section className="space-y-3">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="lg:flex lg:items-end lg:gap-8">
             <h1 className="text-3xl font-semibold tracking-tight">
               Parts Requests
             </h1>
-            <div className="mt-4 flex items-center gap-6 border-b border-[color:var(--theme-border-soft)]">
+            <div className="mt-3 flex items-center gap-6 border-b border-[color:var(--theme-border-soft)] lg:mt-0">
               <button
                 type="button"
                 onClick={() => setTab("active")}
@@ -879,7 +879,7 @@ export default function PartsRequestsPage(): JSX.Element {
         </div>
       ) : tab === "active" ? (
         <div
-          className={`grid gap-3 ${stageFilter === "all" ? "lg:grid-cols-2 2xl:grid-cols-4" : "max-w-xl"}`}
+          className={`grid gap-3 ${stageFilter === "all" ? "md:grid-cols-2 xl:grid-cols-4" : "max-w-xl"}`}
         >
           {ACTIVE_STAGES.filter(
             (stage) => stageFilter === "all" || stageFilter === stage,
@@ -892,7 +892,7 @@ export default function PartsRequestsPage(): JSX.Element {
             return (
               <section
                 key={stage}
-                className={`min-w-0 rounded-2xl border border-t-4 border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5 ${meta.accent}`}
+                className={`min-w-0 self-start rounded-xl border border-t-4 border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2 ${meta.accent}`}
               >
                 <header className="flex items-center justify-between gap-3 px-1 py-1.5">
                   <div className="flex min-w-0 items-center gap-2.5">
@@ -910,7 +910,7 @@ export default function PartsRequestsPage(): JSX.Element {
                   </span>
                 </header>
 
-                <div className="mt-2 space-y-2.5">
+                <div className="mt-1.5 space-y-2">
                   {stageBuckets.length ? (
                     stageBuckets.map((bucket) => (
                       <QueueCard
@@ -921,7 +921,7 @@ export default function PartsRequestsPage(): JSX.Element {
                       />
                     ))
                   ) : (
-                    <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-8 text-center text-xs text-[color:var(--theme-text-muted)]">
+                    <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-6 text-center text-xs text-[color:var(--theme-text-muted)]">
                       No matching work orders
                     </div>
                   )}
