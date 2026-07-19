@@ -131,6 +131,7 @@ describe("parts request lifecycle automation", () => {
     }
     expect(queue).toContain('type QueueTab = "active" | "completed"');
     expect(queue).toContain('label={tab === "active" ? "Open requests"');
+    expect(queue).toContain("md:grid-cols-2 xl:grid-cols-4");
     expect(queue).not.toContain("Delete");
     expect(operationsDashboard).toContain(
       "row.work_order_id ?? `request:${row.id}`",
