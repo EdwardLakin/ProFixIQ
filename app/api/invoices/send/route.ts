@@ -4,6 +4,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { runPostSendPersistence, sendInvoiceReadyEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
+import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 import { finalizeInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
@@ -42,6 +43,20 @@ function resolvedShopName(
     shop?.name?.trim() ||
     "ProFixIQ"
   );
+}
+
+function invoicePartSignature(
+  parts: Array<{ id: string; qty: number; unitPrice: number }>,
+): string {
+  return parts
+    .map((part) => ({
+      id: part.id,
+      qty: Number(part.qty),
+      unitPrice: Number(part.unitPrice),
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((part) => `${part.id}:${part.qty}:${part.unitPrice}`)
+    .join("|");
 }
 
 export async function POST(req: Request) {
@@ -89,11 +104,39 @@ export async function POST(req: Request) {
       );
     }
 
+    const draftSnapshot = await getInvoiceSnapshotForWorkOrder({
+      supabase: admin,
+      workOrderId,
+    });
     const snapshot = await getIssuableInvoiceSnapshot({
       supabase: admin,
       workOrderId,
       shopId: workOrder.shop_id,
     });
+    const draftParts = Number(draftSnapshot.partsCost ?? 0);
+    const issuableParts = Number(snapshot.partsCost ?? 0);
+    const draftTotal = Number(draftSnapshot.total ?? 0);
+    const issuableTotal = Number(snapshot.total ?? 0);
+    const partsMatch =
+      invoicePartSignature(draftSnapshot.parts) ===
+      invoicePartSignature(snapshot.parts);
+    if (
+      !partsMatch ||
+      Math.abs(draftParts - issuableParts) > 0.01 ||
+      Math.abs(draftTotal - issuableTotal) > 0.01
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Invoice totals changed because one or more attached parts have not been issued to the work order. Complete the parts handoff, then review the invoice again.",
+          draftParts,
+          issuableParts,
+          draftTotal,
+          issuableTotal,
+        },
+        { status: 409 },
+      );
+    }
     const total = Number(snapshot.total ?? 0);
     if (!Number.isFinite(total) || total <= 0) {
       return NextResponse.json({ error: "Cannot issue a zero-total invoice." }, { status: 400 });
@@ -273,7 +316,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      invoiceId,
       invoiceVersionId: version.id,
+      invoiceVersion: version,
       sentWithWarnings: warnings.length > 0 || undefined,
       warnings: warnings.length ? warnings : undefined,
     });

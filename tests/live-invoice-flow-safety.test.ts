@@ -7,6 +7,8 @@ const billingPage = readFileSync("app/billing/page.tsx", "utf8");
 const previewClient = readFileSync("features/work-orders/components/InvoicePreviewPageClient.tsx", "utf8");
 const sendRoute = readFileSync("app/api/invoices/send/route.ts", "utf8");
 const snapshotSource = readFileSync("features/invoices/server/getInvoiceSnapshot.ts", "utf8");
+const billingRoute = readFileSync("app/api/billing/work-orders/route.ts", "utf8");
+const manualPayment = readFileSync("features/invoices/components/RecordManualPayment.tsx", "utf8");
 
 describe("regular live invoice flow safety", () => {
   it("prices 1.0 labor hour from explicit total or labor rate, never as $1.00", () => {
@@ -42,8 +44,16 @@ describe("regular live invoice flow safety", () => {
     expect(snapshotSource).toContain("work_order_parts");
     expect(snapshotSource).toContain("quote_line_part_request");
     expect(previewClient).toContain("/api/work-orders/${workOrderId}/invoice");
-    expect(previewClient).toContain("snapshotJson?.snapshot?.parts");
+    expect(previewClient).toContain("loadedSnapshot?.parts");
     expect(previewClient).toContain("canonicalInvoiceTotal");
+  });
+
+  it("loads billing cards from the canonical server snapshot and surfaces pricing failures", () => {
+    expect(billingPage).toContain('fetch("/api/billing/work-orders"');
+    expect(billingPage).toContain("pricing_error");
+    expect(billingRoute).toContain("getInvoiceSnapshotForWorkOrder");
+    expect(billingRoute).toContain("pricing_error");
+    expect(billingRoute).not.toContain("catch {");
   });
 
   it("billing Invoice button navigates to preview instead of sending", () => {
@@ -55,6 +65,15 @@ describe("regular live invoice flow safety", () => {
   it("invoice send remains only behind preview confirmation", () => {
     expect(previewClient).toContain("Send invoice");
     expect(previewClient).toContain('fetch("/api/invoices/send"');
-    expect(sendRoute).toContain("Invoice review failed. Resolve blocking issues before sending.");
+    expect(sendRoute).toContain("getIssuableInvoiceSnapshot");
+    expect(sendRoute).toContain("draftParts");
+    expect(sendRoute).toContain("Complete the parts handoff");
+  });
+
+  it("keeps post-issue accounting and manual POS actions reachable", () => {
+    expect(billingPage).toContain("Open Invoice");
+    expect(previewClient).toContain("SyncInvoiceToQuickBooksButton");
+    expect(previewClient).toContain("RecordManualPayment");
+    expect(manualPayment).toContain('fetch("/api/payments/manual"');
   });
 });

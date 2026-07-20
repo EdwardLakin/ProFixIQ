@@ -189,6 +189,7 @@ export default function FocusedJobModal(props: {
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
+  const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
 
@@ -304,6 +305,18 @@ export default function FocusedJobModal(props: {
             } catch (e) {
               console.warn("[FocusedJob] set_current_shop_id failed:", e);
             }
+
+            const { data: shopRow, error: shopError } = await supabase
+              .from("shops")
+              .select("labor_rate")
+              .eq("id", sid)
+              .maybeSingle<{ labor_rate: number | null }>();
+            if (shopError) throw shopError;
+            if (cancelled) return;
+            const parsedRate = Number(shopRow?.labor_rate);
+            setShopLaborRate(Number.isFinite(parsedRate) ? parsedRate : null);
+          } else {
+            setShopLaborRate(null);
           }
 
           if (wo?.vehicle_id) {
@@ -333,6 +346,7 @@ export default function FocusedJobModal(props: {
           }
         } else {
           setWorkOrder(null);
+          setShopLaborRate(null);
           setVehicle(null);
           setCustomer(null);
         }
@@ -617,7 +631,7 @@ export default function FocusedJobModal(props: {
   const isPanelVariant = variant === "panel";
   const isExpandedPanel = isPanelVariant;
   const pricing = line
-    ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts), stagedParts: requiredParts })
+    ? resolveWorkOrderLinePricing({ line, shopLaborRate, allocatedParts: filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts), stagedParts: requiredParts })
     : null;
   const laborDisplay = formatLaborSummary(pricing?.laborHours, Number(pricing?.laborTotal ?? 0));
   const lineTotal = Number(pricing?.lineTotal ?? 0);

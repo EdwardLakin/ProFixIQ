@@ -5,6 +5,7 @@ import {
   type InvoiceSnapshot,
   type InvoiceSnapshotPart,
 } from "@/features/invoices/server/getInvoiceSnapshot";
+import { calculateInvoiceTotals, roundMoney } from "@/features/invoices/lib/invoiceTotals";
 
 type DB = Database;
 type RpcError = { message: string; details?: string | null; hint?: string | null };
@@ -24,10 +25,6 @@ type NetIssuedPart = InvoiceSnapshotPart & {
 function finite(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function money(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function optionalText(value: unknown): string | null {
@@ -58,7 +55,7 @@ function normalizeParts(value: unknown): NetIssuedPart[] {
         name,
         qty,
         unitPrice,
-        totalPrice: money(finite(row.totalPrice) || qty * unitPrice),
+        totalPrice: roundMoney(finite(row.totalPrice) || qty * unitPrice),
         unitCost: finite(row.unitCost),
         source: "work_order_part",
         ...(lineId ? { lineId } : {}),
@@ -92,25 +89,38 @@ export async function getIssuableInvoiceSnapshot(input: {
   }
 
   const parts = normalizeParts(data);
-  const partsCost = money(parts.reduce((sum, part) => sum + finite(part.totalPrice), 0));
-  const laborCost = money(finite(base.laborCost));
-  const supplies = money(finite(base.shopSuppliesTotal));
-  const discount = money(finite(base.discountTotal));
-  const previousSubtotal = finite(base.subtotal);
-  const previousTaxableBase = Math.max(previousSubtotal - discount, 0);
-  const effectiveTaxRate =
-    previousTaxableBase > 0 ? finite(base.taxTotal) / previousTaxableBase : 0;
-  const subtotal = money(laborCost + partsCost + supplies);
-  const taxableBase = Math.max(subtotal - discount, 0);
-  const taxTotal = money(taxableBase * effectiveTaxRate);
-  const total = money(taxableBase + taxTotal);
+  const partsCost = roundMoney(
+    parts.reduce((sum, part) => sum + finite(part.totalPrice), 0),
+  );
+  const laborCost = roundMoney(finite(base.laborCost));
+  const calculated = calculateInvoiceTotals({
+    laborCost,
+    partsCost,
+    shopSuppliesTotal: base.shopSuppliesTotal,
+    discountTotal: base.discountTotal,
+    taxRatePercent: base.taxRate,
+  });
+  const lines = base.lines.map((line) => {
+    const linePartsTotal = roundMoney(
+      parts
+        .filter((part) => part.lineId === line.id)
+        .reduce((sum, part) => sum + finite(part.totalPrice), 0),
+    );
+    return {
+      ...line,
+      resolvedPartsTotal: linePartsTotal,
+      resolvedLineTotal: roundMoney(line.resolvedLaborTotal + linePartsTotal),
+    };
+  });
 
   return {
     ...base,
+    lines,
     parts,
     partsCost,
-    subtotal,
-    taxTotal,
-    total,
+    subtotal: calculated.subtotal,
+    discountTotal: calculated.discountTotal || null,
+    taxTotal: calculated.taxTotal || null,
+    total: calculated.total,
   };
 }

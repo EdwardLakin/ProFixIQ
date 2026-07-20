@@ -5,6 +5,8 @@ import { postStoryEventToShopReel } from "@/features/integrations/shopreel/serve
 import { syncWorkOrderToHistory } from "@/features/work-orders/server/syncWorkOrderToHistory";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { seedCompletedWorkOrderIntelligence } from "@/features/ai/server/workOrderIntelligence";
+import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 
 type RpcError = { message: string; details?: string | null; hint?: string | null };
 type RpcClient = {
@@ -70,6 +72,52 @@ export async function POST(req: Request) {
     clean(body?.operationKey) ||
     clean(body?.idempotencyKey) ||
     stableKey(access.profile.id, workOrderId);
+
+  try {
+    const draft = await getInvoiceSnapshotForWorkOrder({
+      supabase: access.supabase,
+      workOrderId,
+    });
+    const issuable = await getIssuableInvoiceSnapshot({
+      supabase: access.supabase,
+      workOrderId,
+      shopId: access.profile.shop_id,
+    });
+    const draftTotal = Number(draft.total ?? 0);
+    const draftParts = Number(draft.partsCost ?? 0);
+    const issuableTotal = Number(issuable.total ?? 0);
+    const issuableParts = Number(issuable.partsCost ?? 0);
+    if (!Number.isFinite(draftTotal) || draftTotal <= 0) {
+      return NextResponse.json(
+        { ok: false, error: "Invoice pricing must be completed before marking the work order ready." },
+        { status: 409 },
+      );
+    }
+    if (
+      Math.abs(draftParts - issuableParts) > 0.01 ||
+      Math.abs(draftTotal - issuableTotal) > 0.01
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Attached parts must be issued to the work order before it can be marked ready to invoice.",
+        },
+        { status: 409 },
+      );
+    }
+  } catch (pricingError: unknown) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          pricingError instanceof Error
+            ? pricingError.message
+            : "Invoice pricing could not be verified.",
+      },
+      { status: 409 },
+    );
+  }
 
   const rpc = access.supabase as unknown as RpcClient;
   const { data, error } = await rpc.rpc("mark_work_order_ready_atomic", {
