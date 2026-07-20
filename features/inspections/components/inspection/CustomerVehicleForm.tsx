@@ -130,10 +130,12 @@ type CustomerVehicleSearchPick = {
 function CustomerAutocomplete({
   q,
   shopId,
+  suspended,
   onPick,
 }: {
   q: string;
   shopId: string | null;
+  suspended: boolean;
   onPick: (pick: CustomerVehicleSearchPick) => void;
 }) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -145,6 +147,14 @@ function CustomerAutocomplete({
 
   useEffect(() => {
     const term = (q ?? "").trim();
+
+    if (suspended) {
+      reqCounter.current += 1;
+      setRows([]);
+      setOpen(false);
+      setBusy(false);
+      return;
+    }
 
     if (!term || !shopId || term.length < 2) {
       setRows([]);
@@ -230,7 +240,7 @@ function CustomerAutocomplete({
     }, 150);
 
     return () => window.clearTimeout(t);
-  }, [q, shopId, supabase]);
+  }, [q, shopId, supabase, suspended]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -466,11 +476,15 @@ export default function CustomerVehicleForm({
   const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(
     selectedCustomerId,
   );
+  const [customerSearchSuspended, setCustomerSearchSuspended] = useState(
+    Boolean(selectedCustomerId),
+  );
   const [duplicateMatches, setDuplicateMatches] = useState<VehicleDuplicateMatch[]>([]);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
   useEffect(() => {
     setCurrentCustomerId(selectedCustomerId);
+    setCustomerSearchSuspended(Boolean(selectedCustomerId));
   }, [selectedCustomerId]);
 
   const safeSetCustomer = useCallback(
@@ -564,6 +578,8 @@ export default function CustomerVehicleForm({
     c: CustomerRow,
     pickedVehicle: VehicleRow | null = null,
   ) {
+    setCustomerSearchSuspended(true);
+
     const applyCustomer = (picked: CustomerRow) => {
       const fields = hydrateCustomerFields(picked);
       safeSetCustomer("business_name", fields.business_name ?? null);
@@ -738,13 +754,15 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Business name"
                 value={customer.business_name ?? ""}
-                onChange={(e) =>
-                  safeSetCustomer("business_name", e.target.value || null)
-                }
+                onChange={(e) => {
+                  setCustomerSearchSuspended(false);
+                  safeSetCustomer("business_name", e.target.value || null);
+                }}
               />
               <CustomerAutocomplete
                 q={customer.business_name ?? ""}
                 shopId={shopId}
+                suspended={customerSearchSuspended}
                 onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
@@ -758,11 +776,15 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="First name"
                 value={customer.first_name ?? ""}
-                onChange={(e) => safeSetCustomer("first_name", e.target.value || null)}
+                onChange={(e) => {
+                  setCustomerSearchSuspended(false);
+                  safeSetCustomer("first_name", e.target.value || null);
+                }}
               />
               <CustomerAutocomplete
                 q={customer.first_name ?? ""}
                 shopId={shopId}
+                suspended={customerSearchSuspended}
                 onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
@@ -776,11 +798,15 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Last name"
                 value={customer.last_name ?? ""}
-                onChange={(e) => safeSetCustomer("last_name", e.target.value || null)}
+                onChange={(e) => {
+                  setCustomerSearchSuspended(false);
+                  safeSetCustomer("last_name", e.target.value || null);
+                }}
               />
               <CustomerAutocomplete
                 q={customer.last_name ?? ""}
                 shopId={shopId}
+                suspended={customerSearchSuspended}
                 onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
@@ -794,11 +820,15 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Phone"
                 value={customer.phone ?? ""}
-                onChange={(e) => safeSetCustomer("phone", e.target.value || null)}
+                onChange={(e) => {
+                  setCustomerSearchSuspended(false);
+                  safeSetCustomer("phone", e.target.value || null);
+                }}
               />
               <CustomerAutocomplete
                 q={customer.phone ?? ""}
                 shopId={shopId}
+                suspended={customerSearchSuspended}
                 onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
@@ -813,11 +843,15 @@ export default function CustomerVehicleForm({
                 className="input"
                 placeholder="Email"
                 value={customer.email ?? ""}
-                onChange={(e) => safeSetCustomer("email", e.target.value || null)}
+                onChange={(e) => {
+                  setCustomerSearchSuspended(false);
+                  safeSetCustomer("email", e.target.value || null);
+                }}
               />
               <CustomerAutocomplete
                 q={customer.email ?? ""}
                 shopId={shopId}
+                suspended={customerSearchSuspended}
                 onPick={({ customer: pickedCustomer, vehicle: pickedVehicle }) => {
                   void handlePickedCustomer(pickedCustomer, pickedVehicle);
                 }}
