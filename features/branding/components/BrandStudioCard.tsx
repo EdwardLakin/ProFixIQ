@@ -142,6 +142,11 @@ const FILTERS = [
 type FilterKey = (typeof FILTERS)[number];
 
 const DEFAULT_THEME = getBrandStylePreset("industrial-dark");
+const DEFAULT_USER_PREFERENCES = {
+  themeMode: "dark" as ThemeMode,
+  radiusScale: "md" as RadiusScale,
+  shadowStyle: "medium" as ShadowStyle,
+};
 
 function pickDashboardBackgroundMetadata(
   metadata: Record<string, unknown> | null | undefined,
@@ -335,13 +340,13 @@ export default function BrandStudioCard() {
   >({});
 
   const [themeMode, setThemeMode] = useState<ThemeMode>(
-    DEFAULT_THEME.themeMode,
+    DEFAULT_USER_PREFERENCES.themeMode,
   );
   const [radiusScale, setRadiusScale] = useState<RadiusScale>(
-    DEFAULT_THEME.radiusScale,
+    DEFAULT_USER_PREFERENCES.radiusScale,
   );
   const [shadowStyle, setShadowStyle] = useState<ShadowStyle>(
-    DEFAULT_THEME.shadowStyle,
+    DEFAULT_USER_PREFERENCES.shadowStyle,
   );
 
   const [logoPrompt, setLogoPrompt] = useState<string>(
@@ -409,9 +414,9 @@ export default function BrandStudioCard() {
     setDashboardGradientAccent(DEFAULT_THEME.dashboardGradientAccent);
     setProfileMetadata({});
 
-    setThemeMode(DEFAULT_THEME.themeMode);
-    setRadiusScale(DEFAULT_THEME.radiusScale);
-    setShadowStyle(DEFAULT_THEME.shadowStyle);
+    setThemeMode(DEFAULT_USER_PREFERENCES.themeMode);
+    setRadiusScale(DEFAULT_USER_PREFERENCES.radiusScale);
+    setShadowStyle(DEFAULT_USER_PREFERENCES.shadowStyle);
   }
 
   function applyStylePreset(presetName: StylePreset) {
@@ -441,9 +446,6 @@ export default function BrandStudioCard() {
     setInputBackground(preset.inputBackground);
     setInputBorder(preset.inputBorder);
     setInputText(preset.inputText);
-    setThemeMode(preset.themeMode);
-    setRadiusScale(preset.radiusScale);
-    setShadowStyle(preset.shadowStyle);
     setDashboardBackgroundMode(preset.dashboardBackgroundMode);
     setDashboardBackgroundBase(preset.dashboardBackgroundBase);
     setDashboardAmbientTint(preset.dashboardAmbientTint);
@@ -599,13 +601,15 @@ export default function BrandStudioCard() {
 
       if (prefJson?.ok && prefJson.preferences) {
         setThemeMode(
-          prefJson.preferences.theme_mode || DEFAULT_THEME.themeMode,
+          prefJson.preferences.theme_mode || DEFAULT_USER_PREFERENCES.themeMode,
         );
         setRadiusScale(
-          prefJson.preferences.radius_scale || DEFAULT_THEME.radiusScale,
+          prefJson.preferences.radius_scale ||
+            DEFAULT_USER_PREFERENCES.radiusScale,
         );
         setShadowStyle(
-          prefJson.preferences.shadow_style || DEFAULT_THEME.shadowStyle,
+          prefJson.preferences.shadow_style ||
+            DEFAULT_USER_PREFERENCES.shadowStyle,
         );
       }
 
@@ -742,9 +746,9 @@ export default function BrandStudioCard() {
         throw new Error(json.error || "Failed to restore defaults");
       }
 
-      setThemeMode(DEFAULT_THEME.themeMode);
-      setRadiusScale(DEFAULT_THEME.radiusScale);
-      setShadowStyle(DEFAULT_THEME.shadowStyle);
+      setThemeMode(DEFAULT_USER_PREFERENCES.themeMode);
+      setRadiusScale(DEFAULT_USER_PREFERENCES.radiusScale);
+      setShadowStyle(DEFAULT_USER_PREFERENCES.shadowStyle);
 
       toast.success("User theme preferences restored");
       notifyBrandRefresh();

@@ -31,9 +31,6 @@ export type BrandStylePresetValues = {
   inputBackground: string;
   inputBorder: string;
   inputText: string;
-  themeMode: "dark" | "light" | "system";
-  radiusScale: "none" | "sm" | "md" | "lg" | "xl";
-  shadowStyle: "none" | "soft" | "medium" | "strong";
   dashboardBackgroundMode: "solid" | "gradient";
   dashboardBackgroundBase: string;
   dashboardAmbientTint: string;
@@ -101,9 +98,6 @@ const PRESETS: Record<BrandStylePreset, BrandStylePresetValues> = {
     inputBackground: "#0F172A",
     inputBorder: "#475569",
     inputText: "#F8FAFC",
-    themeMode: "dark",
-    radiusScale: "md",
-    shadowStyle: "medium",
     dashboardBackgroundMode: "solid",
     dashboardBackgroundBase: "#0B1120",
     dashboardAmbientTint: "#C97A3D",
@@ -137,9 +131,6 @@ const PRESETS: Record<BrandStylePreset, BrandStylePresetValues> = {
     inputBackground: "#FFFFFF",
     inputBorder: "#CBD5E1",
     inputText: "#111827",
-    themeMode: "light",
-    radiusScale: "lg",
-    shadowStyle: "soft",
     dashboardBackgroundMode: "solid",
     dashboardBackgroundBase: "#F6F8FB",
     dashboardAmbientTint: "#3B82B6",
@@ -173,9 +164,6 @@ const PRESETS: Record<BrandStylePreset, BrandStylePresetValues> = {
     inputBackground: "#18181B",
     inputBorder: "#52525B",
     inputText: "#FAFAFA",
-    themeMode: "dark",
-    radiusScale: "sm",
-    shadowStyle: "strong",
     dashboardBackgroundMode: "gradient",
     dashboardBackgroundBase: "#09090B",
     dashboardAmbientTint: "#DC2626",
@@ -209,9 +197,6 @@ const PRESETS: Record<BrandStylePreset, BrandStylePresetValues> = {
     inputBackground: "#111827",
     inputBorder: "#3B6474",
     inputText: "#F8FAFC",
-    themeMode: "dark",
-    radiusScale: "sm",
-    shadowStyle: "soft",
     dashboardBackgroundMode: "solid",
     dashboardBackgroundBase: "#0F172A",
     dashboardAmbientTint: "#0E7490",
@@ -245,9 +230,6 @@ const PRESETS: Record<BrandStylePreset, BrandStylePresetValues> = {
     inputBackground: "#111827",
     inputBorder: "#405A8A",
     inputText: "#F8FAFC",
-    themeMode: "dark",
-    radiusScale: "xl",
-    shadowStyle: "medium",
     dashboardBackgroundMode: "gradient",
     dashboardBackgroundBase: "#0F172A",
     dashboardAmbientTint: "#7C3AED",
