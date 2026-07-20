@@ -8,6 +8,11 @@ import { toast } from "sonner";
 import { Button } from "@shared/components/ui/Button";
 import { Input } from "@shared/components/ui/input";
 import { Textarea } from "@shared/components/ui/textarea";
+import {
+  BRAND_STYLE_PRESETS,
+  getBrandStylePreset,
+  type BrandStylePreset,
+} from "@/features/branding/lib/brandStylePresets";
 
 type BrandAsset = {
   id: string;
@@ -71,12 +76,7 @@ type BrandAssetsResponse = {
 type ThemeMode = "dark" | "light" | "system";
 type RadiusScale = "none" | "sm" | "md" | "lg" | "xl";
 type ShadowStyle = "none" | "soft" | "medium" | "strong";
-type StylePreset =
-  | "industrial-dark"
-  | "clean-oem"
-  | "performance"
-  | "fleet-utility"
-  | "modern-tech";
+type StylePreset = BrandStylePreset;
 
 type UserPreferenceResponse = {
   ok?: boolean;
@@ -86,14 +86,6 @@ type UserPreferenceResponse = {
     shadow_style?: ShadowStyle | null;
   } | null;
 };
-
-const STYLE_PRESETS: ReadonlyArray<{ value: StylePreset; label: string }> = [
-  { value: "industrial-dark", label: "Industrial Dark" },
-  { value: "clean-oem", label: "Clean OEM" },
-  { value: "performance", label: "Performance" },
-  { value: "fleet-utility", label: "Fleet & Utility" },
-  { value: "modern-tech", label: "Modern Tech" },
-];
 
 const THEME_MODES: ReadonlyArray<{ value: ThemeMode; label: string }> = [
   { value: "dark", label: "Dark" },
@@ -123,7 +115,8 @@ const PROMPT_PRESETS = [
   },
   {
     label: "Minimal",
-    prompt: "Clean minimal automotive service logo with a modern premium OEM feel",
+    prompt:
+      "Clean minimal automotive service logo with a modern premium OEM feel",
   },
   {
     label: "Performance",
@@ -148,45 +141,7 @@ const FILTERS = [
 
 type FilterKey = (typeof FILTERS)[number];
 
-const DEFAULT_THEME = {
-  primaryColor: "#C97A3D",
-  secondaryColor: "var(--theme-surface-page)",
-  accentColor: "#E2A164",
-  stylePreset: "industrial-dark" as StylePreset,
-
-  appBackground: "var(--theme-surface-page)",
-  appBackgroundSecondary: "var(--theme-surface-page)",
-  sidebarBackground: "var(--theme-surface-page)",
-  sidebarText: "var(--theme-text-primary)",
-  sidebarActiveBackground: "#C97A3D",
-  sidebarActiveText: "var(--theme-text-on-accent)",
-  headerBackground: "var(--theme-surface-page)",
-  headerText: "var(--theme-text-inverse)",
-  cardBackground: "var(--theme-surface-page)",
-  cardBorder: "var(--theme-border-soft)",
-  surface2Background: "var(--theme-surface-page)",
-  textPrimary: "var(--theme-text-inverse)",
-  textSecondary: "var(--theme-text-muted)",
-  textMuted: "var(--theme-text-muted)",
-  buttonPrimaryBg: "#C97A3D",
-  buttonPrimaryText: "var(--theme-text-on-accent)",
-  buttonSecondaryBg: "var(--theme-surface-page)",
-  buttonSecondaryText: "var(--theme-text-inverse)",
-  inputBackground: "var(--theme-surface-page)",
-  inputBorder: "var(--theme-border-soft)",
-  inputText: "var(--theme-text-inverse)",
-
-  themeMode: "dark" as ThemeMode,
-  radiusScale: "md" as RadiusScale,
-  shadowStyle: "medium" as ShadowStyle,
-
-  dashboardBackgroundMode: "solid" as "solid" | "gradient",
-  dashboardBackgroundBase: "var(--theme-surface-page)",
-  dashboardAmbientTint: "#F97316",
-  dashboardGradientStart: "#C56A2F",
-  dashboardGradientEnd: "var(--theme-surface-page)",
-  dashboardGradientAccent: "#7F1D1D",
-};
+const DEFAULT_THEME = getBrandStylePreset("industrial-dark");
 
 function pickDashboardBackgroundMetadata(
   metadata: Record<string, unknown> | null | undefined,
@@ -211,19 +166,26 @@ function pickDashboardBackgroundMetadata(
   }
 
   const value = raw as Record<string, unknown>;
-  const mode = String(value.mode ?? "").trim().toLowerCase();
+  const mode = String(value.mode ?? "")
+    .trim()
+    .toLowerCase();
 
   return {
     mode: mode === "gradient" ? "gradient" : "solid",
-    base: String(value.base ?? "").trim() || DEFAULT_THEME.dashboardBackgroundBase,
+    base:
+      String(value.base ?? "").trim() || DEFAULT_THEME.dashboardBackgroundBase,
     ambientTint:
-      String(value.ambientTint ?? "").trim() || DEFAULT_THEME.dashboardAmbientTint,
+      String(value.ambientTint ?? "").trim() ||
+      DEFAULT_THEME.dashboardAmbientTint,
     gradientStart:
-      String(value.gradientStart ?? "").trim() || DEFAULT_THEME.dashboardGradientStart,
+      String(value.gradientStart ?? "").trim() ||
+      DEFAULT_THEME.dashboardGradientStart,
     gradientEnd:
-      String(value.gradientEnd ?? "").trim() || DEFAULT_THEME.dashboardGradientEnd,
+      String(value.gradientEnd ?? "").trim() ||
+      DEFAULT_THEME.dashboardGradientEnd,
     gradientAccent:
-      String(value.gradientAccent ?? "").trim() || DEFAULT_THEME.dashboardGradientAccent,
+      String(value.gradientAccent ?? "").trim() ||
+      DEFAULT_THEME.dashboardGradientAccent,
   };
 }
 
@@ -232,7 +194,9 @@ function notifyBrandRefresh() {
 }
 
 function isGeneratedAsset(asset: BrandAsset): boolean {
-  return Boolean(asset.metadata?.generated) || asset.generation_provider === "openai";
+  return (
+    Boolean(asset.metadata?.generated) || asset.generation_provider === "openai"
+  );
 }
 
 function randomHexColor(): string {
@@ -279,36 +243,57 @@ export default function BrandStudioCard() {
   const [uploading, setUploading] = useState<boolean>(false);
   const [generating, setGenerating] = useState<boolean>(false);
 
-  const [primaryColor, setPrimaryColor] = useState<string>(DEFAULT_THEME.primaryColor);
-  const [secondaryColor, setSecondaryColor] = useState<string>(DEFAULT_THEME.secondaryColor);
-  const [accentColor, setAccentColor] = useState<string>(DEFAULT_THEME.accentColor);
-  const [stylePreset, setStylePreset] = useState<StylePreset>(DEFAULT_THEME.stylePreset);
+  const [primaryColor, setPrimaryColor] = useState<string>(
+    DEFAULT_THEME.primaryColor,
+  );
+  const [secondaryColor, setSecondaryColor] = useState<string>(
+    DEFAULT_THEME.secondaryColor,
+  );
+  const [accentColor, setAccentColor] = useState<string>(
+    DEFAULT_THEME.accentColor,
+  );
+  const [stylePreset, setStylePreset] = useState<StylePreset>(
+    DEFAULT_THEME.stylePreset,
+  );
 
-  const [appBackground, setAppBackground] = useState<string>(DEFAULT_THEME.appBackground);
+  const [appBackground, setAppBackground] = useState<string>(
+    DEFAULT_THEME.appBackground,
+  );
   const [appBackgroundSecondary, setAppBackgroundSecondary] = useState<string>(
     DEFAULT_THEME.appBackgroundSecondary,
   );
   const [sidebarBackground, setSidebarBackground] = useState<string>(
     DEFAULT_THEME.sidebarBackground,
   );
-  const [sidebarText, setSidebarText] = useState<string>(DEFAULT_THEME.sidebarText);
-  const [sidebarActiveBackground, setSidebarActiveBackground] = useState<string>(
-    DEFAULT_THEME.sidebarActiveBackground,
+  const [sidebarText, setSidebarText] = useState<string>(
+    DEFAULT_THEME.sidebarText,
   );
+  const [sidebarActiveBackground, setSidebarActiveBackground] =
+    useState<string>(DEFAULT_THEME.sidebarActiveBackground);
   const [sidebarActiveText, setSidebarActiveText] = useState<string>(
     DEFAULT_THEME.sidebarActiveText,
   );
   const [headerBackground, setHeaderBackground] = useState<string>(
     DEFAULT_THEME.headerBackground,
   );
-  const [headerText, setHeaderText] = useState<string>(DEFAULT_THEME.headerText);
-  const [cardBackground, setCardBackground] = useState<string>(DEFAULT_THEME.cardBackground);
-  const [cardBorder, setCardBorder] = useState<string>(DEFAULT_THEME.cardBorder);
+  const [headerText, setHeaderText] = useState<string>(
+    DEFAULT_THEME.headerText,
+  );
+  const [cardBackground, setCardBackground] = useState<string>(
+    DEFAULT_THEME.cardBackground,
+  );
+  const [cardBorder, setCardBorder] = useState<string>(
+    DEFAULT_THEME.cardBorder,
+  );
   const [surface2Background, setSurface2Background] = useState<string>(
     DEFAULT_THEME.surface2Background,
   );
-  const [textPrimary, setTextPrimary] = useState<string>(DEFAULT_THEME.textPrimary);
-  const [textSecondary, setTextSecondary] = useState<string>(DEFAULT_THEME.textSecondary);
+  const [textPrimary, setTextPrimary] = useState<string>(
+    DEFAULT_THEME.textPrimary,
+  );
+  const [textSecondary, setTextSecondary] = useState<string>(
+    DEFAULT_THEME.textSecondary,
+  );
   const [textMuted, setTextMuted] = useState<string>(DEFAULT_THEME.textMuted);
   const [buttonPrimaryBg, setButtonPrimaryBg] = useState<string>(
     DEFAULT_THEME.buttonPrimaryBg,
@@ -325,14 +310,15 @@ export default function BrandStudioCard() {
   const [inputBackground, setInputBackground] = useState<string>(
     DEFAULT_THEME.inputBackground,
   );
-  const [inputBorder, setInputBorder] = useState<string>(DEFAULT_THEME.inputBorder);
+  const [inputBorder, setInputBorder] = useState<string>(
+    DEFAULT_THEME.inputBorder,
+  );
   const [inputText, setInputText] = useState<string>(DEFAULT_THEME.inputText);
-  const [dashboardBackgroundMode, setDashboardBackgroundMode] = useState<"solid" | "gradient">(
-    DEFAULT_THEME.dashboardBackgroundMode,
-  );
-  const [dashboardBackgroundBase, setDashboardBackgroundBase] = useState<string>(
-    DEFAULT_THEME.dashboardBackgroundBase,
-  );
+  const [dashboardBackgroundMode, setDashboardBackgroundMode] = useState<
+    "solid" | "gradient"
+  >(DEFAULT_THEME.dashboardBackgroundMode);
+  const [dashboardBackgroundBase, setDashboardBackgroundBase] =
+    useState<string>(DEFAULT_THEME.dashboardBackgroundBase);
   const [dashboardAmbientTint, setDashboardAmbientTint] = useState<string>(
     DEFAULT_THEME.dashboardAmbientTint,
   );
@@ -342,24 +328,33 @@ export default function BrandStudioCard() {
   const [dashboardGradientEnd, setDashboardGradientEnd] = useState<string>(
     DEFAULT_THEME.dashboardGradientEnd,
   );
-  const [dashboardGradientAccent, setDashboardGradientAccent] = useState<string>(
-    DEFAULT_THEME.dashboardGradientAccent,
-  );
-  const [profileMetadata, setProfileMetadata] = useState<Record<string, unknown>>({});
+  const [dashboardGradientAccent, setDashboardGradientAccent] =
+    useState<string>(DEFAULT_THEME.dashboardGradientAccent);
+  const [profileMetadata, setProfileMetadata] = useState<
+    Record<string, unknown>
+  >({});
 
-  const [themeMode, setThemeMode] = useState<ThemeMode>(DEFAULT_THEME.themeMode);
-  const [radiusScale, setRadiusScale] = useState<RadiusScale>(DEFAULT_THEME.radiusScale);
-  const [shadowStyle, setShadowStyle] = useState<ShadowStyle>(DEFAULT_THEME.shadowStyle);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(
+    DEFAULT_THEME.themeMode,
+  );
+  const [radiusScale, setRadiusScale] = useState<RadiusScale>(
+    DEFAULT_THEME.radiusScale,
+  );
+  const [shadowStyle, setShadowStyle] = useState<ShadowStyle>(
+    DEFAULT_THEME.shadowStyle,
+  );
 
   const [logoPrompt, setLogoPrompt] = useState<string>(
     "Bold industrial repair shop logo with a strong shield emblem",
   );
-  const [transparentBackground, setTransparentBackground] = useState<boolean>(true);
+  const [transparentBackground, setTransparentBackground] =
+    useState<boolean>(true);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [assets, setAssets] = useState<BrandAsset[]>([]);
 
   const activeLogo = useMemo(
-    () => assets.find((asset) => asset.kind === "logo" && asset.is_active) ?? null,
+    () =>
+      assets.find((asset) => asset.kind === "logo" && asset.is_active) ?? null,
     [assets],
   );
 
@@ -419,6 +414,47 @@ export default function BrandStudioCard() {
     setShadowStyle(DEFAULT_THEME.shadowStyle);
   }
 
+  function applyStylePreset(presetName: StylePreset) {
+    const preset = getBrandStylePreset(presetName);
+    setStylePreset(preset.stylePreset);
+    setPrimaryColor(preset.primaryColor);
+    setSecondaryColor(preset.secondaryColor);
+    setAccentColor(preset.accentColor);
+    setAppBackground(preset.appBackground);
+    setAppBackgroundSecondary(preset.appBackgroundSecondary);
+    setSidebarBackground(preset.sidebarBackground);
+    setSidebarText(preset.sidebarText);
+    setSidebarActiveBackground(preset.sidebarActiveBackground);
+    setSidebarActiveText(preset.sidebarActiveText);
+    setHeaderBackground(preset.headerBackground);
+    setHeaderText(preset.headerText);
+    setCardBackground(preset.cardBackground);
+    setCardBorder(preset.cardBorder);
+    setSurface2Background(preset.surface2Background);
+    setTextPrimary(preset.textPrimary);
+    setTextSecondary(preset.textSecondary);
+    setTextMuted(preset.textMuted);
+    setButtonPrimaryBg(preset.buttonPrimaryBg);
+    setButtonPrimaryText(preset.buttonPrimaryText);
+    setButtonSecondaryBg(preset.buttonSecondaryBg);
+    setButtonSecondaryText(preset.buttonSecondaryText);
+    setInputBackground(preset.inputBackground);
+    setInputBorder(preset.inputBorder);
+    setInputText(preset.inputText);
+    setThemeMode(preset.themeMode);
+    setRadiusScale(preset.radiusScale);
+    setShadowStyle(preset.shadowStyle);
+    setDashboardBackgroundMode(preset.dashboardBackgroundMode);
+    setDashboardBackgroundBase(preset.dashboardBackgroundBase);
+    setDashboardAmbientTint(preset.dashboardAmbientTint);
+    setDashboardGradientStart(preset.dashboardGradientStart);
+    setDashboardGradientEnd(preset.dashboardGradientEnd);
+    setDashboardGradientAccent(preset.dashboardGradientAccent);
+    toast.success(
+      `${BRAND_STYLE_PRESETS.find(({ value }) => value === presetName)?.label ?? "Theme"} preset applied. Save to publish.`,
+    );
+  }
+
   function randomizeTheme() {
     const nextPrimary = randomHexColor();
     const nextAccent = randomHexColor();
@@ -439,7 +475,7 @@ export default function BrandStudioCard() {
     setPrimaryColor(nextPrimary);
     setAccentColor(nextAccent);
     setSecondaryColor(nextSecondary);
-    setStylePreset(randomFromList(STYLE_PRESETS).value);
+    setStylePreset(randomFromList(BRAND_STYLE_PRESETS).value);
 
     setAppBackground(nextAppBg);
     setAppBackgroundSecondary(nextAppBgSecondary);
@@ -485,22 +521,32 @@ export default function BrandStudioCard() {
         fetch("/api/branding/user-preferences", { cache: "no-store" }),
       ]);
 
-      const profileJson = (await profileRes.json().catch(() => ({}))) as BrandProfileResponse;
-      const assetsJson = (await assetsRes.json().catch(() => ({}))) as BrandAssetsResponse;
-      const prefJson = (await prefRes.json().catch(() => ({}))) as UserPreferenceResponse;
+      const profileJson = (await profileRes
+        .json()
+        .catch(() => ({}))) as BrandProfileResponse;
+      const assetsJson = (await assetsRes
+        .json()
+        .catch(() => ({}))) as BrandAssetsResponse;
+      const prefJson = (await prefRes
+        .json()
+        .catch(() => ({}))) as UserPreferenceResponse;
 
       if (profileJson?.ok && profileJson.profile) {
         const p = profileJson.profile;
         setPrimaryColor(p.primary_color || DEFAULT_THEME.primaryColor);
         setSecondaryColor(p.secondary_color || DEFAULT_THEME.secondaryColor);
         setAccentColor(p.accent_color || DEFAULT_THEME.accentColor);
-        setStylePreset((p.style_preset as StylePreset | null) || DEFAULT_THEME.stylePreset);
+        setStylePreset(
+          (p.style_preset as StylePreset | null) || DEFAULT_THEME.stylePreset,
+        );
 
         setAppBackground(p.app_background || DEFAULT_THEME.appBackground);
         setAppBackgroundSecondary(
           p.app_background_secondary || DEFAULT_THEME.appBackgroundSecondary,
         );
-        setSidebarBackground(p.sidebar_background || DEFAULT_THEME.sidebarBackground);
+        setSidebarBackground(
+          p.sidebar_background || DEFAULT_THEME.sidebarBackground,
+        );
         setSidebarText(p.sidebar_text || DEFAULT_THEME.sidebarText);
         setSidebarActiveBackground(
           p.sidebar_active_background ||
@@ -510,7 +556,9 @@ export default function BrandStudioCard() {
         setSidebarActiveText(
           p.sidebar_active_text || DEFAULT_THEME.sidebarActiveText,
         );
-        setHeaderBackground(p.header_background || DEFAULT_THEME.headerBackground);
+        setHeaderBackground(
+          p.header_background || DEFAULT_THEME.headerBackground,
+        );
         setHeaderText(p.header_text || DEFAULT_THEME.headerText);
         setCardBackground(p.card_background || DEFAULT_THEME.cardBackground);
         setCardBorder(p.card_border || DEFAULT_THEME.cardBorder);
@@ -534,9 +582,7 @@ export default function BrandStudioCard() {
         setButtonSecondaryText(
           p.button_secondary_text || DEFAULT_THEME.buttonSecondaryText,
         );
-        setInputBackground(
-          p.input_background || DEFAULT_THEME.inputBackground,
-        );
+        setInputBackground(p.input_background || DEFAULT_THEME.inputBackground);
         setInputBorder(p.input_border || DEFAULT_THEME.inputBorder);
         setInputText(p.input_text || DEFAULT_THEME.inputText);
         const dashboardBg = pickDashboardBackgroundMetadata(p.metadata);
@@ -546,11 +592,15 @@ export default function BrandStudioCard() {
         setDashboardGradientStart(dashboardBg.gradientStart);
         setDashboardGradientEnd(dashboardBg.gradientEnd);
         setDashboardGradientAccent(dashboardBg.gradientAccent);
-        setProfileMetadata((p.metadata as Record<string, unknown> | null) ?? {});
+        setProfileMetadata(
+          (p.metadata as Record<string, unknown> | null) ?? {},
+        );
       }
 
       if (prefJson?.ok && prefJson.preferences) {
-        setThemeMode(prefJson.preferences.theme_mode || DEFAULT_THEME.themeMode);
+        setThemeMode(
+          prefJson.preferences.theme_mode || DEFAULT_THEME.themeMode,
+        );
         setRadiusScale(
           prefJson.preferences.radius_scale || DEFAULT_THEME.radiusScale,
         );
@@ -867,9 +917,7 @@ export default function BrandStudioCard() {
       }
 
       toast.success(
-        basedOnAssetId
-          ? "Generated more like this"
-          : "Logo concepts generated",
+        basedOnAssetId ? "Generated more like this" : "Logo concepts generated",
       );
       await load();
     } catch (error) {
@@ -897,7 +945,10 @@ export default function BrandStudioCard() {
         </div>
 
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
-          Active style: <span className="font-medium text-[color:var(--theme-text-primary)]">{stylePreset}</span>
+          Active style:{" "}
+          <span className="font-medium text-[color:var(--theme-text-primary)]">
+            {stylePreset}
+          </span>
         </div>
       </div>
 
@@ -925,7 +976,10 @@ export default function BrandStudioCard() {
                 style={{ backgroundColor: primaryColor }}
               />
               <div>
-                <div className="text-sm font-semibold" style={{ color: textPrimary }}>
+                <div
+                  className="text-sm font-semibold"
+                  style={{ color: textPrimary }}
+                >
                   Shop identity
                 </div>
                 <div className="text-xs" style={{ color: textSecondary }}>
@@ -937,13 +991,19 @@ export default function BrandStudioCard() {
             <div className="mt-4 flex gap-2">
               <span
                 className="inline-flex rounded-full px-3 py-1 text-xs font-medium"
-                style={{ backgroundColor: accentColor, color: buttonPrimaryText }}
+                style={{
+                  backgroundColor: accentColor,
+                  color: buttonPrimaryText,
+                }}
               >
                 Accent
               </span>
               <span
                 className="inline-flex rounded-full px-3 py-1 text-xs font-medium"
-                style={{ backgroundColor: primaryColor, color: buttonPrimaryText }}
+                style={{
+                  backgroundColor: primaryColor,
+                  color: buttonPrimaryText,
+                }}
               >
                 Primary
               </span>
@@ -973,7 +1033,9 @@ export default function BrandStudioCard() {
               />
             ) : (
               <div className="text-center">
-                <div className="text-xl font-semibold text-[color:var(--theme-text-primary)]">ProFixIQ</div>
+                <div className="text-xl font-semibold text-[color:var(--theme-text-primary)]">
+                  ProFixIQ
+                </div>
                 <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
                   Upload or generate a logo to brand the app
                 </div>
@@ -1012,7 +1074,7 @@ export default function BrandStudioCard() {
             variant="outline"
             onClick={() => {
               setLogoPrompt(randomFromList(PROMPT_PRESETS).prompt);
-              setStylePreset(randomFromList(STYLE_PRESETS).value);
+              setStylePreset(randomFromList(BRAND_STYLE_PRESETS).value);
               toast.success("Random logo prompt selected");
             }}
           >
@@ -1147,7 +1209,9 @@ export default function BrandStudioCard() {
 
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">Brand colors</div>
+            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+              Brand colors
+            </div>
             <div className="flex flex-wrap gap-3">
               <Button type="button" variant="outline" onClick={randomizeTheme}>
                 Randomize theme
@@ -1186,15 +1250,20 @@ export default function BrandStudioCard() {
             </label>
             <select
               value={stylePreset}
-              onChange={(e) => setStylePreset(e.target.value as StylePreset)}
+              onChange={(e) => applyStylePreset(e.target.value as StylePreset)}
               className="h-11 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
             >
-              {STYLE_PRESETS.map((preset) => (
+              {BRAND_STYLE_PRESETS.map((preset) => (
                 <option key={preset.value} value={preset.value}>
                   {preset.label}
                 </option>
               ))}
             </select>
+            <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+              Selecting a preset replaces all brand, surface, text, button,
+              input, and dashboard colors below. Save the brand profile to
+              publish it.
+            </p>
           </div>
         </div>
 
@@ -1203,7 +1272,11 @@ export default function BrandStudioCard() {
             Surface colors
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <ColorField label="App background" value={appBackground} onChange={setAppBackground} />
+            <ColorField
+              label="App background"
+              value={appBackground}
+              onChange={setAppBackground}
+            />
             <ColorField
               label="App background secondary"
               value={appBackgroundSecondary}
@@ -1214,7 +1287,11 @@ export default function BrandStudioCard() {
               value={sidebarBackground}
               onChange={setSidebarBackground}
             />
-            <ColorField label="Sidebar text" value={sidebarText} onChange={setSidebarText} />
+            <ColorField
+              label="Sidebar text"
+              value={sidebarText}
+              onChange={setSidebarText}
+            />
             <ColorField
               label="Sidebar active background"
               value={sidebarActiveBackground}
@@ -1230,13 +1307,21 @@ export default function BrandStudioCard() {
               value={headerBackground}
               onChange={setHeaderBackground}
             />
-            <ColorField label="Header text" value={headerText} onChange={setHeaderText} />
+            <ColorField
+              label="Header text"
+              value={headerText}
+              onChange={setHeaderText}
+            />
             <ColorField
               label="Card background"
               value={cardBackground}
               onChange={setCardBackground}
             />
-            <ColorField label="Card border" value={cardBorder} onChange={setCardBorder} />
+            <ColorField
+              label="Card border"
+              value={cardBorder}
+              onChange={setCardBorder}
+            />
             <ColorField
               label="Secondary surface"
               value={surface2Background}
@@ -1257,7 +1342,9 @@ export default function BrandStudioCard() {
               <select
                 value={dashboardBackgroundMode}
                 onChange={(e) =>
-                  setDashboardBackgroundMode(e.target.value === "gradient" ? "gradient" : "solid")
+                  setDashboardBackgroundMode(
+                    e.target.value === "gradient" ? "gradient" : "solid",
+                  )
                 }
                 className="h-11 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
               >
@@ -1296,7 +1383,8 @@ export default function BrandStudioCard() {
             ) : null}
           </div>
           <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
-            Controls the ambient background layer used on the main dashboard page.
+            Controls the ambient background layer used on the main dashboard
+            page.
           </p>
         </div>
 
@@ -1305,9 +1393,21 @@ export default function BrandStudioCard() {
             Text, buttons, and inputs
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <ColorField label="Text primary" value={textPrimary} onChange={setTextPrimary} />
-            <ColorField label="Text secondary" value={textSecondary} onChange={setTextSecondary} />
-            <ColorField label="Text muted" value={textMuted} onChange={setTextMuted} />
+            <ColorField
+              label="Text primary"
+              value={textPrimary}
+              onChange={setTextPrimary}
+            />
+            <ColorField
+              label="Text secondary"
+              value={textSecondary}
+              onChange={setTextSecondary}
+            />
+            <ColorField
+              label="Text muted"
+              value={textMuted}
+              onChange={setTextMuted}
+            />
             <ColorField
               label="Button primary background"
               value={buttonPrimaryBg}
@@ -1333,19 +1433,33 @@ export default function BrandStudioCard() {
               value={inputBackground}
               onChange={setInputBackground}
             />
-            <ColorField label="Input border" value={inputBorder} onChange={setInputBorder} />
-            <ColorField label="Input text" value={inputText} onChange={setInputText} />
+            <ColorField
+              label="Input border"
+              value={inputBorder}
+              onChange={setInputBorder}
+            />
+            <ColorField
+              label="Input text"
+              value={inputText}
+              onChange={setInputText}
+            />
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            <Button type="button" onClick={() => void saveProfile()} disabled={saving}>
+            <Button
+              type="button"
+              onClick={() => void saveProfile()}
+              disabled={saving}
+            >
               {saving ? "Saving…" : "Save brand profile"}
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() => void load()}
-              disabled={loading || uploading || saving || generating || savingPrefs}
+              disabled={
+                loading || uploading || saving || generating || savingPrefs
+              }
             >
               Refresh
             </Button>
@@ -1354,7 +1468,9 @@ export default function BrandStudioCard() {
 
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">Saved logos</div>
+            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+              Saved logos
+            </div>
             <div className="flex flex-wrap gap-2">
               {FILTERS.map((key) => (
                 <button
@@ -1374,14 +1490,20 @@ export default function BrandStudioCard() {
           </div>
 
           {loading ? (
-            <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading brand assets…</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">
+              Loading brand assets…
+            </div>
           ) : filteredAssets.length === 0 ? (
-            <div className="text-sm text-[color:var(--theme-text-secondary)]">No logos in this view.</div>
+            <div className="text-sm text-[color:var(--theme-text-secondary)]">
+              No logos in this view.
+            </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {filteredAssets.map((asset) => {
                 const generated = isGeneratedAsset(asset);
-                const transparent = Boolean(asset.metadata?.transparent_background);
+                const transparent = Boolean(
+                  asset.metadata?.transparent_background,
+                );
                 const archived = Boolean(asset.archived_at);
                 const favorite = Boolean(asset.is_favorite);
 
@@ -1435,7 +1557,9 @@ export default function BrandStudioCard() {
                           unoptimized
                         />
                       ) : (
-                        <div className="text-xs text-[color:var(--theme-text-muted)]">No preview</div>
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">
+                          No preview
+                        </div>
                       )}
                     </div>
 
@@ -1444,7 +1568,11 @@ export default function BrandStudioCard() {
                         {asset.file_name || "Logo"}
                       </div>
                       <div className="text-xs text-[color:var(--theme-text-muted)]">
-                        {asset.is_active ? "Active" : archived ? "Archived" : "Saved"}
+                        {asset.is_active
+                          ? "Active"
+                          : archived
+                            ? "Archived"
+                            : "Saved"}
                       </div>
                     </div>
 
