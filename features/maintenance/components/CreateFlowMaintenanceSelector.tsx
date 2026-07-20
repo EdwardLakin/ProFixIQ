@@ -263,7 +263,7 @@ export default function CreateFlowMaintenanceSelector({
             onClick={() => void addSelectedToQuote()}
             disabled={!workOrderId || selectedServiceCodes.length === 0 || adding}
             title={!workOrderId ? "Save & Continue before adding items to the quote." : undefined}
-            className="rounded-full border border-[color:var(--copper,#C57A4A)]/70 bg-[color:var(--copper,#C57A4A)]/12 px-3 py-1.5 text-xs font-semibold text-[color:var(--copper,#C57A4A)] hover:bg-[color:var(--copper,#C57A4A)]/18 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/12 px-3 py-1.5 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/18 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {adding
               ? "Adding..."
