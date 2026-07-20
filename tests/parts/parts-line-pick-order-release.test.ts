@@ -23,6 +23,10 @@ const pickModal = readFileSync(
   "features/parts/components/PickOrderTaskModal.tsx",
   "utf8",
 );
+const dismissMigration = readFileSync(
+  "supabase/migrations/20260720034000_cancel_unmaterialized_request_items.sql",
+  "utf8",
+);
 const receiving = readFileSync("app/parts/receiving/page.tsx", "utf8");
 const notifications = readFileSync(
   "features/agent/server/syncAssistantNotifications.ts",
@@ -76,6 +80,26 @@ describe("work-order line parts release and Pick / Order flow", () => {
     expect(pickModal).toContain("Attach inventory");
     expect(pickModal).toContain("/allocate");
     expect(pickModal).toContain("Idempotency-Key");
+    expect(pickModal).toContain("Dismiss duplicate");
+    expect(pickModal).toContain("/cancel");
+  });
+
+  it("keeps the action footer visible while only the item list scrolls", () => {
+    expect(pickModal).toContain("max-h-[calc(100dvh-2rem)]");
+    expect(pickModal).toContain("min-h-0 flex-1");
+    expect(pickModal).toContain("shrink-0 flex-wrap");
+    expect(pickModal).not.toContain("max-h-[62vh]");
+  });
+
+  it("can cancel an untouched duplicate before work-order-part materialization", () => {
+    expect(dismissMigration).toContain(
+      "function public.parts_cancel_request_item",
+    );
+    expect(dismissMigration).toContain("if found then");
+    expect(dismissMigration).toContain("set status = 'cancelled'");
+    expect(dismissMigration).toContain(
+      "set_config('app.parts_lifecycle_reconciling', '1', true)",
+    );
   });
 
   it("keeps approved fulfillment out of Receiving until a PO quantity exists", () => {
