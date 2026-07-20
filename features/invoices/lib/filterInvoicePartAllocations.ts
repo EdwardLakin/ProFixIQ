@@ -1,5 +1,3 @@
-import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
-
 type AllocationIdentity = {
   part_id: string;
   source_request_item_id?: string | null;
@@ -29,9 +27,17 @@ export function filterInvoicePartAllocations<
         typeof partId === "string" && partId.trim().length > 0,
       ),
   );
+  const billableSourceItemIds = new Set(
+    billableStagedParts
+      .map((part) => part.source_parts_request_item_id)
+      .filter((itemId): itemId is string =>
+        typeof itemId === "string" && itemId.trim().length > 0,
+      ),
+  );
 
-  return filterAllocationsNotBackedByCanonicalParts(
-    args.allocations,
-    billableStagedParts,
-  ).filter((allocation) => !billablePartIds.has(allocation.part_id));
+  return args.allocations.filter((allocation) => {
+    const sourceItemId = allocation.source_request_item_id;
+    if (sourceItemId && billableSourceItemIds.has(sourceItemId)) return false;
+    return !billablePartIds.has(allocation.part_id);
+  });
 }
