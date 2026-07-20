@@ -29,30 +29,34 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  const rows = await Promise.all(
+  const snapshotResults = await Promise.all(
     (data ?? []).map(async (row) => {
-      try {
-        const snapshot = await getInvoiceSnapshotForWorkOrder({
-          supabase: access.supabase,
-          workOrderId: row.id,
-        });
+      const snapshot = await getInvoiceSnapshotForWorkOrder({
+        supabase: access.supabase,
+        workOrderId: row.id,
+      });
 
-        return {
-          ...row,
-          resolved_labor_total: snapshot.laborCost ?? 0,
-          resolved_parts_total: snapshot.partsCost ?? 0,
-          resolved_invoice_total: snapshot.total ?? 0,
-        };
-      } catch {
-        return {
-          ...row,
-          resolved_labor_total: 0,
-          resolved_parts_total: 0,
-          resolved_invoice_total: 0,
-        };
-      }
+      return {
+        ...row,
+        resolved_labor_total: snapshot.laborCost ?? 0,
+        resolved_parts_total: snapshot.partsCost ?? 0,
+        resolved_invoice_total: snapshot.total ?? 0,
+      };
     }),
-  );
+  ).catch((snapshotError: unknown) => {
+    const message =
+      snapshotError instanceof Error
+        ? snapshotError.message
+        : "Failed to resolve invoice totals";
+    return { error: message };
+  });
 
-  return NextResponse.json({ ok: true, rows });
+  if (!Array.isArray(snapshotResults)) {
+    return NextResponse.json(
+      { ok: false, error: snapshotResults.error },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, rows: snapshotResults });
 }

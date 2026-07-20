@@ -27,6 +27,10 @@ type HistoricalInvoiceRow = Invoice & {
   customers: Pick<Customer, "first_name" | "last_name" | "email"> | null;
 };
 
+type BillingWorkOrdersResponse =
+  | { ok: true; rows: Row[] }
+  | { ok: false; error?: string };
+
 type InvoiceMetadata = {
   imported?: boolean;
   read_only?: boolean;
@@ -146,28 +150,20 @@ export default function BillingPage(): JSX.Element {
       if (!options?.background) setLoading(true);
       setErr(null);
 
-      let query = supabase
-        .from("work_orders")
-        .select(
-          `
-        *,
-        customers:customers(first_name,last_name,email),
-        vehicles:vehicles(year,make,model,license_plate)
-      `,
-        )
-        .order("updated_at", { ascending: false })
-        .limit(100);
+      const billingRes = await fetch("/api/billing/work-orders", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      const billingJson = (await billingRes.json().catch(() => null)) as
+        | BillingWorkOrdersResponse
+        | null;
 
-      if (status && (BILLING_STATUSES as string[]).includes(status)) {
-        query = query.eq("status", status);
-      } else {
-        query = query.in("status", BILLING_STATUSES as unknown as string[]);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        setErr(error.message);
+      if (!billingRes.ok || !billingJson?.ok) {
+        setErr(
+          billingJson && "error" in billingJson && billingJson.error
+            ? billingJson.error
+            : "Failed to load billing work orders.",
+        );
         setRows([]);
         setLoading(false);
         return;
@@ -188,13 +184,18 @@ export default function BillingPage(): JSX.Element {
         return;
       }
 
-      const baseRows = (data ?? []) as Row[];
+      const baseRows = billingJson.rows;
       const qlc = q.trim().toLowerCase();
+
+      const statusFilteredRows =
+        status && (BILLING_STATUSES as string[]).includes(status)
+          ? baseRows.filter((r) => r.status === status)
+          : baseRows;
 
       const filtered =
         qlc.length === 0
-          ? baseRows
-          : baseRows.filter((r) => {
+          ? statusFilteredRows
+          : statusFilteredRows.filter((r) => {
               const name = [
                 r.customers?.first_name ?? "",
                 r.customers?.last_name ?? "",

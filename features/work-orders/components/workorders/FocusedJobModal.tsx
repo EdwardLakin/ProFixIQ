@@ -91,6 +91,7 @@ type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
 type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
   parts?: { name: string | null } | null;
@@ -109,6 +110,11 @@ type RequiredPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(value);
+}
+
+function numberOrNull(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 type WorkflowStatus =
@@ -191,6 +197,7 @@ export default function FocusedJobModal(props: {
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
 
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -304,6 +311,15 @@ export default function FocusedJobModal(props: {
             } catch (e) {
               console.warn("[FocusedJob] set_current_shop_id failed:", e);
             }
+
+            const { data: shop } = await supabase
+              .from("shops")
+              .select("labor_rate")
+              .eq("id", sid)
+              .maybeSingle<Pick<Shop, "labor_rate">>();
+            if (!cancelled) setShopLaborRate(numberOrNull(shop?.labor_rate));
+          } else {
+            setShopLaborRate(null);
           }
 
           if (wo?.vehicle_id) {
@@ -335,6 +351,7 @@ export default function FocusedJobModal(props: {
           setWorkOrder(null);
           setVehicle(null);
           setCustomer(null);
+          setShopLaborRate(null);
         }
       } catch (e) {
         const err = e as { message?: string };
@@ -617,7 +634,15 @@ export default function FocusedJobModal(props: {
   const isPanelVariant = variant === "panel";
   const isExpandedPanel = isPanelVariant;
   const pricing = line
-    ? resolveWorkOrderLinePricing({ line, shopLaborRate: null, allocatedParts: filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts), stagedParts: requiredParts })
+    ? resolveWorkOrderLinePricing({
+        line,
+        shopLaborRate,
+        allocatedParts: filterAllocationsNotBackedByCanonicalParts(
+          allocs,
+          requiredParts,
+        ),
+        stagedParts: requiredParts,
+      })
     : null;
   const laborDisplay = formatLaborSummary(pricing?.laborHours, Number(pricing?.laborTotal ?? 0));
   const lineTotal = Number(pricing?.lineTotal ?? 0);

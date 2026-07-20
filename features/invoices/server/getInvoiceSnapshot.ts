@@ -99,6 +99,7 @@ export type InvoiceSnapshot = {
     | "shop_supplies_percent"
     | "shop_supplies_flat_amount"
     | "shop_supplies_cap_amount"
+    | "tax_rate"
   > | null;
   customer: Pick<
     CustomerRow,
@@ -152,6 +153,16 @@ function safeNumber(v: unknown): number {
 function positiveOrNull(v: unknown): number | null {
   const n = safeNumberOrNull(v);
   return n != null && n > 0 ? n : null;
+}
+
+function roundMoney(value: number): number {
+  return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
+}
+
+function taxRateFraction(value: unknown): number {
+  const rate = safeNumberOrNull(value);
+  if (rate == null || rate <= 0) return 0;
+  return rate > 1 ? rate / 100 : rate;
 }
 
 function normalizeInvoiceCurrency(v: unknown): "CAD" | "USD" | null {
@@ -266,7 +277,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: workOrder, error: woErr } = await supabase
     .from("work_orders")
     .select(
-      "id, shop_id, customer_id, vehicle_id, customer_name, custom_id, labor_total, parts_total, invoice_total, created_at",
+      "id, shop_id, customer_id, vehicle_id, customer_name, custom_id, labor_total, parts_total, invoice_total, shop_supplies_enabled_override, shop_supplies_amount_override, created_at",
     )
     .eq("id", workOrderId)
     .maybeSingle<
@@ -322,7 +333,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: shop } = await supabase
     .from("shops")
     .select(
-      "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount",
+      "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount, tax_rate",
     )
     .eq("id", workOrder.shop_id)
     .maybeSingle<
@@ -342,9 +353,10 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     | "supplies_percent"
     | "shop_supplies_enabled"
     | "shop_supplies_type"
-    | "shop_supplies_percent"
-    | "shop_supplies_flat_amount"
-    | "shop_supplies_cap_amount"
+        | "shop_supplies_percent"
+        | "shop_supplies_flat_amount"
+        | "shop_supplies_cap_amount"
+        | "tax_rate"
       >
     >();
 
@@ -577,16 +589,16 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const partsMap = new Map<
     string,
-    Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">
+    Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit" | "price" | "supplier">
   >();
 
   if (partIds.length > 0) {
     const { data: partRows } = await supabase
       .from("parts")
-      .select("id, name, sku, part_number, unit")
+      .select("id, name, sku, part_number, unit, price, supplier")
       .eq("shop_id", workOrder.shop_id)
       .in("id", partIds)
-      .returns<Array<Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">>>();
+      .returns<Array<Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit" | "price" | "supplier">>>();
 
     for (const p of Array.isArray(partRows) ? partRows : []) {
       if (isNonEmptyString(p.id)) partsMap.set(p.id, p);
@@ -597,7 +609,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     const p = isNonEmptyString(a.part_id) ? partsMap.get(a.part_id) : undefined;
     const qtyRaw = safeNumber(a.qty);
     const qty = qtyRaw > 0 ? qtyRaw : 1;
-    const unitPrice = safeNumber(a.unit_cost);
+    const unitPrice = safeNumberOrNull(p?.price) ?? safeNumber(a.unit_cost);
     const totalPrice = Math.max(0, qty * unitPrice);
     const lidRaw = a.work_order_line_id;
     const lineId = isNonEmptyString(lidRaw) ? lidRaw.trim() : undefined;
@@ -612,6 +624,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       sku: (p?.sku ?? "").trim() || undefined,
       partNumber: (p?.part_number ?? "").trim() || undefined,
       unit: (p?.unit ?? "").trim() || undefined,
+      vendor: (p?.supplier ?? "").trim() || undefined,
       source: "work_order_part_allocation",
     };
   });
@@ -734,6 +747,15 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   let resolvedParts = 0;
   for (const line of lines) {
     const lineAllocations = byLineAlloc.get(line.id) ?? [];
+    const pricedLineAllocations = lineAllocations.map((part) => {
+      const catalogPart = isNonEmptyString(part.part_id)
+        ? partsMap.get(part.part_id)
+        : undefined;
+      return {
+        ...part,
+        unit_price: safeNumberOrNull(catalogPart?.price) ?? safeNumber(part.unit_cost),
+      };
+    });
     const lineStaged = byLineStaged.get(line.id) ?? [];
     const lineFallbackParts = fallbackPartsByLineForDisplay.get(line.id) ?? [];
     const stagedPricingParts =
@@ -752,7 +774,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       quote: byLineQuote.get(line.id) ?? null,
       shopLaborRate: safeNumberOrNull(shop?.labor_rate),
       stagedParts: stagedPricingParts,
-      allocatedParts: lineAllocations,
+      allocatedParts: pricedLineAllocations,
     });
     resolvedLabor += resolved.laborTotal;
     resolvedParts += resolved.partsTotal;
@@ -778,8 +800,12 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         ? baseSubtotal + shopSupplies.amount
         : null;
 
+  const derivedTax =
+    subtotal != null && invoice == null
+      ? roundMoney(Math.max(0, subtotal - invDiscount) * taxRateFraction(shop?.tax_rate))
+      : invTax;
   const derivedTotal =
-    subtotal != null ? Math.max(0, subtotal + invTax - invDiscount) : null;
+    subtotal != null ? roundMoney(Math.max(0, subtotal + derivedTax - invDiscount)) : null;
   const adjustedInvoiceTotal =
     invTotal != null && invSubtotal != null && invSubtotal <= baseSubtotal + 0.005
       ? invTotal + shopSupplies.amount
@@ -801,7 +827,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     shopSuppliesTotal,
     subtotal,
     discountTotal: invDiscount > 0 ? invDiscount : null,
-    taxTotal: invTax > 0 ? invTax : null,
+    taxTotal: derivedTax > 0 ? derivedTax : null,
     total,
   };
 }

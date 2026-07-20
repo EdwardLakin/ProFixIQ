@@ -87,7 +87,15 @@ export function resolveWorkOrderLinePricing(args: {
   const explicitLineLaborTotal = toNum(line.labor_total) ?? (partsTotal > 0 ? linePriceEstimate : null);
   const computedLaborForLineTotal = explicitLineLaborTotal != null && explicitLineLaborTotal > 0 ? explicitLineLaborTotal : laborHours * laborRate;
   const computedLineTotal = computedLaborForLineTotal + partsTotal;
-  const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? (partsTotal > 0 ? computedLineTotal : linePriceEstimate ?? computedLineTotal);
+  const quoteGrandTotal = toNum(quote?.grand_total);
+  const quoteSubtotal = toNum(quote?.subtotal);
+  const persistedQuoteTotal =
+    quoteGrandTotal != null && (quoteGrandTotal > 0 || computedLineTotal <= 0)
+      ? quoteGrandTotal
+      : quoteSubtotal != null && (quoteSubtotal > 0 || computedLineTotal <= 0)
+        ? quoteSubtotal
+        : null;
+  const lineTotal = persistedQuoteTotal ?? (partsTotal > 0 ? computedLineTotal : linePriceEstimate ?? computedLineTotal);
   const computedLaborTotal = laborHours * laborRate;
   const inferredLaborFromLineTotal = Math.max(0, lineTotal - partsTotal);
   const explicitLineLaborTotalIsUsable = explicitLineLaborTotal != null && explicitLineLaborTotal > 0;
