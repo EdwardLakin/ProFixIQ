@@ -37,6 +37,7 @@ type InboxItem = {
   description: string;
   status: string;
   qty_approved: number;
+  qty_ordered: number;
   qty_received: number;
   qty_remaining: number;
   qty_allocated: number;
@@ -104,11 +105,20 @@ export default function ReceivingInboxPage(): JSX.Element {
     const [{ data: priRows, error: priErr }, { count: rawCount }] = await Promise.all([
       supabase
         .from("part_request_items")
-        .select("id, created_at, request_id, part_id, description, status, qty_approved, qty_received, qty_consumed, po_id")
+        .select("id, created_at, request_id, part_id, description, status, qty_approved, qty_ordered, qty_received, qty_consumed, po_id")
         .eq("shop_id", sid)
+        .not("po_id", "is", null)
+        .gt("qty_ordered", 0)
+        .in("status", ["partially_ordered", "ordered", "partially_received"])
         .order("created_at", { ascending: true })
         .range(from, to),
-      supabase.from("part_request_items").select("id", { count: "exact", head: true }).eq("shop_id", sid),
+      supabase
+        .from("part_request_items")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", sid)
+        .not("po_id", "is", null)
+        .gt("qty_ordered", 0)
+        .in("status", ["partially_ordered", "ordered", "partially_received"]),
     ]);
 
     if (priErr) {
@@ -121,6 +131,7 @@ export default function ReceivingInboxPage(): JSX.Element {
       .map((r) => {
         const row = r as PartRequestItemRow;
         const approved = n(row.qty_approved);
+        const ordered = n(row.qty_ordered);
         const received = n(row.qty_received);
         return {
           id: String(row.id),
@@ -130,14 +141,15 @@ export default function ReceivingInboxPage(): JSX.Element {
           description: String(row.description ?? ""),
           status: String(row.status ?? ""),
           qty_approved: approved,
+          qty_ordered: ordered,
           qty_received: received,
-          qty_remaining: Math.max(0, approved - received),
+          qty_remaining: Math.max(0, ordered - received),
           qty_allocated: n(row.qty_consumed),
           po_id: row.po_id ?? null,
           work_order_id: null,
         };
       })
-      .filter((x) => x.qty_approved > 0 && x.qty_remaining > 0);
+      .filter((x) => x.po_id !== null && x.qty_ordered > 0 && x.qty_remaining > 0);
 
     setItems(normalized);
     setLastUpdated(new Date());
@@ -268,7 +280,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                 const partSummary = p ? toPartDisplaySummary(p) : null;
                 const trust = it.part_id ? trustByPartId[it.part_id] : undefined;
                 const itemState = toItemFlowDisplay({ rawStatus: it.status, qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
-                const recvState = toReceiveProgressDisplay({ qtyApproved: it.qty_approved, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
+                const recvState = toReceiveProgressDisplay({ qtyApproved: it.qty_ordered, qtyReceived: it.qty_received, qtyAllocated: it.qty_allocated });
                 return (
                   <tr key={it.id} className="border-t border-[color:var(--desktop-border)] align-top">
                     <td className="p-3.5">
@@ -283,7 +295,7 @@ export default function ReceivingInboxPage(): JSX.Element {
                       <span className="desktop-link-chip">{receiveProgressLabel(recvState)}</span>
                       {trust ? <span className={`ml-2 inline-flex rounded-full border px-2 py-1 text-xs ${trustBadgeTone(trust.level)}`}>{trustLevelLabel(trust.level)}</span> : null}
                     </td>
-                    <td className="p-3.5 tabular-nums text-[color:var(--theme-text-primary)]">{it.qty_received} / {it.qty_approved} <span className="text-[color:var(--theme-text-muted)]">({it.qty_remaining} rem)</span></td>
+                    <td className="p-3.5 tabular-nums text-[color:var(--theme-text-primary)]">{it.qty_received} / {it.qty_ordered} ordered <span className="text-[color:var(--theme-text-muted)]">({it.qty_remaining} rem)</span></td>
                     <td className="p-3.5"><button onClick={() => {setDrawerItem({ ...it, part_name: partSummary?.name ?? null, sku: partSummary?.sku ?? null, trust_level: trust?.level, trust_reasons: trust?.reasons ?? [] }); setDrawerOpen(true);}} className="rounded-lg border border-sky-500/35 px-3 py-1 text-sky-200">Receive</button></td>
                   </tr>
                 );

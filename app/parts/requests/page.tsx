@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import PickOrderTaskModal from "@/features/parts/components/PickOrderTaskModal";
 import {
   earliestPartsRequestStage,
   isPartsRequestItemHandedOff,
@@ -368,10 +369,12 @@ function QueueCard({
   bucket,
   handingOff,
   onHandoff,
+  onOpenPickOrder,
 }: {
   bucket: WoBucket;
   handingOff: boolean;
   onHandoff: (bucket: WoBucket) => Promise<void>;
+  onOpenPickOrder: (bucket: WoBucket) => void;
 }) {
   const meta = bucket.stage === "completed" ? null : STAGE_META[bucket.stage];
   const href = requestHref(bucket);
@@ -462,6 +465,14 @@ function QueueCard({
           <Wrench className="h-4 w-4" />
           {handingOff ? "Completing handoff…" : "Complete handoff"}
         </button>
+      ) : bucket.stage === "order_receive" ? (
+        <button
+          type="button"
+          onClick={() => onOpenPickOrder(bucket)}
+          className={`mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${meta?.button}`}
+        >
+          <ShoppingCart className="h-4 w-4" /> Open Pick / Order task
+        </button>
       ) : (
         <Link
           href={href}
@@ -529,6 +540,7 @@ export default function PartsRequestsPage(): JSX.Element {
   const [handingOffWorkOrder, setHandingOffWorkOrder] = useState<string | null>(
     null,
   );
+  const [pickOrderBucket, setPickOrderBucket] = useState<WoBucket | null>(null);
 
   const reload = useCallback(async () => {
     const sequence = ++reloadSequence.current;
@@ -692,6 +704,26 @@ export default function PartsRequestsPage(): JSX.Element {
     () => buildBuckets(completedModels, workOrders),
     [completedModels, workOrders],
   );
+
+  useEffect(() => {
+    if (loading || tab !== "active" || pickOrderBucket) return;
+    const next = activeBuckets.find(
+      (bucket) => bucket.stage === "order_receive",
+    );
+    if (!next) return;
+    const fingerprint = next.models
+      .map((model) => model.request.id)
+      .sort()
+      .join(":");
+    const storageKey = `parts-pick-order-seen:${fingerprint}`;
+    try {
+      if (window.sessionStorage.getItem(storageKey)) return;
+      window.sessionStorage.setItem(storageKey, "1");
+    } catch {
+      // Storage can be unavailable in locked-down browser contexts.
+    }
+    setPickOrderBucket(next);
+  }, [activeBuckets, loading, pickOrderBucket, tab]);
 
   const visibleBuckets = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -918,6 +950,7 @@ export default function PartsRequestsPage(): JSX.Element {
                         bucket={bucket}
                         handingOff={handingOffWorkOrder === bucket.workOrderId}
                         onHandoff={completeHandoff}
+                        onOpenPickOrder={setPickOrderBucket}
                       />
                     ))
                   ) : (
@@ -938,6 +971,7 @@ export default function PartsRequestsPage(): JSX.Element {
               bucket={bucket}
               handingOff={false}
               onHandoff={completeHandoff}
+              onOpenPickOrder={setPickOrderBucket}
             />
           ))}
         </div>
@@ -949,6 +983,18 @@ export default function PartsRequestsPage(): JSX.Element {
           </p>
         </div>
       )}
+
+      <PickOrderTaskModal
+        open={pickOrderBucket !== null}
+        workOrderId={pickOrderBucket?.workOrderId ?? null}
+        workOrderLabel={
+          pickOrderBucket ? workOrderLabel(pickOrderBucket) : "Work order"
+        }
+        customerName={pickOrderBucket?.customerName}
+        vehicleLabel={pickOrderBucket?.vehicleLabel}
+        onClose={() => setPickOrderBucket(null)}
+        onChanged={reload}
+      />
     </main>
   );
 }

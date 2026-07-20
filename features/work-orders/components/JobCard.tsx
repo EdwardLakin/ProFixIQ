@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type JSX, type MouseEvent } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Wrench } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, PackagePlus, Wrench } from "lucide-react";
 
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
@@ -52,6 +52,9 @@ type JobCardProps = {
   onPriorityChange?: (priority: JobLinePriority) => void;
   onOpenInspection?: () => void;
   onAddPart?: () => void;
+  onRequestParts?: () => void;
+  requestPartsLabel?: string;
+  requestPartsBusy?: boolean;
   onDelete?: () => void;
   pricing?: PricingSummary | null;
   reviewIssues?: ReviewIssue[];
@@ -308,6 +311,9 @@ export function JobCard({
   onPriorityChange,
   onOpenInspection,
   onAddPart,
+  onRequestParts,
+  requestPartsLabel = "Request all parts",
+  requestPartsBusy = false,
   onDelete,
   pricing,
   reviewIssues,
@@ -376,6 +382,16 @@ export function JobCard({
   const handleDeleteActionClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onDelete?.();
+  };
+
+  const handleAddPartClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onAddPart?.();
+  };
+
+  const handleRequestPartsClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onRequestParts?.();
   };
 
   return (
@@ -468,8 +484,22 @@ export function JobCard({
                 ) : null}
 
                 {onAddPart ? (
-                  <Button type="button" variant="secondary" size="sm" onClick={onAddPart}>
+                  <Button type="button" variant="secondary" size="sm" onClick={handleAddPartClick}>
                     Add Part
+                  </Button>
+                ) : null}
+
+                {onRequestParts ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleRequestPartsClick}
+                    disabled={requestPartsBusy}
+                    className="border-sky-400/45 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20"
+                  >
+                    <PackagePlus className="mr-1 h-4 w-4" />
+                    {requestPartsBusy ? "Requesting…" : requestPartsLabel}
                   </Button>
                 ) : null}
 
