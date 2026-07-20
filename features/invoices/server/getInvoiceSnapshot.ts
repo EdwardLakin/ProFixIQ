@@ -7,7 +7,7 @@ import {
   resolveShopSuppliesSettings,
 } from "@/features/work-orders/lib/shopSupplies";
 import { calculateInvoiceTotals } from "@/features/invoices/lib/invoiceTotals";
-import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
+import { filterInvoicePartAllocations } from "@/features/invoices/lib/filterInvoicePartAllocations";
 
 type DB = Database;
 
@@ -336,7 +336,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       >
     >();
 
-  const { data: shop } = await supabase
+  const shopResult = await supabase
     .from("shops")
     .select(
       "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount, tax_rate",
@@ -365,6 +365,58 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     | "tax_rate"
       >
     >();
+
+  // Keep the core labor/tax lookup usable when a deployment has not refreshed
+  // every optional shop-supplies column yet. PostgREST rejects the entire
+  // select when even one selected column is unavailable, which previously
+  // turned a configured $140 rate into a null shop row and then a $1 fallback.
+  const shopFallbackResult = shopResult.error || !shopResult.data
+    ? await supabase
+        .from("shops")
+        .select(
+          "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, tax_rate",
+        )
+        .eq("id", workOrder.shop_id)
+        .maybeSingle<
+          Pick<
+            ShopRow,
+            | "business_name"
+            | "shop_name"
+            | "name"
+            | "country"
+            | "phone_number"
+            | "email"
+            | "street"
+            | "city"
+            | "province"
+            | "postal_code"
+            | "labor_rate"
+            | "supplies_percent"
+            | "tax_rate"
+          >
+        >()
+    : null;
+
+  if (shopFallbackResult?.error) {
+    throw new Error(
+      `Shop pricing configuration is unavailable: ${shopFallbackResult.error.message}`,
+    );
+  }
+
+  const shopCore = shopResult.data ?? shopFallbackResult?.data ?? null;
+  if (!shopCore) {
+    throw new Error("Shop labor and tax configuration could not be loaded.");
+  }
+  const shop = shopCore
+    ? ({
+        shop_supplies_enabled: null,
+        shop_supplies_type: null,
+        shop_supplies_percent: null,
+        shop_supplies_flat_amount: null,
+        shop_supplies_cap_amount: null,
+        ...shopCore,
+      } as InvoiceSnapshot["shop"])
+    : null;
 
   const { data: customer } = workOrder.customer_id
     ? await supabase
@@ -414,7 +466,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         >()
     : { data: null };
 
-  const { data: linesRaw } = await supabase
+  const { data: linesRaw, error: linesError } = await supabase
     .from("work_order_lines")
     .select("id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json")
     .eq("shop_id", workOrder.shop_id)
@@ -437,9 +489,13 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       >
     >();
 
+  if (linesError) {
+    throw new Error(`Work-order labor lines are unavailable: ${linesError.message}`);
+  }
+
   const lines = Array.isArray(linesRaw) ? linesRaw : [];
 
-  const { data: allocRaw } = await supabase
+  const { data: allocRaw, error: allocationsError } = await supabase
     .from("work_order_part_allocations")
     .select("id, shop_id, work_order_id, work_order_line_id, part_id, qty, unit_cost, source_request_item_id, created_at")
     .eq("shop_id", workOrder.shop_id)
@@ -454,8 +510,12 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       >
     >();
 
+  if (allocationsError) {
+    throw new Error(`Allocated work-order parts are unavailable: ${allocationsError.message}`);
+  }
+
   const allocs = Array.isArray(allocRaw) ? allocRaw : [];
-  const { data: stagedPartsRaw } = await supabase
+  const stagedPartsResult = await supabase
     .from("work_order_parts")
     .select("id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_requested, quantity_consumed, quantity_returned, quantity_cancelled, unit_sell_price_snapshot, lifecycle_status, source_parts_request_item_id, is_active")
     .eq("shop_id", workOrder.shop_id)
@@ -465,6 +525,43 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         Pick<WorkOrderPartRow, "id" | "shop_id" | "work_order_line_id" | "part_id" | "quantity" | "unit_price" | "total_price"> & Record<string, unknown>
       >
     >();
+
+  // The lifecycle/snapshot columns are newer than the original
+  // work_order_parts shape. Fall back to the stable pricing columns so an
+  // older deployed schema still invoices its attached parts instead of
+  // returning an empty parts array.
+  const stagedPartsFallbackResult = stagedPartsResult.error
+    ? await supabase
+        .from("work_order_parts")
+        .select(
+          "id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price",
+        )
+        .eq("shop_id", workOrder.shop_id)
+        .eq("work_order_id", workOrderId)
+        .returns<
+          Array<
+            Pick<
+              WorkOrderPartRow,
+              | "id"
+              | "shop_id"
+              | "work_order_line_id"
+              | "part_id"
+              | "quantity"
+              | "unit_price"
+              | "total_price"
+            >
+          >
+        >()
+    : null;
+
+  if (stagedPartsFallbackResult?.error) {
+    throw new Error(
+      `Attached work-order parts are unavailable: ${stagedPartsFallbackResult.error.message}`,
+    );
+  }
+
+  const stagedPartsRaw =
+    stagedPartsResult.data ?? stagedPartsFallbackResult?.data ?? [];
   const stagedParts = Array.isArray(stagedPartsRaw) ? stagedPartsRaw : [];
 
   const { data: quoteRaw } = await supabase
@@ -492,12 +589,11 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     }
   }
 
-  const { data: requestItemsRaw } = await supabase
+  const { data: requestItemsRaw, error: requestItemsError } = await supabase
     .from("part_request_items")
     .select("id, request_id, shop_id, work_order_id, work_order_line_id, quote_line_id, description, qty, qty_requested, qty_approved, quoted_price, unit_price, unit_cost, status, approved, part_id, vendor")
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
-    .not("work_order_line_id", "is", null)
     .returns<
       Array<
         Pick<
@@ -522,6 +618,10 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         >
       >
     >();
+
+  if (requestItemsError) {
+    throw new Error(`Parts pricing is unavailable: ${requestItemsError.message}`);
+  }
 
   const requestItems = Array.isArray(requestItemsRaw) ? requestItemsRaw : [];
   const requestIdsNeedingQuoteLink = Array.from(
@@ -617,7 +717,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   >();
 
   if (partIds.length > 0) {
-    const { data: partRows } = await supabase
+    const { data: partRows, error: partRowsError } = await supabase
       .from("parts")
       .select("id, name, sku, part_number, unit, price, default_price")
       .eq("shop_id", workOrder.shop_id)
@@ -636,6 +736,10 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
           >
         >
       >();
+
+    if (partRowsError) {
+      throw new Error(`Parts catalog pricing is unavailable: ${partRowsError.message}`);
+    }
 
     for (const p of Array.isArray(partRows) ? partRows : []) {
       if (isNonEmptyString(p.id)) partsMap.set(p.id, p);
@@ -763,21 +867,22 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     const lineAllocations = byLineAlloc.get(line.id) ?? [];
     const lineStaged = stagedPartsByLineForDisplay.get(line.id) ?? [];
     const rawLineStaged = byLineStaged.get(line.id) ?? [];
-    const canonicalPartIds = new Set(
-      rawLineStaged
-        .map((part) => part.part_id)
-        .filter(isNonEmptyString),
-    );
-    const unbackedAllocations = filterAllocationsNotBackedByCanonicalParts(
-      lineAllocations,
-      rawLineStaged as Array<{ source_parts_request_item_id?: string | null }>,
-    ).filter((allocation) => !canonicalPartIds.has(allocation.part_id));
+    const displayedStagedIds = new Set(lineStaged.map((part) => part.id));
+    const unbackedAllocations = filterInvoicePartAllocations({
+      allocations: lineAllocations,
+      stagedParts: rawLineStaged as Array<
+        typeof rawLineStaged[number] & {
+          source_parts_request_item_id?: string | null;
+        }
+      >,
+      displayedStagedPartIds: displayedStagedIds,
+    });
     const unbackedAllocationParts = unbackedAllocations.flatMap((allocation) => {
       const part = allocationPartById.get(String(allocation.id));
       return part ? [part] : [];
     });
 
-    if (rawLineStaged.length > 0) {
+    if (lineStaged.length > 0) {
       parts.push(...lineStaged);
       parts.push(...unbackedAllocationParts);
       continue;
@@ -797,6 +902,14 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   if (unpricedPart) {
     throw new Error(
       `Customer sell price is missing for ${unpricedPart.name || "an attached part"}.`,
+    );
+  }
+  if (
+    parts.length === 0 &&
+    (allocs.length > 0 || stagedInvoiceParts.length > 0 || fallbackRequestItems.length > 0)
+  ) {
+    throw new Error(
+      "Attached parts could not be resolved into invoice line items.",
     );
   }
 
@@ -855,7 +968,22 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     });
   }
 
-  const laborCost = invLabor ?? (resolvedLabor > 0 ? resolvedLabor : woLabor) ?? null;
+  const unresolvedLaborLine = pricedLines.find(
+    (line) => line.resolvedLaborHours > 0 && line.resolvedLaborTotal <= 0,
+  );
+  if (!invoice && unresolvedLaborLine) {
+    throw new Error(
+      `Labor rate is missing for ${unresolvedLaborLine.description || `line ${unresolvedLaborLine.line_no ?? ""}`.trim()}.`,
+    );
+  }
+
+  // Existing line items are authoritative. work_orders.labor_total has legacy
+  // rows where 1.0 represents labor hours, not $1.00, so only use that rollup
+  // when there are no itemized lines to price.
+  const laborCost =
+    invLabor ??
+    (resolvedLabor > 0 ? resolvedLabor : pricedLines.length === 0 ? woLabor : null) ??
+    null;
   const partsCost = invParts ?? (resolvedParts > 0 ? resolvedParts : woParts) ?? null;
 
   const baseSubtotal = (laborCost ?? 0) + (partsCost ?? 0);
