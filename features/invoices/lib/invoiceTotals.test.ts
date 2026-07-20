@@ -3,6 +3,23 @@ import { calculateInvoiceTotals } from "./invoiceTotals";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 
 describe("canonical invoice totals", () => {
+  it("matches the work-order page sources for EL000001", () => {
+    const line = resolveWorkOrderLinePricing({
+      line: { labor_time: 1, price_estimate: null },
+      shopLaborRate: 140,
+      allocatedParts: [
+        { qty: 6, unit_cost: 130 },
+        { qty: 1, unit_cost: 140.4 },
+      ],
+    });
+
+    expect(line.laborHours).toBe(1);
+    expect(line.laborRate).toBe(140);
+    expect(line.laborTotal).toBe(140);
+    expect(line.partsTotal).toBeCloseTo(920.4, 2);
+    expect(line.lineTotal).toBeCloseTo(1060.4, 2);
+  });
+
   it("keeps the EL000001 labor and sell-priced parts fixture consistent", () => {
     const line = resolveWorkOrderLinePricing({
       line: { labor_time: 1, price_estimate: null },

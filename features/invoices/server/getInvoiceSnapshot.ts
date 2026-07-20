@@ -336,6 +336,21 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       >
     >();
 
+  // Match the work-order page exactly for labor pricing. That page reads
+  // labor_rate in a dedicated query, so unrelated shop settings cannot turn
+  // one labor hour into one dollar on the billing card.
+  const { data: workOrderShopRate, error: workOrderShopRateError } = await supabase
+    .from("shops")
+    .select("labor_rate")
+    .eq("id", workOrder.shop_id)
+    .maybeSingle<Pick<ShopRow, "labor_rate">>();
+
+  if (workOrderShopRateError) {
+    throw new Error(
+      `Shop labor rate is unavailable: ${workOrderShopRateError.message}`,
+    );
+  }
+
   const shopResult = await supabase
     .from("shops")
     .select(
@@ -415,6 +430,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         shop_supplies_flat_amount: null,
         shop_supplies_cap_amount: null,
         ...shopCore,
+        labor_rate: workOrderShopRate?.labor_rate ?? shopCore.labor_rate,
       } as InvoiceSnapshot["shop"])
     : null;
 
@@ -755,9 +771,11 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       : undefined;
     const qtyRaw = safeNumber(a.qty);
     const qty = qtyRaw > 0 ? qtyRaw : 1;
-    // Allocations store shop cost. Customer billing must use the request/catalog
-    // sell price and must never silently expose unit_cost as the invoice price.
+    // Match FocusedJobModal's allocated-parts calculation exactly. The current
+    // work-order flow stores and displays the allocation price from unit_cost.
+    // Request/catalog values remain fallbacks for records without that value.
     const unitPrice =
+      safeNumber(a.unit_cost) ||
       (requestItem ? itemUnitPrice(requestItem) : 0) ||
       safeNumber(p?.price) ||
       safeNumber(p?.default_price);
