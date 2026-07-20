@@ -152,17 +152,15 @@ export default function CreateFlowMaintenanceSelector({
           (code) => !addedCodes.has(code.trim().toUpperCase()),
         ),
       );
+      const addedNotice =
+        `${addedCodes.size} maintenance item${addedCodes.size === 1 ? "" : "s"} added to the quote for approval.`;
       setNotice(
-        `${addedCodes.size} maintenance item${addedCodes.size === 1 ? "" : "s"} added to the quote for approval.`,
+        skipped.length > 0
+          ? `${addedNotice} Some items were skipped: ${skipped
+              .map((item) => `${item.serviceCode}: ${item.error}`)
+              .join("; ")}`
+          : addedNotice,
       );
-
-      if (skipped.length > 0) {
-        setError(
-          `Some items were skipped: ${skipped
-            .map((item) => `${item.serviceCode}: ${item.error}`)
-            .join("; ")}`,
-        );
-      }
 
       await onAdded?.();
     } catch (e) {
@@ -226,7 +224,7 @@ export default function CreateFlowMaintenanceSelector({
             Scheduled maintenance suggestions
           </h2>
           <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-            History-aware scheduled maintenance due for this vehicle. Selected items will be added after submit as pending approval items.
+            History-aware scheduled maintenance due for this vehicle. Select the items to add to this work order&apos;s quote as pending approval lines.
           </p>
           <p className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
             Separate lane from menu-items catalog and inspection-template quick add
