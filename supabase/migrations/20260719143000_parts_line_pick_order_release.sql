@@ -1,5 +1,53 @@
 begin;
 
+-- The application already treats waiting_parts as a canonical operational
+-- work-order-line status, but older production databases still enforce the
+-- original six-value vocabulary. Extend that contract before any request
+-- backfill can move an approved line into the Parts queue.
+create or replace function public.normalize_work_order_line_status()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.status := coalesce(lower(replace(new.status, ' ', '_')), 'awaiting');
+
+  new.status := case new.status
+    when 'queued' then 'active'
+    when 'in_progress' then 'active'
+    when 'assigned' then 'active'
+    when 'paused' then 'on_hold'
+    when 'declined' then 'on_hold'
+    when 'unassigned' then 'awaiting'
+    when 'ready_to_invoice' then 'completed'
+    when 'quoted' then 'awaiting_approval'
+    else new.status
+  end;
+
+  if new.status not in (
+    'awaiting', 'awaiting_approval', 'active', 'waiting_parts',
+    'on_hold', 'completed', 'invoiced'
+  ) then
+    raise exception 'Invalid work_order_lines.status: %', new.status;
+  end if;
+
+  return new;
+end;
+$$;
+
+alter table public.work_order_lines
+  drop constraint if exists work_order_lines_status_check;
+alter table public.work_order_lines
+  add constraint work_order_lines_status_check
+  check (status = any (array[
+    'awaiting'::text,
+    'awaiting_approval'::text,
+    'active'::text,
+    'waiting_parts'::text,
+    'on_hold'::text,
+    'completed'::text,
+    'invoiced'::text
+  ]));
+
 -- A work-order part is the quoted/approved commercial row. Keep an explicit
 -- reverse pointer on the request item so the same line part can be requested
 -- repeatedly without creating duplicate operational items.
@@ -497,9 +545,9 @@ on public.work_order_parts
 for each row
 execute function public.trg_parts_auto_release_approved_line_part();
 
--- Keep technician notices user-scoped. Parts still receives its existing
--- shop-scoped parts_workflow notice; the assigned technician gets a separate
--- notification only after every approved quantity is staged.
+-- Mirror the Parts fulfillment boundary onto the repair line so the work order
+-- tells the same story as the Parts queue. The request stage remains the source
+-- of truth; this projection only marks the line waiting or active.
 create or replace function public.parts_sync_work_order_line_fulfillment_status(
   p_request_id uuid,
   p_stage text
@@ -531,17 +579,24 @@ begin
   if p_stage = 'order_receive' then
     update public.work_order_lines
     set status = 'waiting_parts',
+        hold_reason = coalesce(
+          nullif(trim(hold_reason), ''), 'Awaiting parts'
+        ),
         updated_at = now()
     where id = v_line_id
       and shop_id = v_request.shop_id
       and work_order_id = v_request.work_order_id
       and lower(coalesce(status::text, '')) in (
-        'awaiting', 'pending', 'approved', 'queued', 'ready',
-        'waiting_parts'
+        'awaiting', 'active', 'on_hold', 'waiting_parts'
       );
   elsif p_stage = 'ready_for_tech' then
     update public.work_order_lines
-    set status = 'approved',
+    set status = 'active',
+        hold_reason = case
+          when lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts'
+            then null
+          else hold_reason
+        end,
         updated_at = now()
     where id = v_line_id
       and shop_id = v_request.shop_id
@@ -555,6 +610,9 @@ revoke all on function public.parts_sync_work_order_line_fulfillment_status(
   uuid, text
 ) from public, anon, authenticated;
 
+-- Keep technician notices user-scoped. Parts still receives its existing
+-- shop-scoped parts_workflow notice; the assigned technician gets a separate
+-- notification only after every approved quantity is staged.
 create or replace function public.parts_sync_technician_ready_notification(
   p_request_id uuid
 ) returns void
