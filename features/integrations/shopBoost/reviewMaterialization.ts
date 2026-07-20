@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { setStockOnHandSnapshot } from "@/features/parts/server/setStockOnHandSnapshot";
 import {
   computeCompletionState,
   runPostMigrationIntegrityValidation,
@@ -648,25 +649,27 @@ async function materializePart(args: { supabase: AdminClient; item: ReviewItemRo
     .limit(1)
     .maybeSingle();
 
-  if (defaultLocation?.id) {
-    const { data: existingStock } = await supabase
-      .from("part_stock")
-      .select("id,qty_on_hand")
-      .eq("part_id", partId)
-      .eq("location_id", defaultLocation.id)
-      .maybeSingle();
-
-    if (existingStock?.id) {
-      if (Number.isFinite(quantityOnHand)) {
-        await supabase.from("part_stock").update({ qty_on_hand: Math.max(0, quantityOnHand ?? 0) }).eq("id", existingStock.id);
-      }
-    } else {
-      await supabase.from("part_stock").insert({
-        part_id: partId,
-        location_id: defaultLocation.id,
-        qty_on_hand: Math.max(0, quantityOnHand ?? 0),
-        qty_reserved: 0,
+  if (defaultLocation?.id && Number.isFinite(quantityOnHand)) {
+    try {
+      await setStockOnHandSnapshot({
+        client: supabase,
+        shopId: item.shop_id,
+        partId,
+        locationId: defaultLocation.id,
+        targetQty: Math.max(0, quantityOnHand ?? 0),
+        idempotencyKey: `${item.shop_id}:inventory-snapshot:review:${item.intake_id}:${item.id}`,
+        metadata: {
+          intake_id: item.intake_id,
+          review_item_id: item.id,
+          source: "shop_boost_review_materialization",
+        },
       });
+    } catch (error) {
+      return {
+        status: "failed_materialization",
+        materializedRecord: null,
+        error: error instanceof Error ? error.message : "Failed to set imported inventory quantity.",
+      };
     }
   }
 
