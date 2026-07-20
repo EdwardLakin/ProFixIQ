@@ -5,6 +5,15 @@ import { seedWorkOrderIntelligenceFromReview } from "@/features/ai/server/workOr
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 
 type DB = Database;
+type PartsRpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{
+    data: unknown;
+    error: { message: string; details?: string | null; hint?: string | null } | null;
+  }>;
+};
 
 export type ReviewIssue = { kind: string; lineId?: string; message: string };
 export type ReviewKind = "ai_review" | "invoice_review";
@@ -124,6 +133,7 @@ export async function reviewWorkOrder({
   kind,
 }: Args): Promise<{ ok: boolean; issues: ReviewIssue[] }> {
   const hasBillablePartsByLine = new Map<string, boolean>();
+  const invoicePartIssues: ReviewIssue[] = [];
 
   const { data: allocationRows } = await supabase
     .from("work_order_part_allocations")
@@ -186,6 +196,38 @@ export async function reviewWorkOrder({
     }
   }
 
+  if (kind === "invoice_review") {
+    const { data: netIssuedParts, error: netIssuedPartsError } = await (
+      supabase as unknown as PartsRpcClient
+    ).rpc(
+      "get_invoice_net_issued_parts",
+      {
+        p_shop_id: shopId,
+        p_work_order_id: workOrderId,
+      },
+    );
+    if (netIssuedPartsError) throw netIssuedPartsError;
+
+    hasBillablePartsByLine.clear();
+    for (const raw of Array.isArray(netIssuedParts) ? netIssuedParts : []) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const part = raw as Record<string, unknown>;
+      const lineId = typeof part.lineId === "string" ? part.lineId : "";
+      const quantity = numericValue(part.qty) ?? 0;
+      const unitPrice = numericValue(part.unitPrice) ?? 0;
+      if (!lineId || quantity <= 0) continue;
+      if (unitPrice > 0) {
+        hasBillablePartsByLine.set(lineId, true);
+      } else {
+        invoicePartIssues.push({
+          kind: "missing_part_sell_price",
+          lineId,
+          message: `Issued part has no customer sell price: ${String(part.name ?? "Part")}`,
+        });
+      }
+    }
+  }
+
   const { data: workOrder, error: workOrderError } = await supabase
     .from("work_orders")
     .select("*")
@@ -214,7 +256,7 @@ export async function reviewWorkOrder({
     .eq("shop_id", shopId);
   if (lineError) throw lineError;
 
-  const issues: ReviewIssue[] = [];
+  const issues: ReviewIssue[] = [...invoicePartIssues];
   const { data: quoteLines, error: quoteError } = await supabase
     .from("work_order_quote_lines")
     .select("id,status,stage,approved_at,declined_at,work_order_line_id")

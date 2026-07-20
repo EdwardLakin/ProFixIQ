@@ -20,7 +20,16 @@ type Row = WorkOrder & {
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
   resolved_labor_total?: number | null;
   resolved_parts_total?: number | null;
+  resolved_shop_supplies_total?: number | null;
+  resolved_tax_total?: number | null;
   resolved_invoice_total?: number | null;
+  pricing_error?: string | null;
+};
+
+type BillingRowsResponse = {
+  ok?: boolean;
+  rows?: Row[];
+  error?: string;
 };
 
 type HistoricalInvoiceRow = Invoice & {
@@ -146,40 +155,44 @@ export default function BillingPage(): JSX.Element {
       if (!options?.background) setLoading(true);
       setErr(null);
 
-      let query = supabase
-        .from("work_orders")
-        .select(
-          `
-        *,
-        customers:customers(first_name,last_name,email),
-        vehicles:vehicles(year,make,model,license_plate)
-      `,
-        )
-        .order("updated_at", { ascending: false })
-        .limit(100);
+      const [billingResult, historicalResult] = await Promise.all([
+        fetch("/api/billing/work-orders", {
+          method: "GET",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        }).then(async (response) => ({
+          response,
+          body: (await response.json().catch(() => null)) as BillingRowsResponse | null,
+        })).catch((error: unknown) => ({
+          response: null,
+          body: {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Customer billing request failed.",
+          } as BillingRowsResponse,
+        })),
+        supabase
+          .from("invoices")
+          .select("*, customers:customers(first_name,last_name,email)")
+          .or("metadata->>imported.eq.true,metadata->>read_only.eq.true")
+          .order("issued_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .range(0, HISTORICAL_INVOICE_PAGE_SIZE - 1),
+      ]);
 
-      if (status && (BILLING_STATUSES as string[]).includes(status)) {
-        query = query.eq("status", status);
-      } else {
-        query = query.in("status", BILLING_STATUSES as unknown as string[]);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        setErr(error.message);
+      if (!billingResult.response?.ok || !billingResult.body?.ok) {
+        setErr(
+          billingResult.body?.error ??
+            "Customer billing could not load invoice pricing.",
+        );
         setRows([]);
         setLoading(false);
         return;
       }
 
-      const { data: invoiceData, error: invoiceError } = await supabase
-        .from("invoices")
-        .select("*, customers:customers(first_name,last_name,email)")
-        .or("metadata->>imported.eq.true,metadata->>read_only.eq.true")
-        .order("issued_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .range(0, HISTORICAL_INVOICE_PAGE_SIZE - 1);
+      const { data: invoiceData, error: invoiceError } = historicalResult;
 
       if (invoiceError) {
         setErr(invoiceError.message);
@@ -188,7 +201,12 @@ export default function BillingPage(): JSX.Element {
         return;
       }
 
-      const baseRows = (data ?? []) as Row[];
+      const statusRows = (billingResult.body.rows ?? []).filter((row) =>
+        status && (BILLING_STATUSES as string[]).includes(status)
+          ? row.status === status
+          : (BILLING_STATUSES as string[]).includes(String(row.status ?? "")),
+      );
+      const baseRows = statusRows as Row[];
       const qlc = q.trim().toLowerCase();
 
       const filtered =
@@ -613,13 +631,14 @@ export default function BillingPage(): JSX.Element {
             const invoiceTotal = Number(
               r.resolved_invoice_total ?? laborTotal + partsTotal,
             );
-
-            const progressValue =
-              statusLower === "invoiced"
-                ? 100
+            const pricingAvailable = !r.pricing_error;
+            const billingState = r.pricing_error
+              ? "Pricing unavailable"
+              : statusLower === "invoiced"
+                ? "Invoice issued"
                 : statusLower === "ready_to_invoice"
-                  ? 78
-                  : 52;
+                  ? "Ready for invoice review"
+                  : "Completed — review pricing";
 
             return (
               <div
@@ -679,15 +698,19 @@ export default function BillingPage(): JSX.Element {
                 </div>
 
                 <div className="px-4 py-4">
-                  <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                    <span>Billing progress</span>
-                    <span>{progressValue}%</span>
-                  </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
-                    <div
-                      className={`h-full rounded-full ${accent.progress}`}
-                      style={{ width: `${progressValue}%` }}
-                    />
+                  <div
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                      pricingAvailable
+                        ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                        : "border-red-400/35 bg-red-500/10 text-red-100"
+                    }`}
+                  >
+                    {billingState}
+                    {r.pricing_error ? (
+                      <div className="mt-1 font-normal text-[color:var(--theme-text-secondary)]">
+                        {r.pricing_error}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 gap-3">
@@ -696,7 +719,7 @@ export default function BillingPage(): JSX.Element {
                         Labor
                       </div>
                       <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                        {formatMoney(laborTotal)}
+                        {pricingAvailable ? formatMoney(laborTotal) : "—"}
                       </div>
                     </div>
 
@@ -705,7 +728,7 @@ export default function BillingPage(): JSX.Element {
                         Parts
                       </div>
                       <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                        {formatMoney(partsTotal)}
+                        {pricingAvailable ? formatMoney(partsTotal) : "—"}
                       </div>
                     </div>
 
@@ -714,7 +737,7 @@ export default function BillingPage(): JSX.Element {
                         Invoice total
                       </div>
                       <div className="mt-1 text-lg font-semibold text-[var(--accent-copper-light)]">
-                        {formatMoney(invoiceTotal)}
+                        {pricingAvailable ? formatMoney(invoiceTotal) : "—"}
                       </div>
                     </div>
                   </div>
@@ -752,11 +775,10 @@ export default function BillingPage(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => void handleInvoice(r)}
-                      disabled={r.status === "invoiced"}
                       className="rounded-full border border-emerald-400/70 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Open invoice preview"
+                      title={statusLower === "invoiced" ? "Open issued invoice" : "Open invoice preview"}
                     >
-                      Invoice
+                      {statusLower === "invoiced" ? "Open Invoice" : "Invoice"}
                     </button>
                   </div>
                 </div>

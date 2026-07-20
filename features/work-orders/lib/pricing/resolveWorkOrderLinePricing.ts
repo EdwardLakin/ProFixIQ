@@ -6,6 +6,15 @@ type WorkOrderQuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"
 type WorkOrderPart = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type WorkOrderPartAllocation = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 
+type QuotePricingSnapshot = {
+  source?: unknown;
+  labor_total?: unknown;
+  parts_total?: unknown;
+  subtotal?: unknown;
+  tax_total?: unknown;
+  grand_total?: unknown;
+};
+
 function toNum(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -13,6 +22,15 @@ function toNum(value: unknown): number | null {
     if (Number.isFinite(n)) return n;
   }
   return null;
+}
+
+function quotePricingFromIntake(value: unknown): QuotePricingSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.source !== "work_order_quote_lines" && !record.quote_line_id) {
+    return null;
+  }
+  return record;
 }
 
 export function normalizeLaborHoursInput(
@@ -25,7 +43,13 @@ export function normalizeLaborHoursInput(
 }
 
 export function resolveWorkOrderLinePricing(args: {
-  line: Pick<WorkOrderLine, "labor_time"> & { id?: string; price_estimate?: number | null; labor_total?: number | null; labor_rate?: number | null };
+  line: Pick<WorkOrderLine, "labor_time"> & {
+    id?: string;
+    price_estimate?: number | null;
+    labor_total?: number | null;
+    labor_rate?: number | null;
+    intake_json?: unknown;
+  };
   quote?: Partial<WorkOrderQuoteLine> | null;
   shopLaborRate: number | null;
   stagedParts?: Array<Pick<WorkOrderPart, "quantity" | "unit_price" | "total_price"> & { quantity_requested?: number | null; unit_sell_price_snapshot?: number | null; is_active?: boolean | null }>;
@@ -64,9 +88,11 @@ export function resolveWorkOrderLinePricing(args: {
   const laborHours = quotedHours ?? lineHours;
 
   const linePriceEstimate = toNum(line.price_estimate);
+  const intakePricing = quotePricingFromIntake(line.intake_json);
   const explicitLineLaborRate = toNum(line.labor_rate);
   const laborRate = explicitLineLaborRate != null && explicitLineLaborRate > 0 ? explicitLineLaborRate : toNum(shopLaborRate) ?? 0;
-  const quotedLaborTotal = toNum(quote?.labor_total);
+  const quotedLaborTotal =
+    toNum(quote?.labor_total) ?? toNum(intakePricing?.labor_total);
 
   const activeStagedParts = stagedParts.filter((part) => part.is_active !== false);
   const stagedPartsTotal = activeStagedParts.reduce((sum, part) => {
@@ -81,13 +107,24 @@ export function resolveWorkOrderLinePricing(args: {
     return sum + (toNum(part.quantity ?? part.qty) ?? 0) * ((toNum(part.unit_price) ?? toNum(part.unit_cost)) ?? 0);
   }, 0);
 
-  const hasQuotePartsTotal = toNum(quote?.parts_total) != null;
-  const partsTotal = hasQuotePartsTotal ? (toNum(quote?.parts_total) ?? 0) : stagedPartsTotal + allocPartsTotal;
+  const attachedPartsTotal = stagedPartsTotal + allocPartsTotal;
+  const quotedPartsTotal =
+    toNum(quote?.parts_total) ?? toNum(intakePricing?.parts_total);
+  const partsTotal =
+    attachedPartsTotal > 0 ? attachedPartsTotal : quotedPartsTotal ?? 0;
   const partsCount = activeStagedParts.length + allocatedParts.length;
-  const explicitLineLaborTotal = toNum(line.labor_total) ?? (partsTotal > 0 ? linePriceEstimate : null);
+  const explicitLineLaborTotal =
+    toNum(line.labor_total) ??
+    quotedLaborTotal ??
+    (intakePricing ? null : partsTotal > 0 ? linePriceEstimate : null);
   const computedLaborForLineTotal = explicitLineLaborTotal != null && explicitLineLaborTotal > 0 ? explicitLineLaborTotal : laborHours * laborRate;
   const computedLineTotal = computedLaborForLineTotal + partsTotal;
-  const lineTotal = toNum(quote?.grand_total) ?? toNum(quote?.subtotal) ?? (partsTotal > 0 ? computedLineTotal : linePriceEstimate ?? computedLineTotal);
+  // Quote grand_total may already contain tax. Invoice tax is calculated once at the
+  // invoice level, so line totals remain pre-tax labor + attached sell-priced parts.
+  const lineTotal =
+    partsTotal > 0 || intakePricing
+      ? computedLineTotal
+      : linePriceEstimate ?? computedLineTotal;
   const computedLaborTotal = laborHours * laborRate;
   const inferredLaborFromLineTotal = Math.max(0, lineTotal - partsTotal);
   const explicitLineLaborTotalIsUsable = explicitLineLaborTotal != null && explicitLineLaborTotal > 0;

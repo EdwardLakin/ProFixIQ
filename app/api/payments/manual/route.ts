@@ -8,7 +8,7 @@ import {
 } from "@/features/invoices/server/financialLifecycle";
 
 type DB = Database;
-const PAYMENT_ROLES = ["owner", "admin", "manager", "advisor"] as const;
+const PAYMENT_ROLES = ["owner", "admin", "manager", "advisor", "service"] as const;
 const METHODS = new Set(["cash", "cheque", "terminal", "eft", "financing", "other"]);
 
 type Body = {

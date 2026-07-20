@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 const BILLING_STATUSES = ["completed", "ready_to_invoice", "invoiced"];
 
 export async function GET() {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
-    allowRoles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
+    allowRoles: [...ROLE_GROUPS.billingOperators],
   });
 
   if (!access.ok) return access.response;
@@ -41,18 +42,30 @@ export async function GET() {
           ...row,
           resolved_labor_total: snapshot.laborCost ?? 0,
           resolved_parts_total: snapshot.partsCost ?? 0,
+          resolved_shop_supplies_total: snapshot.shopSuppliesTotal ?? 0,
+          resolved_tax_total: snapshot.taxTotal ?? 0,
           resolved_invoice_total: snapshot.total ?? 0,
+          pricing_error: null,
         };
-      } catch {
+      } catch (error: unknown) {
         return {
           ...row,
-          resolved_labor_total: 0,
-          resolved_parts_total: 0,
-          resolved_invoice_total: 0,
+          resolved_labor_total: null,
+          resolved_parts_total: null,
+          resolved_shop_supplies_total: null,
+          resolved_tax_total: null,
+          resolved_invoice_total: null,
+          pricing_error:
+            error instanceof Error
+              ? error.message
+              : "Invoice pricing is unavailable.",
         };
       }
     }),
   );
 
-  return NextResponse.json({ ok: true, rows });
+  return NextResponse.json(
+    { ok: true, rows },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }

@@ -6,6 +6,8 @@ import {
   resolveShopSuppliesOverride,
   resolveShopSuppliesSettings,
 } from "@/features/work-orders/lib/shopSupplies";
+import { calculateInvoiceTotals } from "@/features/invoices/lib/invoiceTotals";
+import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 
 type DB = Database;
 
@@ -46,7 +48,14 @@ export type InvoiceSnapshotLine = Pick<
   | "correction"
   | "labor_time"
   | "price_estimate"
->;
+  | "intake_json"
+> & {
+  resolvedLaborHours: number;
+  resolvedLaborRate: number;
+  resolvedLaborTotal: number;
+  resolvedPartsTotal: number;
+  resolvedLineTotal: number;
+};
 
 export type InvoiceSnapshot = {
   workOrder: Pick<
@@ -99,6 +108,7 @@ export type InvoiceSnapshot = {
     | "shop_supplies_percent"
     | "shop_supplies_flat_amount"
     | "shop_supplies_cap_amount"
+    | "tax_rate"
   > | null;
   customer: Pick<
     CustomerRow,
@@ -135,6 +145,7 @@ export type InvoiceSnapshot = {
   subtotal: number | null;
   discountTotal: number | null;
   taxTotal: number | null;
+  taxRate?: number | null;
   total: number | null;
 };
 
@@ -191,10 +202,16 @@ const NON_BILLABLE_QUOTE_LINE_STATUSES = new Set([
   "canceled",
 ]);
 
-function itemUnitPrice(item: Pick<PartRequestItemRow, "quoted_price" | "unit_price" | "unit_cost">): number {
-  // Phase 5D quote sync treats quoted_price as the unit sell price, then falls back
-  // to unit_price and unit_cost. Preserve that unit-price interpretation here.
-  return safeNumberOrNull(item.quoted_price) ?? safeNumberOrNull(item.unit_price) ?? safeNumberOrNull(item.unit_cost) ?? 0;
+function itemUnitPrice(
+  item: Pick<PartRequestItemRow, "quoted_price" | "unit_price">,
+): number {
+  // unit_cost is the shop's private acquisition cost. A missing customer sell
+  // price must remain visible as a pricing error instead of underbilling at cost.
+  return (
+    safeNumberOrNull(item.quoted_price) ??
+    safeNumberOrNull(item.unit_price) ??
+    0
+  );
 }
 
 function itemQuantity(item: Pick<PartRequestItemRow, "qty" | "qty_requested" | "qty_approved">): number {
@@ -266,7 +283,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: workOrder, error: woErr } = await supabase
     .from("work_orders")
     .select(
-      "id, shop_id, customer_id, vehicle_id, customer_name, custom_id, labor_total, parts_total, invoice_total, created_at",
+      "id, shop_id, customer_id, vehicle_id, customer_name, custom_id, labor_total, parts_total, invoice_total, shop_supplies_enabled_override, shop_supplies_amount_override, created_at",
     )
     .eq("id", workOrderId)
     .maybeSingle<
@@ -322,7 +339,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: shop } = await supabase
     .from("shops")
     .select(
-      "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount",
+      "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount, tax_rate",
     )
     .eq("id", workOrder.shop_id)
     .maybeSingle<
@@ -345,6 +362,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     | "shop_supplies_percent"
     | "shop_supplies_flat_amount"
     | "shop_supplies_cap_amount"
+    | "tax_rate"
       >
     >();
 
@@ -398,11 +416,26 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const { data: linesRaw } = await supabase
     .from("work_order_lines")
-    .select("id, line_no, description, complaint, cause, correction, labor_time, price_estimate")
+    .select("id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json")
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .order("line_no", { ascending: true })
-    .returns<InvoiceSnapshotLine[]>();
+    .returns<
+      Array<
+        Pick<
+          WorkOrderLineRow,
+          | "id"
+          | "line_no"
+          | "description"
+          | "complaint"
+          | "cause"
+          | "correction"
+          | "labor_time"
+          | "price_estimate"
+          | "intake_json"
+        >
+      >
+    >();
 
   const lines = Array.isArray(linesRaw) ? linesRaw : [];
 
@@ -424,7 +457,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const allocs = Array.isArray(allocRaw) ? allocRaw : [];
   const { data: stagedPartsRaw } = await supabase
     .from("work_order_parts")
-    .select("id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_consumed, quantity_returned, quantity_cancelled, unit_sell_price_snapshot, lifecycle_status")
+    .select("id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_requested, quantity_consumed, quantity_returned, quantity_cancelled, unit_sell_price_snapshot, lifecycle_status, source_parts_request_item_id, is_active")
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .returns<
@@ -577,32 +610,58 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const partsMap = new Map<
     string,
-    Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">
+    Pick<
+      PartRow,
+      "id" | "name" | "sku" | "part_number" | "unit" | "price" | "default_price"
+    >
   >();
 
   if (partIds.length > 0) {
     const { data: partRows } = await supabase
       .from("parts")
-      .select("id, name, sku, part_number, unit")
+      .select("id, name, sku, part_number, unit, price, default_price")
       .eq("shop_id", workOrder.shop_id)
       .in("id", partIds)
-      .returns<Array<Pick<PartRow, "id" | "name" | "sku" | "part_number" | "unit">>>();
+      .returns<
+        Array<
+          Pick<
+            PartRow,
+            | "id"
+            | "name"
+            | "sku"
+            | "part_number"
+            | "unit"
+            | "price"
+            | "default_price"
+          >
+        >
+      >();
 
     for (const p of Array.isArray(partRows) ? partRows : []) {
       if (isNonEmptyString(p.id)) partsMap.set(p.id, p);
     }
   }
 
-  const allocationParts: InvoiceSnapshotPart[] = allocs.map((a) => {
+  const requestItemById = new Map(requestItems.map((item) => [item.id, item]));
+  const allocationPartById = new Map<string, InvoiceSnapshotPart>();
+  for (const a of allocs) {
     const p = isNonEmptyString(a.part_id) ? partsMap.get(a.part_id) : undefined;
+    const requestItem = isNonEmptyString(a.source_request_item_id)
+      ? requestItemById.get(a.source_request_item_id)
+      : undefined;
     const qtyRaw = safeNumber(a.qty);
     const qty = qtyRaw > 0 ? qtyRaw : 1;
-    const unitPrice = safeNumber(a.unit_cost);
+    // Allocations store shop cost. Customer billing must use the request/catalog
+    // sell price and must never silently expose unit_cost as the invoice price.
+    const unitPrice =
+      (requestItem ? itemUnitPrice(requestItem) : 0) ||
+      safeNumber(p?.price) ||
+      safeNumber(p?.default_price);
     const totalPrice = Math.max(0, qty * unitPrice);
     const lidRaw = a.work_order_line_id;
     const lineId = isNonEmptyString(lidRaw) ? lidRaw.trim() : undefined;
 
-    return {
+    allocationPartById.set(String(a.id), {
       id: String(a.id),
       lineId,
       name: (p?.name ?? "Part").trim() || "Part",
@@ -613,25 +672,34 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       partNumber: (p?.part_number ?? "").trim() || undefined,
       unit: (p?.unit ?? "").trim() || undefined,
       source: "work_order_part_allocation",
-    };
-  });
+    });
+  }
 
-  const stagedInvoiceParts: InvoiceSnapshotPart[] = stagedParts.map((part) => {
+  const stagedInvoiceParts: InvoiceSnapshotPart[] = stagedParts.flatMap((part) => {
     const p = isNonEmptyString(part.part_id) ? partsMap.get(part.part_id) : undefined;
     const partRecord = part as Record<string, unknown>;
+    if (partRecord.is_active === false) return [];
     const consumed = safeNumber(partRecord.quantity_consumed);
     const returned = safeNumber(partRecord.quantity_returned);
     const cancelled = safeNumber(partRecord.quantity_cancelled);
-    const qtyRaw = consumed > 0 ? Math.max(0, consumed - returned) : Math.max(0, safeNumber(part.quantity) - cancelled);
-    const qty = qtyRaw > 0 ? qtyRaw : 0;
+    const requested = safeNumber(partRecord.quantity_requested);
+    const qty =
+      consumed > 0
+        ? Math.max(0, consumed - returned)
+        : Math.max(0, (requested > 0 ? requested : safeNumber(part.quantity)) - cancelled);
+    if (qty <= 0) return [];
     const totalRaw = safeNumber(part.total_price);
-    const unitPrice = safeNumber(partRecord.unit_sell_price_snapshot) || safeNumber(part.unit_price);
-    const totalPrice = totalRaw > 0 ? totalRaw : Math.max(0, qty * unitPrice);
+    const unitPrice =
+      safeNumber(partRecord.unit_sell_price_snapshot) ||
+      safeNumber(part.unit_price) ||
+      safeNumber(p?.price) ||
+      safeNumber(p?.default_price);
+    const totalPrice = unitPrice > 0 ? Math.max(0, qty * unitPrice) : totalRaw;
     const lineId = isNonEmptyString(part.work_order_line_id)
       ? part.work_order_line_id.trim()
       : undefined;
 
-    return {
+    return [{
       id: String(part.id),
       lineId,
       name: (String(partRecord.description_snapshot ?? "").trim() || (p?.name ?? "Part")).trim() || "Part",
@@ -642,7 +710,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       partNumber: (String(partRecord.part_number_snapshot ?? "").trim() || (p?.part_number ?? "")).trim() || undefined,
       unit: (p?.unit ?? "").trim() || undefined,
       source: "work_order_part",
-    };
+    }];
   });
 
   const requestItemInvoiceParts: InvoiceSnapshotPart[] = fallbackRequestItems.map((item) => {
@@ -690,39 +758,62 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     ]);
   }
 
-  const parts: InvoiceSnapshotPart[] = [...allocationParts];
+  const parts: InvoiceSnapshotPart[] = [];
   for (const line of lines) {
     const lineAllocations = byLineAlloc.get(line.id) ?? [];
-    if (lineAllocations.length > 0) continue;
-
     const lineStaged = stagedPartsByLineForDisplay.get(line.id) ?? [];
-    if (lineStaged.length > 0) {
+    const rawLineStaged = byLineStaged.get(line.id) ?? [];
+    const canonicalPartIds = new Set(
+      rawLineStaged
+        .map((part) => part.part_id)
+        .filter(isNonEmptyString),
+    );
+    const unbackedAllocations = filterAllocationsNotBackedByCanonicalParts(
+      lineAllocations,
+      rawLineStaged as Array<{ source_parts_request_item_id?: string | null }>,
+    ).filter((allocation) => !canonicalPartIds.has(allocation.part_id));
+    const unbackedAllocationParts = unbackedAllocations.flatMap((allocation) => {
+      const part = allocationPartById.get(String(allocation.id));
+      return part ? [part] : [];
+    });
+
+    if (rawLineStaged.length > 0) {
       parts.push(...lineStaged);
+      parts.push(...unbackedAllocationParts);
+      continue;
+    }
+
+    if (unbackedAllocationParts.length > 0) {
+      parts.push(...unbackedAllocationParts);
       continue;
     }
 
     parts.push(...(fallbackPartsByLineForDisplay.get(line.id) ?? []));
   }
 
+  const unpricedPart = parts.find(
+    (part) => safeNumber(part.qty) > 0 && safeNumber(part.unitPrice) <= 0,
+  );
+  if (unpricedPart) {
+    throw new Error(
+      `Customer sell price is missing for ${unpricedPart.name || "an attached part"}.`,
+    );
+  }
+
   const currency =
     normalizeInvoiceCurrency(invoice?.currency) ??
     normalizeCurrencyFromCountry(shop?.country);
 
-  const invSubtotal = positiveOrNull(invoice?.subtotal);
-  const invLabor = positiveOrNull(invoice?.labor_cost);
-  const invParts = positiveOrNull(invoice?.parts_cost);
-  const invTotal = positiveOrNull(invoice?.total);
+  const invSubtotal = invoice ? safeNumberOrNull(invoice.subtotal) : null;
+  const invLabor = invoice ? safeNumberOrNull(invoice.labor_cost) : null;
+  const invParts = invoice ? safeNumberOrNull(invoice.parts_cost) : null;
+  const invTotal = invoice ? safeNumberOrNull(invoice.total) : null;
   const invDiscount = safeNumber(invoice?.discount_total);
   const invTax = safeNumber(invoice?.tax_total);
 
   const woLabor = positiveOrNull(workOrder.labor_total);
   const woParts = positiveOrNull(workOrder.parts_total);
   const woInvoiceTotal = positiveOrNull(workOrder.invoice_total);
-
-  const partsTotalFromSnapshotParts =
-    parts.length > 0
-      ? parts.reduce((acc, p) => acc + safeNumber(p.totalPrice), 0)
-      : null;
 
   const byLineQuote = new Map<string, typeof activeQuotes[number]>();
   for (const q of activeQuotes) {
@@ -732,34 +823,40 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   let resolvedLabor = 0;
   let resolvedParts = 0;
+  const pricedLines: InvoiceSnapshotLine[] = [];
   for (const line of lines) {
-    const lineAllocations = byLineAlloc.get(line.id) ?? [];
-    const lineStaged = byLineStaged.get(line.id) ?? [];
-    const lineFallbackParts = fallbackPartsByLineForDisplay.get(line.id) ?? [];
-    const stagedPricingParts =
-      lineAllocations.length > 0
-        ? []
-        : lineStaged.length > 0
-          ? lineStaged
-          : lineFallbackParts.map((part) => ({
-              quantity: part.qty,
-              unit_price: part.unitPrice,
-              total_price: part.totalPrice,
-            }));
+    const lineParts = parts.filter((part) => part.lineId === line.id);
+    const stagedPricingParts = lineParts.map((part) => ({
+      quantity: part.qty,
+      unit_price: part.unitPrice,
+      total_price: part.totalPrice,
+    }));
 
     const resolved = resolveWorkOrderLinePricing({
       line,
       quote: byLineQuote.get(line.id) ?? null,
       shopLaborRate: safeNumberOrNull(shop?.labor_rate),
       stagedParts: stagedPricingParts,
-      allocatedParts: lineAllocations,
+      allocatedParts: [],
     });
+    const resolvedLineParts =
+      lineParts.length > 0
+        ? lineParts.reduce((sum, part) => sum + safeNumber(part.totalPrice), 0)
+        : resolved.partsTotal;
     resolvedLabor += resolved.laborTotal;
-    resolvedParts += resolved.partsTotal;
+    resolvedParts += resolvedLineParts;
+    pricedLines.push({
+      ...line,
+      resolvedLaborHours: resolved.laborHours,
+      resolvedLaborRate: resolved.laborRate,
+      resolvedLaborTotal: resolved.laborTotal,
+      resolvedPartsTotal: resolvedLineParts,
+      resolvedLineTotal: resolved.laborTotal + resolvedLineParts,
+    });
   }
 
   const laborCost = invLabor ?? (resolvedLabor > 0 ? resolvedLabor : woLabor) ?? null;
-  const partsCost = invParts ?? (resolvedParts > 0 ? resolvedParts : partsTotalFromSnapshotParts ?? woParts) ?? null;
+  const partsCost = invParts ?? (resolvedParts > 0 ? resolvedParts : woParts) ?? null;
 
   const baseSubtotal = (laborCost ?? 0) + (partsCost ?? 0);
   const shopSupplies = calculateShopSupplies({
@@ -767,25 +864,48 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     settings: resolveShopSuppliesSettings(shop as Parameters<typeof resolveShopSuppliesSettings>[0]),
     override: resolveShopSuppliesOverride(workOrder as Parameters<typeof resolveShopSuppliesOverride>[0]),
   });
-  const shopSuppliesTotal = shopSupplies.amount > 0 ? shopSupplies.amount : null;
-
-  const subtotal =
-    invSubtotal != null
-      ? invSubtotal <= baseSubtotal + 0.005
-        ? invSubtotal + shopSupplies.amount
-        : invSubtotal
-      : baseSubtotal + shopSupplies.amount > 0
-        ? baseSubtotal + shopSupplies.amount
-        : null;
-
-  const derivedTotal =
-    subtotal != null ? Math.max(0, subtotal + invTax - invDiscount) : null;
-  const adjustedInvoiceTotal =
-    invTotal != null && invSubtotal != null && invSubtotal <= baseSubtotal + 0.005
-      ? invTotal + shopSupplies.amount
-      : invTotal;
-
-  const total = adjustedInvoiceTotal ?? woInvoiceTotal ?? derivedTotal ?? null;
+  const persistedSupplies =
+    invoice && invSubtotal != null
+      ? Math.max(0, invSubtotal - (laborCost ?? 0) - (partsCost ?? 0))
+      : null;
+  const shopSuppliesTotal = invoice
+    ? persistedSupplies && persistedSupplies > 0
+      ? persistedSupplies
+      : null
+    : shopSupplies.amount > 0
+      ? shopSupplies.amount
+      : null;
+  const configuredTaxRate = Math.max(0, safeNumber(shop?.tax_rate));
+  const calculated = calculateInvoiceTotals({
+    laborCost: laborCost ?? 0,
+    partsCost: partsCost ?? 0,
+    shopSuppliesTotal,
+    discountTotal: invDiscount,
+    taxRatePercent: configuredTaxRate,
+  });
+  const subtotal = invoice
+    ? invSubtotal ?? calculated.subtotal
+    : calculated.subtotal > 0
+      ? calculated.subtotal
+      : null;
+  const taxTotal = invoice ? invTax : calculated.taxTotal;
+  const persistedTaxableBase = Math.max((subtotal ?? 0) - invDiscount, 0);
+  const taxRate =
+    invoice && persistedTaxableBase > 0
+      ? (taxTotal / persistedTaxableBase) * 100
+      : configuredTaxRate;
+  const derivedInvoiceTotal = calculateInvoiceTotals({
+    laborCost: laborCost ?? 0,
+    partsCost: partsCost ?? 0,
+    shopSuppliesTotal,
+    discountTotal: invDiscount,
+    taxRatePercent: taxRate,
+  }).total;
+  const total = invoice
+    ? invTotal ?? derivedInvoiceTotal
+    : derivedInvoiceTotal > 0
+      ? derivedInvoiceTotal
+      : woInvoiceTotal;
 
   return {
     workOrder,
@@ -793,7 +913,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     shop: shop ?? null,
     customer: customer ?? null,
     vehicle: vehicle ?? null,
-    lines,
+    lines: pricedLines,
     parts,
     currency,
     laborCost,
@@ -801,7 +921,8 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     shopSuppliesTotal,
     subtotal,
     discountTotal: invDiscount > 0 ? invDiscount : null,
-    taxTotal: invTax > 0 ? invTax : null,
+    taxTotal: taxTotal > 0 ? taxTotal : null,
+    taxRate: taxRate > 0 ? taxRate : null,
     total,
   };
 }
