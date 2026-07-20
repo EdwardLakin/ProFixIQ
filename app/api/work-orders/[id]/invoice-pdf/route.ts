@@ -1,859 +1,101 @@
-// app/api/work-orders/[id]/invoice-pdf/route.ts ✅ FULL FILE REPLACEMENT
-
 export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { PDFDocument, rgb, StandardFonts, type PDFImage } from "pdf-lib";
-
-import type { Database } from "@shared/types/types/supabase";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
+import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
-
-type DB = Database;
-
-type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
-type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
-type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
-type InvoiceRow = DB["public"]["Tables"]["invoices"]["Row"];
-type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
-
-type PdfRgb = ReturnType<typeof rgb>;
-
-function asString(v: unknown): string {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-
-function safeMoney(v: unknown): number {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function moneyLabel(n: number, currency: "CAD" | "USD"): string {
-  const val = Number.isFinite(n) ? n : 0;
-  return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(val);
-}
-
-function wrapText(text: string, maxChars: number): string[] {
-  const t = (text ?? "").trim();
-  if (!t) return ["—"];
-  const words = t.split(/\s+/);
-  const lines: string[] = [];
-  let cur = "";
-
-  for (const w of words) {
-    if (!cur) {
-      cur = w;
-      continue;
-    }
-    if ((cur + " " + w).length <= maxChars) {
-      cur = cur + " " + w;
-    } else {
-      lines.push(cur);
-      cur = w;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines.length ? lines : ["—"];
-}
-
-function compactCsv(parts: Array<string | undefined>): string {
-  return parts
-    .map((p) => (p ?? "").trim())
-    .filter((p) => p.length > 0)
-    .join(", ");
-}
-
-function joinName(
-  first?: string | null,
-  last?: string | null,
-): string | undefined {
-  const f = (first ?? "").trim();
-  const l = (last ?? "").trim();
-  const s = [f, l].filter(Boolean).join(" ").trim();
-  return s.length ? s : undefined;
-}
-
-function pickCustomerName(
-  c?: Pick<CustomerRow, "name" | "first_name" | "last_name"> | null,
-  fallback?: string | null,
-): string | undefined {
-  const a = (c?.name ?? "").trim();
-  const b = joinName(c?.first_name ?? null, c?.last_name ?? null);
-  const f = (fallback ?? "").trim();
-  const out = a || b || f;
-  return out.length ? out : undefined;
-}
-
-function pickCustomerPhone(
-  c?: Pick<CustomerRow, "phone" | "phone_number"> | null,
-): string | undefined {
-  const p1 = (c?.phone_number ?? "").trim();
-  const p2 = (c?.phone ?? "").trim();
-  const out = p1 || p2;
-  return out.length ? out : undefined;
-}
-
-function pickShopName(
-  s?: Pick<ShopRow, "business_name" | "shop_name" | "name"> | null,
-): string | undefined {
-  const a = (s?.business_name ?? "").trim();
-  const b = (s?.shop_name ?? "").trim();
-  const c = (s?.name ?? "").trim();
-  const out = a || b || c;
-  return out.length ? out : undefined;
-}
-
-type PartDisplayRow = {
-  name: string;
-  partNumber?: string;
-  sku?: string;
-  unit?: string;
-  qty: number;
-  unitPrice: number;
-  totalPrice: number;
-  lineId?: string;
-};
-
-type DrawTextOpts = {
-  size?: number;
-  bold?: boolean;
-  x?: number;
-  color?: PdfRgb;
-};
-
-type PdfCtx = {
-  doc: PDFDocument;
-  page: ReturnType<PDFDocument["addPage"]>;
-  y: number;
-};
+import {
+  premiumInvoiceFilename,
+  renderPremiumInvoicePdf,
+} from "@/features/invoices/server/renderPremiumInvoicePdf";
 
 export async function GET(
   req: NextRequest,
-  ctx: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ id: string }> },
 ) {
   const supabase = createServerSupabaseRoute();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const params = await ctx.params;
-  const workOrderId = typeof params?.id === "string" ? params.id : "";
+  const { id: workOrderId } = await context.params;
   if (!workOrderId) {
     return NextResponse.json({ error: "Missing work order id" }, { status: 400 });
   }
 
-  const url = new URL(req.url);
-  const forceDownload = url.searchParams.get("download") === "1";
-
-  const { data: wo, error: woErr } = await supabase
-    .from("work_orders")
-    .select("id,shop_id,customer_id,vehicle_id,customer_name,custom_id,created_at")
-    .eq("id", workOrderId)
-    .maybeSingle<
-      Pick<
-        WorkOrderRow,
-        | "id"
-        | "shop_id"
-        | "customer_id"
-        | "vehicle_id"
-        | "customer_name"
-        | "custom_id"
-        | "created_at"
-      >
-    >();
-
-  if (woErr || !wo?.id) {
-    return NextResponse.json({ error: "Work order not found" }, { status: 404 });
-  }
-  const snapshot = await getInvoiceSnapshotForWorkOrder({ supabase, workOrderId });
-
-  const { data: inv, error: invErr } = await supabase
-    .from("invoices")
-    .select("id,invoice_number,currency,subtotal,parts_cost,labor_cost,discount_total,tax_total,total,issued_at,notes,created_at")
-    .eq("work_order_id", workOrderId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<
-      Pick<
-        InvoiceRow,
-        | "id"
-        | "invoice_number"
-        | "currency"
-        | "subtotal"
-        | "parts_cost"
-        | "labor_cost"
-        | "discount_total"
-        | "tax_total"
-        | "total"
-        | "issued_at"
-        | "notes"
-        | "created_at"
-      >
-    >();
-
-  if (invErr) {
-    console.warn("[invoice-pdf] invoices query failed", invErr.message);
-  }
-
-  const { data: shop } = await supabase
-    .from("shops")
-    .select("business_name,shop_name,name,phone_number,email,street,city,province,postal_code,country,labor_rate")
-    .eq("id", wo.shop_id)
-    .maybeSingle<
-      Pick<
-        ShopRow,
-        | "business_name"
-        | "shop_name"
-        | "name"
-        | "phone_number"
-        | "email"
-        | "street"
-        | "city"
-        | "province"
-        | "postal_code"
-        | "country"
-        | "labor_rate"
-      >
-    >();
-
-  const shopName = pickShopName(shop ?? null) ?? "ProFixIQ";
-  const brand = await getActiveBrandForRender(wo.shop_id);
-  const shopAddress = compactCsv([
-    (shop?.street ?? "").trim() || undefined,
-    (shop?.city ?? "").trim() || undefined,
-    (shop?.province ?? "").trim() || undefined,
-    (shop?.postal_code ?? "").trim() || undefined,
-  ]);
-  const shopContact = compactCsv([
-    (shop?.phone_number ?? "").trim() || undefined,
-    (shop?.email ?? "").trim() || undefined,
-  ]);
-
-  // Canonical totals/currency source: shared invoice snapshot to prevent drift.
-  const currency: "CAD" | "USD" = snapshot.currency;
-
-  const laborRate = safeMoney(shop?.labor_rate);
-
-  const { data: insp } = await supabase
-    .from("inspections")
-    .select("id,inspection_type,status,created_at")
-    .eq("work_order_id", workOrderId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<
-      Pick<InspectionRow, "id" | "inspection_type" | "status" | "created_at">
-    >();
-
-  // Customer
-  let customer:
-    | Pick<
-        CustomerRow,
-        | "name"
-        | "first_name"
-        | "last_name"
-        | "phone"
-        | "phone_number"
-        | "email"
-        | "business_name"
-        | "street"
-        | "city"
-        | "province"
-        | "postal_code"
-      >
-    | null = null;
-
-  if (wo.customer_id) {
-    const { data: c } = await supabase
-      .from("customers")
-      .select("name,first_name,last_name,phone,phone_number,email,business_name,street,city,province,postal_code")
-      .eq("id", wo.customer_id)
-      .maybeSingle<
-        Pick<
-          CustomerRow,
-          | "name"
-          | "first_name"
-          | "last_name"
-          | "phone"
-          | "phone_number"
-          | "email"
-          | "business_name"
-          | "street"
-          | "city"
-          | "province"
-          | "postal_code"
-        >
-      >();
-    customer = c ?? null;
-  }
-
-  const customerName =
-    pickCustomerName(customer ?? null, wo.customer_name ?? null) ?? "—";
-  const customerPhone = pickCustomerPhone(customer ?? null) ?? "—";
-  const customerEmail = (customer?.email ?? "").trim() || "—";
-  const customerBusiness = (customer?.business_name ?? "").trim() || "—";
-  const customerAddress =
-    compactCsv([
-      (customer?.street ?? "").trim() || undefined,
-      (customer?.city ?? "").trim() || undefined,
-      (customer?.province ?? "").trim() || undefined,
-      (customer?.postal_code ?? "").trim() || undefined,
-    ]) || "—";
-
-  // Vehicle
-  let vehicle:
-    | Pick<
-        VehicleRow,
-        | "year"
-        | "make"
-        | "model"
-        | "vin"
-        | "license_plate"
-        | "unit_number"
-        | "mileage"
-        | "color"
-        | "engine_hours"
-      >
-    | null = null;
-
-  if (wo.vehicle_id) {
-    const { data: v } = await supabase
-      .from("vehicles")
-      .select("year,make,model,vin,license_plate,unit_number,mileage,color,engine_hours")
-      .eq("id", wo.vehicle_id)
-      .maybeSingle<
-        Pick<
-          VehicleRow,
-          | "year"
-          | "make"
-          | "model"
-          | "vin"
-          | "license_plate"
-          | "unit_number"
-          | "mileage"
-          | "color"
-          | "engine_hours"
-        >
-      >();
-    vehicle = v ?? null;
-  }
-
-  const vehicleLabel =
-    compactCsv([
-      vehicle?.year != null ? String(vehicle.year) : undefined,
-      (vehicle?.make ?? "").trim() || undefined,
-      (vehicle?.model ?? "").trim() || undefined,
-    ]) || "—";
-
-  const vin = (vehicle?.vin ?? "").trim() || "—";
-  const plate = (vehicle?.license_plate ?? "").trim() || "—";
-  const unit = (vehicle?.unit_number ?? "").trim() || "—";
-  const mileage = asString(vehicle?.mileage).trim() || "—";
-  const color = (vehicle?.color ?? "").trim() || "—";
-  const engineHours = asString(vehicle?.engine_hours).trim() || "—";
-
-  // Lines
-  const { data: lines } = await supabase
-    .from("work_order_lines")
-    .select("id,line_no,description,complaint,cause,correction,labor_time,price_estimate")
-    .eq("work_order_id", workOrderId)
-    .order("line_no", { ascending: true });
-
-  const lineRows = (Array.isArray(lines) ? lines : []) as Array<
-    Pick<
-      WorkOrderLineRow,
-      | "id"
-      | "line_no"
-      | "description"
-      | "complaint"
-      | "cause"
-      | "correction"
-      | "labor_time"
-      | "price_estimate"
-    >
-  >;
-
-  // Parts: the shared invoice snapshot applies allocation → staged work_order_parts →
-  // approved quote-line part_request_items priority and exposes the exact visible rows.
-  const allPartRows: PartDisplayRow[] = snapshot.parts.map((part) => ({
-    name: part.name,
-    partNumber: part.partNumber,
-    sku: part.sku,
-    unit: part.unit,
-    qty: part.qty,
-    unitPrice: part.unitPrice,
-    totalPrice: part.totalPrice,
-    lineId: part.lineId,
-  }));
-
-  const partsByLineId = new Map<string, PartDisplayRow[]>();
-  const unassignedParts: PartDisplayRow[] = [];
-
-  for (const p of allPartRows) {
-    if (p.lineId) {
-      const arr = partsByLineId.get(p.lineId) ?? [];
-      arr.push(p);
-      partsByLineId.set(p.lineId, arr);
-    } else {
-      unassignedParts.push(p);
+  try {
+    // The session-scoped client keeps the read inside the caller's shop RLS boundary.
+    const { data: workOrder, error: workOrderError } = await supabase
+      .from("work_orders")
+      .select("id,shop_id")
+      .eq("id", workOrderId)
+      .maybeSingle<{ id: string; shop_id: string }>();
+    if (workOrderError) throw workOrderError;
+    if (!workOrder) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
     }
-  }
 
-  // ---- Derived totals (fallback only) ----
-  const derivedPartsCost = allPartRows.reduce(
-    (sum, p) => sum + safeMoney(p.totalPrice),
-    0,
-  );
-
-  const derivedLaborHours = lineRows.reduce(
-    (sum, l) => sum + safeMoney(l.labor_time),
-    0,
-  );
-
-  const derivedLaborCost =
-    laborRate > 0 ? Math.max(0, derivedLaborHours * laborRate) : 0;
-
-  const derivedSubtotal = derivedLaborCost + derivedPartsCost;
-
-  const subtotal =
-    snapshot.subtotal != null && Number.isFinite(snapshot.subtotal)
-      ? snapshot.subtotal
-      : derivedSubtotal;
-  const laborCost =
-    snapshot.laborCost != null && Number.isFinite(snapshot.laborCost)
-      ? snapshot.laborCost
-      : derivedLaborCost;
-  const partsCost =
-    snapshot.partsCost != null && Number.isFinite(snapshot.partsCost)
-      ? snapshot.partsCost
-      : derivedPartsCost;
-  const shopSuppliesTotal =
-    snapshot.shopSuppliesTotal != null && Number.isFinite(snapshot.shopSuppliesTotal)
-      ? Math.max(0, snapshot.shopSuppliesTotal)
-      : 0;
-  const discountTotal =
-    snapshot.discountTotal != null && Number.isFinite(snapshot.discountTotal)
-      ? Math.max(0, snapshot.discountTotal)
-      : 0;
-  const taxTotal =
-    snapshot.taxTotal != null && Number.isFinite(snapshot.taxTotal)
-      ? Math.max(0, snapshot.taxTotal)
-      : 0;
-  const grandTotal =
-    snapshot.total != null && Number.isFinite(snapshot.total)
-      ? Math.max(0, snapshot.total)
-      : Math.max(0, subtotal - discountTotal + taxTotal);
-
-  // ---------------- PDF (multi-page) ----------------
-  const pdfDoc = await PDFDocument.create();
-
-  const PAGE_W = 595.28;
-  const PAGE_H = 841.89; // A4
-  const marginX = 42;
-
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-  const hexToRgb01 = (hex: string): PdfRgb => {
-    const raw = String(hex || "").trim().replace("#", "");
-    const base = raw.length >= 6 ? raw.slice(0, 6) : "C97A3D";
-    const r = Number.parseInt(base.slice(0, 2), 16);
-    const g = Number.parseInt(base.slice(2, 4), 16);
-    const b = Number.parseInt(base.slice(4, 6), 16);
-    if ([r, g, b].some((v) => Number.isNaN(v))) return rgb(0.78, 0.48, 0.28);
-    return rgb(r / 255, g / 255, b / 255);
-  };
-
-  const C_TEXT: PdfRgb = rgb(0.08, 0.08, 0.08);
-  const C_MUTED: PdfRgb = rgb(0.35, 0.35, 0.35);
-  const C_LIGHT: PdfRgb = rgb(0.7, 0.7, 0.7);
-  const C_COPPER: PdfRgb = hexToRgb01(brand.colors.primary);
-  const C_HEADER_BG: PdfRgb = hexToRgb01(brand.colors.secondary);
-  const C_WHITE: PdfRgb = rgb(1, 1, 1);
-
-  const lineH = (size: number) => size + 6;
-
-  const titleId = wo.custom_id ? asString(wo.custom_id) : `WO-${wo.id.slice(0, 8)}`;
-  const invoiceNumber = (inv?.invoice_number ?? "").trim();
-
-  const issuedAt =
-    inv?.issued_at != null
-      ? new Date(inv.issued_at).toLocaleString()
-      : inv?.created_at != null
-        ? new Date(inv.created_at).toLocaleString()
-        : wo.created_at
-          ? new Date(wo.created_at).toLocaleString()
-          : new Date().toLocaleString();
-
-  const headerH = 92;
-  const footerH = 34;
-  const rightX = 360;
-
-  let headerLogo: PDFImage | null = null;
-  if (brand.logoUrl) {
-    try {
-      const imgRes = await fetch(brand.logoUrl);
-      if (imgRes.ok) {
-        const bytes = new Uint8Array(await imgRes.arrayBuffer());
-        try {
-          headerLogo = await pdfDoc.embedPng(bytes);
-        } catch {
-          headerLogo = await pdfDoc.embedJpg(bytes);
+    const activeVersion = await getActiveInvoiceVersion({
+      supabase,
+      workOrderId,
+      shopId: workOrder.shop_id,
+    });
+    const snapshot =
+      activeVersion?.snapshot ??
+      (await getInvoiceSnapshotForWorkOrder({ supabase, workOrderId }));
+    const { data: invoice } = activeVersion?.invoice_id
+      ? await supabase
+          .from("invoices")
+          .select("invoice_number,notes")
+          .eq("id", activeVersion.invoice_id)
+          .eq("shop_id", workOrder.shop_id)
+          .maybeSingle<{ invoice_number: string | null; notes: string | null }>()
+      : { data: null };
+    const brand = await getActiveBrandForRender(workOrder.shop_id);
+    const pdfDocument = activeVersion
+      ? {
+          invoiceNumber: invoice?.invoice_number ?? snapshot.invoice?.invoice_number,
+          versionNumber: activeVersion.version_number,
+          status: activeVersion.lifecycle_status,
+          issuedAt: activeVersion.issued_at,
+          paidTotal: activeVersion.paid_total,
+          refundedTotal: activeVersion.refunded_total,
+          outstandingTotal: activeVersion.outstanding_total,
+          notes: invoice?.notes ?? snapshot.invoice?.notes,
+          draft: false,
         }
-      }
-    } catch {
-      headerLogo = null;
-    }
-  }
-
-  const drawHeader = (page: ReturnType<PDFDocument["addPage"]>) => {
-    const headerY = PAGE_H - headerH;
-
-    page.drawRectangle({ x: 0, y: headerY, width: PAGE_W, height: headerH, color: C_HEADER_BG });
-
-    const headerTop = PAGE_H - 26;
-
-    if (headerLogo) {
-      const maxW = 120;
-      const maxH = 36;
-      const scale = Math.min(maxW / headerLogo.width, maxH / headerLogo.height, 1);
-      const w = headerLogo.width * scale;
-      const h = headerLogo.height * scale;
-      page.drawImage(headerLogo, {
-        x: marginX,
-        y: headerTop - 6,
-        width: w,
-        height: h,
-      });
-    } else {
-      page.drawText(shopName, { x: marginX, y: headerTop, size: 16, font: bold, color: C_COPPER });
-    }
-
-    if (shopAddress.trim().length) {
-      page.drawText(shopAddress, { x: marginX, y: headerTop - 20, size: 9.5, font, color: C_LIGHT });
-    }
-
-    if (shopContact.trim().length) {
-      page.drawText(shopContact, { x: marginX, y: headerTop - 34, size: 9.5, font, color: rgb(0.85, 0.85, 0.85) });
-    }
-
-    page.drawText("INVOICE", { x: rightX, y: headerTop, size: 18, font: bold, color: C_WHITE });
-
-    const meta1 = invoiceNumber.length ? `Invoice #: ${invoiceNumber}` : `Work Order: ${titleId}`;
-    page.drawText(meta1, { x: rightX, y: headerTop - 20, size: 10, font, color: rgb(0.88, 0.88, 0.88) });
-
-    page.drawText(`Issued: ${issuedAt}`, { x: rightX, y: headerTop - 34, size: 10, font, color: rgb(0.7, 0.7, 0.7) });
-
-    const divY = headerY - 22;
-    page.drawRectangle({
-      x: marginX - 10,
-      y: divY,
-      width: PAGE_W - (marginX - 10) * 2,
-      height: 2,
-      color: C_COPPER,
+      : {
+          invoiceNumber: null,
+          versionNumber: null,
+          status: "draft",
+          issuedAt: null,
+          paidTotal: 0,
+          refundedTotal: 0,
+          outstandingTotal: snapshot.total,
+          notes: snapshot.invoice?.notes,
+          draft: true,
+        };
+    const bytes = await renderPremiumInvoicePdf({
+      snapshot,
+      document: pdfDocument,
+      brand,
     });
+    const download = new URL(req.url).searchParams.get("download") === "1";
 
-    return divY - 18;
-  };
-
-  const drawFooter = (page: ReturnType<PDFDocument["addPage"]>) => {
-    page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: footerH, color: C_HEADER_BG });
-
-    page.drawText(`${shopName} • Invoice`, { x: marginX, y: 14, size: 9, font, color: rgb(0.8, 0.8, 0.8) });
-    page.drawText(`Work Order: ${titleId}`, { x: rightX, y: 14, size: 9, font, color: rgb(0.65, 0.65, 0.65) });
-  };
-
-  const newPage = (): PdfCtx => {
-    const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
-    const startY = drawHeader(page);
-    drawFooter(page);
-    return { doc: pdfDoc, page, y: startY };
-  };
-
-  const ensureSpace = (ctx2: PdfCtx, needed: number): PdfCtx => {
-    const bottomLimit = footerH + 26;
-    if (ctx2.y - needed >= bottomLimit) return ctx2;
-    return newPage();
-  };
-
-  const drawText = (ctx2: PdfCtx, text: string, opts?: DrawTextOpts): PdfCtx => {
-    const size = opts?.size ?? 11;
-    const x = opts?.x ?? marginX;
-    const f = opts?.bold ? bold : font;
-    const color = opts?.color ?? C_TEXT;
-
-    ctx2.page.drawText(text, { x, y: ctx2.y, size, font: f, color });
-    return { ...ctx2, y: ctx2.y - lineH(size) };
-  };
-
-  const drawRule = (ctx2: PdfCtx): PdfCtx => {
-    const y = ctx2.y - 4;
-    ctx2.page.drawRectangle({
-      x: marginX,
-      y,
-      width: PAGE_W - marginX * 2,
-      height: 1,
-      color: rgb(0.92, 0.92, 0.92),
+    return new NextResponse(Buffer.from(bytes), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${premiumInvoiceFilename(snapshot, pdfDocument)}"`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
     });
-    return { ...ctx2, y: y - 12 };
-  };
-
-  let ctxPdf = newPage();
-
-  // Customer
-  ctxPdf = ensureSpace(ctxPdf, 180);
-  ctxPdf = drawText(ctxPdf, "Customer", { bold: true, size: 12, color: C_COPPER });
-  ctxPdf = drawText(ctxPdf, customerName, { size: 11 });
-  ctxPdf = drawText(ctxPdf, `Business: ${customerBusiness}`, { size: 10, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Phone: ${customerPhone}`, { size: 10, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Email: ${customerEmail}`, { size: 10, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Address: ${customerAddress}`, { size: 10, color: C_MUTED });
-
-  ctxPdf = drawText(ctxPdf, "", { size: 6 });
-
-  // Vehicle
-  ctxPdf = ensureSpace(ctxPdf, 150);
-  ctxPdf = drawText(ctxPdf, "Vehicle", { bold: true, size: 12, color: C_COPPER });
-  ctxPdf = drawText(ctxPdf, vehicleLabel, { size: 11 });
-  ctxPdf = drawText(ctxPdf, `VIN: ${vin}`, { size: 10, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Plate: ${plate}`, { size: 10, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Unit #: ${unit}`, { size: 10, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Mileage: ${mileage}`, { size: 10, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Color: ${color}`, { size: 10, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Engine Hours: ${engineHours}`, { size: 10, color: C_MUTED });
-
-  ctxPdf = drawText(ctxPdf, "", { size: 8 });
-
-  // Line Items
-  ctxPdf = ensureSpace(ctxPdf, 60);
-  ctxPdf = drawText(ctxPdf, "Line Items", { bold: true, size: 12, color: C_COPPER });
-
-  if (!lineRows.length) {
-    ctxPdf = drawText(ctxPdf, "— No line items recorded yet —", { size: 10, color: C_MUTED });
-  } else {
-    const sorted = [...lineRows].sort((a, b) => {
-      const an = typeof a.line_no === "number" ? a.line_no : Number(a.line_no);
-      const bn = typeof b.line_no === "number" ? b.line_no : Number(b.line_no);
-      const asn = Number.isFinite(an) ? an : 0;
-      const bsn = Number.isFinite(bn) ? bn : 0;
-      return asn - bsn;
-    });
-
-    for (const row of sorted) {
-      const complaint = asString(row.complaint || row.description || "—");
-      const cause = asString(row.cause || "");
-      const correction = asString(row.correction || "");
-
-      const laborHours = safeMoney(row.labor_time);
-      const laborDollars = Math.max(0, laborHours * laborRate);
-
-      const complaintLines = wrapText(complaint, 78);
-      const causeLines = cause.trim() ? wrapText(cause, 78) : [];
-      const correctionLines = correction.trim() ? wrapText(correction, 78) : [];
-
-      const lineParts = row.id ? partsByLineId.get(row.id) ?? [] : [];
-      const linePartsDollars = lineParts.reduce((sum, p) => sum + safeMoney(p.totalPrice), 0);
-      const lineTotal = laborDollars + linePartsDollars;
-
-      const approx =
-        26 +
-        (complaintLines.length + causeLines.length + correctionLines.length) * 16 +
-        (laborHours > 0 ? 32 : 0) +
-        (lineParts.length ? 24 + Math.min(lineParts.length, 8) * 16 : 0) +
-        (lineTotal > 0 ? 16 : 0);
-
-      ctxPdf = ensureSpace(ctxPdf, Math.max(110, approx));
-
-      const label =
-        row.line_no != null && asString(row.line_no).trim().length
-          ? `#${asString(row.line_no).trim()}`
-          : "•";
-
-      ctxPdf = drawText(ctxPdf, label, { bold: true, size: 10, color: C_COPPER });
-
-      ctxPdf = drawText(ctxPdf, `Complaint: ${complaintLines[0]}`, { size: 10 });
-      for (const extra of complaintLines.slice(1)) {
-        ctxPdf = drawText(ctxPdf, `          ${extra}`, { size: 10, color: C_MUTED });
-      }
-
-      for (const c of causeLines) ctxPdf = drawText(ctxPdf, `Cause: ${c}`, { size: 10, color: C_MUTED });
-      for (const c of correctionLines) ctxPdf = drawText(ctxPdf, `Correction: ${c}`, { size: 10, color: C_MUTED });
-
-      if (laborHours > 0 && laborRate > 0) {
-        ctxPdf = drawText(
-          ctxPdf,
-          `Labor: ${moneyLabel(laborDollars, currency)} (${laborHours} hr × ${moneyLabel(laborRate, currency)}/hr)`,
-          { size: 10, color: C_MUTED },
-        );
-      } else if (laborHours > 0) {
-        ctxPdf = drawText(ctxPdf, `Labor time: ${laborHours} hr`, { size: 10, color: C_MUTED });
-      }
-
-      if (lineTotal > 0) {
-        ctxPdf = drawText(ctxPdf, `Line total: ${moneyLabel(lineTotal, currency)}`, { size: 10, color: C_MUTED });
-      }
-
-      if (lineParts.length) {
-        ctxPdf = drawText(ctxPdf, "Parts for this line:", { size: 10, bold: true, color: C_MUTED });
-
-        for (const p of lineParts.slice(0, 8)) {
-          const meta = compactCsv([p.partNumber, p.sku, p.unit]);
-          const name = meta.length ? `${p.name} (${meta})` : p.name;
-
-          const qty = Number.isFinite(p.qty) ? p.qty : 0;
-          const total = moneyLabel(p.totalPrice, currency);
-          const bullet = `• ${qty} × ${name} — ${total}`;
-
-          const pieces = wrapText(bullet, 88);
-          ctxPdf = drawText(ctxPdf, pieces[0], { size: 10, color: C_MUTED });
-          for (const extra of pieces.slice(1)) {
-            ctxPdf = drawText(ctxPdf, `  ${extra}`, { size: 10, color: C_MUTED });
-          }
-        }
-
-        if (lineParts.length > 8) {
-          ctxPdf = drawText(ctxPdf, `…and ${lineParts.length - 8} more`, { size: 10, color: C_MUTED });
-        }
-      }
-
-      ctxPdf = drawRule(ctxPdf);
-    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Invoice PDF generation failed";
+    console.error("[invoice-pdf] generation failed", { workOrderId, message });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  // Overall Parts section
-  ctxPdf = ensureSpace(ctxPdf, 70);
-  ctxPdf = drawText(ctxPdf, "Parts", { bold: true, size: 12, color: C_COPPER });
-
-  if (!allPartRows.length) {
-    ctxPdf = drawText(ctxPdf, "— No parts on this work order —", { size: 10, color: C_MUTED });
-  } else {
-    ctxPdf = ensureSpace(ctxPdf, 40);
-    ctxPdf = drawText(ctxPdf, "Qty   Part                                Unit     Total", { size: 10, bold: true });
-
-    ctxPdf.page.drawRectangle({
-      x: marginX,
-      y: ctxPdf.y + 4,
-      width: PAGE_W - marginX * 2,
-      height: 1,
-      color: rgb(0.9, 0.9, 0.9),
-    });
-
-    const maxRows = 60;
-    const rows = allPartRows.slice(0, maxRows);
-
-    for (const p of rows) {
-      const meta = compactCsv([p.partNumber, p.sku, p.unit]);
-      const name = meta.length ? `${p.name} (${meta})` : p.name;
-      const nameLines = wrapText(name, 52);
-      const needed = 22 + nameLines.length * 16;
-
-      ctxPdf = ensureSpace(ctxPdf, needed);
-
-      const qty = Number.isFinite(p.qty) ? p.qty : 0;
-
-      ctxPdf.page.drawText(String(qty), { x: marginX, y: ctxPdf.y, size: 10, font, color: C_TEXT });
-      ctxPdf.page.drawText(nameLines[0], { x: marginX + 36, y: ctxPdf.y, size: 10, font, color: C_TEXT });
-      ctxPdf.page.drawText(moneyLabel(p.unitPrice, currency), { x: 420, y: ctxPdf.y, size: 10, font, color: C_MUTED });
-      ctxPdf.page.drawText(moneyLabel(p.totalPrice, currency), { x: 500, y: ctxPdf.y, size: 10, font, color: C_TEXT });
-
-      ctxPdf = { ...ctxPdf, y: ctxPdf.y - lineH(10) };
-
-      for (const extra of nameLines.slice(1)) {
-        ctxPdf.page.drawText(extra, { x: marginX + 36, y: ctxPdf.y, size: 10, font, color: C_MUTED });
-        ctxPdf = { ...ctxPdf, y: ctxPdf.y - lineH(10) };
-      }
-
-      ctxPdf = { ...ctxPdf, y: ctxPdf.y - 2 };
-    }
-
-    if (allPartRows.length > maxRows) {
-      ctxPdf = ensureSpace(ctxPdf, 20);
-      ctxPdf = drawText(ctxPdf, `…and ${allPartRows.length - maxRows} more parts`, { size: 10, color: C_MUTED });
-    }
-
-    if (unassignedParts.length && partsByLineId.size > 0) {
-      ctxPdf = ensureSpace(ctxPdf, 24);
-      ctxPdf = drawText(
-        ctxPdf,
-        `Note: ${unassignedParts.length} part(s) were not linked to a specific line item.`,
-        { size: 10,
-          color: C_MUTED,
-        },
-      );
-    }
-  }
-
-  // Inspection summary
-  ctxPdf = ensureSpace(ctxPdf, 90);
-  ctxPdf = drawText(ctxPdf, "Inspection", { bold: true, size: 12, color: C_COPPER });
-
-  if (!insp?.id) {
-    ctxPdf = drawText(ctxPdf, "— No inspection linked to this work order —", {
-      size: 10,
-      color: C_MUTED,
-    });
-  } else {
-    const inspType = asString(insp.inspection_type).trim() || "Inspection";
-    const inspStatus = asString(insp.status).trim() || "—";
-    const inspDate =
-      insp.created_at ? new Date(insp.created_at).toLocaleString() : "—";
-
-    ctxPdf = drawText(ctxPdf, `Type: ${inspType}`, { size: 10, color: C_MUTED });
-    ctxPdf = drawText(ctxPdf, `Status: ${inspStatus}`, { size: 10, color: C_MUTED });
-    ctxPdf = drawText(ctxPdf, `Recorded: ${inspDate}`, { size: 10, color: C_MUTED });
-    ctxPdf = drawText(ctxPdf, `Inspection ID: ${insp.id}`, { size: 9.5, color: C_LIGHT });
-  }
-
-  ctxPdf = drawText(ctxPdf, "", { size: 8 });
-
-  // Totals
-  ctxPdf = ensureSpace(ctxPdf, 150);
-  ctxPdf = drawText(ctxPdf, "Totals", { bold: true, size: 12, color: C_COPPER });
-
-  ctxPdf = drawText(ctxPdf, `Subtotal: ${moneyLabel(subtotal, currency)}`, { size: 11 });
-  ctxPdf = drawText(ctxPdf, `Labor: ${moneyLabel(laborCost, currency)}`, { size: 11, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Parts: ${moneyLabel(partsCost, currency)}`, { size: 11, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Shop supplies: ${moneyLabel(shopSuppliesTotal, currency)}`, { size: 11, color: C_MUTED });
-
-  if (discountTotal > 0) {
-    ctxPdf = drawText(ctxPdf, `Discount: -${moneyLabel(discountTotal, currency)}`, { size: 11, color: C_MUTED });
-  }
-
-  ctxPdf = drawText(ctxPdf, `Tax: ${moneyLabel(taxTotal, currency)}`, { size: 11, color: C_MUTED });
-  ctxPdf = drawText(ctxPdf, `Total: ${moneyLabel(grandTotal, currency)}`, { size: 13, bold: true });
-
-  // Notes
-  const notes = asString(inv?.notes).trim();
-  if (notes.length) {
-    ctxPdf = ensureSpace(ctxPdf, 70);
-    ctxPdf = drawText(ctxPdf, "Notes", { bold: true, size: 12, color: C_COPPER });
-
-    for (const ln of wrapText(notes, 92).slice(0, 12)) {
-      ctxPdf = ensureSpace(ctxPdf, 18);
-      ctxPdf = drawText(ctxPdf, ln, { size: 10, color: C_MUTED });
-    }
-  }
-
-  const pdfBytes = await pdfDoc.save();
-
-  const disposition = forceDownload
-    ? `attachment; filename="Invoice_${titleId}.pdf"`
-    : `inline; filename="Invoice_${titleId}.pdf"`;
-
-  return new NextResponse(Buffer.from(pdfBytes), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": disposition,
-      "Cache-Control": "no-store",
-    },
-  });
 }

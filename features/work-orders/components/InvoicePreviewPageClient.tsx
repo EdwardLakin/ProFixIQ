@@ -1268,9 +1268,11 @@ export default function InvoicePreviewPageClient({
               </div>
             </div>
 
-            <div className={reviewOk || activeInvoiceVersion ? "" : "opacity-60 pointer-events-none"}>
+            <div>
               <WorkOrderInvoiceDownloadButton
                 workOrderId={workOrderId}
+                invoiceVersionId={activeInvoiceVersion?.id}
+                draft={!activeInvoiceVersion}
                 lines={effectiveLines}
                 summary={effectiveSummary}
                 vehicleInfo={effectiveVehicleInfo}
@@ -1281,8 +1283,8 @@ export default function InvoicePreviewPageClient({
           </div>
 
           {!reviewOk && !activeInvoiceVersion ? (
-            <div className="mt-3 text-[0.75rem] text-amber-200">
-              PDF download is shown, but invoice is still blocked until required info is complete.
+            <div className="mt-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+              Draft preview is available for review. Sending remains blocked until required information is complete.
             </div>
           ) : null}
         </div>
