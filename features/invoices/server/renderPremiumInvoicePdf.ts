@@ -1,6 +1,5 @@
 import {
   PDFDocument,
-  StandardFonts,
   degrees,
   rgb,
   type PDFFont,
@@ -8,6 +7,9 @@ import {
   type PDFPage,
   type RGB,
 } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { InvoiceSnapshot } from "@/features/invoices/server/getInvoiceSnapshot";
 import type { ActiveBrandRender } from "@/features/branding/server/getActiveBrandForRender";
 
@@ -34,6 +36,22 @@ const PAGE_H = 792;
 const MARGIN = 40;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const BOTTOM = 48;
+
+async function embedInvoiceFonts(doc: PDFDocument): Promise<{
+  regular: PDFFont;
+  bold: PDFFont;
+}> {
+  doc.registerFontkit(fontkit);
+  const [regularBytes, boldBytes] = await Promise.all([
+    readFile(resolve(process.cwd(), "public/invoice-fonts/DejaVuSans.ttf")),
+    readFile(resolve(process.cwd(), "public/invoice-fonts/DejaVuSans-Bold.ttf")),
+  ]);
+  const [regular, bold] = await Promise.all([
+    doc.embedFont(new Uint8Array(regularBytes), { subset: true }),
+    doc.embedFont(new Uint8Array(boldBytes), { subset: true }),
+  ]);
+  return { regular, bold };
+}
 
 function finite(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -185,8 +203,7 @@ export function premiumInvoiceFilename(
 export async function renderPremiumInvoicePdf(input: RenderInput): Promise<Uint8Array> {
   const { snapshot, document, brand } = input;
   const doc = await PDFDocument.create();
-  const regular = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const { regular, bold } = await embedInvoiceFonts(doc);
   const logo = await loadLogo(doc, brand.logoUrl);
 
   const navy = hexColor(brand.colors.secondary, rgb(0.055, 0.09, 0.16));
