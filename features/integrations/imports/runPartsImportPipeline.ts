@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { setStockOnHandSnapshot } from "@/features/parts/server/setStockOnHandSnapshot";
 
 type CsvRow = Record<string, string>;
 type ExistingPartRow = Pick<
@@ -445,6 +446,11 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
       continue;
     }
 
+    if (!staged.matched_part_id) {
+      throw new Error(`Auto-promoted parts staging row ${staged.id} has no matched part.`);
+    }
+    const matchedPartId = staged.matched_part_id;
+
     promotedRows += 1;
     const sourceHash = createHash("sha1")
       .update(`${intakeId}|${staged.raw_row_id ?? "none"}|${staged.normalized_part_number ?? ""}|${staged.normalized_sku ?? ""}`)
@@ -461,7 +467,7 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
           import_mode: "staged_auto_promote_exact_part_number",
         }),
       })
-      .eq("id", staged.matched_part_id);
+      .eq("id", matchedPartId);
 
     const { data: defaultLocation } = await supabase
       .from("stock_locations")
@@ -473,35 +479,19 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
 
     if (defaultLocation?.id) {
       inventorySeededLocations += 1;
-      const { data: existingStock } = await supabase
-        .from("part_stock")
-        .select("id,qty_on_hand")
-        .eq("part_id", staged.matched_part_id)
-        .eq("location_id", defaultLocation.id)
-        .maybeSingle();
-
       const seededQty = Number(staged.quantity_on_hand ?? 0);
-      if (existingStock?.id) {
-        await supabase
-          .from("part_stock")
-          .update({ qty_on_hand: Math.max(0, seededQty) })
-          .eq("id", existingStock.id);
-      } else {
-        await supabase.from("part_stock").insert({
-          part_id: staged.matched_part_id,
-          location_id: defaultLocation.id,
-          qty_on_hand: Math.max(0, seededQty),
-          qty_reserved: 0,
-        });
-      }
-
-      await supabase.from("stock_moves").insert({
-        shop_id: shopId,
-        part_id: staged.matched_part_id,
-        location_id: defaultLocation.id,
-        qty_delta: Math.max(0, seededQty),
-        reason: "shop_boost_snapshot_seed",
-        metadata: { intake_id: intakeId, staging_row_id: staged.id, source: "shop_boost" },
+      await setStockOnHandSnapshot({
+        client: supabase,
+        shopId,
+        partId: matchedPartId,
+        locationId: defaultLocation.id,
+        targetQty: Math.max(0, seededQty),
+        idempotencyKey: `${shopId}:inventory-snapshot:parts-import:${intakeId}:${staged.id}`,
+        metadata: {
+          intake_id: intakeId,
+          staging_row_id: staged.id,
+          source: "shop_boost_parts_pipeline",
+        },
       });
     }
 
@@ -511,7 +501,7 @@ export async function runPartsImportPipeline(args: PartsPipelineArgs): Promise<P
         intake_id: intakeId,
         raw_row_id: staged.raw_row_id,
         staging_row_id: staged.id,
-        part_id: staged.matched_part_id,
+        part_id: matchedPartId,
         source_system: sourceSystem,
         legacy_sku: staged.normalized_sku,
         legacy_part_number: staged.normalized_part_number,
