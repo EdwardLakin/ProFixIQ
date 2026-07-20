@@ -24,7 +24,9 @@ const snapshotHelper = readFileSync(
 
 describe("canonical inventory availability", () => {
   it("builds the picking view from the physical ledger minus active allocations", () => {
-    expect(migration).toContain("create or replace view public.v_part_stock");
+    expect(migration).toContain("drop view if exists public.v_part_stock");
+    expect(migration).not.toContain("drop view if exists public.v_part_stock cascade");
+    expect(migration).toContain("create view public.v_part_stock");
     expect(migration).toContain("with (security_invoker = true)");
     expect(migration).toContain("from public.stock_moves sm");
     expect(migration).toContain("from public.work_order_part_allocations a");

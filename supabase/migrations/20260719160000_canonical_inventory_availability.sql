@@ -81,9 +81,12 @@ on conflict (shop_id, idempotency_key)
   where idempotency_key is not null
 do nothing;
 
--- Keep the existing view contract while sourcing every quantity from the same
--- canonical tables used by parts_available() and parts_allocate_request_item().
-create or replace view public.v_part_stock
+-- Production installations have used more than one column order for this view.
+-- CREATE OR REPLACE matches by position and can misread that as a column rename,
+-- so recreate the view without CASCADE and then restore its narrow grants.
+drop view if exists public.v_part_stock;
+
+create view public.v_part_stock
 with (security_invoker = true)
 as
 with physical as (
