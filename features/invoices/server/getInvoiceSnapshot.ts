@@ -9,6 +9,7 @@ import {
 import { calculateInvoiceTotals } from "@/features/invoices/lib/invoiceTotals";
 import { shouldUsePersistedInvoiceTotals } from "@/features/invoices/lib/invoiceSnapshotState";
 import { filterInvoicePartAllocations } from "@/features/invoices/lib/filterInvoicePartAllocations";
+import type { InvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
 
 type DB = Database;
 
@@ -18,9 +19,11 @@ type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type AllocationRow =
+  DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
-type WorkOrderQuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
+type WorkOrderQuoteLineRow =
+  DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"];
 type PartRequestItemRow = DB["public"]["Tables"]["part_request_items"]["Row"];
 type PartRequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
@@ -36,7 +39,10 @@ export type InvoiceSnapshotPart = {
   partNumber?: string;
   unit?: string;
   vendor?: string;
-  source?: "work_order_part_allocation" | "work_order_part" | "quote_line_part_request";
+  source?:
+    | "work_order_part_allocation"
+    | "work_order_part"
+    | "quote_line_part_request";
 };
 
 export type InvoiceSnapshotLine = Pick<
@@ -91,27 +97,30 @@ export type InvoiceSnapshot = {
     | "created_at"
     | "notes"
   > | null;
-  shop: Pick<
-    ShopRow,
-    | "business_name"
-    | "shop_name"
-    | "name"
-    | "country"
-    | "phone_number"
-    | "email"
-    | "street"
-    | "city"
-    | "province"
-    | "postal_code"
-    | "labor_rate"
-    | "supplies_percent"
-    | "shop_supplies_enabled"
-    | "shop_supplies_type"
-    | "shop_supplies_percent"
-    | "shop_supplies_flat_amount"
-    | "shop_supplies_cap_amount"
-    | "tax_rate"
-  > | null;
+  shop:
+    | (Pick<
+        ShopRow,
+        | "business_name"
+        | "shop_name"
+        | "name"
+        | "country"
+        | "phone_number"
+        | "email"
+        | "street"
+        | "city"
+        | "province"
+        | "postal_code"
+        | "labor_rate"
+        | "supplies_percent"
+        | "shop_supplies_enabled"
+        | "shop_supplies_type"
+        | "shop_supplies_percent"
+        | "shop_supplies_flat_amount"
+        | "shop_supplies_cap_amount"
+        | "tax_rate"
+      > &
+        Partial<Pick<ShopRow, "logo_url" | "invoice_terms" | "invoice_footer">>)
+    | null;
   customer: Pick<
     CustomerRow,
     | "name"
@@ -149,6 +158,8 @@ export type InvoiceSnapshot = {
   taxTotal: number | null;
   taxRate?: number | null;
   total: number | null;
+  /** Immutable resolved renderer configuration. Present on issued invoice versions. */
+  documentConfiguration?: InvoiceDocumentConfiguration;
 };
 
 function safeNumberOrNull(v: unknown): number | null {
@@ -168,14 +179,18 @@ function positiveOrNull(v: unknown): number | null {
 }
 
 function normalizeInvoiceCurrency(v: unknown): "CAD" | "USD" | null {
-  const c = String(v ?? "").trim().toUpperCase();
+  const c = String(v ?? "")
+    .trim()
+    .toUpperCase();
   if (c === "CAD") return "CAD";
   if (c === "USD") return "USD";
   return null;
 }
 
 function normalizeCurrencyFromCountry(country: unknown): "CAD" | "USD" {
-  const c = String(country ?? "").trim().toUpperCase();
+  const c = String(country ?? "")
+    .trim()
+    .toUpperCase();
   return c === "CA" ? "CAD" : "USD";
 }
 
@@ -216,7 +231,9 @@ function itemUnitPrice(
   );
 }
 
-function itemQuantity(item: Pick<PartRequestItemRow, "qty" | "qty_requested" | "qty_approved">): number {
+function itemQuantity(
+  item: Pick<PartRequestItemRow, "qty" | "qty_requested" | "qty_approved">,
+): number {
   const qty = safeNumber(item.qty);
   const requested = safeNumber(item.qty_requested);
   const approved = safeNumber(item.qty_approved);
@@ -225,11 +242,16 @@ function itemQuantity(item: Pick<PartRequestItemRow, "qty" | "qty_requested" | "
 }
 
 function quoteLineIsInvoiceFallbackEligible(
-  quote: Pick<WorkOrderQuoteLineRow, "status" | "work_order_line_id"> | undefined,
+  quote:
+    | Pick<WorkOrderQuoteLineRow, "status" | "work_order_line_id">
+    | undefined,
   lineId: string,
 ): boolean {
-  if (!quote?.work_order_line_id || quote.work_order_line_id !== lineId) return false;
-  const status = String(quote.status ?? "").trim().toLowerCase();
+  if (!quote?.work_order_line_id || quote.work_order_line_id !== lineId)
+    return false;
+  const status = String(quote.status ?? "")
+    .trim()
+    .toLowerCase();
   return !NON_BILLABLE_QUOTE_LINE_STATUSES.has(status);
 }
 
@@ -252,14 +274,19 @@ function partRequestItemIsInvoiceFallbackEligible(
     workOrderId: string;
     workOrderLineId: string;
     requestQuoteLineIdByRequestId: Map<string, string>;
-    quoteLineById: Map<string, Pick<WorkOrderQuoteLineRow, "status" | "work_order_line_id">>;
+    quoteLineById: Map<
+      string,
+      Pick<WorkOrderQuoteLineRow, "status" | "work_order_line_id">
+    >;
   },
 ): boolean {
   if (item.shop_id !== args.shopId) return false;
   if (item.work_order_id !== args.workOrderId) return false;
   if (item.work_order_line_id !== args.workOrderLineId) return false;
 
-  const status = String(item.status ?? "").trim().toLowerCase();
+  const status = String(item.status ?? "")
+    .trim()
+    .toLowerCase();
   const statusIsBillable = BILLABLE_PART_REQUEST_ITEM_STATUSES.has(status);
   if (!statusIsBillable && item.approved !== true) return false;
   if (itemQuantity(item) <= 0) return false;
@@ -342,11 +369,12 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   // Match the work-order page exactly for labor pricing. That page reads
   // labor_rate in a dedicated query, so unrelated shop settings cannot turn
   // one labor hour into one dollar on the billing card.
-  const { data: workOrderShopRate, error: workOrderShopRateError } = await supabase
-    .from("shops")
-    .select("labor_rate")
-    .eq("id", workOrder.shop_id)
-    .maybeSingle<Pick<ShopRow, "labor_rate">>();
+  const { data: workOrderShopRate, error: workOrderShopRateError } =
+    await supabase
+      .from("shops")
+      .select("labor_rate")
+      .eq("id", workOrder.shop_id)
+      .maybeSingle<Pick<ShopRow, "labor_rate">>();
 
   if (workOrderShopRateError) {
     throw new Error(
@@ -357,7 +385,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const shopResult = await supabase
     .from("shops")
     .select(
-      "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount, tax_rate",
+      "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, shop_supplies_enabled, shop_supplies_type, shop_supplies_percent, shop_supplies_flat_amount, shop_supplies_cap_amount, tax_rate, logo_url, invoice_terms, invoice_footer",
     )
     .eq("id", workOrder.shop_id)
     .maybeSingle<
@@ -374,13 +402,16 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         | "province"
         | "postal_code"
         | "labor_rate"
-    | "supplies_percent"
-    | "shop_supplies_enabled"
-    | "shop_supplies_type"
-    | "shop_supplies_percent"
-    | "shop_supplies_flat_amount"
-    | "shop_supplies_cap_amount"
-    | "tax_rate"
+        | "supplies_percent"
+        | "shop_supplies_enabled"
+        | "shop_supplies_type"
+        | "shop_supplies_percent"
+        | "shop_supplies_flat_amount"
+        | "shop_supplies_cap_amount"
+        | "tax_rate"
+        | "logo_url"
+        | "invoice_terms"
+        | "invoice_footer"
       >
     >();
 
@@ -388,32 +419,36 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   // every optional shop-supplies column yet. PostgREST rejects the entire
   // select when even one selected column is unavailable, which previously
   // turned a configured $140 rate into a null shop row and then a $1 fallback.
-  const shopFallbackResult = shopResult.error || !shopResult.data
-    ? await supabase
-        .from("shops")
-        .select(
-          "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, tax_rate",
-        )
-        .eq("id", workOrder.shop_id)
-        .maybeSingle<
-          Pick<
-            ShopRow,
-            | "business_name"
-            | "shop_name"
-            | "name"
-            | "country"
-            | "phone_number"
-            | "email"
-            | "street"
-            | "city"
-            | "province"
-            | "postal_code"
-            | "labor_rate"
-            | "supplies_percent"
-            | "tax_rate"
-          >
-        >()
-    : null;
+  const shopFallbackResult =
+    shopResult.error || !shopResult.data
+      ? await supabase
+          .from("shops")
+          .select(
+            "business_name, shop_name, name, country, phone_number, email, street, city, province, postal_code, labor_rate, supplies_percent, tax_rate, logo_url, invoice_terms, invoice_footer",
+          )
+          .eq("id", workOrder.shop_id)
+          .maybeSingle<
+            Pick<
+              ShopRow,
+              | "business_name"
+              | "shop_name"
+              | "name"
+              | "country"
+              | "phone_number"
+              | "email"
+              | "street"
+              | "city"
+              | "province"
+              | "postal_code"
+              | "labor_rate"
+              | "supplies_percent"
+              | "tax_rate"
+              | "logo_url"
+              | "invoice_terms"
+              | "invoice_footer"
+            >
+          >()
+      : null;
 
   if (shopFallbackResult?.error) {
     throw new Error(
@@ -487,7 +522,9 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const { data: linesRaw, error: linesError } = await supabase
     .from("work_order_lines")
-    .select("id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json")
+    .select(
+      "id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json",
+    )
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .order("line_no", { ascending: true })
@@ -509,14 +546,18 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     >();
 
   if (linesError) {
-    throw new Error(`Work-order labor lines are unavailable: ${linesError.message}`);
+    throw new Error(
+      `Work-order labor lines are unavailable: ${linesError.message}`,
+    );
   }
 
   const lines = Array.isArray(linesRaw) ? linesRaw : [];
 
   const { data: allocRaw, error: allocationsError } = await supabase
     .from("work_order_part_allocations")
-    .select("id, shop_id, work_order_id, work_order_line_id, part_id, qty, unit_cost, source_request_item_id, created_at")
+    .select(
+      "id, shop_id, work_order_id, work_order_line_id, part_id, qty, unit_cost, source_request_item_id, created_at",
+    )
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .order("created_at", { ascending: true })
@@ -524,24 +565,46 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       Array<
         Pick<
           AllocationRow,
-          "id" | "shop_id" | "work_order_id" | "work_order_line_id" | "part_id" | "qty" | "unit_cost" | "source_request_item_id" | "created_at"
+          | "id"
+          | "shop_id"
+          | "work_order_id"
+          | "work_order_line_id"
+          | "part_id"
+          | "qty"
+          | "unit_cost"
+          | "source_request_item_id"
+          | "created_at"
         >
       >
     >();
 
   if (allocationsError) {
-    throw new Error(`Allocated work-order parts are unavailable: ${allocationsError.message}`);
+    throw new Error(
+      `Allocated work-order parts are unavailable: ${allocationsError.message}`,
+    );
   }
 
   const allocs = Array.isArray(allocRaw) ? allocRaw : [];
   const stagedPartsResult = await supabase
     .from("work_order_parts")
-    .select("id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_requested, quantity_consumed, quantity_returned, quantity_cancelled, unit_sell_price_snapshot, lifecycle_status, source_parts_request_item_id, is_active")
+    .select(
+      "id, shop_id, work_order_line_id, part_id, quantity, unit_price, total_price, description_snapshot, manufacturer_snapshot, part_number_snapshot, quantity_requested, quantity_consumed, quantity_returned, quantity_cancelled, unit_sell_price_snapshot, lifecycle_status, source_parts_request_item_id, is_active",
+    )
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .returns<
       Array<
-        Pick<WorkOrderPartRow, "id" | "shop_id" | "work_order_line_id" | "part_id" | "quantity" | "unit_price" | "total_price"> & Record<string, unknown>
+        Pick<
+          WorkOrderPartRow,
+          | "id"
+          | "shop_id"
+          | "work_order_line_id"
+          | "part_id"
+          | "quantity"
+          | "unit_price"
+          | "total_price"
+        > &
+          Record<string, unknown>
       >
     >();
 
@@ -585,10 +648,27 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const { data: quoteRaw } = await supabase
     .from("work_order_quote_lines")
-    .select("id, work_order_line_id, status, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total")
+    .select(
+      "id, work_order_line_id, status, labor_hours, est_labor_hours, labor_total, parts_total, subtotal, grand_total",
+    )
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
-    .returns<Array<Pick<WorkOrderQuoteLineRow, "id" | "work_order_line_id" | "status" | "labor_hours" | "est_labor_hours" | "labor_total" | "parts_total" | "subtotal" | "grand_total">>>();
+    .returns<
+      Array<
+        Pick<
+          WorkOrderQuoteLineRow,
+          | "id"
+          | "work_order_line_id"
+          | "status"
+          | "labor_hours"
+          | "est_labor_hours"
+          | "labor_total"
+          | "parts_total"
+          | "subtotal"
+          | "grand_total"
+        >
+      >
+    >();
   const activeQuotes = (Array.isArray(quoteRaw) ? quoteRaw : []).filter((q) => {
     const s = String(q.status ?? "").toLowerCase();
     return s !== "converted" && !NON_BILLABLE_QUOTE_LINE_STATUSES.has(s);
@@ -610,7 +690,9 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
   const { data: requestItemsRaw, error: requestItemsError } = await supabase
     .from("part_request_items")
-    .select("id, request_id, shop_id, work_order_id, work_order_line_id, quote_line_id, description, qty, qty_requested, qty_approved, quoted_price, unit_price, unit_cost, status, approved, part_id, vendor")
+    .select(
+      "id, request_id, shop_id, work_order_id, work_order_line_id, quote_line_id, description, qty, qty_requested, qty_approved, quoted_price, unit_price, unit_cost, status, approved, part_id, vendor",
+    )
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
     .returns<
@@ -639,7 +721,9 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     >();
 
   if (requestItemsError) {
-    throw new Error(`Parts pricing is unavailable: ${requestItemsError.message}`);
+    throw new Error(
+      `Parts pricing is unavailable: ${requestItemsError.message}`,
+    );
   }
 
   const requestItems = Array.isArray(requestItemsRaw) ? requestItemsRaw : [];
@@ -661,7 +745,12 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       .eq("work_order_id", workOrderId)
       .in("id", requestIdsNeedingQuoteLink)
       .returns<
-        Array<Pick<PartRequestRow, "id" | "shop_id" | "work_order_id" | "quote_line_id">>
+        Array<
+          Pick<
+            PartRequestRow,
+            "id" | "shop_id" | "work_order_id" | "quote_line_id"
+          >
+        >
       >();
 
     for (const request of Array.isArray(requestRows) ? requestRows : []) {
@@ -671,7 +760,10 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         isNonEmptyString(request.id) &&
         isNonEmptyString(request.quote_line_id)
       ) {
-        requestQuoteLineIdByRequestId.set(request.id, request.quote_line_id.trim());
+        requestQuoteLineIdByRequestId.set(
+          request.id,
+          request.quote_line_id.trim(),
+        );
       }
     }
   }
@@ -694,7 +786,9 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   }
 
   const fallbackRequestItems = requestItems.filter((item) => {
-    const lineId = isNonEmptyString(item.work_order_line_id) ? item.work_order_line_id.trim() : "";
+    const lineId = isNonEmptyString(item.work_order_line_id)
+      ? item.work_order_line_id.trim()
+      : "";
     if (!lineId) return false;
 
     return partRequestItemIsInvoiceFallbackEligible(item, {
@@ -706,7 +800,10 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     });
   });
 
-  const byLineFallbackRequestItems = new Map<string, typeof fallbackRequestItems>();
+  const byLineFallbackRequestItems = new Map<
+    string,
+    typeof fallbackRequestItems
+  >();
   for (const item of fallbackRequestItems) {
     if (!item.work_order_line_id) continue;
     byLineFallbackRequestItems.set(item.work_order_line_id, [
@@ -757,7 +854,9 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       >();
 
     if (partRowsError) {
-      throw new Error(`Parts catalog pricing is unavailable: ${partRowsError.message}`);
+      throw new Error(
+        `Parts catalog pricing is unavailable: ${partRowsError.message}`,
+      );
     }
 
     for (const p of Array.isArray(partRows) ? partRows : []) {
@@ -800,70 +899,90 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     });
   }
 
-  const stagedInvoiceParts: InvoiceSnapshotPart[] = stagedParts.flatMap((part) => {
-    const p = isNonEmptyString(part.part_id) ? partsMap.get(part.part_id) : undefined;
-    const partRecord = part as Record<string, unknown>;
-    if (partRecord.is_active === false) return [];
-    const consumed = safeNumber(partRecord.quantity_consumed);
-    const returned = safeNumber(partRecord.quantity_returned);
-    const cancelled = safeNumber(partRecord.quantity_cancelled);
-    const requested = safeNumber(partRecord.quantity_requested);
-    const qty =
-      consumed > 0
-        ? Math.max(0, consumed - returned)
-        : Math.max(0, (requested > 0 ? requested : safeNumber(part.quantity)) - cancelled);
-    if (qty <= 0) return [];
-    const totalRaw = safeNumber(part.total_price);
-    const unitPrice =
-      safeNumber(partRecord.unit_sell_price_snapshot) ||
-      safeNumber(part.unit_price) ||
-      safeNumber(p?.price) ||
-      safeNumber(p?.default_price);
-    const totalPrice = unitPrice > 0 ? Math.max(0, qty * unitPrice) : totalRaw;
-    const lineId = isNonEmptyString(part.work_order_line_id)
-      ? part.work_order_line_id.trim()
-      : undefined;
+  const stagedInvoiceParts: InvoiceSnapshotPart[] = stagedParts.flatMap(
+    (part) => {
+      const p = isNonEmptyString(part.part_id)
+        ? partsMap.get(part.part_id)
+        : undefined;
+      const partRecord = part as Record<string, unknown>;
+      if (partRecord.is_active === false) return [];
+      const consumed = safeNumber(partRecord.quantity_consumed);
+      const returned = safeNumber(partRecord.quantity_returned);
+      const cancelled = safeNumber(partRecord.quantity_cancelled);
+      const requested = safeNumber(partRecord.quantity_requested);
+      const qty =
+        consumed > 0
+          ? Math.max(0, consumed - returned)
+          : Math.max(
+              0,
+              (requested > 0 ? requested : safeNumber(part.quantity)) -
+                cancelled,
+            );
+      if (qty <= 0) return [];
+      const totalRaw = safeNumber(part.total_price);
+      const unitPrice =
+        safeNumber(partRecord.unit_sell_price_snapshot) ||
+        safeNumber(part.unit_price) ||
+        safeNumber(p?.price) ||
+        safeNumber(p?.default_price);
+      const totalPrice =
+        unitPrice > 0 ? Math.max(0, qty * unitPrice) : totalRaw;
+      const lineId = isNonEmptyString(part.work_order_line_id)
+        ? part.work_order_line_id.trim()
+        : undefined;
 
-    return [{
-      id: String(part.id),
-      lineId,
-      name: (String(partRecord.description_snapshot ?? "").trim() || (p?.name ?? "Part")).trim() || "Part",
-      qty,
-      unitPrice,
-      totalPrice,
-      sku: (p?.sku ?? "").trim() || undefined,
-      partNumber: (String(partRecord.part_number_snapshot ?? "").trim() || (p?.part_number ?? "")).trim() || undefined,
-      unit: (p?.unit ?? "").trim() || undefined,
-      source: "work_order_part",
-    }];
-  });
+      return [
+        {
+          id: String(part.id),
+          lineId,
+          name:
+            (
+              String(partRecord.description_snapshot ?? "").trim() ||
+              (p?.name ?? "Part")
+            ).trim() || "Part",
+          qty,
+          unitPrice,
+          totalPrice,
+          sku: (p?.sku ?? "").trim() || undefined,
+          partNumber:
+            (
+              String(partRecord.part_number_snapshot ?? "").trim() ||
+              (p?.part_number ?? "")
+            ).trim() || undefined,
+          unit: (p?.unit ?? "").trim() || undefined,
+          source: "work_order_part",
+        },
+      ];
+    },
+  );
 
-  const requestItemInvoiceParts: InvoiceSnapshotPart[] = fallbackRequestItems.map((item) => {
-    const p = isNonEmptyString(item.part_id) ? partsMap.get(item.part_id) : undefined;
-    const qty = itemQuantity(item);
-    const unitPrice = itemUnitPrice(item);
-    const lineId = isNonEmptyString(item.work_order_line_id)
-      ? item.work_order_line_id.trim()
-      : undefined;
-    const name =
-      (item.description ?? "").trim() ||
-      (p?.name ?? "").trim() ||
-      "Part";
+  const requestItemInvoiceParts: InvoiceSnapshotPart[] =
+    fallbackRequestItems.map((item) => {
+      const p = isNonEmptyString(item.part_id)
+        ? partsMap.get(item.part_id)
+        : undefined;
+      const qty = itemQuantity(item);
+      const unitPrice = itemUnitPrice(item);
+      const lineId = isNonEmptyString(item.work_order_line_id)
+        ? item.work_order_line_id.trim()
+        : undefined;
+      const name =
+        (item.description ?? "").trim() || (p?.name ?? "").trim() || "Part";
 
-    return {
-      id: String(item.id),
-      lineId,
-      name,
-      qty,
-      unitPrice,
-      totalPrice: Math.max(0, qty * unitPrice),
-      sku: (p?.sku ?? "").trim() || undefined,
-      partNumber: (p?.part_number ?? "").trim() || undefined,
-      unit: (p?.unit ?? "").trim() || undefined,
-      vendor: (item.vendor ?? "").trim() || undefined,
-      source: "quote_line_part_request",
-    };
-  });
+      return {
+        id: String(item.id),
+        lineId,
+        name,
+        qty,
+        unitPrice,
+        totalPrice: Math.max(0, qty * unitPrice),
+        sku: (p?.sku ?? "").trim() || undefined,
+        partNumber: (p?.part_number ?? "").trim() || undefined,
+        unit: (p?.unit ?? "").trim() || undefined,
+        vendor: (item.vendor ?? "").trim() || undefined,
+        source: "quote_line_part_request",
+      };
+    });
 
   const stagedPartsByLineForDisplay = new Map<string, InvoiceSnapshotPart[]>();
   for (const part of stagedInvoiceParts) {
@@ -874,7 +993,10 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     ]);
   }
 
-  const fallbackPartsByLineForDisplay = new Map<string, InvoiceSnapshotPart[]>();
+  const fallbackPartsByLineForDisplay = new Map<
+    string,
+    InvoiceSnapshotPart[]
+  >();
   for (const part of requestItemInvoiceParts) {
     if (!part.lineId) continue;
     fallbackPartsByLineForDisplay.set(part.lineId, [
@@ -892,16 +1014,18 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     const unbackedAllocations = filterInvoicePartAllocations({
       allocations: lineAllocations,
       stagedParts: rawLineStaged as Array<
-        typeof rawLineStaged[number] & {
+        (typeof rawLineStaged)[number] & {
           source_parts_request_item_id?: string | null;
         }
       >,
       displayedStagedPartIds: displayedStagedIds,
     });
-    const unbackedAllocationParts = unbackedAllocations.flatMap((allocation) => {
-      const part = allocationPartById.get(String(allocation.id));
-      return part ? [part] : [];
-    });
+    const unbackedAllocationParts = unbackedAllocations.flatMap(
+      (allocation) => {
+        const part = allocationPartById.get(String(allocation.id));
+        return part ? [part] : [];
+      },
+    );
 
     if (lineStaged.length > 0) {
       parts.push(...lineStaged);
@@ -927,7 +1051,9 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   }
   if (
     parts.length === 0 &&
-    (allocs.length > 0 || stagedInvoiceParts.length > 0 || fallbackRequestItems.length > 0)
+    (allocs.length > 0 ||
+      stagedInvoiceParts.length > 0 ||
+      fallbackRequestItems.length > 0)
   ) {
     throw new Error(
       "Attached parts could not be resolved into invoice line items.",
@@ -942,8 +1068,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const currency =
     (usePersistedInvoiceTotals
       ? normalizeInvoiceCurrency(invoice?.currency)
-      : null) ??
-    normalizeCurrencyFromCountry(shop?.country);
+      : null) ?? normalizeCurrencyFromCountry(shop?.country);
 
   const invSubtotal = usePersistedInvoiceTotals
     ? safeNumberOrNull(invoice?.subtotal)
@@ -966,7 +1091,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const woParts = positiveOrNull(workOrder.parts_total);
   const woInvoiceTotal = positiveOrNull(workOrder.invoice_total);
 
-  const byLineQuote = new Map<string, typeof activeQuotes[number]>();
+  const byLineQuote = new Map<string, (typeof activeQuotes)[number]>();
   for (const q of activeQuotes) {
     if (!q.work_order_line_id) continue;
     byLineQuote.set(q.work_order_line_id, q);
@@ -1020,15 +1145,24 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   // when there are no itemized lines to price.
   const laborCost =
     invLabor ??
-    (resolvedLabor > 0 ? resolvedLabor : pricedLines.length === 0 ? woLabor : null) ??
+    (resolvedLabor > 0
+      ? resolvedLabor
+      : pricedLines.length === 0
+        ? woLabor
+        : null) ??
     null;
-  const partsCost = invParts ?? (resolvedParts > 0 ? resolvedParts : woParts) ?? null;
+  const partsCost =
+    invParts ?? (resolvedParts > 0 ? resolvedParts : woParts) ?? null;
 
   const baseSubtotal = (laborCost ?? 0) + (partsCost ?? 0);
   const shopSupplies = calculateShopSupplies({
     baseAmount: baseSubtotal,
-    settings: resolveShopSuppliesSettings(shop as Parameters<typeof resolveShopSuppliesSettings>[0]),
-    override: resolveShopSuppliesOverride(workOrder as Parameters<typeof resolveShopSuppliesOverride>[0]),
+    settings: resolveShopSuppliesSettings(
+      shop as Parameters<typeof resolveShopSuppliesSettings>[0],
+    ),
+    override: resolveShopSuppliesOverride(
+      workOrder as Parameters<typeof resolveShopSuppliesOverride>[0],
+    ),
   });
   const persistedSupplies =
     usePersistedInvoiceTotals && invSubtotal != null
@@ -1050,7 +1184,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     taxRatePercent: configuredTaxRate,
   });
   const subtotal = usePersistedInvoiceTotals
-    ? invSubtotal ?? calculated.subtotal
+    ? (invSubtotal ?? calculated.subtotal)
     : calculated.subtotal > 0
       ? calculated.subtotal
       : null;
@@ -1068,7 +1202,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     taxRatePercent: taxRate,
   }).total;
   const total = usePersistedInvoiceTotals
-    ? invTotal ?? derivedInvoiceTotal
+    ? (invTotal ?? derivedInvoiceTotal)
     : derivedInvoiceTotal > 0
       ? derivedInvoiceTotal
       : woInvoiceTotal;

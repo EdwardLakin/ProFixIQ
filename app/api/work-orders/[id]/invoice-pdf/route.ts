@@ -2,7 +2,11 @@ export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
+import {
+  activeBrandFromFrozenDocument,
+  getActiveBrandForRender,
+} from "@/features/branding/server/getActiveBrandForRender";
+import { isFrozenInvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 import {
@@ -18,11 +22,15 @@ export async function GET(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: workOrderId } = await context.params;
   if (!workOrderId) {
-    return NextResponse.json({ error: "Missing work order id" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing work order id" },
+      { status: 400 },
+    );
   }
 
   try {
@@ -34,7 +42,10 @@ export async function GET(
       .maybeSingle<{ id: string; shop_id: string }>();
     if (workOrderError) throw workOrderError;
     if (!workOrder) {
-      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Work order not found" },
+        { status: 404 },
+      );
     }
 
     const activeVersion = await getActiveInvoiceVersion({
@@ -51,12 +62,20 @@ export async function GET(
           .select("invoice_number,notes")
           .eq("id", activeVersion.invoice_id)
           .eq("shop_id", workOrder.shop_id)
-          .maybeSingle<{ invoice_number: string | null; notes: string | null }>()
+          .maybeSingle<{
+            invoice_number: string | null;
+            notes: string | null;
+          }>()
       : { data: null };
-    const brand = await getActiveBrandForRender(workOrder.shop_id);
+    const brand =
+      activeVersion &&
+      isFrozenInvoiceDocumentConfiguration(snapshot.documentConfiguration)
+        ? activeBrandFromFrozenDocument(snapshot.documentConfiguration)
+        : await getActiveBrandForRender(workOrder.shop_id);
     const pdfDocument = activeVersion
       ? {
-          invoiceNumber: invoice?.invoice_number ?? snapshot.invoice?.invoice_number,
+          invoiceNumber:
+            invoice?.invoice_number ?? snapshot.invoice?.invoice_number,
           versionNumber: activeVersion.version_number,
           status: activeVersion.lifecycle_status,
           issuedAt: activeVersion.issued_at,
@@ -94,7 +113,8 @@ export async function GET(
       },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Invoice PDF generation failed";
+    const message =
+      error instanceof Error ? error.message : "Invoice PDF generation failed";
     console.error("[invoice-pdf] generation failed", { workOrderId, message });
     return NextResponse.json({ error: message }, { status: 500 });
   }

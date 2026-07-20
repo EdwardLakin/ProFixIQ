@@ -44,7 +44,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: prefErr.message }, { status: 500 });
   }
 
-  const logo = (assets ?? []).find((asset) => asset.kind === "logo") ?? null;
+  let logo = (assets ?? []).find((asset) => asset.kind === "logo") ?? null;
+  if (profile?.logo_asset_id && logo?.id !== profile.logo_asset_id) {
+    const { data: selectedLogo } = await auth.supabase
+      .from("shop_brand_assets")
+      .select("*")
+      .eq("id", profile.logo_asset_id)
+      .eq("shop_id", auth.shopId)
+      .eq("kind", "logo")
+      .maybeSingle();
+    logo = selectedLogo ?? logo;
+  }
 
   return NextResponse.json({
     ok: true,

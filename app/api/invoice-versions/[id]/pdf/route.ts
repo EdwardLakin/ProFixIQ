@@ -4,7 +4,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
+import {
+  activeBrandFromFrozenDocument,
+  getActiveBrandForRender,
+} from "@/features/branding/server/getActiveBrandForRender";
+import { isFrozenInvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
 import { getInvoiceVersionById } from "@/features/invoices/server/invoiceVersionQueries";
 import {
   premiumInvoiceFilename,
@@ -21,10 +25,15 @@ export async function GET(
   const {
     data: { user },
   } = await sessionClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;
-  if (!id) return NextResponse.json({ error: "Missing invoice version id" }, { status: 400 });
+  if (!id)
+    return NextResponse.json(
+      { error: "Missing invoice version id" },
+      { status: 400 },
+    );
 
   try {
     const admin = createClient<DB>(
@@ -36,7 +45,10 @@ export async function GET(
       invoiceVersionId: id,
     });
     if (!version) {
-      return NextResponse.json({ error: "Invoice version not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Invoice version not found" },
+        { status: 404 },
+      );
     }
 
     const [{ data: profile }, { data: workOrder }] = await Promise.all([
@@ -72,11 +84,22 @@ export async function GET(
           .select("invoice_number,notes")
           .eq("id", version.invoice_id)
           .eq("shop_id", version.shop_id)
-          .maybeSingle<{ invoice_number: string | null; notes: string | null }>()
+          .maybeSingle<{
+            invoice_number: string | null;
+            notes: string | null;
+          }>()
       : { data: null };
-    const brand = await getActiveBrandForRender(version.shop_id);
+    // New invoice versions carry an immutable renderer configuration. The
+    // active-brand fallback is only for historical versions created before
+    // document freezing was introduced.
+    const brand = isFrozenInvoiceDocumentConfiguration(
+      version.snapshot.documentConfiguration,
+    )
+      ? activeBrandFromFrozenDocument(version.snapshot.documentConfiguration)
+      : await getActiveBrandForRender(version.shop_id);
     const pdfDocument = {
-      invoiceNumber: invoice?.invoice_number ?? version.snapshot.invoice?.invoice_number,
+      invoiceNumber:
+        invoice?.invoice_number ?? version.snapshot.invoice?.invoice_number,
       versionNumber: version.version_number,
       status: version.lifecycle_status,
       issuedAt: version.issued_at,
@@ -103,8 +126,12 @@ export async function GET(
       },
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Invoice PDF generation failed";
-    console.error("[invoice-version-pdf] generation failed", { invoiceVersionId: id, message });
+    const message =
+      error instanceof Error ? error.message : "Invoice PDF generation failed";
+    console.error("[invoice-version-pdf] generation failed", {
+      invoiceVersionId: id,
+      message,
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

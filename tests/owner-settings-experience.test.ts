@@ -55,13 +55,13 @@ describe("owner settings experience", () => {
       "City",
       "Phone number",
       "Public email",
-      "Logo URL",
     ]) {
       expect(business).toContain(label);
     }
 
-    expect(business).toContain("AI logo maker · Coming soon");
-    expect(business).toContain("disabled");
+    expect(business).not.toContain("Logo URL");
+    expect(business).not.toContain("AI logo maker");
+    expect(page).toContain("BrandStudioSummaryCard");
   });
 
   it("makes scheduling changes and blackout dates clear", () => {

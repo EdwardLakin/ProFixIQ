@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
-import { requireBrandShopWriteAccess, safeFilePart } from "@/features/branding/server/brand";
-import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
-import { buildLogoPrompt, getOpenAIClient } from "@/features/branding/server/logo-generation";
+import {
+  requireBrandShopWriteAccess,
+  safeFilePart,
+} from "@/features/branding/server/brand";
+import {
+  OWNER_PIN_PURPOSES,
+  requireOwnerPinVerified,
+} from "@/features/shared/lib/server/owner-pin";
+import {
+  buildLogoPrompt,
+  getOpenAIClient,
+} from "@/features/branding/server/logo-generation";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 import {
@@ -39,7 +48,10 @@ export async function POST(req: Request) {
   const pinCheck = await requireOwnerPinVerified(req, auth.supabase as never, {
     shopId: auth.shopId,
     userId: auth.userId,
-    allowedPurposes: [OWNER_PIN_PURPOSES.BRANDING, OWNER_PIN_PURPOSES.PRIVILEGED],
+    allowedPurposes: [
+      OWNER_PIN_PURPOSES.BRANDING,
+      OWNER_PIN_PURPOSES.PRIVILEGED,
+    ],
   });
   if (!pinCheck.ok) {
     return pinCheck.response;
@@ -60,8 +72,11 @@ export async function POST(req: Request) {
 
     if (baseAsset) {
       const meta = (baseAsset.metadata ?? {}) as Record<string, unknown>;
-      userPrompt = userPrompt || String(baseAsset.generation_prompt ?? "").trim();
-      stylePreset = stylePreset ?? (typeof meta.style_preset === "string" ? meta.style_preset : null);
+      userPrompt =
+        userPrompt || String(baseAsset.generation_prompt ?? "").trim();
+      stylePreset =
+        stylePreset ??
+        (typeof meta.style_preset === "string" ? meta.style_preset : null);
       transparentBackground =
         body.transparentBackground ?? Boolean(meta.transparent_background);
     }
@@ -81,7 +96,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Shop not found" }, { status: 404 });
   }
 
-  const shopName = String(shop.shop_name ?? shop.name ?? "ProFixIQ Shop").trim();
+  const shopName = String(
+    shop.shop_name ?? shop.name ?? "ProFixIQ Shop",
+  ).trim();
   const finalPrompt = buildLogoPrompt({
     shopName,
     prompt: userPrompt,
@@ -97,7 +114,10 @@ export async function POST(req: Request) {
     });
     if (!enforcement.allowed) {
       return NextResponse.json(
-        { error: "AI branding generation temporarily limited", code: enforcement.code },
+        {
+          error: "AI branding generation temporarily limited",
+          code: enforcement.code,
+        },
         { status: 429 },
       );
     }
@@ -117,16 +137,24 @@ export async function POST(req: Request) {
         user: auth.userId,
       }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),
+        setTimeout(
+          () => reject(new Error("AI request timed out")),
+          policy.timeoutMs,
+        ),
       ),
     ]);
 
     const images = result.data ?? [];
     if (!images.length) {
-      return NextResponse.json({ error: "No logo images were returned" }, { status: 502 });
+      return NextResponse.json(
+        { error: "No logo images were returned" },
+        { status: 502 },
+      );
     }
 
-    const createdAssets: Array<DB["public"]["Tables"]["shop_brand_assets"]["Row"]> = [];
+    const createdAssets: Array<
+      DB["public"]["Tables"]["shop_brand_assets"]["Row"]
+    > = [];
 
     for (let i = 0; i < images.length; i += 1) {
       const item = images[i];
@@ -166,6 +194,8 @@ export async function POST(req: Request) {
           mime_type: "image/png",
           file_name: filename,
           file_size_bytes: bytes.length,
+          width: 1024,
+          height: 1024,
           is_active: false,
           created_by: auth.userId,
           metadata: {
@@ -175,6 +205,8 @@ export async function POST(req: Request) {
             model: "gpt-image-1.5",
             final_prompt: finalPrompt,
             based_on_asset_id: body.basedOnAssetId ?? null,
+            normalized_safe_area_percent: 8,
+            recommended_logo_zoom: 1.25,
           },
         })
         .select("*")
@@ -197,12 +229,19 @@ export async function POST(req: Request) {
       user_id: auth.userId,
       model,
       latency_ms: Date.now() - startedAt,
-      prompt_tokens: (result.usage as { input_tokens?: number } | undefined)?.input_tokens ?? null,
-      completion_tokens: (result.usage as { output_tokens?: number } | undefined)?.output_tokens ?? null,
-      total_tokens: (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+      prompt_tokens:
+        (result.usage as { input_tokens?: number } | undefined)?.input_tokens ??
+        null,
+      completion_tokens:
+        (result.usage as { output_tokens?: number } | undefined)
+          ?.output_tokens ?? null,
+      total_tokens:
+        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
+        null,
       estimated_cost_usd: estimateAICostUsd(
         "branding_generate_logo",
-        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
+          null,
       ),
       status: "success",
       error_code: null,
@@ -213,10 +252,13 @@ export async function POST(req: Request) {
       endpoint: "/api/branding/generate",
       shopId: auth.shopId,
       model,
-      totalTokens: (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+      totalTokens:
+        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
+        null,
       estimatedCostUsd: estimateAICostUsd(
         "branding_generate_logo",
-        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ?? null,
+        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
+          null,
       ),
       status: "success",
       errorCode: null,
@@ -228,7 +270,8 @@ export async function POST(req: Request) {
       usage: result.usage ?? null,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Logo generation failed";
+    const message =
+      error instanceof Error ? error.message : "Logo generation failed";
     recordAITelemetry({
       feature: "branding_generate_logo",
       endpoint: "/api/branding/generate",

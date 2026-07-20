@@ -7,6 +7,11 @@ import {
   premiumInvoiceFilename,
   renderPremiumInvoicePdf,
 } from "./renderPremiumInvoicePdf";
+import {
+  INVOICE_PALETTES,
+  INVOICE_TEMPLATES,
+  resolveInvoiceDocumentConfiguration,
+} from "@/features/invoices/lib/invoiceDocumentTheme";
 
 const brand: ActiveBrandRender = {
   profile: null,
@@ -17,6 +22,10 @@ const brand: ActiveBrandRender = {
     accent: "#F0A45D",
   },
   theme: null,
+  document: resolveInvoiceDocumentConfiguration({
+    terms: "Payment due on receipt.",
+    footer: "Thank you for trusting our shop.",
+  }),
 };
 
 function fixture(partCount = 2): InvoiceSnapshot {
@@ -144,9 +153,9 @@ describe("premium invoice PDF", () => {
     expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe("%PDF-");
     expect(pdf.getPageCount()).toBeGreaterThanOrEqual(1);
     expect(pdf.getTitle()).toContain("Draft invoice");
-    expect(premiumInvoiceFilename(snapshot, { status: "draft", draft: true })).toBe(
-      "Draft_Invoice_EL000001.pdf",
-    );
+    expect(
+      premiumInvoiceFilename(snapshot, { status: "draft", draft: true }),
+    ).toBe("Draft_Invoice_EL000001.pdf");
   });
 
   it("paginates every part instead of truncating the invoice", async () => {
@@ -172,5 +181,31 @@ describe("premium invoice PDF", () => {
 
     expect(pdf.getPageCount()).toBeGreaterThan(1);
     expect(pdf.getTitle()).toContain("INV-1001");
+  });
+
+  it("renders every curated template and palette combination", async () => {
+    const snapshot = fixture();
+    for (const template of INVOICE_TEMPLATES) {
+      for (const palette of INVOICE_PALETTES) {
+        const themedBrand: ActiveBrandRender = {
+          ...brand,
+          colors: palette.colors,
+          document: resolveInvoiceDocumentConfiguration({
+            settings: { templateId: template.id, paletteId: palette.id },
+          }),
+        };
+        const bytes = await renderPremiumInvoicePdf({
+          snapshot,
+          brand: themedBrand,
+          document: {
+            status: "draft",
+            draft: true,
+            outstandingTotal: snapshot.total,
+          },
+        });
+        const pdf = await PDFDocument.load(bytes);
+        expect(pdf.getPageCount()).toBeGreaterThanOrEqual(1);
+      }
+    }
   });
 });
