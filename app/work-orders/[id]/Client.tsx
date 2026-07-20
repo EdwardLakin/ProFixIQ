@@ -71,7 +71,10 @@ type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
   parts?: { name: string | null; sku?: string | null; part_number?: string | null; manufacturer?: string | null } | null;
 };
 type LineTechRow = DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
-type PartRequestRow = Pick<DB["public"]["Tables"]["part_requests"]["Row"], "id" | "quote_line_id" | "status">;
+type PartRequestRow = Pick<
+  DB["public"]["Tables"]["part_requests"]["Row"],
+  "id" | "quote_line_id" | "job_id" | "status"
+>;
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   // real DB column
@@ -120,6 +123,25 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
 function isCompletedLineStatus(status: string | null | undefined): boolean {
   const normalized = String(status ?? "").trim().toLowerCase();
   return normalized === "completed" || normalized === "ready_to_invoice" || normalized === "invoiced";
+}
+
+function partsRequestActionLabel(requests: PartRequestRow[]): string {
+  if (requests.length === 0) return "Request all parts";
+  const statuses = new Set(
+    requests.map((request) => String(request.status ?? "requested").toLowerCase()),
+  );
+  if (statuses.has("fulfilled")) return "Parts handed off";
+  if (
+    statuses.has("approved") ||
+    statuses.has("partially_ordered") ||
+    statuses.has("partially_consumed") ||
+    statuses.has("partially_returned")
+  ) {
+    return "Open Pick / Order";
+  }
+  if (statuses.has("quoted")) return "Awaiting approval";
+  if (statuses.has("rejected") || statuses.has("cancelled")) return "View parts history";
+  return "Parts requested";
 }
 
 /** Normalize “where is the inspection template id stored for this line?” */
@@ -212,6 +234,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
   const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
   const [partRequestsByQuoteLine, setPartRequestsByQuoteLine] = useState<Record<string, PartRequestRow[]>>({});
+  const [partRequestsByLine, setPartRequestsByLine] = useState<Record<string, PartRequestRow[]>>({});
+  const [requestingPartsLineId, setRequestingPartsLineId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [loadedOnce, setLoadedOnce] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
@@ -673,10 +697,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
             supabase
               .from("part_requests")
-              .select("id, quote_line_id, status")
+              .select("id, quote_line_id, job_id, status")
               .eq("work_order_id", woRow.id)
-              .eq("shop_id", woRow.shop_id)
-              .not("quote_line_id", "is", null),
+              .eq("shop_id", woRow.shop_id),
           ]);
 
           const byLine: Record<string, AllocationRow[]> = {};
@@ -710,17 +733,26 @@ export default function WorkOrderIdClient(): JSX.Element {
           setLineTechsByLine(techMap);
 
           const requestsByQuote: Record<string, PartRequestRow[]> = {};
+          const requestsByLine: Record<string, PartRequestRow[]> = {};
           (partRequestsQuery.data as PartRequestRow[] | null)?.forEach((request) => {
             const quoteLineId = request.quote_line_id;
-            if (!quoteLineId) return;
-            if (!requestsByQuote[quoteLineId]) requestsByQuote[quoteLineId] = [];
-            requestsByQuote[quoteLineId].push(request);
+            if (quoteLineId) {
+              if (!requestsByQuote[quoteLineId]) requestsByQuote[quoteLineId] = [];
+              requestsByQuote[quoteLineId].push(request);
+            }
+            const lineId = request.job_id;
+            if (lineId) {
+              if (!requestsByLine[lineId]) requestsByLine[lineId] = [];
+              requestsByLine[lineId].push(request);
+            }
           });
           setPartRequestsByQuoteLine(requestsByQuote);
+          setPartRequestsByLine(requestsByLine);
         } else {
           setAllocsByLine({});
           setStagedPartsByLine({});
           setPartRequestsByQuoteLine({});
+          setPartRequestsByLine({});
           setLineTechsByLine({});
         }
 
@@ -1099,6 +1131,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const currentActor = getActorCapabilities({ role: currentUserRole });
   const canAssign = currentActor.canAssignWork;
   const canApprove = currentActor.canAuthorizeQuotes;
+  const canRequestParts = currentActor.canManageWorkOrders;
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
 
@@ -1405,6 +1438,58 @@ export default function WorkOrderIdClient(): JSX.Element {
     window.addEventListener(evtName, handler as EventListener);
     return () => window.removeEventListener(evtName, handler as EventListener);
   }, [partsLineId, fetchAll]);
+
+  const requestAllPartsForLine = useCallback(
+    async (lineId: string, existingRequests: PartRequestRow[]) => {
+      if (!wo?.id || requestingPartsLineId) return;
+      if (existingRequests.length > 0) {
+        router.push(`/parts/requests/${encodeURIComponent(wo.custom_id || wo.id)}`);
+        return;
+      }
+
+      setRequestingPartsLineId(lineId);
+      const toastId = toast.loading("Requesting every part on this line…");
+      try {
+        const idempotencyKey = crypto.randomUUID();
+        const response = await fetch(
+          `/api/work-orders/${encodeURIComponent(wo.id)}/lines/${encodeURIComponent(lineId)}/parts-request`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": idempotencyKey,
+            },
+            body: JSON.stringify({ idempotencyKey }),
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+          result?: { stage?: string };
+        } | null;
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to request line parts.");
+        }
+
+        const released = payload?.result?.stage === "order_receive";
+        toast.success(
+          released
+            ? "Approved parts were released to the Pick / Order queue."
+            : "Every part on this line was requested.",
+          { id: toastId },
+        );
+        window.dispatchEvent(new Event("parts-request:submitted"));
+        await fetchAll();
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Unable to request line parts.",
+          { id: toastId },
+        );
+      } finally {
+        setRequestingPartsLineId(null);
+      }
+    },
+    [fetchAll, requestingPartsLineId, router, wo],
+  );
 
   /* -------------------------- UI -------------------------- */
   if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
@@ -1928,6 +2013,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                           .filter((name): name is string => Boolean(name))
                       : [];
                     const isSelectedForPanel = panelLineId === ln.id;
+                    const linePartRequests = partRequestsByLine[ln.id] ?? [];
+                    const hasRequestableParts =
+                      canRequestParts && (stagedPartsByLine[ln.id] ?? []).length > 0;
 
                     return (
                       <JobCard
@@ -1995,6 +2083,13 @@ export default function WorkOrderIdClient(): JSX.Element {
                             : undefined
                         }
                         onAddPart={() => setPartsLineId(ln.id)}
+                        onRequestParts={
+                          hasRequestableParts
+                            ? () => void requestAllPartsForLine(ln.id, linePartRequests)
+                            : undefined
+                        }
+                        requestPartsLabel={partsRequestActionLabel(linePartRequests)}
+                        requestPartsBusy={requestingPartsLineId === ln.id}
                         pricing={pricingByLine[ln.id] ?? null}
                         reviewOk={reviewOk}
                         reviewIssues={reviewIssuesByLine[ln.id] ?? []}
