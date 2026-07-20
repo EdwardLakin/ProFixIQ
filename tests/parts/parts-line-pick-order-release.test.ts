@@ -86,12 +86,18 @@ describe("work-order line parts release and Pick / Order flow", () => {
     expect(receiving).toContain("it.qty_received} / {it.qty_ordered} ordered");
   });
 
-  it("updates the repair line and sends Parts Ready only to assigned technicians", () => {
+  it("keeps the repair line waiting on Parts and sends Parts Ready only to assigned technicians", () => {
+    expect(migration).toContain("function public.normalize_work_order_line_status");
+    expect(migration).toContain("'waiting_parts'::text");
     expect(migration).toContain(
       "function public.parts_sync_work_order_line_fulfillment_status",
     );
     expect(migration).toContain("set status = 'waiting_parts'");
-    expect(migration).toContain("p_stage = 'ready_for_tech'");
+    expect(migration).toContain("set status = 'active'");
+    expect(migration).toContain(
+      "v_stage := public.parts_request_operational_stage(p_request_id)",
+    );
+    expect(migration).toContain("if v_stage <> 'ready_for_tech' then");
     expect(migration).toContain("parts_tech_workflow");
     expect(migration).toContain("parts_ready_for_technician");
     expect(migration).toContain("wol.assigned_tech_id");
