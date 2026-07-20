@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   CheckCircle2,
+  CircleX,
   Loader2,
   PackageCheck,
   ShoppingCart,
@@ -130,6 +131,20 @@ export default function PickOrderTaskModal({
     [items],
   );
 
+  const duplicateItemIds = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    for (const item of items) {
+      if (!item.partId || !item.workOrderLineId) continue;
+      const key = `${item.workOrderLineId}:${item.partId}`;
+      grouped.set(key, [...(grouped.get(key) ?? []), item.id]);
+    }
+    return new Set(
+      [...grouped.values()]
+        .filter((ids) => ids.length > 1)
+        .flat(),
+    );
+  }, [items]);
+
   const allocate = useCallback(
     async (item: PickTaskItem, stock: PickStock, amount: number) => {
       const idempotencyKey = crypto.randomUUID();
@@ -186,6 +201,57 @@ export default function PickOrderTaskModal({
     [allocate, batchPicking, busyItemId, load, onChanged],
   );
 
+  const dismissDuplicate = useCallback(
+    async (item: PickTaskItem) => {
+      if (busyItemId || batchPicking) return;
+      if (
+        !window.confirm(
+          `Dismiss the duplicate request for ${item.description}?`,
+        )
+      ) {
+        return;
+      }
+
+      setBusyItemId(item.id);
+      const toastId = toast.loading(`Dismissing ${item.description}…`);
+      try {
+        const key = crypto.randomUUID();
+        const response = await fetch(
+          `/api/parts/requests/items/${encodeURIComponent(item.id)}/cancel`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": key,
+            },
+            body: JSON.stringify({ idempotencyKey: key }),
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (!response.ok) {
+          throw new Error(
+            payload?.error || `Could not dismiss ${item.description}.`,
+          );
+        }
+        toast.success("Duplicate request dismissed.", { id: toastId });
+        await load();
+        await onChanged?.();
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Could not dismiss the duplicate request.",
+          { id: toastId },
+        );
+      } finally {
+        setBusyItemId(null);
+      }
+    },
+    [batchPicking, busyItemId, load, onChanged],
+  );
+
   const pickAllAvailable = useCallback(async () => {
     if (batchPicking || busyItemId || pickable.length === 0) return;
     setBatchPicking(true);
@@ -227,8 +293,8 @@ export default function PickOrderTaskModal({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-hidden p-0">
-        <DialogHeader className="relative px-5 py-4 pr-14">
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] min-h-0 max-w-4xl flex-col overflow-hidden p-0">
+        <DialogHeader className="relative shrink-0 px-5 py-4 pr-14">
           <DialogTitle className="flex items-center gap-2 text-base normal-case tracking-normal">
             <PackageCheck className="h-5 w-5 text-sky-300" />
             Pick / Order task · {workOrderLabel}
@@ -247,7 +313,7 @@ export default function PickOrderTaskModal({
           </button>
         </DialogHeader>
 
-        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-5 py-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-5 py-3">
           <div className="text-xs text-[color:var(--theme-text-secondary)]">
             Pick stock first. Order only the remaining shortage. Receiving is
             reserved for actual PO quantities.
@@ -272,7 +338,7 @@ export default function PickOrderTaskModal({
           </button>
         </div>
 
-        <div className="max-h-[62vh] space-y-2 overflow-y-auto p-4 sm:p-5">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4 sm:p-5">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-[color:var(--theme-text-secondary)]">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading live stock…
@@ -289,6 +355,11 @@ export default function PickOrderTaskModal({
               const pickQty = bestStock
                 ? Math.min(item.remainingToStage, bestStock.available)
                 : 0;
+              const canDismissDuplicate =
+                duplicateItemIds.has(item.id) &&
+                item.ordered <= 0 &&
+                item.received <= 0 &&
+                item.staged <= 0;
               return (
                 <article
                   key={item.id}
@@ -319,6 +390,24 @@ export default function PickOrderTaskModal({
                     </div>
 
                     <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                      {canDismissDuplicate ? (
+                        <button
+                          type="button"
+                          onClick={() => void dismissDuplicate(item)}
+                          disabled={
+                            batchPicking ||
+                            (busyItemId !== null && busyItemId !== item.id)
+                          }
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/45 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 disabled:opacity-50"
+                        >
+                          {busyItemId === item.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CircleX className="h-4 w-4" />
+                          )}
+                          Dismiss duplicate
+                        </button>
+                      ) : null}
                       {complete ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-100">
                           <CheckCircle2 className="h-4 w-4" /> Picked / staged
@@ -370,7 +459,7 @@ export default function PickOrderTaskModal({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] px-5 py-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-5 py-3">
           <Link
             href={detailHref}
             className="text-xs font-semibold text-sky-200 hover:text-sky-100"
