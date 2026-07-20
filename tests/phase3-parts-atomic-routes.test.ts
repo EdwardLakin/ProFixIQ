@@ -43,4 +43,11 @@ describe("phase 3 atomic parts routes", () => {
       "get_invoice_net_issued_parts",
     );
   });
+
+  it("keeps deployed invoice pricing compatible with stable parts columns", () => {
+    const snapshot = source("features/invoices/server/getInvoiceSnapshot.ts");
+    expect(snapshot).toContain("stagedPartsFallbackResult");
+    expect(snapshot).toContain("filterInvoicePartAllocations");
+    expect(snapshot).not.toContain('.not("work_order_line_id", "is", null)');
+  });
 });
