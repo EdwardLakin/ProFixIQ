@@ -1,8 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { calculateInvoiceTotals } from "./invoiceTotals";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+import { shouldUsePersistedInvoiceTotals } from "./invoiceSnapshotState";
 
 describe("canonical invoice totals", () => {
+  it("does not let a stale draft invoice override a ready work order", () => {
+    expect(
+      shouldUsePersistedInvoiceTotals({
+        workOrderStatus: "ready_to_invoice",
+        invoiceStatus: "draft",
+      }),
+    ).toBe(false);
+    expect(
+      shouldUsePersistedInvoiceTotals({
+        workOrderStatus: "invoiced",
+        invoiceStatus: "issued",
+      }),
+    ).toBe(true);
+    expect(
+      shouldUsePersistedInvoiceTotals({
+        workOrderStatus: "ready_to_invoice",
+        invoiceStatus: "issued",
+      }),
+    ).toBe(false);
+    expect(
+      shouldUsePersistedInvoiceTotals({
+        workOrderStatus: "invoiced",
+        invoiceStatus: "draft",
+      }),
+    ).toBe(false);
+  });
+
   it("matches the work-order page sources for EL000001", () => {
     const line = resolveWorkOrderLinePricing({
       line: { labor_time: 1, price_estimate: null },

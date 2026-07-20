@@ -7,6 +7,7 @@ import {
   resolveShopSuppliesSettings,
 } from "@/features/work-orders/lib/shopSupplies";
 import { calculateInvoiceTotals } from "@/features/invoices/lib/invoiceTotals";
+import { shouldUsePersistedInvoiceTotals } from "@/features/invoices/lib/invoiceSnapshotState";
 import { filterInvoicePartAllocations } from "@/features/invoices/lib/filterInvoicePartAllocations";
 
 type DB = Database;
@@ -66,6 +67,7 @@ export type InvoiceSnapshot = {
     | "vehicle_id"
     | "customer_name"
     | "custom_id"
+    | "status"
     | "labor_total"
     | "parts_total"
     | "invoice_total"
@@ -283,7 +285,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: workOrder, error: woErr } = await supabase
     .from("work_orders")
     .select(
-      "id, shop_id, customer_id, vehicle_id, customer_name, custom_id, labor_total, parts_total, invoice_total, shop_supplies_enabled_override, shop_supplies_amount_override, created_at",
+      "id, shop_id, customer_id, vehicle_id, customer_name, custom_id, status, labor_total, parts_total, invoice_total, shop_supplies_enabled_override, shop_supplies_amount_override, created_at",
     )
     .eq("id", workOrderId)
     .maybeSingle<
@@ -295,6 +297,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         | "vehicle_id"
         | "customer_name"
         | "custom_id"
+        | "status"
         | "labor_total"
         | "parts_total"
         | "invoice_total"
@@ -931,16 +934,33 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     );
   }
 
+  const usePersistedInvoiceTotals = shouldUsePersistedInvoiceTotals({
+    workOrderStatus: workOrder.status,
+    invoiceStatus: invoice?.status,
+  });
+
   const currency =
-    normalizeInvoiceCurrency(invoice?.currency) ??
+    (usePersistedInvoiceTotals
+      ? normalizeInvoiceCurrency(invoice?.currency)
+      : null) ??
     normalizeCurrencyFromCountry(shop?.country);
 
-  const invSubtotal = invoice ? safeNumberOrNull(invoice.subtotal) : null;
-  const invLabor = invoice ? safeNumberOrNull(invoice.labor_cost) : null;
-  const invParts = invoice ? safeNumberOrNull(invoice.parts_cost) : null;
-  const invTotal = invoice ? safeNumberOrNull(invoice.total) : null;
-  const invDiscount = safeNumber(invoice?.discount_total);
-  const invTax = safeNumber(invoice?.tax_total);
+  const invSubtotal = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.subtotal)
+    : null;
+  const invLabor = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.labor_cost)
+    : null;
+  const invParts = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.parts_cost)
+    : null;
+  const invTotal = usePersistedInvoiceTotals
+    ? safeNumberOrNull(invoice?.total)
+    : null;
+  const invDiscount = usePersistedInvoiceTotals
+    ? safeNumber(invoice?.discount_total)
+    : 0;
+  const invTax = usePersistedInvoiceTotals ? safeNumber(invoice?.tax_total) : 0;
 
   const woLabor = positiveOrNull(workOrder.labor_total);
   const woParts = positiveOrNull(workOrder.parts_total);
@@ -989,7 +1009,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const unresolvedLaborLine = pricedLines.find(
     (line) => line.resolvedLaborHours > 0 && line.resolvedLaborTotal <= 0,
   );
-  if (!invoice && unresolvedLaborLine) {
+  if (!usePersistedInvoiceTotals && unresolvedLaborLine) {
     throw new Error(
       `Labor rate is missing for ${unresolvedLaborLine.description || `line ${unresolvedLaborLine.line_no ?? ""}`.trim()}.`,
     );
@@ -1011,10 +1031,10 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     override: resolveShopSuppliesOverride(workOrder as Parameters<typeof resolveShopSuppliesOverride>[0]),
   });
   const persistedSupplies =
-    invoice && invSubtotal != null
+    usePersistedInvoiceTotals && invSubtotal != null
       ? Math.max(0, invSubtotal - (laborCost ?? 0) - (partsCost ?? 0))
       : null;
-  const shopSuppliesTotal = invoice
+  const shopSuppliesTotal = usePersistedInvoiceTotals
     ? persistedSupplies && persistedSupplies > 0
       ? persistedSupplies
       : null
@@ -1029,15 +1049,15 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     discountTotal: invDiscount,
     taxRatePercent: configuredTaxRate,
   });
-  const subtotal = invoice
+  const subtotal = usePersistedInvoiceTotals
     ? invSubtotal ?? calculated.subtotal
     : calculated.subtotal > 0
       ? calculated.subtotal
       : null;
-  const taxTotal = invoice ? invTax : calculated.taxTotal;
+  const taxTotal = usePersistedInvoiceTotals ? invTax : calculated.taxTotal;
   const persistedTaxableBase = Math.max((subtotal ?? 0) - invDiscount, 0);
   const taxRate =
-    invoice && persistedTaxableBase > 0
+    usePersistedInvoiceTotals && persistedTaxableBase > 0
       ? (taxTotal / persistedTaxableBase) * 100
       : configuredTaxRate;
   const derivedInvoiceTotal = calculateInvoiceTotals({
@@ -1047,7 +1067,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     discountTotal: invDiscount,
     taxRatePercent: taxRate,
   }).total;
-  const total = invoice
+  const total = usePersistedInvoiceTotals
     ? invTotal ?? derivedInvoiceTotal
     : derivedInvoiceTotal > 0
       ? derivedInvoiceTotal
