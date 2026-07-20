@@ -38,7 +38,8 @@ export function getOpenAIClient() {
 
 export function buildLogoPrompt(input: BuildLogoPromptInput): string {
   const preset = (input.stylePreset?.trim() || "industrial-dark") as LogoPreset;
-  const presetGuidance = PRESET_GUIDANCE[preset] ?? PRESET_GUIDANCE["industrial-dark"];
+  const presetGuidance =
+    PRESET_GUIDANCE[preset] ?? PRESET_GUIDANCE["industrial-dark"];
   const shopName = input.shopName?.trim() || "ProFixIQ Shop";
   const userPrompt = input.prompt.trim();
 
@@ -51,6 +52,8 @@ export function buildLogoPrompt(input: BuildLogoPromptInput): string {
     "- centered composition",
     "- strong silhouette",
     "- legible at small sizes",
+    "- visible artwork fills 80 to 90 percent of the canvas",
+    "- keep only 5 to 8 percent transparent safety padding; never place a small emblem in a large empty canvas",
     "- no mockup walls, paper, business cards, shirts, buildings, or 3D scene staging",
     "- no photorealistic environment",
     "- avoid clutter and tiny unreadable text",
@@ -59,6 +62,6 @@ export function buildLogoPrompt(input: BuildLogoPromptInput): string {
     input.transparentBackground
       ? "- use a transparent background with no backdrop card or scene"
       : "- use a very clean simple background and keep focus on the logo only",
-    "Deliver a polished production-ready logo image."
+    "Deliver a polished production-ready logo image.",
   ].join("\n");
 }

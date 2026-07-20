@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { runPostSendPersistence, sendInvoiceReadyEmail } from "@/features/email/server";
+import {
+  runPostSendPersistence,
+  sendInvoiceReadyEmail,
+} from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
@@ -29,7 +32,9 @@ type Body = {
 };
 
 function joinedName(first?: string | null, last?: string | null) {
-  return [first?.trim(), last?.trim()].filter(Boolean).join(" ").trim() || undefined;
+  return (
+    [first?.trim(), last?.trim()].filter(Boolean).join(" ").trim() || undefined
+  );
 }
 
 function resolvedShopName(
@@ -70,7 +75,10 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => null)) as Body | null;
     const workOrderId = body?.workOrderId?.trim() ?? "";
     if (!workOrderId) {
-      return NextResponse.json({ error: "Missing work order ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing work order ID" },
+        { status: 400 },
+      );
     }
 
     const { data: workOrder } = await admin
@@ -79,14 +87,26 @@ export async function POST(req: Request) {
       .eq("id", workOrderId)
       .eq("shop_id", access.profile.shop_id)
       .maybeSingle<
-        Pick<WorkOrderRow, "id" | "shop_id" | "customer_id" | "customer_name" | "status">
+        Pick<
+          WorkOrderRow,
+          "id" | "shop_id" | "customer_id" | "customer_name" | "status"
+        >
       >();
-    if (!workOrder) return NextResponse.json({ error: "Invalid work order" }, { status: 404 });
+    if (!workOrder)
+      return NextResponse.json(
+        { error: "Invalid work order" },
+        { status: 404 },
+      );
 
-    const status = String(workOrder.status ?? "").trim().toLowerCase().replaceAll(" ", "_");
+    const status = String(workOrder.status ?? "")
+      .trim()
+      .toLowerCase()
+      .replaceAll(" ", "_");
     if (!["completed", "ready_to_invoice", "invoiced"].includes(status)) {
       return NextResponse.json(
-        { error: `Work order status ${workOrder.status ?? "unknown"} is not ready for invoicing` },
+        {
+          error: `Work order status ${workOrder.status ?? "unknown"} is not ready for invoicing`,
+        },
         { status: 409 },
       );
     }
@@ -139,7 +159,10 @@ export async function POST(req: Request) {
     }
     const total = Number(snapshot.total ?? 0);
     if (!Number.isFinite(total) || total <= 0) {
-      return NextResponse.json({ error: "Cannot issue a zero-total invoice." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Cannot issue a zero-total invoice." },
+        { status: 400 },
+      );
     }
 
     const [{ data: shop }, { data: customer }] = await Promise.all([
@@ -154,14 +177,23 @@ export async function POST(req: Request) {
             .select("id,user_id,name,first_name,last_name,email")
             .eq("id", workOrder.customer_id)
             .maybeSingle<
-              Pick<CustomerRow, "id" | "user_id" | "name" | "first_name" | "last_name" | "email">
+              Pick<
+                CustomerRow,
+                "id" | "user_id" | "name" | "first_name" | "last_name" | "email"
+              >
             >()
         : Promise.resolve({ data: null, error: null }),
     ]);
 
-    const email = body?.customerEmail?.trim().toLowerCase() || customer?.email?.trim().toLowerCase() || "";
+    const email =
+      body?.customerEmail?.trim().toLowerCase() ||
+      customer?.email?.trim().toLowerCase() ||
+      "";
     if (!email) {
-      return NextResponse.json({ error: "Missing customer email." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing customer email." },
+        { status: 400 },
+      );
     }
 
     const now = new Date().toISOString();
@@ -204,19 +236,30 @@ export async function POST(req: Request) {
         .insert(payload)
         .select("id")
         .single<{ id: string }>();
-      if (error || !data?.id) throw new Error(error?.message ?? "Failed to create invoice");
+      if (error || !data?.id)
+        throw new Error(error?.message ?? "Failed to create invoice");
       invoiceId = data.id;
     }
     if (!invoiceId) throw new Error("Invoice persistence did not return an id");
 
+    // Resolve document branding once, at issuance. The complete renderer
+    // configuration is stored in the immutable version snapshot so historical
+    // invoices never change when the shop updates its logo or template later.
+    const brand = await getActiveBrandForRender(workOrder.shop_id);
+    const issuedSnapshot = {
+      ...snapshot,
+      documentConfiguration: brand.document,
+    };
     const version = await finalizeInvoiceVersion({
       supabase: admin,
       shopId: workOrder.shop_id,
       workOrderId,
       invoiceId,
-      snapshot,
+      snapshot: issuedSnapshot,
       actorUserId: access.profile.id,
-      operationKey: req.headers.get("idempotency-key")?.trim() || `invoice-send:${workOrderId}`,
+      operationKey:
+        req.headers.get("idempotency-key")?.trim() ||
+        `invoice-send:${workOrderId}`,
     });
 
     const base = SITE_URL.trim().replace(/\/+$/, "");
@@ -229,16 +272,14 @@ export async function POST(req: Request) {
       joinedName(customer?.first_name, customer?.last_name) ||
       workOrder.customer_name?.trim() ||
       undefined;
-    const brand = await getActiveBrandForRender(workOrder.shop_id);
-
     await sendInvoiceReadyEmail({
       shopId: workOrder.shop_id,
       to: email,
       portalUrl,
       workOrderId,
       invoiceTotal: version.total,
-      laborTotal: snapshot.laborCost ?? 0,
-      partsTotal: snapshot.partsCost ?? 0,
+      laborTotal: issuedSnapshot.laborCost ?? 0,
+      partsTotal: issuedSnapshot.partsCost ?? 0,
       customerName: customerLabel,
       shopName: shopLabel,
       brandLogoUrl: brand?.logoUrl ?? null,
@@ -299,14 +340,16 @@ export async function POST(req: Request) {
             {
               step: "portal_invoice_notification_insert",
               run: async () => {
-                const { error } = await admin.from("portal_notifications").insert({
-                  user_id: customer.user_id,
-                  customer_id: customer.id,
-                  work_order_id: workOrderId,
-                  kind: "invoice_ready",
-                  title: "Invoice ready",
-                  body: `Your invoice for Work Order ${workOrderId} at ${shopLabel} is ready to view.`,
-                });
+                const { error } = await admin
+                  .from("portal_notifications")
+                  .insert({
+                    user_id: customer.user_id,
+                    customer_id: customer.id,
+                    work_order_id: workOrderId,
+                    kind: "invoice_ready",
+                    title: "Invoice ready",
+                    body: `Your invoice for Work Order ${workOrderId} at ${shopLabel} is ready to view.`,
+                  });
                 if (error) throw new Error(error.message);
               },
             },
@@ -323,7 +366,8 @@ export async function POST(req: Request) {
       warnings: warnings.length ? warnings : undefined,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error sending invoice";
+    const message =
+      error instanceof Error ? error.message : "Unknown error sending invoice";
     console.error("[invoices/send] failed:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }

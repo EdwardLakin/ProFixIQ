@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import { Button } from "@shared/components/ui/Button";
+import { useState } from "react";
 import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProfileSection";
 import {
   OwnerSettingsPanel,
@@ -77,16 +77,7 @@ type Props = {
   orgId: string | null;
   orgName: string;
   locations: ShopLocationRow[];
-  shopName: string;
-  address: string;
-  city: string;
-  province: string;
-  postalCode: string;
-  phone: string;
-  email: string;
-  logoUrl: string;
-  invoiceTerms: string;
-  invoiceFooter: string;
+  invoicePreviewRevision?: number;
   emailLogs: EmailLogRow[];
   emailLogsLoading: boolean;
   onOpenStripeConnect: () => void;
@@ -138,16 +129,7 @@ export default function OwnerSettingsSidebar({
   orgId,
   orgName,
   locations,
-  shopName,
-  address,
-  city,
-  province,
-  postalCode,
-  phone,
-  email,
-  logoUrl,
-  invoiceTerms,
-  invoiceFooter,
+  invoicePreviewRevision = 0,
   emailLogs,
   emailLogsLoading,
   onOpenStripeConnect,
@@ -182,6 +164,8 @@ export default function OwnerSettingsSidebar({
   const manageSubscriptionLoading = hasManagedSubscription
     ? portalLoading
     : checkoutLoading;
+  const [localPreviewRevision, setLocalPreviewRevision] = useState(0);
+  const previewRevision = invoicePreviewRevision + localPreviewRevision;
 
   return (
     <div className={sticky ? "space-y-5 xl:sticky xl:top-20" : "space-y-5"}>
@@ -415,36 +399,36 @@ export default function OwnerSettingsSidebar({
       ) : null}
 
       {show("preview") ? (
-        <OwnerSettingsPanel tone="passive" title="Invoice preview">
-          <div className="space-y-2 rounded-xl bg-[color:var(--theme-surface-panel-strong)] p-3 text-xs text-[color:var(--theme-text-on-accent)] shadow">
-            {logoUrl ? (
-              <Image
-                src={logoUrl}
-                alt="Logo"
-                width={160}
-                height={48}
-                unoptimized
-                className="h-12 object-contain"
-              />
-            ) : null}
-            <div className="font-semibold">{shopName || "Your shop name"}</div>
-            <div>
-              {address}
-              {address ? "," : ""} {city} {province} {postalCode}
-            </div>
-            <div>
-              {phone} {phone && email ? "•" : ""} {email}
-            </div>
-            <hr className="my-2" />
-            <div className="font-semibold text-[color:var(--theme-text-on-accent)]">
-              Invoice terms
-            </div>
-            <p>{invoiceTerms || "—"}</p>
-            <div className="font-semibold text-[color:var(--theme-text-on-accent)]">
-              Footer
-            </div>
-            <p>{invoiceFooter || "—"}</p>
+        <OwnerSettingsPanel
+          tone="passive"
+          title="Invoice preview"
+          description="Rendered by the same PDF engine used for customer invoices."
+          action={
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setLocalPreviewRevision((value) => value + 1)}
+            >
+              Refresh
+            </Button>
+          }
+        >
+          <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-white shadow">
+            <iframe
+              key={previewRevision}
+              src={`/api/branding/invoice-preview?revision=${previewRevision}`}
+              title="Invoice PDF preview"
+              className="h-[520px] w-full"
+            />
           </div>
+          <a
+            className="mt-3 inline-flex text-xs font-medium text-[color:var(--accent-copper-light)] underline"
+            href={`/api/branding/invoice-preview?revision=${previewRevision}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open full PDF preview
+          </a>
         </OwnerSettingsPanel>
       ) : null}
 
