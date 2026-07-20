@@ -2388,6 +2388,7 @@ useEffect(() => {
               enabled={!!customerId && !!vehicleIdProp}
               selectedServiceCodes={selectedMaintenanceCodes}
               onChange={setSelectedMaintenanceCodes}
+              onAdded={fetchLines}
             />
 
             {/* Uploads */}

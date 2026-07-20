@@ -16,12 +16,20 @@ type SuggestionsResponse = {
   suggestions?: SuggestionRow[];
 };
 
+type AddBundleResponse = {
+  ok?: boolean;
+  added?: Array<{ serviceCode: string }>;
+  skipped?: Array<{ serviceCode: string; error: string }>;
+  error?: string;
+};
+
 type Props = {
   workOrderId: string | null;
   vehicleId: string | null;
   enabled: boolean;
   selectedServiceCodes: string[];
   onChange: (codes: string[]) => void;
+  onAdded?: () => void | Promise<void>;
 };
 
 export default function CreateFlowMaintenanceSelector({
@@ -30,9 +38,12 @@ export default function CreateFlowMaintenanceSelector({
   enabled,
   selectedServiceCodes,
   onChange,
+  onAdded,
 }: Props) {
   const [loading, setLoading] = useState(false);
   const [busyCode, setBusyCode] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [rows, setRows] = useState<SuggestionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -96,6 +107,73 @@ export default function CreateFlowMaintenanceSelector({
     onChange(nextChecked ? rows.map((row) => row.serviceCode) : []);
   }
 
+  async function addSelectedToQuote() {
+    if (!workOrderId || selectedServiceCodes.length === 0 || adding) return;
+
+    try {
+      setAdding(true);
+      setError(null);
+      setNotice(null);
+
+      const res = await fetch("/api/work-orders/maintenance-suggestions/add-bundle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          workOrderId,
+          serviceCodes: selectedServiceCodes,
+        }),
+      });
+
+      const json = (await res.json().catch(() => null)) as AddBundleResponse | null;
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Failed to add maintenance items to the quote.");
+      }
+
+      const addedCodes = new Set(
+        (json.added ?? []).map((item) => item.serviceCode.trim().toUpperCase()),
+      );
+      const skipped = json.skipped ?? [];
+
+      if (addedCodes.size === 0) {
+        throw new Error(
+          skipped.map((item) => item.error).filter(Boolean).join("; ") ||
+            "No maintenance items were added.",
+        );
+      }
+
+      setRows((current) =>
+        current.filter(
+          (row) => !addedCodes.has(row.serviceCode.trim().toUpperCase()),
+        ),
+      );
+      onChange(
+        selectedServiceCodes.filter(
+          (code) => !addedCodes.has(code.trim().toUpperCase()),
+        ),
+      );
+      const addedNotice =
+        `${addedCodes.size} maintenance item${addedCodes.size === 1 ? "" : "s"} added to the quote for approval.`;
+      setNotice(
+        skipped.length > 0
+          ? `${addedNotice} Some items were skipped: ${skipped
+              .map((item) => `${item.serviceCode}: ${item.error}`)
+              .join("; ")}`
+          : addedNotice,
+      );
+
+      await onAdded?.();
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Failed to add maintenance items to the quote.",
+      );
+    } finally {
+      setAdding(false);
+    }
+  }
+
   async function dismissCompletedPreviously(serviceCode: string) {
     if (!vehicleId || busyCode) return;
 
@@ -146,7 +224,7 @@ export default function CreateFlowMaintenanceSelector({
             Scheduled maintenance suggestions
           </h2>
           <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-            History-aware scheduled maintenance due for this vehicle. Selected items will be added after submit as pending approval items.
+            History-aware scheduled maintenance due for this vehicle. Select the items to add to this work order&apos;s quote as pending approval lines.
           </p>
           <p className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
             Separate lane from menu-items catalog and inspection-template quick add
@@ -173,13 +251,36 @@ export default function CreateFlowMaintenanceSelector({
           <button
             type="button"
             onClick={() => toggleAll(false)}
-            disabled={!rows.length}
+            disabled={!rows.length || adding}
             className={softButtonClass}
           >
             Clear
           </button>
+          <button
+            type="button"
+            onClick={() => void addSelectedToQuote()}
+            disabled={!workOrderId || selectedServiceCodes.length === 0 || adding}
+            title={!workOrderId ? "Save & Continue before adding items to the quote." : undefined}
+            className="rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/12 px-3 py-1.5 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/18 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {adding
+              ? "Adding..."
+              : `Add to quote (${selectedServiceCodes.length})`}
+          </button>
         </div>
       </div>
+
+      {notice ? (
+        <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          {notice}
+        </div>
+      ) : null}
+
+      {!workOrderId && selectedServiceCodes.length > 0 ? (
+        <div className="mb-3 text-xs text-[color:var(--theme-text-muted)]">
+          Save &amp; Continue first, then add the selected items to the quote.
+        </div>
+      ) : null}
 
       {!canLoad ? (
         <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
