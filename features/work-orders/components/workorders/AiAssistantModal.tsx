@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import MobileTechnicianAssistant from "@/features/mobile/technician/MobileTechnicianAssistant";
+import ModalShell from "@/features/shared/components/ModalShell";
 import TechAssistant from "@/features/shared/components/TechAssistant";
 
 type AiAssistantModalProps = {
@@ -35,50 +36,33 @@ export default function AiAssistantModal({
   if (!isOpen || !mounted) return null;
 
   if (!mobileRoute) {
-    return createPortal(
-      <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto pb-10 pt-10">
-        <div
-          className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
-          onClick={onClose}
-          aria-hidden="true"
-        />
-
-        <div className="relative z-[210] mx-4 w-full max-w-3xl">
-          <div className="var(--theme-gradient-panel)">
-            <div className="flex items-start justify-between border-b border-[color:var(--theme-border-soft)] px-5 py-3">
-              <div>
-                <h2
-                  className="text-xs font-semibold uppercase tracking-[0.24em] text-[color:var(--theme-text-secondary)]"
-                  style={{ fontFamily: "var(--font-blackops), system-ui" }}
-                >
-                  AI / Tech Assistant
-                </h2>
-                <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
-                  Scoped to this job and vehicle where possible.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
-                aria-label="Close AI assistant"
-              >
-                ✕
-              </button>
+    return (
+      <ModalShell
+        isOpen={isOpen}
+        onClose={onClose}
+        title="ASK PROFIXIQ"
+        size="lg"
+        hideFooter
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
+              AI / Tech Assistant
             </div>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+              Ask diagnosis, testing, specification, or repair questions using
+              this job and vehicle context. Nothing is changed automatically.
+            </p>
+          </div>
 
-            <div className="px-5 py-4">
-              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)]">
-                <TechAssistant
-                  defaultVehicle={defaultVehicle}
-                  workOrderLineId={workOrderLineId}
-                />
-              </div>
-            </div>
+          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] p-3 shadow-[var(--theme-shadow-medium)]">
+            <TechAssistant
+              defaultVehicle={defaultVehicle}
+              workOrderLineId={workOrderLineId}
+            />
           </div>
         </div>
-      </div>,
-      document.body,
+      </ModalShell>
     );
   }
 
@@ -86,7 +70,7 @@ export default function AiAssistantModal({
     <div className="fixed inset-0 z-[600] flex items-end justify-center overflow-hidden">
       <button
         type="button"
-        className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+        className="absolute inset-0 bg-[color:var(--theme-surface-inset)] backdrop-blur-md"
         onClick={onClose}
         aria-label="Close assistant"
       />
@@ -95,9 +79,12 @@ export default function AiAssistantModal({
         role="dialog"
         aria-modal="true"
         aria-label="Ask ProFixIQ"
-        className="relative z-[610] max-h-[100dvh] w-full rounded-t-[28px] border border-b-0 border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]"
+        className="relative z-[610] max-h-[100dvh] w-full overflow-hidden rounded-t-[28px] border border-b-0 border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
+        <div className="pointer-events-none absolute inset-x-10 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.14),transparent_72%)]" />
+
+        <div className="relative flex items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
           <div className="min-w-0">
             <h2
               className="text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)]"
