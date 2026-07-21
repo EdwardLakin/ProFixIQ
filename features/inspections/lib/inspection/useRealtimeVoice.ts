@@ -40,6 +40,43 @@ type RealtimeVoiceOptions = {
 
 type RealtimeTokenResponse = { token?: string };
 
+type RealtimeTokenErrorResponse = {
+  error?: string;
+  code?: string;
+};
+
+async function getRealtimeTokenError(response: Response): Promise<string> {
+  let body: RealtimeTokenErrorResponse | null = null;
+  try {
+    body = (await response.json()) as RealtimeTokenErrorResponse;
+  } catch {
+    // The status mapping below still gives the technician a useful message.
+  }
+
+  if (response.status === 401) {
+    return "Your session expired. Sign in again, then retry voice.";
+  }
+  if (response.status === 403) {
+    return "Voice is not available for this account.";
+  }
+  if (response.status === 429) {
+    return "Voice is busy. Wait a moment and try again.";
+  }
+
+  switch (body?.code) {
+    case "realtime_not_configured":
+      return "Voice is not configured for this deployment.";
+    case "realtime_upstream_timeout":
+      return "Voice took too long to connect. Try again.";
+    case "realtime_session_rejected":
+    case "realtime_invalid_response":
+    case "realtime_token_error":
+      return "Voice could not start. Try again in a moment.";
+    default:
+      return body?.error?.trim() || "Voice could not start.";
+  }
+}
+
 function base64FromArrayBuffer(buf: ArrayBuffer): string {
   let binary = "";
   const bytes = new Uint8Array(buf);
@@ -142,20 +179,36 @@ export function useRealtimeVoice(
     liveRef.current = "";
     setState("connecting");
 
-    // Get EPHEMERAL token
-    const r = await fetch("/api/openai/realtime-token", { method: "GET" });
-    if (!r.ok) {
+    // Get an ephemeral token. This happens before requesting microphone access,
+    // so token/auth failures are not misreported as microphone failures.
+    let r: Response;
+    try {
+      r = await fetch("/api/openai/realtime-token", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+    } catch {
+      const message = "Voice could not reach the server. Check your connection.";
       setState("error");
-      opts?.onError?.("Failed to get realtime token");
-      throw new Error("Failed to get realtime token");
+      opts?.onError?.(message);
+      throw new Error(message);
+    }
+
+    if (!r.ok) {
+      const message = await getRealtimeTokenError(r);
+      setState("error");
+      opts?.onError?.(message);
+      throw new Error(message);
     }
 
     const tokenResp = (await r.json()) as RealtimeTokenResponse;
     const token = typeof tokenResp.token === "string" ? tokenResp.token : "";
     if (!token) {
       setState("error");
-      opts?.onError?.("Missing realtime token");
-      throw new Error("Missing realtime token");
+      const message = "Voice service returned an invalid token. Try again.";
+      opts?.onError?.(message);
+      throw new Error(message);
     }
 
     // Mic
