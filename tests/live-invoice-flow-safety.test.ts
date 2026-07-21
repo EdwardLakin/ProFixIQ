@@ -32,8 +32,8 @@ describe("regular live invoice flow safety", () => {
     expect(reviewSource).toContain("work_order_parts");
     expect(reviewSource).toContain("work_order_part_allocations");
     expect(reviewSource).toContain("part_request_items");
-    expect(reviewSource).toContain('"parts_not_issued"');
-    expect(reviewSource).toContain("Complete the parts handoff before invoicing");
+    expect(reviewSource).toContain("hasCanonicalPartsByLine");
+    expect(reviewSource).toContain("Required approved parts are not attached");
   });
 
   it("flags invalid or suspicious labor totals before invoice readiness passes", () => {
@@ -53,7 +53,7 @@ describe("regular live invoice flow safety", () => {
     expect(previewClient).toContain("canonicalInvoiceTotal");
   });
 
-  it("uses the net-issued snapshot for billing, review, and draft PDF surfaces", () => {
+  it("uses the canonical approved-parts snapshot for billing, review, and draft PDF surfaces", () => {
     expect(billingPage).toContain('fetch("/api/billing/work-orders"');
     expect(billingPage).toContain("pricing_error");
     expect(billingRoute).toContain("getIssuableInvoiceSnapshot");
@@ -86,7 +86,7 @@ describe("regular live invoice flow safety", () => {
     expect(previewClient).toContain('fetch("/api/invoices/send"');
     expect(sendRoute).toContain("getIssuableInvoiceSnapshot");
     expect(sendRoute).toContain("draftParts");
-    expect(sendRoute).toContain("Complete the parts handoff");
+    expect(sendRoute).toContain("approved parts were not materialized");
   });
 
   it("keeps post-issue accounting and manual POS actions reachable", () => {

@@ -5,16 +5,6 @@ import { seedWorkOrderIntelligenceFromReview } from "@/features/ai/server/workOr
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 
 type DB = Database;
-type PartsRpcClient = {
-  rpc: (
-    name: string,
-    args: Record<string, unknown>,
-  ) => PromiseLike<{
-    data: unknown;
-    error: { message: string; details?: string | null; hint?: string | null } | null;
-  }>;
-};
-
 export type ReviewIssue = { kind: string; lineId?: string; message: string };
 export type ReviewKind = "ai_review" | "invoice_review";
 
@@ -133,7 +123,7 @@ export async function reviewWorkOrder({
   kind,
 }: Args): Promise<{ ok: boolean; issues: ReviewIssue[] }> {
   const hasBillablePartsByLine = new Map<string, boolean>();
-  const hasAttachedPartsByLine = new Map<string, boolean>();
+  const hasCanonicalPartsByLine = new Map<string, boolean>();
   const invoicePartIssues: ReviewIssue[] = [];
 
   const { data: allocationRows } = await supabase
@@ -150,29 +140,55 @@ export async function reviewWorkOrder({
     if (lineId && qty > 0 && (unitCost == null || unitCost > 0)) {
       hasBillablePartsByLine.set(lineId, true);
     }
-    if (lineId && qty > 0) hasAttachedPartsByLine.set(lineId, true);
   }
 
   const { data: stagedPartRows } = await supabase
     .from("work_order_parts")
-    .select("work_order_line_id, quantity, unit_price, total_price")
+    .select(
+      "work_order_line_id, quantity, quantity_requested, quantity_returned, quantity_cancelled, unit_price, unit_sell_price_snapshot, total_price, is_active",
+    )
     .eq("work_order_id", workOrderId)
     .eq("shop_id", shopId);
   for (const row of stagedPartRows ?? []) {
     const record = row as Record<string, unknown>;
     const lineId = typeof row.work_order_line_id === "string" ? row.work_order_line_id : "";
-    const quantity = numericValue(record.quantity) ?? 0;
-    const unitPrice = numericValue(record.unit_price);
+    const requested =
+      numericValue(record.quantity_requested) ??
+      numericValue(record.quantity) ??
+      0;
+    const quantity = Math.max(
+      0,
+      requested -
+        (numericValue(record.quantity_returned) ?? 0) -
+        (numericValue(record.quantity_cancelled) ?? 0),
+    );
+    const unitPrice =
+      numericValue(record.unit_sell_price_snapshot) ??
+      numericValue(record.unit_price);
     const totalPrice = numericValue(record.total_price);
     if (
       lineId &&
+      record.is_active !== false &&
       quantity > 0 &&
       ((unitPrice != null && unitPrice > 0) ||
         (totalPrice != null && totalPrice > 0))
     ) {
       hasBillablePartsByLine.set(lineId, true);
     }
-    if (lineId && quantity > 0) hasAttachedPartsByLine.set(lineId, true);
+    if (lineId && record.is_active !== false && quantity > 0) {
+      hasCanonicalPartsByLine.set(lineId, true);
+      if (
+        kind === "invoice_review" &&
+        !((unitPrice != null && unitPrice > 0) ||
+          (totalPrice != null && totalPrice > 0))
+      ) {
+        invoicePartIssues.push({
+          kind: "missing_part_sell_price",
+          lineId,
+          message: "An attached part is missing its customer sell price.",
+        });
+      }
+    }
   }
 
   const { data: requestItemRows } = await supabase
@@ -197,40 +213,12 @@ export async function reviewWorkOrder({
     ) {
       hasBillablePartsByLine.set(lineId, true);
     }
-    if (lineId && partRequestItemQuantity(record) > 0) {
-      hasAttachedPartsByLine.set(lineId, true);
-    }
   }
 
   if (kind === "invoice_review") {
-    const { data: netIssuedParts, error: netIssuedPartsError } = await (
-      supabase as unknown as PartsRpcClient
-    ).rpc(
-      "get_invoice_net_issued_parts",
-      {
-        p_shop_id: shopId,
-        p_work_order_id: workOrderId,
-      },
-    );
-    if (netIssuedPartsError) throw netIssuedPartsError;
-
     hasBillablePartsByLine.clear();
-    for (const raw of Array.isArray(netIssuedParts) ? netIssuedParts : []) {
-      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-      const part = raw as Record<string, unknown>;
-      const lineId = typeof part.lineId === "string" ? part.lineId : "";
-      const quantity = numericValue(part.qty) ?? 0;
-      const unitPrice = numericValue(part.unitPrice) ?? 0;
-      if (!lineId || quantity <= 0) continue;
-      if (unitPrice > 0) {
-        hasBillablePartsByLine.set(lineId, true);
-      } else {
-        invoicePartIssues.push({
-          kind: "missing_part_sell_price",
-          lineId,
-          message: `Issued part has no customer sell price: ${String(part.name ?? "Part")}`,
-        });
-      }
+    for (const lineId of hasCanonicalPartsByLine.keys()) {
+      hasBillablePartsByLine.set(lineId, true);
     }
   }
 
@@ -330,18 +318,10 @@ export async function reviewWorkOrder({
     const laborNA = record.labor_marked_na === true;
     const hasBillableParts = hasBillablePartsByLine.get(String(line.id)) === true;
     if (lineRequiresParts(record) && !hasBillableParts) {
-      const hasAttachedParts =
-        hasAttachedPartsByLine.get(String(line.id)) === true;
       issues.push({
-        kind:
-          kind === "invoice_review" && hasAttachedParts
-            ? "parts_not_issued"
-            : "missing_required_parts",
+        kind: "missing_required_parts",
         lineId: line.id,
-        message:
-          kind === "invoice_review" && hasAttachedParts
-            ? `Attached parts are awaiting issue to the job. Complete the parts handoff before invoicing: ${line.description ?? line.complaint ?? "job"}`
-            : `Required parts are missing from line: ${line.description ?? line.complaint ?? "job"}`,
+        message: `Required approved parts are not attached to line: ${line.description ?? line.complaint ?? "job"}`,
       });
     }
 

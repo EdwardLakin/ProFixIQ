@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 function source(path: string) {
-  return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  return readFileSync(resolve(process.cwd(), path), "utf8");
 }
 
 describe("phase 3 atomic parts routes", () => {
@@ -35,13 +36,15 @@ describe("phase 3 atomic parts routes", () => {
     expect(route).not.toContain('from("work_order_part_allocations")');
   });
 
-  it("uses canonical issued quantity for invoice creation", () => {
+  it("uses canonical approval-attached parts for invoice creation", () => {
     expect(source("app/api/invoices/send/route.ts")).toContain(
       "getIssuableInvoiceSnapshot",
     );
-    expect(source("features/invoices/server/getIssuableInvoiceSnapshot.ts")).toContain(
-      "get_invoice_net_issued_parts",
+    const issuableSnapshot = source(
+      "features/invoices/server/getIssuableInvoiceSnapshot.ts",
     );
+    expect(issuableSnapshot).toContain("selectApprovedAttachedInvoiceParts");
+    expect(issuableSnapshot).not.toContain("get_invoice_net_issued_parts");
   });
 
   it("keeps deployed invoice pricing compatible with stable parts columns", () => {

@@ -101,7 +101,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           error:
-            "Attached parts must be issued to the work order before it can be marked ready to invoice.",
+            "Approved parts must be attached to the work order before it can be marked ready to invoice.",
         },
         { status: 409 },
       );
