@@ -6334,6 +6334,7 @@ export type Database = {
       }
       import_jobs: {
         Row: {
+          approved_at: string | null
           completed_at: string | null
           created_at: string
           created_by: string | null
@@ -6343,6 +6344,7 @@ export type Database = {
           import_type: string
           imported_count: number
           processed_rows: number
+          result_record_id: string | null
           shop_id: string
           skipped_count: number
           source_storage_path: string | null
@@ -6352,6 +6354,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          approved_at?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -6361,6 +6364,7 @@ export type Database = {
           import_type: string
           imported_count?: number
           processed_rows?: number
+          result_record_id?: string | null
           shop_id: string
           skipped_count?: number
           source_storage_path?: string | null
@@ -6370,6 +6374,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          approved_at?: string | null
           completed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -6379,6 +6384,7 @@ export type Database = {
           import_type?: string
           imported_count?: number
           processed_rows?: number
+          result_record_id?: string | null
           shop_id?: string
           skipped_count?: number
           source_storage_path?: string | null
@@ -6388,6 +6394,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "import_jobs_result_inspection_template_fkey"
+            columns: ["result_record_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "import_jobs_shop_id_fkey"
             columns: ["shop_id"]
@@ -23499,6 +23512,10 @@ export type Database = {
           }
       create_fleet_form_upload: {
         Args: { _filename: string; _path: string }
+        Returns: string
+      }
+      approve_inspection_form_import: {
+        Args: { p_job_id: string; p_sections: Json; p_title: string }
         Returns: string
       }
       create_part_request: {
