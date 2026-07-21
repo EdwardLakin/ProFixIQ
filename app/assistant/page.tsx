@@ -62,10 +62,13 @@ export default function AssistantPage() {
     messages,
     loading,
     sending,
+    actionInFlightId,
     error,
     canRetry,
     send,
     retry,
+    confirmAction,
+    cancelAction,
     clearConversation,
   } = useShopAssistant(contextKey);
 
@@ -104,6 +107,9 @@ export default function AssistantPage() {
             error={error}
             canRetry={canRetry}
             onRetry={() => void retry()}
+            actionInFlightId={actionInFlightId}
+            onConfirmAction={(actionId) => void confirmAction(actionId)}
+            onCancelAction={(actionId) => void cancelAction(actionId)}
             className="max-h-[34rem]"
           />
 
@@ -131,7 +137,7 @@ export default function AssistantPage() {
             <Button
               type="button"
               variant="ghost"
-              disabled={loading || sending}
+              disabled={loading || sending || Boolean(actionInFlightId)}
               onClick={() => void clearConversation(context)}
             >
               New conversation
@@ -140,7 +146,9 @@ export default function AssistantPage() {
               type="button"
               onClick={() => void submit()}
               isLoading={sending}
-              disabled={loading || sending || !query.trim()}
+              disabled={
+                loading || sending || Boolean(actionInFlightId) || !query.trim()
+              }
             >
               Send
             </Button>
