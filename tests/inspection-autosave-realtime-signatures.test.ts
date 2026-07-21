@@ -31,6 +31,14 @@ const mobileSettings = readFileSync(
   "features/mobile/settings/MobileSettingsScreen.tsx",
   "utf8",
 );
+const mobileRunner = readFileSync(
+  "app/mobile/inspections/[id]/page.tsx",
+  "utf8",
+);
+const signatureIdentityMigration = readFileSync(
+  "supabase/migrations/20260721173000_inspection_signature_profile_identity.sql",
+  "utf8",
+);
 
 describe("inspection autosave, realtime, and signatures", () => {
   it("debounces every session update into the canonical server writer", () => {
@@ -79,6 +87,30 @@ describe("inspection autosave, realtime, and signatures", () => {
     expect(desktopSettings).toContain("upsert: false");
     expect(mobileSettings).toContain("upsert: false");
     expect(migration).toContain("prevent_technician_signature_mutation");
+  });
+
+  it("uses the work-order line as the shared mobile and desktop identity", () => {
+    expect(genericScreen).toContain("Object.entries(props.params ?? {})");
+    expect(genericScreen).toContain("props.embed === true");
+    expect(mobileRunner).toContain('.from("work_orders")');
+    expect(mobileRunner).toContain("Object.assign(runtimeParams, workOrderContext)");
+  });
+
+  it("hydrates canonical media independently of the device autosave", () => {
+    expect(loadRoute).toContain('.from("inspection_photos")');
+    expect(loadRoute).toContain("mergeCanonicalPhotos");
+    expect(loadRoute).toContain("canonicalInspectionId");
+  });
+
+  it("resolves linked profile identities for technician signatures", () => {
+    expect(signRoute).toContain('.eq("user_id", user.id)');
+    expect(signaturePanel).toContain('.eq("user_id", user.id)');
+    expect(signatureIdentityMigration).toContain(
+      "or p.user_id = v_actor_user_id",
+    );
+    expect(signatureIdentityMigration).toContain(
+      "'tech-signatures/' || v_profile.id::text || '/'",
+    );
   });
 });
 
