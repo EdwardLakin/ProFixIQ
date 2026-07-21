@@ -6,6 +6,21 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 const SIGNATURE_INK_COLOR = "#0f172a";
 const SIGNATURE_CANVAS_COLOR = "#ffffff";
 
+function canvasHasVisibleInk(canvas: HTMLCanvasElement): boolean {
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context || canvas.width < 1 || canvas.height < 1) return false;
+
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  for (let index = 0; index < pixels.length; index += 4) {
+    const alpha = pixels[index + 3];
+    const isNotWhite =
+      pixels[index] < 245 || pixels[index + 1] < 245 || pixels[index + 2] < 245;
+    if (alpha > 0 && isNotWhite) return true;
+  }
+
+  return false;
+}
+
 type SigCanvasInstance = {
   clear: () => void;
   isEmpty: () => boolean;
@@ -15,7 +30,9 @@ type SigCanvasInstance = {
 
 export type OpenOptions = { shopName?: string };
 
-export function openSignaturePad(opts: OpenOptions = {}): Promise<string | null> {
+export function openSignaturePad(
+  opts: OpenOptions = {},
+): Promise<string | null> {
   return new Promise((resolve) => {
     const detail = { shopName: opts.shopName ?? "", resolve };
     window.dispatchEvent(new CustomEvent("signaturepad:open", { detail }));
@@ -29,7 +46,8 @@ export default function SignaturePad() {
 function SignaturePadHost() {
   const [open, setOpen] = useState(false);
   const [shopName, setShopName] = useState<string>("");
-  const [SigCanvasComp, setSigCanvasComp] = useState<React.ComponentType<any> | null>(null);
+  const [SigCanvasComp, setSigCanvasComp] =
+    useState<React.ComponentType<any> | null>(null);
 
   const resolverRef = useRef<((v: string | null) => void) | null>(null);
   const sigRef = useRef<SigCanvasInstance | null>(null);
@@ -65,28 +83,41 @@ function SignaturePadHost() {
       // clear any previous ink and size up next paint
       requestAnimationFrame(() => {
         sigRef.current?.clear?.();
-        const el = containerRef.current;
-        const w = Math.max(320, Math.floor(el?.clientWidth || 0)) || 480;
-        const h = Math.floor(w * 0.44);
+        const measuredWidth = Math.floor(
+          containerRef.current?.clientWidth || 0,
+        );
+        const w = measuredWidth > 0 ? measuredWidth : 480;
+        const h = Math.max(120, Math.floor(w * 0.44));
         setSize({ w, h });
       });
     };
     window.addEventListener("signaturepad:open", handler as EventListener);
-    return () => window.removeEventListener("signaturepad:open", handler as EventListener);
+    return () =>
+      window.removeEventListener("signaturepad:open", handler as EventListener);
   }, []);
 
   // Responsive sizing
   useLayoutEffect(() => {
-    if (!containerRef.current) return;
+    if (!open || !containerRef.current) return;
     const el = containerRef.current;
-    const ro = new ResizeObserver(() => {
-      const w = Math.max(320, Math.floor(el.clientWidth)) || 480;
-      const h = Math.floor(w * 0.44);
-      setSize({ w, h });
-    });
+
+    const syncSize = () => {
+      const measuredWidth = Math.floor(el.clientWidth);
+      if (measuredWidth < 1) return;
+      const next = {
+        w: measuredWidth,
+        h: Math.max(120, Math.floor(measuredWidth * 0.44)),
+      };
+      setSize((current) =>
+        current.w === next.w && current.h === next.h ? current : next,
+      );
+    };
+
+    syncSize();
+    const ro = new ResizeObserver(syncSize);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [open]);
 
   // Retina crispness
   useEffect(() => {
@@ -98,25 +129,28 @@ function SignaturePadHost() {
     const W = Math.floor(size.w * ratio);
     const H = Math.floor(size.h * ratio);
     if (canvas.width !== W || canvas.height !== H) {
+      // Resizing clears the bitmap. Reset SignaturePad's internal ink state too
+      // so an orientation change can never save a blank image as a signature.
+      sigRef.current?.clear?.();
       canvas.width = W;
       canvas.height = H;
       canvas.style.width = `${size.w}px`;
       canvas.style.height = `${size.h}px`;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     }
-  }, [size]);
+  }, [SigCanvasComp, open, size]);
 
   // Prevent page scroll while signing (iOS)
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!open || !el) return;
     const preventScroll = (e: TouchEvent) => {
       const t = e.target as HTMLElement | null;
       if (t?.tagName?.toLowerCase() === "canvas") e.preventDefault();
     };
     el.addEventListener("touchmove", preventScroll, { passive: false });
     return () => el.removeEventListener("touchmove", preventScroll);
-  }, []);
+  }, [open]);
 
   const closeWith = (v: string | null) => {
     resolverRef.current?.(v);
@@ -124,7 +158,10 @@ function SignaturePadHost() {
     setOpen(false);
   };
 
-  const hasInk = () => !!sigRef.current && typeof sigRef.current.isEmpty === "function" && !sigRef.current.isEmpty();
+  const hasInk = () =>
+    !!sigRef.current &&
+    typeof sigRef.current.isEmpty === "function" &&
+    !sigRef.current.isEmpty();
 
   const handleClear = () => sigRef.current?.clear?.();
 
@@ -161,6 +198,9 @@ function SignaturePadHost() {
       if (canvas.width === 0 || canvas.height === 0) {
         throw new Error("Signature area not ready. Please try again.");
       }
+      if (!canvasHasVisibleInk(canvas)) {
+        throw new Error("Please draw a signature before saving.");
+      }
 
       const base64 = canvas.toDataURL("image/png");
       if (!base64 || base64.length < 50) {
@@ -188,7 +228,9 @@ function SignaturePadHost() {
       >
         <h2
           className="mb-1 text-center text-lg font-semibold text-[color:var(--theme-text-primary)]"
-          style={{ fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
+          style={{
+            fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui",
+          }}
         >
           {shopName ? `${shopName} — Customer Approval` : "Customer Approval"}
         </h2>
@@ -207,8 +249,14 @@ function SignaturePadHost() {
               canvasProps={{
                 width: size.w,
                 height: size.h,
-                className: "w-full rounded-md border border-[color:var(--theme-border-soft)]",
-                style: { backgroundColor: SIGNATURE_CANVAS_COLOR },
+                className:
+                  "w-full rounded-md border border-[color:var(--theme-border-soft)]",
+                style: {
+                  backgroundColor: SIGNATURE_CANVAS_COLOR,
+                  touchAction: "none",
+                  userSelect: "none",
+                  WebkitUserSelect: "none",
+                },
                 role: "img",
                 "aria-label": "Signature input area",
               }}
@@ -241,7 +289,10 @@ function SignaturePadHost() {
               onClick={() => closeWith(null)}
               disabled={saving}
               className="rounded px-4 py-2 text-[color:var(--theme-text-primary)] disabled:opacity-50"
-              style={{ backgroundColor: "#ef4444", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
+              style={{
+                backgroundColor: "#ef4444",
+                fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui",
+              }}
             >
               Cancel
             </button>
@@ -252,8 +303,12 @@ function SignaturePadHost() {
                 e.stopPropagation();
                 handleSave();
               }}
-              className="rounded px-4 py-2 text-[color:var(--theme-text-primary)]"
-              style={{ backgroundColor: "var(--theme-surface-panel)", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
+              disabled={saving}
+              className="rounded px-4 py-2 text-[color:var(--theme-text-primary)] disabled:opacity-50"
+              style={{
+                backgroundColor: "var(--theme-surface-panel)",
+                fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui",
+              }}
             >
               {saving ? "Saving…" : "Save"}
             </button>
