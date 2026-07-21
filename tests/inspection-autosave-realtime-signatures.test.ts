@@ -101,6 +101,9 @@ describe("inspection autosave, realtime, and signatures", () => {
     expect(loadRoute).toContain('.from("inspection_photos")');
     expect(loadRoute).toContain("mergeCanonicalPhotos");
     expect(loadRoute).toContain("canonicalInspectionId");
+    expect(loadRoute).toContain("canonicalWorkOrderId");
+    expect(loadRoute).toContain("customerContext");
+    expect(loadRoute).toContain("vehicleContext");
   });
 
   it("resolves linked profile identities for technician signatures", () => {
