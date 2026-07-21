@@ -38,7 +38,10 @@ type RealtimeVoiceOptions = {
   debug?: boolean;
 };
 
-type RealtimeTokenResponse = { token?: string };
+type RealtimeTokenResponse = {
+  token?: string;
+  transcriptionModel?: string;
+};
 
 type RealtimeTokenErrorResponse = {
   error?: string;
@@ -204,6 +207,11 @@ export function useRealtimeVoice(
 
     const tokenResp = (await r.json()) as RealtimeTokenResponse;
     const token = typeof tokenResp.token === "string" ? tokenResp.token : "";
+    const sessionTranscriptionModel =
+      typeof tokenResp.transcriptionModel === "string" &&
+      tokenResp.transcriptionModel.trim()
+        ? tokenResp.transcriptionModel.trim()
+        : transcriptionModel;
     if (!token) {
       setState("error");
       const message = "Voice service returned an invalid token. Try again.";
@@ -270,7 +278,7 @@ export function useRealtimeVoice(
                 format: { type: "audio/pcm", rate: 24000 },
                 noise_reduction: { type: "near_field" },
                 transcription: {
-                  model: transcriptionModel,
+                  model: sessionTranscriptionModel,
                   language: "en",
                 },
                 // Keep these modest; if you had a known-good set before, use it.
