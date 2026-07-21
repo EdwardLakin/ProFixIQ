@@ -12,6 +12,23 @@ const CustomerSchema = z.object({
   href: z.string(),
 });
 
+type CustomerRow = {
+  id: string;
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+function customerName(row: CustomerRow): string {
+  return (
+    row.name?.trim() ||
+    [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
+    "Customer"
+  );
+}
+
 export const findCustomersTool = defineShopAssistantTool({
   name: "find_customers",
   domain: "customers",
@@ -48,14 +65,12 @@ export const findCustomersTool = defineShopAssistantTool({
       .limit(input.limit);
     if (error) throw new Error(error.message);
 
-    const customers = (data ?? []).map((row) => ({
+    const rows = (data ?? []) as unknown as CustomerRow[];
+    const customers = rows.map((row) => ({
       id: row.id,
-      name:
-        row.name?.trim() ||
-        [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
-        "Customer",
-      email: row.email ?? null,
-      phone: row.phone ?? null,
+      name: customerName(row),
+      email: row.email,
+      phone: row.phone,
       href: `/customers/${row.id}`,
     }));
 
@@ -127,15 +142,13 @@ export const createCustomerTool = defineShopAssistantTool({
       throw new Error(error?.message ?? "Failed to create customer.");
     }
 
+    const row = data as unknown as CustomerRow;
     const customer = {
-      id: data.id,
-      name:
-        data.name?.trim() ||
-        [data.first_name, data.last_name].filter(Boolean).join(" ").trim() ||
-        input.name,
-      email: data.email ?? null,
-      phone: data.phone ?? null,
-      href: `/customers/${data.id}`,
+      id: row.id,
+      name: customerName(row) || input.name,
+      email: row.email,
+      phone: row.phone,
+      href: `/customers/${row.id}`,
     };
     return {
       ok: true as const,
