@@ -28,7 +28,10 @@ import type {
 import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
+import {
+  InspectionAutosaveStatus,
+  useInspectionRealtimeAutosave,
+} from "@inspections/hooks/useInspectionRealtimeAutosave";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 import PageShell from "@/features/shared/components/PageShell";
@@ -236,6 +239,7 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
 
   const {
     session,
+    replaceSession,
     updateInspection,
     updateItem,
     updateSection,
@@ -246,6 +250,13 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
     addQuoteLine,
     updateQuoteLine,
   } = useInspectionSession(initialSession);
+
+  const autosaveState = useInspectionRealtimeAutosave({
+    session,
+    workOrderLineId,
+    enabled: Boolean(workOrderLineId),
+    onRemoteSession: replaceSession,
+  });
 
   // ---- AI submit guarding ----
   const inFlightRef = useRef<Set<string>>(new Set());
@@ -721,7 +732,7 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
       {/* Footer */}
       <div className="mt-8 flex flex-col gap-4 border-t border-[color:var(--theme-border-soft)] pt-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <SaveInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
+          <InspectionAutosaveStatus state={autosaveState} />
           <FinishInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
           {!workOrderLineId && (
             <div className="text-xs text-red-400">
