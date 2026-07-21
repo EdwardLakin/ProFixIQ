@@ -1,0 +1,125 @@
+name: Supabase Clean Replay Validation
+
+on:
+  push:
+    branches:
+      - fix/supabase-clean-replay
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "db/sql/schema.sql"
+      - "scripts/generate-supabase-public-baseline.py"
+      - ".github/workflows/supabase-clean-replay-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+          github-token: ${{ github.token }}
+
+      - name: Verify the generated baseline is deterministic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/generate-supabase-public-baseline.py
+          git diff --exit-code -- \
+            supabase/migrations/20260705000000_public_schema_baseline.sql
+
+      - name: Initialize ephemeral Supabase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase --version
+
+      - name: Start a fresh local database and apply migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db start 2>&1 | tee supabase-db-start.log
+
+      - name: Reset and replay the full migration chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db reset --local --no-seed --debug \
+            2>&1 | tee supabase-db-reset.log
+
+      - name: Verify bootstrap and existing-database baseline paths
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+
+          core_count="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select count(*)
+            from (values
+              ('shops'),
+              ('profiles'),
+              ('customers'),
+              ('vehicles'),
+              ('work_orders'),
+              ('work_order_lines')
+            ) as core(table_name)
+            where to_regclass('public.' || table_name) is not null;
+          ")"
+          test "$core_count" = "6"
+
+          bootstrap_mode="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select mode
+            from public.profixiq_schema_baselines
+            where version = '20260705000000';
+          ")"
+          test "$bootstrap_mode" = "bootstrap"
+
+          history_count="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select count(*)
+            from supabase_migrations.schema_migrations
+            where version = '20260705000000';
+          ")"
+          test "$history_count" = "1"
+
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260705000000_public_schema_baseline.sql \
+            2>&1 | tee supabase-existing-baseline.log
+
+          existing_mode="$(psql "$DB_URL" -Atv ON_ERROR_STOP=1 -c "
+            select mode
+            from public.profixiq_schema_baselines
+            where version = '20260705000000';
+          ")"
+          test "$existing_mode" = "existing"
+
+      - name: Upload replay diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-clean-replay-${{ github.run_id }}
+          path: |
+            supabase-db-start.log
+            supabase-db-reset.log
+            supabase-existing-baseline.log
+            supabase/config.toml
+          if-no-files-found: warn
+
+      - name: Stop local Supabase
+        if: always()
+        shell: bash
+        run: supabase stop --no-backup || true
