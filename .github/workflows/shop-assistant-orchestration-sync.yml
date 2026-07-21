@@ -1,0 +1,26 @@
+name: Shop Assistant Phase 4 Sync
+
+on:
+  push:
+    branches:
+      - agent/shop-wide-assistant-orchestration
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/shop-wide-assistant-orchestration
+          fetch-depth: 0
+      - name: Merge latest Phase 3
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin agent/shop-wide-assistant-actions
+          git merge --no-edit origin/agent/shop-wide-assistant-actions
+          git push origin HEAD:agent/shop-wide-assistant-orchestration
