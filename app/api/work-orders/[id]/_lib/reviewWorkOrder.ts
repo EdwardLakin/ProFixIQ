@@ -37,6 +37,12 @@ function numericValue(value: unknown): number | null {
   return null;
 }
 
+function isInfoLine(line: Record<string, unknown>): boolean {
+  const lineType = String(line.line_type ?? "").trim().toLowerCase();
+  const jobType = String(line.job_type ?? "").trim().toLowerCase();
+  return lineType === "info" || lineType === "note" || jobType === "info";
+}
+
 function partRequestItemHasBillablePrice(row: Record<string, unknown>): boolean {
   const price =
     numericValue(row.quoted_price) ??
