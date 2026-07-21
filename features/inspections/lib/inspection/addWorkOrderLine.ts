@@ -74,6 +74,7 @@ export async function addWorkOrderLineFromSuggestion(args: {
     notes: part.notes ?? null,
   }));
 
+  const hasParts = parts.length > 0;
   const partsTotal = parts.reduce(
     (sum, part) => sum + (typeof part.cost === "number" ? part.cost * part.qty : 0),
     0,
@@ -96,7 +97,7 @@ export async function addWorkOrderLineFromSuggestion(args: {
           description: args.description,
           source: args.source ?? "inspection",
           sourceSectionTitle: args.section ?? null,
-          status: "pending_parts",
+          status: hasParts ? "pending_parts" : "advisor_pending",
           stage: "advisor_pending",
           complaint: derivedComplaint || null,
           notes: derivedComplaint || null,
@@ -118,6 +119,8 @@ export async function addWorkOrderLineFromSuggestion(args: {
           metadata: {
             helper: "addWorkOrderLineFromSuggestion",
             helper_behavior: "creates_work_order_quote_lines_not_work_order_lines",
+            parts_required: hasParts,
+            no_parts_required: !hasParts,
           },
         },
       ],
