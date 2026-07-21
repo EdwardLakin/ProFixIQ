@@ -57,9 +57,31 @@ export type AssistantNotification = {
 };
 
 export type AssistantRelatedRecord = {
+  id?: string;
   label: string;
   href?: string;
   type?: string;
+};
+
+export type AssistantPendingAction = {
+  id: string;
+  toolName: string;
+  domain: string;
+  label: string;
+  summary: string;
+  riskLevel: "low" | "medium" | "high";
+  status: "pending_confirmation";
+  expiresAt: string;
+  input: Record<string, unknown>;
+};
+
+export type AssistantExecutionResult = {
+  actionId: string;
+  toolName: string;
+  status: "succeeded" | "failed" | "cancelled";
+  summary: string;
+  details: string[];
+  affectedRecords: AssistantRelatedRecord[];
 };
 
 export type AssistantResponse = {
@@ -69,4 +91,14 @@ export type AssistantResponse = {
   notifications: AssistantNotification[];
   relatedRecords?: AssistantRelatedRecord[];
   partSuggestions?: CanonicalPartSuggestion[];
+  conversationId?: string;
+  pendingAction?: AssistantPendingAction;
+  execution?: AssistantExecutionResult;
+};
+
+export type AssistantConversationMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
 };

@@ -9,43 +9,67 @@ import { Button } from "@shared/components/ui/Button";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 import { useAssistant } from "@/features/assistant/hooks/useAssistant";
+import AssistantConversation from "@/features/assistant/components/AssistantConversation";
 import AssistantResponseCard from "@/features/assistant/components/AssistantResponseCard";
 import type { AssistantContext } from "@/features/assistant/types/assistant";
 
 const EXAMPLE_PROMPTS = [
   "Which work orders are waiting on approvals right now?",
-  "Summarize open inspections with safety concerns from this week.",
+  "Put WO EL00005 on hold for parts.",
   "What changed today across bookings, invoices, and technician activity?",
   "Show repeat issues for this vehicle and what we recommended last time.",
 ];
 
 export default function AssistantPage() {
   const [query, setQuery] = useState("");
-  const { ask, loading, data } = useAssistant();
   const searchParams = useSearchParams();
+  const searchKey = searchParams.toString();
 
   const context = useMemo<AssistantContext>(() => {
-    const workOrderId = searchParams.get("workOrderId") ?? undefined;
-    const vehicleId = searchParams.get("vehicleId") ?? undefined;
-    const customerId = searchParams.get("customerId") ?? undefined;
-    const bookingId = searchParams.get("bookingId") ?? undefined;
-    const pageType = searchParams.get("pageType") ?? undefined;
-    const pageTitle = searchParams.get("pageTitle") ?? undefined;
-
+    const params = new URLSearchParams(searchKey);
     return {
-      workOrderId,
-      vehicleId,
-      customerId,
-      bookingId,
-      pageType,
-      pageTitle,
+      workOrderId: params.get("workOrderId") ?? undefined,
+      vehicleId: params.get("vehicleId") ?? undefined,
+      customerId: params.get("customerId") ?? undefined,
+      bookingId: params.get("bookingId") ?? undefined,
+      pageType: params.get("pageType") ?? undefined,
+      pageTitle: params.get("pageTitle") ?? undefined,
     };
-  }, [searchParams]);
+  }, [searchKey]);
+
+  const contextKey = useMemo(
+    () =>
+      [
+        context.pageType,
+        context.workOrderId,
+        context.vehicleId,
+        context.customerId,
+        context.bookingId,
+      ]
+        .filter(Boolean)
+        .join(":"),
+    [context],
+  );
+
+  const {
+    ask,
+    loading,
+    hydrating,
+    actionLoading,
+    data,
+    messages,
+    confirmAction,
+    cancelAction,
+    clearConversation,
+  } = useAssistant(contextKey);
 
   const contextChips = useMemo(
     () => [
       { label: "Shop-wide", active: true },
-      { label: "Current page", active: Boolean(context.pageType || context.pageTitle) },
+      {
+        label: "Current page",
+        active: Boolean(context.pageType || context.pageTitle),
+      },
       { label: "Current customer", active: Boolean(context.customerId) },
       { label: "Current vehicle", active: Boolean(context.vehicleId) },
       { label: "Current work order", active: Boolean(context.workOrderId) },
@@ -53,10 +77,17 @@ export default function AssistantPage() {
     [context],
   );
 
+  const submit = async () => {
+    const value = query.trim();
+    if (!value || loading) return;
+    await ask(value, context);
+    setQuery("");
+  };
+
   return (
     <PageShell
       title="Shop Assistant"
-      description="Your universal shop intelligence surface for questions, explanations, and cross-record history."
+      description="Shop-wide intelligence, durable conversation memory, and reviewable operational actions."
     >
       <div className={`${ui.panel} ${ui.panelPadding} space-y-4`}>
         <div className="desktop-panel-soft p-4">
@@ -77,17 +108,26 @@ export default function AssistantPage() {
               </span>
             ))}
           </div>
-          <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
+          <p className="mt-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
             Ask across work orders, customers, vehicles, inspections, approvals,
-            bookings, invoices, fleet, parts, and staff/shop activity. Current-page
-            context is applied when available.
+            bookings, invoices, fleet, parts, and staff activity. Action requests
+            are separated from questions and require confirmation before records
+            change.
           </p>
         </div>
 
+        {hydrating ? (
+          <div className="desktop-panel-soft p-4 text-sm text-[color:var(--theme-text-secondary)]">
+            Restoring the conversation…
+          </div>
+        ) : (
+          <AssistantConversation messages={messages} />
+        )}
+
         <textarea
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask a shop question, request an explanation, or compare records..."
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Ask a shop question or request a reviewed action..."
           className="desktop-input min-h-[120px] w-full resize-y rounded-2xl px-3 py-2 text-[color:var(--theme-text-primary)]"
         />
 
@@ -104,17 +144,30 @@ export default function AssistantPage() {
           ))}
         </div>
 
-        <div className="mt-4 flex justify-center">
+        <div className="mt-4 flex items-center justify-between gap-3">
           <Button
-            onClick={() => ask(query, context)}
+            variant="ghost"
+            disabled={loading || hydrating || messages.length === 0}
+            onClick={() => void clearConversation()}
+          >
+            Clear conversation
+          </Button>
+          <Button
+            onClick={() => void submit()}
             isLoading={loading}
-            disabled={!query.trim()}
+            disabled={hydrating || !query.trim()}
           >
             Ask Assistant
           </Button>
         </div>
 
-        <AssistantResponseCard data={data} />
+        <AssistantResponseCard
+          data={data}
+          showAnswer={false}
+          actionLoading={actionLoading}
+          onConfirmAction={confirmAction}
+          onCancelAction={cancelAction}
+        />
       </div>
     </PageShell>
   );

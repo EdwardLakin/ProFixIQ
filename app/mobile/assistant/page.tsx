@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
+import AssistantConversation from "@/features/assistant/components/AssistantConversation";
 import AssistantResponseCard from "@/features/assistant/components/AssistantResponseCard";
 import { useAssistant } from "@/features/assistant/hooks/useAssistant";
 import type { AssistantContext } from "@/features/assistant/types/assistant";
@@ -43,8 +44,17 @@ export default function MobileAssistantPage() {
         .join(":"),
     [context],
   );
-  const { ask, loading, data, messages, clearConversation } =
-    useAssistant(contextKey);
+  const {
+    ask,
+    loading,
+    hydrating,
+    actionLoading,
+    data,
+    messages,
+    confirmAction,
+    cancelAction,
+    clearConversation,
+  } = useAssistant(contextKey);
 
   const submit = async () => {
     const value = question.trim();
@@ -69,11 +79,11 @@ export default function MobileAssistantPage() {
           Shop assistant
         </div>
         <h1 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
-          Ask a question
+          Ask or take action
         </h1>
         <p className="mt-1 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          This is a deliberate question-and-answer tool. It does not change work
-          orders, appointments, parts, or shop records automatically.
+          Ask across the shop or request an operational change. Record changes are
+          shown for review and require confirmation before they run.
         </p>
         {contextLabel ? (
           <div className="mt-3 inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-xs text-[color:var(--theme-text-secondary)]">
@@ -82,35 +92,26 @@ export default function MobileAssistantPage() {
         ) : null}
       </section>
 
-      {messages.length > 0 ? (
-        <section className="max-h-64 space-y-2 overflow-y-auto rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
-          {messages.slice(-8).map((message, index) => (
-            <div
-              key={`${message.role}-${index}-${message.content.slice(0, 20)}`}
-              className={`rounded-2xl px-3 py-2 text-sm leading-5 ${
-                message.role === "user"
-                  ? "ml-6 bg-[color:var(--accent-copper)] text-white"
-                  : "mr-6 border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
-              }`}
-            >
-              {message.content}
-            </div>
-          ))}
+      {hydrating ? (
+        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
+          Restoring the conversation…
         </section>
-      ) : null}
+      ) : (
+        <AssistantConversation messages={messages} compact />
+      )}
 
       <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-[var(--theme-shadow-medium)]">
         <label
           htmlFor="mobile-assistant-question"
           className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]"
         >
-          Question
+          Question or command
         </label>
         <textarea
           id="mobile-assistant-question"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask about shop status, a customer, a work order, parts, appointments, or fleet operations."
+          placeholder="Ask about shop status or request a reviewed action, such as putting a work order on hold for parts."
           className="mt-2 min-h-32 w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/30"
         />
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -118,9 +119,9 @@ export default function MobileAssistantPage() {
             type="button"
             variant="ghost"
             size="sm"
-            disabled={loading || messages.length === 0}
+            disabled={loading || hydrating || messages.length === 0}
             onClick={() => {
-              clearConversation();
+              void clearConversation();
               setQuestion("");
             }}
           >
@@ -130,7 +131,7 @@ export default function MobileAssistantPage() {
             type="button"
             variant="copper"
             size="sm"
-            disabled={loading || !question.trim()}
+            disabled={loading || hydrating || !question.trim()}
             isLoading={loading}
             onClick={() => void submit()}
           >
@@ -139,7 +140,13 @@ export default function MobileAssistantPage() {
         </div>
       </section>
 
-      <AssistantResponseCard data={data} />
+      <AssistantResponseCard
+        data={data}
+        showAnswer={false}
+        actionLoading={actionLoading}
+        onConfirmAction={confirmAction}
+        onCancelAction={cancelAction}
+      />
     </div>
   );
 }

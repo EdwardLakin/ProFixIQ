@@ -1,64 +1,34 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-
 import { answerAssistant } from "@/features/agent/assistant/server/answerAssistant";
+import { AssistantContextValidationError } from "@/features/agent/assistant/server/trustedContext";
 import type {
   AssistantAskRequest,
   AssistantAskResponse,
 } from "@/features/agent/assistant/types";
-import { AssistantContextValidationError } from "@/features/agent/assistant/server/trustedContext";
+import { handleShopAssistantRequest } from "@/features/assistant/server/handleShopAssistantRequest";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-async function requireUser(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-) {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) return null;
-  return user;
-}
-
-async function resolveProfile(
-  supabase: ReturnType<typeof createServerSupabaseRoute>,
-  userId: string,
-): Promise<{ shopId: string | null; role: string | null }> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("shop_id, role")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    return { shopId: null, role: null };
-  }
-
-  return {
-    shopId: data?.shop_id ?? null,
-    role: data?.role ?? null,
-  };
+function invalidConversationHistory(body: AssistantAskRequest): boolean {
+  return Boolean(
+    body.messages !== undefined &&
+      (!Array.isArray(body.messages) ||
+        body.messages.length > 20 ||
+        body.messages.some(
+          (message) =>
+            !message ||
+            (message.role !== "user" && message.role !== "assistant") ||
+            typeof message.content !== "string" ||
+            message.content.length > 4000,
+        )),
+  );
 }
 
 export async function POST(request: Request) {
-  const supabase = createServerSupabaseRoute();
-
-  const user = await requireUser(supabase);
-  if (!user) {
-    return NextResponse.json<AssistantAskResponse>(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
-
-  const profile = await resolveProfile(supabase, user.id);
-  if (!profile.shopId) {
-    return NextResponse.json<AssistantAskResponse>(
-      { ok: false, error: "No shop found for user" },
-      { status: 400 },
-    );
-  }
+  const access = await requireShopScopedApiAccess();
+  if (!access.ok) return access.response;
 
   let body: AssistantAskRequest;
   try {
@@ -82,17 +52,34 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (body.messages !== undefined && (!Array.isArray(body.messages) ||
-    body.messages.length > 20 || body.messages.some((message) =>
-      !message || (message.role !== "user" && message.role !== "assistant") ||
-      typeof message.content !== "string" || message.content.length > 4000))) {
+  if (body.surface !== undefined && body.surface !== "shop" && body.surface !== "technician") {
+    return NextResponse.json<AssistantAskResponse>(
+      { ok: false, error: "Assistant surface is invalid" },
+      { status: 400 },
+    );
+  }
+  if (body.conversationId !== undefined && !UUID_PATTERN.test(body.conversationId)) {
+    return NextResponse.json<AssistantAskResponse>(
+      { ok: false, error: "Conversation id is invalid" },
+      { status: 400 },
+    );
+  }
+  if (body.clientRequestId !== undefined && !UUID_PATTERN.test(body.clientRequestId)) {
+    return NextResponse.json<AssistantAskResponse>(
+      { ok: false, error: "Client request id is invalid" },
+      { status: 400 },
+    );
+  }
+  if (invalidConversationHistory(body)) {
     return NextResponse.json<AssistantAskResponse>(
       { ok: false, error: "Conversation history is invalid" },
       { status: 400 },
     );
   }
-  if (body.imageAttachments !== undefined &&
-    (!Array.isArray(body.imageAttachments) || body.imageAttachments.length > 3)) {
+  if (
+    body.imageAttachments !== undefined &&
+    (!Array.isArray(body.imageAttachments) || body.imageAttachments.length > 3)
+  ) {
     return NextResponse.json<AssistantAskResponse>(
       { ok: false, error: "Too many image attachments" },
       { status: 400 },
@@ -100,12 +87,21 @@ export async function POST(request: Request) {
   }
 
   try {
-    const answer = await answerAssistant({
-      shopId: profile.shopId,
-      userId: user.id,
-      role: profile.role,
-      request: body,
-    });
+    const answer =
+      body.surface === "shop"
+        ? await handleShopAssistantRequest({
+            supabase: access.supabase,
+            shopId: access.profile.shop_id,
+            userId: access.profile.id,
+            role: access.profile.role,
+            request: body,
+          })
+        : await answerAssistant({
+            shopId: access.profile.shop_id,
+            userId: access.profile.id,
+            role: access.profile.role,
+            request: body,
+          });
 
     return NextResponse.json<AssistantAskResponse>({
       ok: true,

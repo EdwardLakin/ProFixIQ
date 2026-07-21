@@ -63,6 +63,50 @@ export type AssistantResolvedContext = {
   fleetUnitId?: string;
 };
 
+export type AssistantActionRisk = "low" | "medium" | "high";
+
+export type AssistantPendingAction = {
+  id: string;
+  toolName: string;
+  domain: string;
+  label: string;
+  summary: string;
+  riskLevel: AssistantActionRisk;
+  status: "pending_confirmation";
+  expiresAt: string;
+  input: Record<string, unknown>;
+};
+
+export type AssistantExecutionResult = {
+  actionId: string;
+  toolName: string;
+  status: "succeeded" | "failed" | "cancelled";
+  summary: string;
+  details: string[];
+  affectedRecords: AssistantEntity[];
+};
+
+export type AssistantIntent =
+  | "customer_visit_history"
+  | "vehicle_history"
+  | "shop_status"
+  | "stalled_work_orders"
+  | "bookings"
+  | "tech_current_work"
+  | "pending_approvals"
+  | "work_order_status"
+  | "parts_inventory"
+  | "parts_blockers"
+  | "parts_purchasing"
+  | "fleet_history"
+  | "fleet_requests"
+  | "authoring_menu_item"
+  | "authoring_inspection_template"
+  | "authoring_bundle_draft"
+  | "action_request"
+  | "tool_result"
+  | "unknown";
+
 export type AssistantAnswer = {
   summary: string;
   bullets: string[];
@@ -71,24 +115,10 @@ export type AssistantAnswer = {
   actions: AssistantAction[];
   resolvedContext?: AssistantResolvedContext;
   partSuggestions?: CanonicalPartSuggestion[];
-  intent:
-    | "customer_visit_history"
-    | "vehicle_history"
-    | "shop_status"
-    | "stalled_work_orders"
-    | "bookings"
-    | "tech_current_work"
-    | "pending_approvals"
-    | "work_order_status"
-    | "parts_inventory"
-    | "parts_blockers"
-    | "parts_purchasing"
-    | "fleet_history"
-    | "fleet_requests"
-    | "authoring_menu_item"
-    | "authoring_inspection_template"
-    | "authoring_bundle_draft"
-    | "unknown";
+  intent: AssistantIntent;
+  conversationId?: string;
+  pendingAction?: AssistantPendingAction;
+  execution?: AssistantExecutionResult;
 };
 
 export type AssistantAskContext = {
@@ -121,8 +151,13 @@ export type AssistantVehicleContext = {
   model?: string | null;
 };
 
+export type AssistantSurface = "shop" | "technician";
+
 export type AssistantAskRequest = {
   question: string;
+  surface?: AssistantSurface;
+  conversationId?: string;
+  clientRequestId?: string;
   context?: AssistantAskContext;
   session?: AssistantAskSession;
   messages?: AssistantConversationMessage[];
