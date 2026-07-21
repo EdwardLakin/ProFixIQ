@@ -14,6 +14,8 @@ const LowStockItemSchema = z.object({
   href: z.string(),
 });
 
+type LowStockItem = z.infer<typeof LowStockItemSchema>;
+
 const PartBlockerSchema = z.object({
   requestItemId: z.string().uuid(),
   description: z.string(),
@@ -24,6 +26,31 @@ const PartBlockerSchema = z.object({
   workOrderLabel: z.string().nullable(),
   href: z.string(),
 });
+
+type PartBlocker = z.infer<typeof PartBlockerSchema>;
+
+type PartStockRow = {
+  part_id: string;
+  qty_on_hand: number | null;
+  reorder_point: number | null;
+  reorder_qty: number | null;
+  parts:
+    | {
+        name: string | null;
+        sku: string | null;
+        low_stock_threshold: number | null;
+      }
+    | null;
+};
+
+type PartRequestItemRow = {
+  id: string;
+  description: string | null;
+  qty_approved: number | null;
+  qty_received: number | null;
+  work_order_id: string | null;
+  work_orders: { custom_id: string | null; shop_id: string | null } | null;
+};
 
 export const listLowStockPartsTool = defineShopAssistantTool({
   name: "list_low_stock_parts",
@@ -52,46 +79,46 @@ export const listLowStockPartsTool = defineShopAssistantTool({
       .limit(300);
     if (error) throw new Error(error.message);
 
-    const rows = (data ?? []) as Array<{
-      part_id: string;
-      qty_on_hand: number | null;
-      reorder_point: number | null;
-      reorder_qty: number | null;
-      parts?: {
-        name?: string | null;
-        sku?: string | null;
-        low_stock_threshold?: number | null;
-      } | null;
-    }>;
+    const rows = (data ?? []) as unknown as PartStockRow[];
+    const items: LowStockItem[] = [];
 
-    const items = rows
-      .map((row) => {
-        const quantityOnHand = Number(row.qty_on_hand ?? 0);
-        const threshold = Number(
-          row.reorder_point ?? row.parts?.low_stock_threshold ?? Number.NaN,
-        );
-        if (!Number.isFinite(threshold) || quantityOnHand > threshold) return null;
-        return {
-          partId: row.part_id,
-          name: row.parts?.name?.trim() || row.parts?.sku?.trim() || row.part_id,
-          sku: row.parts?.sku ?? null,
-          quantityOnHand,
-          threshold,
-          suggestedReorder: Math.max(
-            1,
-            Number(row.reorder_qty ?? threshold - quantityOnHand + 1),
-          ),
-          href: `/parts/inventory?part=${encodeURIComponent(row.part_id)}`,
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((left, right) => left.quantityOnHand - right.quantityOnHand)
-      .slice(0, input.limit);
+    for (const row of rows) {
+      const partId = String(row.part_id ?? "").trim();
+      if (!partId) continue;
+
+      const quantityOnHand = Number(row.qty_on_hand ?? 0);
+      const threshold = Number(
+        row.reorder_point ?? row.parts?.low_stock_threshold ?? Number.NaN,
+      );
+      if (!Number.isFinite(threshold) || quantityOnHand > threshold) continue;
+
+      const suggestedReorder = Math.max(
+        1,
+        Number(row.reorder_qty ?? threshold - quantityOnHand + 1),
+      );
+      items.push({
+        partId,
+        name:
+          row.parts?.name?.trim() ||
+          row.parts?.sku?.trim() ||
+          `Part ${partId.slice(0, 8)}`,
+        sku: row.parts?.sku ?? null,
+        quantityOnHand,
+        threshold,
+        suggestedReorder: Number.isFinite(suggestedReorder)
+          ? suggestedReorder
+          : 1,
+        href: `/parts/inventory?part=${encodeURIComponent(partId)}`,
+      });
+    }
+
+    items.sort((left, right) => left.quantityOnHand - right.quantityOnHand);
+    const limitedItems = items.slice(0, input.limit);
 
     return {
       ok: true as const,
-      items,
-      summary: `${items.length} part(s) are at or below their reorder threshold.`,
+      items: limitedItems,
+      summary: `${limitedItems.length} part(s) are at or below their reorder threshold.`,
       href: "/parts/inventory",
     };
   },
@@ -129,35 +156,36 @@ export const listPartsBlockersTool = defineShopAssistantTool({
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    const blockers = ((data ?? []) as Array<{
-      id: string;
-      description: string | null;
-      qty_approved: number | null;
-      qty_received: number | null;
-      work_order_id: string | null;
-      work_orders?: { custom_id?: string | null; shop_id?: string | null } | null;
-    }>)
-      .map((row) => {
-        const approvedQuantity = Number(row.qty_approved ?? 0);
-        const receivedQuantity = Number(row.qty_received ?? 0);
-        const remainingQuantity = Math.max(0, approvedQuantity - receivedQuantity);
-        if (remainingQuantity <= 0) return null;
-        const customId = row.work_orders?.custom_id ?? null;
-        return {
-          requestItemId: row.id,
-          description: row.description?.trim() || "Requested part",
-          approvedQuantity,
-          receivedQuantity,
-          remainingQuantity,
-          workOrderId: row.work_order_id,
-          workOrderLabel: customId ? `WO #${customId}` : null,
-          href: row.work_order_id
-            ? `/work-orders/${row.work_order_id}`
-            : "/parts/requests",
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .slice(0, input.limit);
+    const rows = (data ?? []) as unknown as PartRequestItemRow[];
+    const blockers: PartBlocker[] = [];
+
+    for (const row of rows) {
+      const requestItemId = String(row.id ?? "").trim();
+      if (!requestItemId) continue;
+
+      const approvedQuantity = Number(row.qty_approved ?? 0);
+      const receivedQuantity = Number(row.qty_received ?? 0);
+      const remainingQuantity = Math.max(
+        0,
+        approvedQuantity - receivedQuantity,
+      );
+      if (remainingQuantity <= 0) continue;
+
+      const customId = row.work_orders?.custom_id?.trim() || null;
+      const workOrderId = row.work_order_id?.trim() || null;
+      blockers.push({
+        requestItemId,
+        description: row.description?.trim() || "Requested part",
+        approvedQuantity,
+        receivedQuantity,
+        remainingQuantity,
+        workOrderId,
+        workOrderLabel: customId ? `WO #${customId}` : null,
+        href: workOrderId ? `/work-orders/${workOrderId}` : "/parts/requests",
+      });
+
+      if (blockers.length >= input.limit) break;
+    }
 
     return {
       ok: true as const,

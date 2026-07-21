@@ -323,8 +323,6 @@ export async function routeDirectToolIntent(params: {
   threadContext?: ShopAssistantThreadContext;
 }): Promise<DirectToolIntentResult | null> {
   const question = params.question.trim();
-  const lower = question.toLowerCase();
-
   const isHold =
     /\b(?:put|place|set|mark|move)\b.*\b(?:on\s+hold|hold)\b/i.test(question) ||
     /\bhold\b.*\b(?:work\s*order|wo|[A-Z]{1,6}-?\d{3,})\b/i.test(question);

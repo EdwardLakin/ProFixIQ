@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import type {
   ShopAssistantContext,
+  ShopAssistantMessagesResponse,
   ShopAssistantThreadListResponse,
 } from "@/features/shop-assistant/types";
 import {
@@ -41,17 +42,17 @@ export async function POST(request: Request) {
     };
     const thread = await createShopAssistantThread(actor, body.context);
 
-    return NextResponse.json(
+    return NextResponse.json<ShopAssistantMessagesResponse>(
       {
-        ok: true as const,
+        ok: true,
         thread,
         messages: [],
       },
       { status: 201 },
     );
   } catch (error: unknown) {
-    return NextResponse.json(
-      { ok: false as const, error: shopAssistantErrorMessage(error) },
+    return NextResponse.json<ShopAssistantMessagesResponse>(
+      { ok: false, error: shopAssistantErrorMessage(error) },
       { status: shopAssistantErrorStatus(error) },
     );
   }
