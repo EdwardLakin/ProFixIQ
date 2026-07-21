@@ -26,14 +26,19 @@ describe("regular live invoice flow safety", () => {
     }).laborTotal).toBe(125);
   });
 
-  it("blocks AI/invoice review when parts are required but no billable parts are attached", () => {
-    expect(reviewSource).toContain("function lineRequiresParts");
-    expect(reviewSource).toContain("missing_required_parts");
+  it("keeps AI advisory and never infers an invoice blocker from repair text", () => {
+    expect(previewClient).not.toContain("WorkOrderCloseoutGatePreview");
+    expect(reviewSource).not.toContain("function lineRequiresParts");
+    expect(reviewSource).not.toContain("missing_required_parts");
+    expect(reviewSource).not.toContain("Required approved parts are not attached");
+  });
+
+  it("loads attached work-order parts from the durable approved quantity", () => {
     expect(reviewSource).toContain("work_order_parts");
-    expect(reviewSource).toContain("work_order_part_allocations");
-    expect(reviewSource).toContain("part_request_items");
+    expect(reviewSource).toContain("quantity_requested");
+    expect(reviewSource).toContain("stagedPartsError");
     expect(reviewSource).toContain("hasCanonicalPartsByLine");
-    expect(reviewSource).toContain("Required approved parts are not attached");
+    expect(reviewSource).not.toContain("record.quantity)");
   });
 
   it("flags invalid or suspicious labor totals before invoice readiness passes", () => {
