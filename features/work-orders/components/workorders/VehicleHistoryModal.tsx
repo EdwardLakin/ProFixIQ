@@ -1,262 +1,322 @@
 "use client";
 
-import { Dialog } from "@headlessui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-type DB = Database;
+import ModalShell from "@/features/shared/components/ModalShell";
 
-type History = DB["public"]["Tables"]["history"]["Row"];
-type Customer = DB["public"]["Tables"]["customers"]["Row"];
-
-type Row = Pick<
-  History,
-  "id" | "customer_id" | "vehicle_id" | "service_date" | "description" | "notes" | "created_at"
-> & {
-  customers?: Pick<Customer, "first_name" | "last_name" | "email" | "phone"> | null;
+type HistoryLine = {
+  id: string;
+  lineNumber: number | null;
+  description: string | null;
+  complaint: string | null;
+  cause: string | null;
+  correction: string | null;
+  notes: string | null;
+  status: string | null;
+  completedAt: string | null;
 };
 
-function fmtCustomerName(c: Row["customers"]): string {
-  if (!c) return "—";
-  const name = [c.first_name ?? "", c.last_name ?? ""].filter(Boolean).join(" ").trim();
-  return name.length ? name : "—";
-}
+type HistoryRecord = {
+  id: string;
+  workOrderNumber: string | null;
+  status: string | null;
+  completedAt: string | null;
+  odometerKm: number | null;
+  customerName: string | null;
+  notes: string | null;
+  lines: HistoryLine[];
+};
+
+type VehicleHistoryPayload = {
+  ok?: boolean;
+  history?: HistoryRecord[];
+  error?: string;
+};
 
 function fmtDateShort(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return format(d, "PP");
+  if (!iso) return "Date unavailable";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+  return format(date, "PP");
 }
 
-function historyLabel(r: Row): string {
-  const notes = (r.notes ?? "").toString();
-  const invoice = notes.match(/^Invoice:\s*(.+)$/im)?.[1]?.trim();
-  const workOrder = notes.match(/^Work order:\s*(.+)$/im)?.[1]?.trim();
+function statusLabel(status: string | null | undefined): string {
+  const normalized = (status ?? "").trim();
+  if (!normalized) return "Completed";
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
-  if (invoice) return `Invoice ${invoice}`;
-  if (workOrder) return `WO ${workOrder}`;
-  return `History ${String(r.id).slice(0, 8)}…`;
+function workOrderLabel(row: HistoryRecord): string {
+  return row.workOrderNumber?.trim() || `WO ${row.id.slice(0, 8)}`;
+}
+
+function lineLabel(line: HistoryLine, index: number): string {
+  return (
+    line.description?.trim() ||
+    line.complaint?.trim() ||
+    `Service line ${line.lineNumber ?? index + 1}`
+  );
+}
+
+function searchText(row: HistoryRecord): string {
+  return [
+    row.id,
+    row.workOrderNumber,
+    row.status,
+    row.customerName,
+    row.notes,
+    row.odometerKm,
+    fmtDateShort(row.completedAt),
+    ...row.lines.flatMap((line) => [
+      line.description,
+      line.complaint,
+      line.cause,
+      line.correction,
+      line.notes,
+      line.status,
+      fmtDateShort(line.completedAt),
+    ]),
+  ]
+    .filter((value) => value != null)
+    .join(" ")
+    .toLowerCase();
 }
 
 export default function VehicleHistoryModal(props: {
   isOpen: boolean;
   onClose: () => void;
-  vehicleId: string;
-  shopId: string | null;
+  workOrderId: string;
+  workOrderLineId: string;
 }): JSX.Element {
-  const { isOpen, onClose, vehicleId, shopId } = props;
-
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-  const lastSetShopId = useRef<string | null>(null);
+  const { isOpen, onClose, workOrderId, workOrderLineId } = props;
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [q, setQ] = useState("");
-
-  const ensureShopContext = useCallback(
-    async (id: string | null) => {
-      if (!id) return;
-      if (lastSetShopId.current === id) return;
-
-      const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: id });
-      if (error) {
-        lastSetShopId.current = null;
-        throw error;
-      }
-      lastSetShopId.current = id;
-    },
-    [supabase],
-  );
+  const [rows, setRows] = useState<HistoryRecord[]>([]);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
-    if (!vehicleId) return;
+    if (!workOrderId) return;
 
     setLoading(true);
     setErr(null);
 
     try {
-      if (shopId) {
-        try {
-          await ensureShopContext(shopId);
-        } catch (e) {
-          console.warn("[VehicleHistoryModal] set_current_shop_id failed:", e);
-        }
+      const response = await fetch(
+        `/api/work-orders/${encodeURIComponent(workOrderId)}/vehicle-history?lineId=${encodeURIComponent(workOrderLineId)}`,
+        { cache: "no-store" },
+      );
+      const payload = (await response
+        .json()
+        .catch(() => null)) as VehicleHistoryPayload | null;
+
+      if (!response.ok || !payload?.ok || !Array.isArray(payload.history)) {
+        throw new Error(payload?.error || "Failed to load vehicle history.");
       }
 
-      const { data, error } = await supabase
-        .from("history")
-        .select(
-          "id, customer_id, vehicle_id, service_date, description, notes, created_at, customers:customers(first_name,last_name,email,phone)",
-        )
-        .eq("vehicle_id", vehicleId)
-        .order("service_date", { ascending: false })
-        .limit(100);
-
-      if (error) throw error;
-
-      const list = (Array.isArray(data) ? data : []) as unknown as Row[];
-      const qlc = q.trim().toLowerCase();
-
-      const searched = qlc
-        ? list.filter((r) => {
-            const label = historyLabel(r).toLowerCase();
-            const cust = fmtCustomerName(r.customers ?? null).toLowerCase();
-            const email = (r.customers?.email ?? "").toLowerCase();
-            const phone = (r.customers?.phone ?? "").toLowerCase();
-            const description = (r.description ?? "").toLowerCase();
-            const notes = (r.notes ?? "").toLowerCase();
-            const date = fmtDateShort(r.service_date).toLowerCase();
-
-            return (
-              label.includes(qlc) ||
-              cust.includes(qlc) ||
-              email.includes(qlc) ||
-              phone.includes(qlc) ||
-              description.includes(qlc) ||
-              notes.includes(qlc) ||
-              date.includes(qlc)
-            );
-          })
-        : list;
-
-      setRows(searched);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to load history.";
-      setErr(msg);
+      setRows(payload.history);
+    } catch (error) {
+      setErr(
+        error instanceof Error
+          ? error.message
+          : "Failed to load vehicle history.",
+      );
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [vehicleId, shopId, supabase, q, ensureShopContext]);
+  }, [workOrderId, workOrderLineId]);
 
   useEffect(() => {
     if (!isOpen) return;
+    setQuery("");
     void load();
   }, [isOpen, load]);
 
+  const filteredRows = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return rows;
+    return rows.filter((row) => searchText(row).includes(normalized));
+  }, [query, rows]);
+
   return (
-    <Dialog
-      open={isOpen}
+    <ModalShell
+      isOpen={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-[120] flex items-center justify-center"
+      title="VEHICLE HISTORY"
+      size="xl"
+      hideFooter
     >
-      <div className="fixed inset-0 z-[120] bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm" aria-hidden="true" />
-
-      <div
-        className="relative z-[130] mx-4 my-6 w-full max-w-5xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 text-[color:var(--theme-text-primary)] shadow-xl">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
-                Vehicle History
-              </div>
-              <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                Showing imported service history records for this vehicle.
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
-              title="Close"
-            >
-              ✕
-            </button>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
+            Prior service
           </div>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+            Completed work orders and service lines for this vehicle, including
+            work performed by other technicians in this shop.
+          </p>
+        </div>
 
-          <div className="mb-3 flex flex-wrap items-end gap-2">
-            <div className="min-w-[240px] flex-1">
-              <label className="mb-1 block text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                Search
-              </label>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && load()}
-                placeholder="Invoice, customer, description, notes…"
-                className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] outline-none focus:border-sky-400/60 focus:ring-1 focus:ring-sky-400/40"
-              />
-            </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className="min-w-0 flex-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+            Search history
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Work order, repair, cause, correction…"
+              className="mt-1.5 w-full rounded-lg border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm font-normal normal-case tracking-normal text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            />
+          </label>
 
-            <button
-              type="button"
-              onClick={load}
-              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-sky-400/50 hover:bg-[color:var(--theme-surface-overlay)]"
-            >
-              Refresh
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="inline-flex items-center justify-center rounded-full border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-light)] transition hover:bg-[color:var(--theme-surface-subtle)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
 
+        <div aria-live="polite">
           {err ? (
-            <div className="rounded-xl border border-red-500/60 bg-red-950/60 px-4 py-3 text-sm text-red-100">
+            <div className="rounded-xl border border-red-500/40 bg-red-950/35 px-4 py-3 text-sm text-red-100">
               {err}
             </div>
-          ) : loading ? (
+          ) : loading && rows.length === 0 ? (
             <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
-              Loading…
+              Loading vehicle history…
             </div>
-          ) : rows.length === 0 ? (
+          ) : filteredRows.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm text-[color:var(--theme-text-secondary)]">
-              No imported service history found for this vehicle.
+              {query.trim()
+                ? "No prior service matches this search."
+                : "No completed prior work orders were found for this vehicle."}
             </div>
           ) : (
-            <div className="max-h-[60vh] overflow-auto rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
-              <div className="grid grid-cols-12 bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                <div className="col-span-3">Record</div>
-                <div className="col-span-3">Customer</div>
-                <div className="col-span-4">Details</div>
-                <div className="col-span-2 text-right">Service date</div>
-              </div>
-
-              <ul className="divide-y divide-[color:var(--theme-border-soft)]">
-                {rows.map((r) => {
-                  const serviceDate = fmtDateShort(r.service_date ?? r.created_at);
-                  const details = (r.description ?? r.notes ?? "—").toString();
-
-                  return (
-                    <li key={r.id} className="grid grid-cols-12 items-center gap-2 px-3 py-2 text-sm">
-                      <div className="col-span-3 min-w-0">
-                        <div className="truncate font-mono text-sky-200">
-                          {historyLabel(r)}
-                        </div>
-                        <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-muted)]">
-                          {String(r.id).slice(0, 8)}…
-                        </div>
+            <div className="space-y-3">
+              {filteredRows.map((row) => (
+                <article
+                  key={row.id}
+                  className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)]"
+                >
+                  <div className="flex flex-col gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
+                        Work order
                       </div>
-
-                      <div className="col-span-3 min-w-0">
-                        <div className="truncate text-[color:var(--theme-text-primary)]">
-                          {fmtCustomerName(r.customers ?? null)}
-                        </div>
-                        <div className="mt-0.5 truncate text-[11px] text-[color:var(--theme-text-muted)]">
-                          {(r.customers?.email ?? "").toString() || "—"}
-                        </div>
+                      <h3 className="mt-1 truncate text-base font-semibold text-[color:var(--theme-text-primary)]">
+                        {workOrderLabel(row)}
+                      </h3>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[color:var(--theme-text-secondary)]">
+                        <span>{fmtDateShort(row.completedAt)}</span>
+                        {row.customerName ? (
+                          <span>{row.customerName}</span>
+                        ) : null}
+                        {typeof row.odometerKm === "number" ? (
+                          <span>
+                            {Math.round(row.odometerKm).toLocaleString()} km
+                          </span>
+                        ) : null}
                       </div>
+                    </div>
 
-                      <div className="col-span-4 min-w-0">
-                        <div className="truncate text-[12px] text-[color:var(--theme-text-primary)]" title={details}>
-                          {details}
-                        </div>
-                      </div>
+                    <span className="w-fit shrink-0 rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                      {statusLabel(row.status)}
+                    </span>
+                  </div>
 
-                      <div className="col-span-2 text-right text-[11px] text-[color:var(--theme-text-secondary)]">
-                        {serviceDate}
+                  <div className="space-y-3 px-4 py-4">
+                    {row.notes?.trim() ? (
+                      <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+                        {row.notes}
                       </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                    ) : null}
+
+                    {row.lines.length === 0 ? (
+                      <div className="text-sm text-[color:var(--theme-text-muted)]">
+                        No completed service-line details are available for this
+                        work order.
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        {row.lines.map((line, index) => (
+                          <div
+                            key={line.id}
+                            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-[0.62rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                                  Line {line.lineNumber ?? index + 1}
+                                </div>
+                                <div className="mt-1 font-semibold text-[color:var(--theme-text-primary)]">
+                                  {lineLabel(line, index)}
+                                </div>
+                              </div>
+                              <span className="shrink-0 text-[0.65rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                                {statusLabel(line.status)}
+                              </span>
+                            </div>
+
+                            <dl className="mt-3 space-y-2 text-xs">
+                              {line.complaint?.trim() ? (
+                                <div>
+                                  <dt className="font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                                    Complaint
+                                  </dt>
+                                  <dd className="mt-0.5 leading-5 text-[color:var(--theme-text-secondary)]">
+                                    {line.complaint}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {line.cause?.trim() ? (
+                                <div>
+                                  <dt className="font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                                    Cause
+                                  </dt>
+                                  <dd className="mt-0.5 leading-5 text-[color:var(--theme-text-secondary)]">
+                                    {line.cause}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {line.correction?.trim() ? (
+                                <div>
+                                  <dt className="font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                                    Correction
+                                  </dt>
+                                  <dd className="mt-0.5 leading-5 text-[color:var(--theme-text-secondary)]">
+                                    {line.correction}
+                                  </dd>
+                                </div>
+                              ) : null}
+                              {line.notes?.trim() &&
+                              line.notes.trim() !== line.description?.trim() ? (
+                                <div>
+                                  <dt className="font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                                    Notes
+                                  </dt>
+                                  <dd className="mt-0.5 leading-5 text-[color:var(--theme-text-secondary)]">
+                                    {line.notes}
+                                  </dd>
+                                </div>
+                              ) : null}
+                            </dl>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ))}
             </div>
           )}
         </div>
       </div>
-    </Dialog>
+    </ModalShell>
   );
 }
