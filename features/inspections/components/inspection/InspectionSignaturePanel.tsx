@@ -158,12 +158,21 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
         } = await supabase.auth.getUser();
         if (!user?.id) return;
 
-        const { data, error } = await supabase
+        let profileResult = await supabase
           .from("profiles")
           .select("full_name")
           .eq("id", user.id)
           .maybeSingle<ProfileResponse>();
-        if (error) return;
+        if (!profileResult.data && !profileResult.error) {
+          profileResult = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("user_id", user.id)
+            .limit(1)
+            .maybeSingle<ProfileResponse>();
+        }
+        if (profileResult.error) return;
+        const data = profileResult.data;
 
         const authMetadataName =
           typeof user.user_metadata?.full_name === "string"

@@ -58,11 +58,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { data: profile, error: profileError } = await supabase
+  let profileResult = await supabase
     .from("profiles")
     .select("shop_id")
     .eq("id", user.id)
     .maybeSingle<{ shop_id: string | null }>();
+  if (!profileResult.data && !profileResult.error) {
+    profileResult = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle<{ shop_id: string | null }>();
+  }
+  const profile = profileResult.data;
+  const profileError = profileResult.error;
   if (profileError || !profile?.shop_id) {
     return NextResponse.json(
       { error: "Unable to resolve actor shop." },
