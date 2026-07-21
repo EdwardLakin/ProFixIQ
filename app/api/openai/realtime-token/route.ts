@@ -105,8 +105,11 @@ export async function GET() {
     if (!apiKey) {
       console.error("[realtime-token] Missing OPENAI_API_KEY");
       return NextResponse.json(
-        { error: "Missing OPENAI_API_KEY" },
-        { status: 500 },
+        {
+          error: "Voice service is not configured",
+          code: "realtime_not_configured",
+        },
+        { status: 503 },
       );
     }
 
@@ -159,8 +162,11 @@ export async function GET() {
     } catch {
       console.error("[realtime-token] Invalid JSON from OpenAI", rawText);
       return NextResponse.json(
-        { error: "Invalid JSON from OpenAI" },
-        { status: 500 },
+        {
+          error: "Voice service returned an invalid response",
+          code: "realtime_invalid_response",
+        },
+        { status: 502 },
       );
     }
 
@@ -173,10 +179,11 @@ export async function GET() {
 
       return NextResponse.json(
         {
-          error: "Failed to mint realtime transcription token",
+          error: "Voice service could not start",
+          code: "realtime_session_rejected",
           upstreamStatus: response.status,
         },
-        { status: 500 },
+        { status: 502 },
       );
     }
 
@@ -188,8 +195,11 @@ export async function GET() {
         parsed,
       );
       return NextResponse.json(
-        { error: "Unexpected token response shape" },
-        { status: 500 },
+        {
+          error: "Voice service returned an invalid response",
+          code: "realtime_invalid_response",
+        },
+        { status: 502 },
       );
     }
 
@@ -223,8 +233,12 @@ export async function GET() {
       {
         token: extracted.token,
         expiresAt: extracted.expiresAt ?? null,
+        transcriptionModel,
       },
-      { status: 200 },
+      {
+        status: 200,
+        headers: { "Cache-Control": "no-store" },
+      },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unhandled realtime token error";
@@ -254,9 +268,15 @@ export async function GET() {
       errorCode: "realtime_token_error",
     });
     console.error("[realtime-token] Unhandled error", err);
+    const timedOut = message === "AI request timed out";
     return NextResponse.json(
-      { error: "Unhandled realtime token error" },
-      { status: 500 },
+      {
+        error: timedOut
+          ? "Voice service took too long to respond"
+          : "Voice service could not start",
+        code: timedOut ? "realtime_upstream_timeout" : "realtime_token_error",
+      },
+      { status: timedOut ? 504 : 500 },
     );
   }
 }
