@@ -3179,7 +3179,7 @@ type SmartMatchRow = {
                               handleAddAxleForSection(sectionIndex, axleLabel)
                             }
                             onSpecHint={(metricLabel: string) =>
-                              _props.onSpecHint?.({
+                              props.onSpecHint?.({
                                 source: "air_corner",
                                 label: metricLabel,
                                 meta: { sectionTitle: section.title },
@@ -3219,7 +3219,7 @@ type SmartMatchRow = {
                                 handleAddTireAxleForSection(sectionIndex, axleLabel)
                               }
                               onSpecHint={(metricLabel: string) =>
-                                _props.onSpecHint?.({
+                                props.onSpecHint?.({
                                   source: "tire",
                                   label: metricLabel,
                                   meta: { sectionTitle: section.title },
@@ -3257,7 +3257,7 @@ type SmartMatchRow = {
                             items={itemsWithHints}
                             unitHint={(label: string) => unitHintGeneric(label, unit)}
                             onSpecHint={(label: string) =>
-                              _props.onSpecHint?.({
+                              props.onSpecHint?.({
                                 source: "corner",
                                 label,
                                 meta: { sectionTitle: section.title },
