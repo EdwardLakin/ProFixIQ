@@ -1,124 +1,261 @@
-"use client";
-
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
-import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
-import { PortalActionCard, PortalEmptyState, PortalPageHeader, PortalPrimaryButton, PortalSecondaryButton, PortalSectionCard, PortalStatCard, PortalStatusChip } from "@/features/portal/components/PortalUi";
+import {
+  CalendarDays,
+  Car,
+  ChevronRight,
+  MessageCircle,
+  Plus,
+} from "lucide-react";
+import PortalWorkOrderCard from "@/features/portal/components/PortalWorkOrderCard";
+import {
+  PortalActionCard,
+  PortalEmptyState,
+  PortalPageHeader,
+  PortalSectionCard,
+} from "@/features/portal/components/PortalUi";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
+import { PortalAccessError } from "@/features/portal/server/portalAuth";
+import { listCustomerBookings } from "@/features/portal/server/customerBookings";
+import { listPortalWorkOrdersForCustomer } from "@/features/portal/server/portalWorkOrders";
 
-type DB = Database;
-type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
-type CustomerPortalInviteRow =
-  DB["public"]["Tables"]["customer_portal_invites"]["Row"];
-type BookingRow = DB["public"]["Tables"]["bookings"]["Row"];
-type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
+export const dynamic = "force-dynamic";
 
-const formatWhen = (iso: string) => { const d = new Date(iso); if (Number.isNaN(d.getTime())) return "—"; return d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); };
-const formatWoRef = (wo: Pick<WorkOrderRow, "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state"> | null) => wo ? `#${wo.id?.slice(0, 8) ?? "—"}` : "—";
+function dateLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date to be confirmed";
+  return date.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
-export default function PortalHomePage() {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
+export default async function PortalHomePage() {
+  const supabase = createServerSupabaseRSC();
 
-  const [loading, setLoading] = useState(true);
-  const [vehiclesCount, setVehiclesCount] = useState<number | null>(null);
-  const [nextBookingAt, setNextBookingAt] = useState<string | null>(null);
-  const [activeWo, setActiveWo] = useState<Pick<WorkOrderRow, "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state"> | null>(null);
-  const [requiresInvite, setRequiresInvite] = useState(false);
+  try {
+    const actor = await requirePortalCustomerActor(supabase);
+    if (!actor.customer.shop_id)
+      throw new Error("Customer shop is not connected");
 
-  useEffect(() => {
-    let mounted = true;
+    const [workOrders, bookingResult, vehicleCountResult] = await Promise.all([
+      listPortalWorkOrdersForCustomer({
+        supabase,
+        customerId: actor.customer.id,
+        shopId: actor.customer.shop_id,
+      }),
+      listCustomerBookings({ supabase, customerId: actor.customer.id }),
+      supabase
+        .from("vehicles")
+        .select("id", { count: "exact", head: true })
+        .eq("shop_id", actor.customer.shop_id)
+        .eq("customer_id", actor.customer.id),
+    ]);
 
-    (async () => {
-      setLoading(true);
+    if (vehicleCountResult.error)
+      throw new Error(vehicleCountResult.error.message);
 
-      const { data: { user }, error: userErr } = await supabase.auth.getUser();
-      if (!mounted) return;
+    const active = workOrders.filter((workOrder) => !workOrder.status.complete);
+    const attention = active.filter(
+      (workOrder) => workOrder.status.actionRequired,
+    );
+    const attentionIds = new Set(attention.map((workOrder) => workOrder.id));
+    const serviceCards = active.filter(
+      (workOrder) => !attentionIds.has(workOrder.id),
+    );
+    const recent =
+      workOrders.find((workOrder) => workOrder.status.complete) ?? null;
+    const now = Date.now();
+    const nextBooking = bookingResult.ok
+      ? (bookingResult.data.find(
+          (booking) =>
+            new Date(booking.ends_at).getTime() >= now &&
+            (booking.status ?? "").toLowerCase() !== "cancelled",
+        ) ?? null)
+      : null;
+    const customerName =
+      [actor.customer.first_name, actor.customer.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || "there";
 
-      if (userErr || !user) {
-        setRequiresInvite(false);
-        setVehiclesCount(null);
-        setNextBookingAt(null);
-        setActiveWo(null);
-        setLoading(false);
-        return;
-      }
-
-      const { data: cust, error: custErr } = await supabase.from("customers").select("id").eq("user_id", user.id).maybeSingle<Pick<CustomerRow, "id">>();
-      if (!mounted) return;
-
-      if (custErr || !cust?.id) {
-        setRequiresInvite(true);
-        setVehiclesCount(null);
-        setNextBookingAt(null);
-        setActiveWo(null);
-        setLoading(false);
-        return;
-      }
-
-      const normalizedUserEmail = (user.email ?? "").trim().toLowerCase();
-      const { data: inviteEvidence, error: inviteErr } = await supabase
-        .from("customer_portal_invites")
-        .select("id, customer_id, email, accepted_at, accepted_by_user_id, revoked_at")
-        .eq("customer_id", cust.id)
-        .eq("accepted_by_user_id", user.id)
-        .not("accepted_at", "is", null)
-        .is("revoked_at", null)
-        .limit(10);
-      if (!mounted) return;
-
-      const hasInviteEvidence =
-        !inviteErr &&
-        Array.isArray(inviteEvidence) &&
-        inviteEvidence.some((row) => {
-          const invite = row as Pick<
-            CustomerPortalInviteRow,
-            "id" | "customer_id" | "email" | "accepted_at" | "accepted_by_user_id" | "revoked_at"
-          >;
-          return (
-            invite.customer_id === cust.id &&
-            invite.accepted_by_user_id === user.id &&
-            Boolean(invite.accepted_at) &&
-            !invite.revoked_at &&
-            normalizedUserEmail.length > 0 &&
-            invite.email.trim().toLowerCase() === normalizedUserEmail
-          );
-        });
-
-      if (!hasInviteEvidence) {
-        setRequiresInvite(true);
-        setVehiclesCount(null);
-        setNextBookingAt(null);
-        setActiveWo(null);
-        setLoading(false);
-        return;
-      }
-
-      setRequiresInvite(false);
-
-      const { count: vCount } = await supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("customer_id", cust.id);
-      const nowIso = new Date().toISOString();
-      const { data: booking } = await supabase.from("bookings").select("starts_at").eq("customer_id", cust.id).gte("starts_at", nowIso).order("starts_at", { ascending: true }).limit(1).maybeSingle<Pick<BookingRow, "starts_at">>();
-      const ACTIVE_STATUSES: Array<WorkOrderRow["status"]> = ["awaiting_approval", "queued", "planned", "in_progress"];
-      const { data: wo } = await supabase.from("work_orders").select("id, status, created_at, invoice_sent_at, approval_state").eq("customer_id", cust.id).in("status", ACTIVE_STATUSES as string[]).order("created_at", { ascending: false }).limit(1).maybeSingle<Pick<WorkOrderRow, "id" | "status" | "created_at" | "invoice_sent_at" | "approval_state">>();
-
-      if (!mounted) return;
-      setVehiclesCount(typeof vCount === "number" ? vCount : null);
-      setNextBookingAt(booking?.starts_at ?? null);
-      setActiveWo(wo ?? null);
-      setLoading(false);
-    })();
-
-    return () => { mounted = false; };
-  }, [supabase]);
-
-  if (loading) {
-    return <div className="space-y-5 text-[color:var(--theme-text-primary)]"><PortalPageHeader eyebrow="Customer portal" title="What needs your attention today?" subtitle="Loading your latest status and activity." /></div>;
-  }
-
-  if (requiresInvite) {
     return (
-      <div className="space-y-5 text-[color:var(--theme-text-primary)]">
+      <div className="mx-auto w-full max-w-5xl space-y-5 text-[color:var(--theme-text-primary)]">
+        <PortalPageHeader
+          eyebrow="Customer portal"
+          title={`Good to see you, ${customerName}`}
+          subtitle="See what’s happening with your vehicle and what you need to do next."
+          actions={
+            <Link
+              href="/portal/request/when"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)]"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Request service
+            </Link>
+          }
+        />
+
+        {attention.length > 0 ? (
+          <section aria-labelledby="attention-heading" className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 id="attention-heading" className="text-sm font-semibold">
+                Needs your attention
+              </h2>
+              <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-100">
+                {attention.length}
+              </span>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              {attention.map((workOrder) => (
+                <PortalWorkOrderCard key={workOrder.id} workOrder={workOrder} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {serviceCards.length > 0 || attention.length === 0 ? (
+          <section aria-labelledby="active-work-heading" className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 id="active-work-heading" className="text-sm font-semibold">
+                {attention.length > 0
+                  ? "Other vehicles in service"
+                  : "Your vehicles in service"}
+              </h2>
+              {serviceCards.length > 0 ? (
+                <Link
+                  href="/portal/status"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-copper-light)]"
+                >
+                  View all
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                </Link>
+              ) : null}
+            </div>
+            {serviceCards.length > 0 ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {serviceCards.slice(0, 4).map((workOrder) => (
+                  <PortalWorkOrderCard
+                    key={workOrder.id}
+                    workOrder={workOrder}
+                  />
+                ))}
+              </div>
+            ) : (
+              <PortalEmptyState
+                title="No vehicles are currently in service"
+                body="Request service when you are ready, or review your previous visits in service history."
+              />
+            )}
+          </section>
+        ) : null}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <PortalSectionCard title="Upcoming appointment">
+            {nextBooking ? (
+              <Link
+                href="/portal/customer-appointments"
+                className="flex min-h-24 items-center gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4"
+              >
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-sky-500/12 text-sky-100">
+                  <CalendarDays className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">
+                    {dateLabel(nextBooking.starts_at)}
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-[color:var(--theme-text-secondary)]">
+                    {nextBooking.notes?.trim() || "Service appointment"}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </Link>
+            ) : (
+              <PortalEmptyState
+                title="No upcoming appointment"
+                body="Choose a time that works for you when you request service."
+              />
+            )}
+          </PortalSectionCard>
+
+          <PortalSectionCard title="Recent service">
+            {recent ? (
+              <Link
+                href={recent.primaryAction.href}
+                className="flex min-h-24 items-center gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4"
+              >
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-500/12 text-emerald-100">
+                  <Car className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">
+                    {recent.vehicleLabel}
+                  </span>
+                  <span className="mt-1 block text-xs text-[color:var(--theme-text-secondary)]">
+                    {recent.serviceSummary[0]}
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+              </Link>
+            ) : (
+              <PortalEmptyState
+                title="No completed service yet"
+                body="Completed visits will stay available here and in service history."
+              />
+            )}
+          </PortalSectionCard>
+        </div>
+
+        <section
+          aria-label="Portal shortcuts"
+          className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+        >
+          <PortalActionCard
+            href="/portal/request/when"
+            title="Request service"
+            subtitle="Start a new visit."
+            prominent
+          />
+          <PortalActionCard
+            href="/portal/messages"
+            title="Messages"
+            subtitle="Contact your advisor."
+          />
+          <PortalActionCard
+            href="/portal/vehicles"
+            title="Vehicles"
+            subtitle={`${vehicleCountResult.count ?? 0} saved`}
+          />
+          <PortalActionCard
+            href="/portal/history"
+            title="Service history"
+            subtitle="Review past visits."
+          />
+        </section>
+
+        <div className="flex items-center justify-center gap-2 pb-2 text-xs text-[color:var(--theme-text-muted)] sm:hidden">
+          <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+          Need help? Message the shop from any service card.
+        </div>
+      </div>
+    );
+  } catch (error) {
+    if (!(error instanceof PortalAccessError)) {
+      console.error("[portal/home] unable to load customer portal", error);
+      return (
+        <div className="mx-auto max-w-xl rounded-3xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-100">
+          <p className="font-semibold">We couldn’t load your portal.</p>
+          <p className="mt-1">
+            Please refresh the page or contact the shop if this continues.
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="mx-auto max-w-xl space-y-4 text-[color:var(--theme-text-primary)]">
         <PortalPageHeader
           eyebrow="Customer portal"
           title="Portal invite required"
@@ -127,25 +264,4 @@ export default function PortalHomePage() {
       </div>
     );
   }
-
-  const hasInvoice = !!activeWo && !!activeWo.invoice_sent_at && (activeWo.status === "ready_to_invoice" || activeWo.status === "invoiced");
-  const hasQuote = !!activeWo && (activeWo.status === "awaiting_approval" || activeWo.approval_state === "awaiting_customer" || activeWo.approval_state === "requested");
-
-  return <div className="space-y-5 text-[color:var(--theme-text-primary)]">
-    <PortalPageHeader eyebrow="Customer portal" title="What needs your attention today?" subtitle="Track active work, approve recommendations, and request service in one place." actions={<><PortalPrimaryButton href="/portal/request/when">Request service</PortalPrimaryButton><PortalSecondaryButton href="/portal/customer-appointments">Appointments</PortalSecondaryButton></>} />
-
-    <PortalSectionCard title="Current status" subtitle="Your latest request and next appointment.">
-      <div className="grid gap-3 sm:grid-cols-3"><PortalStatCard title="Active request" value={formatWoRef(activeWo)} sub={activeWo?.status ? `Status: ${activeWo.status}` : "No open request"} /><PortalStatCard title="Next appointment" value={nextBookingAt ? formatWhen(nextBookingAt) : "—"} /><PortalStatCard title="Vehicles" value={vehiclesCount == null ? "—" : String(vehiclesCount)} sub="Saved to your account" /></div>
-    </PortalSectionCard>
-
-    <PortalSectionCard title="Live work status" right={<Link href="/portal/status" className="text-xs text-[color:var(--theme-text-secondary)] underline">Details</Link>}>
-      <WorkOrderBoardWidget variant="portal" href="/portal/status" />
-    </PortalSectionCard>
-
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><PortalActionCard href="/portal/request/when" title="Request service" subtitle="Start a new service request now." prominent /><PortalActionCard href="/portal/messages" title="Message the shop" subtitle="Ask a question tied to your work order, appointment, or vehicle." /><PortalActionCard href="/portal/vehicles" title="Manage vehicles" subtitle="Update VIN, mileage, and details." /><PortalActionCard href="/portal/customer-appointments" title="Appointments" subtitle="View upcoming and past bookings." /></div>
-
-    <PortalSectionCard title="Recent activity" subtitle="Quote and invoice milestones are highlighted here." right={<PortalStatusChip label="Live" />}>
-      {hasInvoice && activeWo ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Invoice ready</p><p className="text-sm text-[color:var(--theme-text-primary)]">Work Order {formatWoRef(activeWo)} sent {activeWo.invoice_sent_at ? formatWhen(activeWo.invoice_sent_at) : "recently"}</p></div><PortalPrimaryButton href={`/portal/invoices/${activeWo.id}`}>View invoice</PortalPrimaryButton></div> : hasQuote && activeWo ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Quote ready</p><p className="text-sm text-[color:var(--theme-text-primary)]">Work Order {formatWoRef(activeWo)} is waiting for your approval.</p></div><PortalPrimaryButton href={`/portal/quotes/${activeWo.id}`}>Review quote</PortalPrimaryButton></div> : <PortalEmptyState title="No recent activity" body="After you submit a request, updates will appear here." />}
-    </PortalSectionCard>
-  </div>;
 }
