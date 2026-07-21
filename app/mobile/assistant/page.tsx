@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import ShopAssistantConversation from "@/features/shop-assistant/components/ShopAssistantConversation";
+import ShopAssistantDashboard from "@/features/shop-assistant/components/ShopAssistantDashboard";
 import { useShopAssistant } from "@/features/shop-assistant/hooks/useShopAssistant";
 import type { ShopAssistantContext } from "@/features/shop-assistant/types";
 import { Button } from "@shared/components/ui/Button";
@@ -64,34 +65,12 @@ export default function MobileAssistantPage() {
     await send(value, context);
   };
 
-  const contextLabel = [
-    context.workOrderId ? "Work order" : null,
-    context.vehicleId ? "Vehicle" : null,
-    context.customerId ? "Customer" : null,
-    context.bookingId ? "Appointment" : null,
-  ]
-    .filter(Boolean)
-    .join(" • ");
-
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-3 sm:px-4">
-      <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-[var(--theme-shadow-medium)]">
-        <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-          Shop assistant
-        </div>
-        <h1 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
-          Run the shop from one conversation
-        </h1>
-        <p className="mt-1 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          Ask across work orders, customers, scheduling, parts, billing, and shop
-          operations. This conversation is restored when you return.
-        </p>
-        {contextLabel ? (
-          <div className="mt-3 inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Context: {contextLabel}
-          </div>
-        ) : null}
-      </section>
+      <ShopAssistantDashboard
+        onPrompt={setQuestion}
+        refreshToken={messages.at(-1)?.id}
+      />
 
       <ShopAssistantConversation
         messages={messages}
@@ -107,7 +86,7 @@ export default function MobileAssistantPage() {
           htmlFor="mobile-assistant-question"
           className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]"
         >
-          Message
+          Shop conversation
         </label>
         <textarea
           id="mobile-assistant-question"
