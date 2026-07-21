@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopState } from "@/features/shop-assistant/server/state/buildShopState";
 import type { ShopAssistantState } from "@/features/shop-assistant/server/state/types";
 
@@ -26,6 +27,10 @@ const SNAPSHOT_SELECT =
 
 function dbFor(actor: ShopAssistantActor): AssistantDb {
   return actor.supabase as unknown as AssistantDb;
+}
+
+function adminDb(): AssistantDb {
+  return createAdminSupabase() as unknown as AssistantDb;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,7 +92,7 @@ export async function getOrRefreshShopState(params: {
     const state = await buildShopState(params.actor);
     const refreshedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + ttlMs).toISOString();
-    const { error } = await dbFor(params.actor)
+    const { error } = await adminDb()
       .from("shop_assistant_state_snapshots")
       .upsert(
         {
