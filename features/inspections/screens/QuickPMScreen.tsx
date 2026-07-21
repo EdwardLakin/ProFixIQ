@@ -10,6 +10,8 @@ import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
 import ProgressTracker from "@inspections/lib/inspection/ProgressTracker";
 import useInspectionSession from "@inspections/hooks/useInspectionSession";
+import { useInspectionAutosave } from "@inspections/hooks/useInspectionAutosave";
+import { getInspectionOfflineDraft } from "@inspections/lib/inspection/offlineDrafts";
 
 import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
@@ -28,10 +30,6 @@ import type {
 import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import {
-  InspectionAutosaveStatus,
-  useInspectionRealtimeAutosave,
-} from "@inspections/hooks/useInspectionRealtimeAutosave";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 import PageShell from "@/features/shared/components/PageShell";
@@ -203,11 +201,38 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [searchParams],
   );
+  const draftKey = `inspection-${workOrderLineId ?? inspectionId}`;
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
+  const [draftBootLoaded, setDraftBootLoaded] = useState(false);
+  const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);
+  const [recoveryOperationKey, setRecoveryOperationKey] = useState<
+    string | undefined
+  >(undefined);
+  const [isLocked, setIsLocked] = useState(false);
+  const isLockedRef = useRef(isLocked);
+  isLockedRef.current = isLocked;
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const draftReady = draftBootLoaded && loadedDraftKey === draftKey;
+  const draftReadyRef = useRef(false);
+
+  const stopRecognition = (): void => {
+    try {
+      recognitionRef.current?.stop();
+    } catch {}
+    recognitionRef.current = null;
+    setIsListening(false);
+  };
+
+  const applyLockedState = (nextLocked: boolean): void => {
+    // Realtime can lock the row while a voice callback is still running. Update
+    // the ref first so every mutation wrapper sees the lock immediately.
+    isLockedRef.current = nextLocked;
+    setIsLocked(nextLocked);
+    if (nextLocked) stopRecognition();
+  };
 
   const templateName: string =
     props.template || get("template") || "Maintenance 50";
@@ -215,6 +240,8 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
+      workOrderId,
+      workOrderLineId,
       templateitem: templateName,
       status: "not_started" as InspectionStatus,
       isPaused: false,
@@ -223,29 +250,103 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       quote: [],
       sections: [],
     }),
-    [inspectionId, templateName],
+    [inspectionId, templateName, workOrderId, workOrderLineId],
   );
 
   const {
     session,
+    updateInspection: updateSessionInspection,
+    updateItem: updateSessionItem,
+    updateSection: updateSessionSection,
+    startSession: startInspectionSession,
     replaceSession,
-    updateInspection,
-    updateItem,
-    updateSection,
-    startSession,
-    finishSession,
-    resumeSession,
-    pauseSession,
-    addQuoteLine,
-    updateQuoteLine,
+    finishSession: finishInspectionSession,
+    resumeSession: resumeInspectionSession,
+    pauseSession: pauseInspectionSession,
+    addQuoteLine: addSessionQuoteLine,
+    updateQuoteLine: updateSessionQuoteLine,
   } = useInspectionSession(initialSession);
 
-  const autosaveState = useInspectionRealtimeAutosave({
+  // Realtime finalization can arrive while this screen is open. Keep every
+  // mutation entry point read-only as soon as the canonical row is locked.
+  const updateInspection = (
+    ...args: Parameters<typeof updateSessionInspection>
+  ) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      updateSessionInspection(...args);
+    }
+  };
+  const updateItem = (...args: Parameters<typeof updateSessionItem>) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      updateSessionItem(...args);
+    }
+  };
+  const updateSection = (...args: Parameters<typeof updateSessionSection>) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      updateSessionSection(...args);
+    }
+  };
+  const addQuoteLine = (...args: Parameters<typeof addSessionQuoteLine>) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      addSessionQuoteLine(...args);
+    }
+  };
+  const updateQuoteLine = (
+    ...args: Parameters<typeof updateSessionQuoteLine>
+  ) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      updateSessionQuoteLine(...args);
+    }
+  };
+  const startSession = (
+    ...args: Parameters<typeof startInspectionSession>
+  ) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      startInspectionSession(...args);
+    }
+  };
+  const resumeSession = (
+    ...args: Parameters<typeof resumeInspectionSession>
+  ) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      resumeInspectionSession(...args);
+    }
+  };
+  const pauseSession = (
+    ...args: Parameters<typeof pauseInspectionSession>
+  ) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      pauseInspectionSession(...args);
+    }
+  };
+  const finishSession = (
+    ...args: Parameters<typeof finishInspectionSession>
+  ) => {
+    if (draftReadyRef.current && !isLockedRef.current) {
+      finishInspectionSession(...args);
+    }
+  };
+
+  const {
+    hydrated: serverBootLoaded,
+    flushToServer: flushAutosaveToServer,
+    label: autosaveLabel,
+    lastError: autosaveError,
+  } = useInspectionAutosave({
     session,
+    inspectionId,
     workOrderLineId,
-    enabled: Boolean(workOrderLineId),
+    enabled: draftReady,
+    locked: isLocked,
+    draftKey,
+    recoveryOperationKey,
     onRemoteSession: replaceSession,
+    onRemoteMeta: (meta) => applyLockedState(meta.locked),
+    onRecoveryState: (_state, operationKey) =>
+      setRecoveryOperationKey(operationKey),
   });
+  const inspectionReady = draftReady && serverBootLoaded;
+  draftReadyRef.current = inspectionReady;
 
   // ---- AI submit guarding ----
   const inFlightRef = useRef<Set<string>>(new Set());
@@ -256,7 +357,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     secIdx: number,
     itemIdx: number,
   ): Promise<void> => {
-    if (!session) return;
+    if (!draftReadyRef.current || !session || isLockedRef.current) return;
     const key = `${secIdx}:${itemIdx}`;
     if (inFlightRef.current.has(key)) return;
 
@@ -301,6 +402,11 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         status,
       });
 
+      if (isLockedRef.current) {
+        toast.error("Inspection was signed while AI was running.", { id: tId });
+        return;
+      }
+
       if (!suggestion) {
         updateQuoteLine(id, { aiState: "error" });
         toast.error("No AI suggestion available", { id: tId });
@@ -324,6 +430,13 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         },
         aiState: "done",
       });
+
+      if (isLockedRef.current) {
+        toast.error("Inspection was signed before work-order changes were sent.", {
+          id: tId,
+        });
+        return;
+      }
 
       if (workOrderId) {
         await addWorkOrderLineFromSuggestion({
@@ -350,37 +463,77 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
 
   // ---- boot/restore ----
   useEffect(() => {
-    const key = `inspection-${inspectionId}`;
-    const saved =
-      typeof window !== "undefined" ? localStorage.getItem(key) : null;
-    if (saved) {
+    let cancelled = false;
+    setDraftBootLoaded(false);
+    setLoadedDraftKey(null);
+    setRecoveryOperationKey(undefined);
+    applyLockedState(false);
+    stopRecognition();
+
+    void (async () => {
+      let browserSession: InspectionSession | null = null;
       try {
-        const parsed = JSON.parse(saved) as InspectionSession;
-        updateInspection(parsed);
+        const saved = localStorage.getItem(draftKey);
+        browserSession = saved
+          ? (JSON.parse(saved) as InspectionSession)
+          : null;
       } catch {
-        startSession(initialSession);
+        browserSession = null;
       }
-    } else {
-      startSession(initialSession);
-    }
+
+      const durableDraft = await getInspectionOfflineDraft({
+        draftKey,
+        sessionHint: browserSession ?? initialSession,
+        newerSessionHint: browserSession,
+      }).catch(() => null);
+
+      const durableSession = durableDraft?.session ?? null;
+      const durableAt = Date.parse(durableSession?.lastUpdated ?? "") || 0;
+      const browserAt = Date.parse(browserSession?.lastUpdated ?? "") || 0;
+      const restored =
+        durableAt >= browserAt ? durableSession : browserSession;
+      const restoredLineId = restored?.workOrderLineId?.trim() ?? "";
+      const activeLineId = workOrderLineId?.trim() ?? "";
+      const restoredMatchesIdentity =
+        !restoredLineId || !activeLineId || restoredLineId === activeLineId;
+
+      if (cancelled) return;
+      if (restoredMatchesIdentity) {
+        setRecoveryOperationKey(durableDraft?.operationKey);
+      } else {
+        setRecoveryOperationKey(undefined);
+      }
+      if (restored && restoredMatchesIdentity) replaceSession(restored);
+      else startInspectionSession(initialSession);
+      setLoadedDraftKey(draftKey);
+      setDraftBootLoaded(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // draftKey is the canonical line identity for offline recovery.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [draftKey]);
 
-  // persist
+  // Keep the lightweight browser copy under the same line-stable identity.
   useEffect(() => {
-    if (session) {
-      const key = `inspection-${inspectionId}`;
-      localStorage.setItem(key, JSON.stringify(session));
+    if (draftReady && session) {
+      localStorage.setItem(draftKey, JSON.stringify(session));
     }
-  }, [session, inspectionId]);
+  }, [draftKey, draftReady, session]);
 
-  // persist on unload
   useEffect(() => {
-    const key = `inspection-${inspectionId}`;
     const persistNow = () => {
+      if (!draftReady) return;
       try {
-        localStorage.setItem(key, JSON.stringify(session ?? initialSession));
-      } catch {}
+        localStorage.setItem(
+          draftKey,
+          JSON.stringify(session ?? initialSession),
+        );
+      } catch {
+        // The durable IndexedDB draft remains authoritative.
+      }
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") persistNow();
@@ -393,11 +546,11 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       window.removeEventListener("pagehide", persistNow);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [session, inspectionId, initialSession]);
+  }, [draftKey, draftReady, initialSession, session]);
 
   // build sections once
   useEffect(() => {
-    if (!session) return;
+    if (!draftReady || !session) return;
     if ((session.sections?.length ?? 0) > 0) return;
     const next: InspectionSection[] = [
       buildHydraulicMeasurementsSection(),
@@ -409,7 +562,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     updateInspection({
       sections: applyUnitsHydraulic(next, unit) as typeof session.sections,
     });
-  }, [session, updateInspection, unit]);
+  }, [draftReady, session, updateInspection, unit]);
 
   // re-apply units when toggle changes
   useEffect(() => {
@@ -425,6 +578,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
 
   // transcript → commands
   const handleTranscript = async (text: string): Promise<void> => {
+    if (!draftReadyRef.current || isLockedRef.current) return;
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess: InspectionSession | undefined = session ?? undefined;
     if (!sess) return;
@@ -442,6 +596,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
 
   // ✅ MUST be Promise-returning for StartListeningButton typing
   const startListening = async (): Promise<void> => {
+    if (!draftReadyRef.current || isLockedRef.current) return;
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
@@ -721,11 +876,30 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       {/* Footer */}
       <div className="mt-8 flex flex-col gap-4 border-t border-[color:var(--theme-border-soft)] pt-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <InspectionAutosaveStatus state={autosaveState} />
-          <FinishInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
+          <FinishInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId ?? ""}
+            disabled={isLocked || !inspectionReady}
+            beforeNavigate={async () => {
+              if (!draftReadyRef.current) {
+                throw new Error("Wait for this inspection to finish loading.");
+              }
+              const saved = await flushAutosaveToServer();
+              if (!saved) {
+                throw new Error("Inspection changed before autosave completed.");
+              }
+              return saved;
+            }}
+          />
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">
+            {autosaveLabel}
+            {autosaveError && (
+              <span className="ml-2 text-red-400">{autosaveError}</span>
+            )}
+          </div>
           {!workOrderLineId && (
             <div className="text-xs text-red-400">
-              Missing <code>workOrderLineId</code> — save/finish will be blocked.
+              Missing <code>workOrderLineId</code> — autosave/finish will be blocked.
             </div>
           )}
         </div>

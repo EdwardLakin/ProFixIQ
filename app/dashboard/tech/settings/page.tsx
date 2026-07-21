@@ -187,11 +187,16 @@ export default function TechSettingsPage() {
       const path = `tech-signatures/${profileId}/${hash}.png`;
 
       const up = await supabase.storage.from("signatures").upload(path, blob, {
-        upsert: true,
+        upsert: false,
         contentType: "image/png",
       });
 
-      if (up.error) throw up.error;
+      if (
+        up.error &&
+        !/already exists|resource exists|duplicate/i.test(up.error.message)
+      ) {
+        throw up.error;
+      }
 
       const { error: updErr } = await supabase
         .from("profiles")
@@ -383,3 +388,5 @@ export default function TechSettingsPage() {
     </div>
   );
 }
+
+

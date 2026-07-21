@@ -1,13 +1,14 @@
 // features/inspections/components/inspection/InspectionReviewPanel.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   InspectionSession,
   InspectionItem,
 } from "@inspections/lib/inspection/types";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
+import { useInspectionAutosave } from "@inspections/hooks/useInspectionAutosave";
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
 import { Button } from "@shared/components/ui/Button";
 
@@ -59,11 +60,35 @@ function flattenItems(session: InspectionSession): Array<{
 }
 
 export default function InspectionReviewPanel({
-  session,
+  session: sessionProp,
   workOrderLineId,
   onSessionChange,
 }: Props) {
+  const [session, setSession] = useState(sessionProp);
   const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    setSession(sessionProp);
+  }, [sessionProp]);
+  const [isLocked, setIsLocked] = useState(false);
+  const {
+    flush: flushAutosave,
+    flushToServer: flushAutosaveToServer,
+    label: autosaveLabel,
+    lastError: autosaveError,
+  } = useInspectionAutosave({
+    session,
+    inspectionId: session.id,
+    workOrderLineId,
+    enabled: Boolean(workOrderLineId),
+    locked: isLocked,
+    draftKey: `inspection-${session.id ?? workOrderLineId ?? "review"}`,
+    onRemoteSession: (remote) => {
+      setSession(remote);
+      onSessionChange?.(remote);
+    },
+    onRemoteMeta: (meta) => setIsLocked(meta.locked),
+  });
 
   const stats = useMemo(() => calcStats(session), [session]);
   const flatItems = useMemo(() => flattenItems(session), [session]);
@@ -113,6 +138,7 @@ export default function InspectionReviewPanel({
     setDownloading(true);
 
     try {
+      await flushAutosave();
       const filenameBase =
         session.templateName?.replace(/[^\w\-]+/g, "_") || "inspection";
       const filename = `${filenameBase}.pdf`;
@@ -165,7 +191,15 @@ export default function InspectionReviewPanel({
                 <FinishInspectionButton
                   session={session}
                   workOrderLineId={workOrderLineId}
+                  disabled={isLocked}
+                  beforeNavigate={() => flushAutosaveToServer()}
                 />
+                <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                  {autosaveLabel}
+                  {autosaveError && (
+                    <span className="ml-2 text-red-400">{autosaveError}</span>
+                  )}
+                </div>
               </>
             )}
             <Button
@@ -319,12 +353,15 @@ export default function InspectionReviewPanel({
             inspectionId={session.id as string | undefined | null}
             workOrderLineId={workOrderLineId}
             role="technician"
+            techSettingsHref="/dashboard/tech/settings"
+            beforeSign={() => flushAutosaveToServer()}
             onSigned={() => {
-              if (!onSessionChange) return;
-              onSessionChange({
+              const next = {
                 ...session,
                 signedByTech: true,
-              } as InspectionSession);
+              } as InspectionSession;
+              setSession(next);
+              onSessionChange?.(next);
             }}
           />
 
@@ -333,13 +370,15 @@ export default function InspectionReviewPanel({
             inspectionId={session.id as string | undefined | null}
             workOrderLineId={workOrderLineId}
             role="customer"
+            beforeSign={() => flushAutosaveToServer()}
             defaultName={customerDefaultName}
             onSigned={() => {
-              if (!onSessionChange) return;
-              onSessionChange({
+              const next = {
                 ...session,
                 signedByCustomer: true,
-              } as InspectionSession);
+              } as InspectionSession;
+              setSession(next);
+              onSessionChange?.(next);
             }}
           />
         </div>
@@ -347,3 +386,4 @@ export default function InspectionReviewPanel({
     </div>
   );
 }
+

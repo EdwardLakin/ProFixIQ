@@ -7,6 +7,7 @@ import {
   saveOfflineSnapshot,
 } from "@/features/shared/lib/offline/database";
 import {
+  dismissOfflineMutation,
   hydrateOfflineMutationQueue,
   listOfflineMutations,
   resolveOfflineMutationScope,
@@ -72,6 +73,7 @@ export async function saveInspectionOfflineDraft(args: {
 export async function getInspectionOfflineDraft(args: {
   draftKey: string;
   sessionHint: Partial<InspectionSession>;
+  newerSessionHint?: Partial<InspectionSession> | null;
 }): Promise<InspectionOfflineDraft | null> {
   const scope = await scopeFor(args.sessionHint);
   if (!scope) return null;
@@ -88,7 +90,7 @@ export async function getInspectionOfflineDraft(args: {
     const queued = listOfflineMutations(scope).find(
       (mutation) => mutation.clientMutationId === draft.operationKey,
     );
-    if (!queued || queued.status === "synced") {
+    if (!queued) {
       const reconciled = {
         ...draft,
         state: "editing" as const,
@@ -97,11 +99,40 @@ export async function getInspectionOfflineDraft(args: {
       await saveInspectionOfflineDraft(reconciled);
       return reconciled;
     }
+    if (queued.status === "synced") {
+      // Keep the key until the autosave client retrieves the server's
+      // idempotent acknowledgement and its canonical sync revision.
+      const awaitingAcknowledgement = {
+        ...draft,
+        state: "queued" as const,
+      };
+      await saveInspectionOfflineDraft(awaitingAcknowledgement);
+      return awaitingAcknowledgement;
+    }
     const queuedSession =
       (queued.payload && typeof queued.payload === "object"
         ? (queued.payload as { session?: Partial<InspectionSession> }).session
         : null) ?? null;
-    if (sessionTimestamp(draft.session) > sessionTimestamp(queuedSession)) {
+    const newestLocalTimestamp = Math.max(
+      sessionTimestamp(draft.session),
+      sessionTimestamp(args.newerSessionHint ?? null),
+    );
+    if (newestLocalTimestamp > sessionTimestamp(queuedSession)) {
+      try {
+        await dismissOfflineMutation(draft.operationKey);
+      } catch {
+        return { ...draft, state: "conflicted" };
+      }
+      const supersededMutation = listOfflineMutations(scope).find(
+        (mutation) =>
+          mutation.clientMutationId === draft.operationKey &&
+          mutation.status !== "synced",
+      );
+      if (supersededMutation) {
+        // A syncing mutation cannot be removed safely. Keep its lineage visible
+        // instead of reusing the key for a different payload.
+        return { ...draft, state: "conflicted" };
+      }
       const reconciled = {
         ...draft,
         state: "editing" as const,
