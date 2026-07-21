@@ -148,7 +148,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "Invoice totals changed because one or more attached parts have not been issued to the work order. Complete the parts handoff, then review the invoice again.",
+            "Invoice totals changed because approved parts were not materialized on the work order. Reopen the approved line and repair its attached parts before invoicing.",
           draftParts,
           issuableParts,
           draftTotal,

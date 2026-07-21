@@ -7,6 +7,7 @@ import {
   resolveShopSuppliesSettings,
 } from "@/features/work-orders/lib/shopSupplies";
 import { calculateInvoiceTotals } from "@/features/invoices/lib/invoiceTotals";
+import { resolveApprovedPartInvoiceQuantity } from "@/features/invoices/lib/approvedInvoiceParts";
 import { shouldUsePersistedInvoiceTotals } from "@/features/invoices/lib/invoiceSnapshotState";
 import { filterInvoicePartAllocations } from "@/features/invoices/lib/filterInvoicePartAllocations";
 import type { InvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
@@ -904,18 +905,14 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
         : undefined;
       const partRecord = part as Record<string, unknown>;
       if (partRecord.is_active === false) return [];
-      const consumed = safeNumber(partRecord.quantity_consumed);
-      const returned = safeNumber(partRecord.quantity_returned);
-      const cancelled = safeNumber(partRecord.quantity_cancelled);
-      const requested = safeNumber(partRecord.quantity_requested);
-      const qty =
-        consumed > 0
-          ? Math.max(0, consumed - returned)
-          : Math.max(
-              0,
-              (requested > 0 ? requested : safeNumber(part.quantity)) -
-                cancelled,
-            );
+      // Approval freezes the customer-facing quantity on work_order_parts.
+      // Consumption is an inventory event and must not change invoice quantity.
+      const qty = resolveApprovedPartInvoiceQuantity({
+        quantityRequested: partRecord.quantity_requested,
+        quantity: part.quantity,
+        quantityReturned: partRecord.quantity_returned,
+        quantityCancelled: partRecord.quantity_cancelled,
+      });
       if (qty <= 0) return [];
       const totalRaw = safeNumber(part.total_price);
       const unitPrice =
