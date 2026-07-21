@@ -370,9 +370,13 @@ export default function BillingPage(): JSX.Element {
     );
   }, [historicalInvoices.length, supabase]);
 
-  const handleAiReview = useCallback(async (id: string) => {
+  const handleAiReview = useCallback(async (row: Row) => {
+    const normalizedStatus = String(row.status ?? "")
+      .toLowerCase()
+      .replaceAll(" ", "_");
+
     try {
-      const res = await fetch(`/api/work-orders/${id}/ai-review`, {
+      const res = await fetch(`/api/work-orders/${row.id}/ai-review`, {
         method: "POST",
       });
 
@@ -390,7 +394,13 @@ export default function BillingPage(): JSX.Element {
         return;
       }
 
-      toast.success("AI review passed. You can mark ready to invoice.");
+      if (normalizedStatus === "ready_to_invoice") {
+        toast.success("Review passed. This work order is already ready to invoice.");
+      } else if (normalizedStatus === "invoiced") {
+        toast.success("Review passed. This invoice has already been issued.");
+      } else {
+        toast.success("Review passed. The work order can be marked ready to invoice.");
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "AI review failed.";
       toast.error(msg);
@@ -752,25 +762,30 @@ export default function BillingPage(): JSX.Element {
 
                     <button
                       type="button"
-                      onClick={() => void handleAiReview(r.id)}
+                      onClick={() => void handleAiReview(r)}
                       className="rounded-full border border-sky-500/60 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20"
                       title="Run AI checklist"
                     >
                       AI Review
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => void handleMarkReady(r.id)}
-                      disabled={
-                        r.status === "invoiced" ||
-                        r.status === "ready_to_invoice"
-                      }
-                      className="rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Mark ready to invoice"
-                    >
-                      Mark Ready
-                    </button>
+                    {statusLower === "ready_to_invoice" ? (
+                      <span
+                        className="inline-flex items-center rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-100"
+                        title="This work order is already ready to invoice"
+                      >
+                        Ready ✓
+                      </span>
+                    ) : statusLower !== "invoiced" ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleMarkReady(r.id)}
+                        className="rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/20"
+                        title="Mark ready to invoice"
+                      >
+                        Mark Ready
+                      </button>
+                    ) : null}
 
                     <button
                       type="button"
