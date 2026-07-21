@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - fix/supabase-clean-replay
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "db/sql/schema.sql"
+      - ".github/workflows/supabase-clean-replay-audit.yml"
+      - "docs/supabase-clean-replay-audit.md"
 
 permissions:
   contents: read
