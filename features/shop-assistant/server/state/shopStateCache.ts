@@ -5,7 +5,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopState } from "@/features/shop-assistant/server/state/buildShopState";
-import type { ShopAssistantState } from "@/features/shop-assistant/server/state/types";
+import {
+  SHOP_ASSISTANT_MAX_STALE_MS,
+  SHOP_ASSISTANT_STATE_TTL_MS,
+  type ShopAssistantState,
+} from "@/features/shop-assistant/server/state/types";
 
 type AssistantDb = SupabaseClient<any>;
 
@@ -21,7 +25,7 @@ type SnapshotRow = {
   updated_at: string;
 };
 
-const DEFAULT_TTL_MS = 90_000;
+const DEFAULT_TTL_MS = SHOP_ASSISTANT_STATE_TTL_MS;
 const SNAPSHOT_SELECT =
   "shop_id, user_id, role, snapshot, version, refreshed_at, expires_at, invalidated_at, updated_at";
 
@@ -80,11 +84,19 @@ export async function getOrRefreshShopState(params: {
     roleMatches && isShopAssistantState(existingSnapshot)
       ? existingSnapshot
       : null;
+  const expiresAtMs = new Date(existing?.expires_at ?? 0).getTime();
   const isFresh = Boolean(
     !params.force &&
       existingState &&
       !existing?.invalidated_at &&
-      new Date(existing?.expires_at ?? 0).getTime() > nowMs,
+      Number.isFinite(expiresAtMs) &&
+      expiresAtMs > nowMs,
+  );
+  const canUseStaleFallback = Boolean(
+    existingState &&
+      !existing?.invalidated_at &&
+      Number.isFinite(expiresAtMs) &&
+      nowMs - expiresAtMs <= SHOP_ASSISTANT_MAX_STALE_MS,
   );
   if (isFresh && existingState) return existingState;
 
@@ -111,7 +123,7 @@ export async function getOrRefreshShopState(params: {
     if (error) throw new Error(error.message);
     return state;
   } catch (error: unknown) {
-    if (existingState) return existingState;
+    if (canUseStaleFallback && existingState) return existingState;
     throw error;
   }
 }
