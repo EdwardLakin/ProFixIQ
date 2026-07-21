@@ -608,7 +608,7 @@ function buildInterpretCtxForSpeech(args: {
 /* -------------------------------------------------------------------- */
 
 export default function GenericInspectionScreen(
-  _props: GenericInspectionScreenProps,
+  props: GenericInspectionScreenProps,
 ): JSX.Element {
   const routeSp = useSearchParams();
   const router = useRouter();
@@ -636,31 +636,30 @@ type SmartMatchRow = {
 };
 
   const sp = useMemo(() => {
+    const merged = new URLSearchParams();
     const staged = readStaged<Record<string, string>>("inspection:params");
 
-    if (staged && Object.keys(staged).length > 0) {
-      const merged = new URLSearchParams();
+    // Direct-route params form the base. The mobile runner stages its context
+    // because it prepares the template client-side. A desktop modal passes the
+    // exact inspection source as props and must win over any stale staged run.
+    routeSp.forEach((value, key) => merged.set(key, value));
+    Object.entries(staged ?? {}).forEach(([key, value]) => {
+      if (value != null) merged.set(key, String(value));
+    });
+    Object.entries(props.params ?? {}).forEach(([key, value]) => {
+      if (value != null) merged.set(key, String(value));
+    });
 
-      // URL first
-      routeSp.forEach((value, key) => merged.set(key, value));
-
-      // staged second (wins)
-      Object.entries(staged).forEach(([key, value]) => {
-        if (value != null) merged.set(key, String(value));
-      });
-
-      return merged;
-    }
-
-    return routeSp;
-  }, [routeSp]);
+    return merged;
+  }, [props.params, routeSp]);
 
   const isEmbed = useMemo(
     () =>
+      props.embed === true ||
       ["1", "true", "yes"].includes(
         (sp.get("embed") || sp.get("compact") || "").toLowerCase(),
       ),
-    [sp],
+    [props.embed, sp],
   );
 
   const workOrderId = sp.get("workOrderId") || null;
@@ -673,6 +672,9 @@ type SmartMatchRow = {
     (typeof window !== "undefined"
       ? sessionStorage.getItem("inspection:title")
       : null) ||
+    sp.get("templateName") ||
+    sp.get("template_name") ||
+    props.template ||
     sp.get("template") ||
     "Inspection";
 
@@ -3177,7 +3179,7 @@ type SmartMatchRow = {
                               handleAddAxleForSection(sectionIndex, axleLabel)
                             }
                             onSpecHint={(metricLabel: string) =>
-                              _props.onSpecHint?.({
+                              props.onSpecHint?.({
                                 source: "air_corner",
                                 label: metricLabel,
                                 meta: { sectionTitle: section.title },
@@ -3217,7 +3219,7 @@ type SmartMatchRow = {
                                 handleAddTireAxleForSection(sectionIndex, axleLabel)
                               }
                               onSpecHint={(metricLabel: string) =>
-                                _props.onSpecHint?.({
+                                props.onSpecHint?.({
                                   source: "tire",
                                   label: metricLabel,
                                   meta: { sectionTitle: section.title },
@@ -3255,7 +3257,7 @@ type SmartMatchRow = {
                             items={itemsWithHints}
                             unitHint={(label: string) => unitHintGeneric(label, unit)}
                             onSpecHint={(label: string) =>
-                              _props.onSpecHint?.({
+                              props.onSpecHint?.({
                                 source: "corner",
                                 label,
                                 meta: { sectionTitle: section.title },

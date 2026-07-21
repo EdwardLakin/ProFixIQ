@@ -3,7 +3,10 @@ import "server-only";
 import type { z } from "zod";
 
 import type { ActorCapabilities } from "@/features/shared/lib/rbac";
-import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
+import {
+  ShopAssistantHttpError,
+  type ShopAssistantActor,
+} from "@/features/shop-assistant/server/requireShopAssistantActor";
 import type {
   ShopAssistantActionRisk,
   ShopAssistantDomain,
@@ -70,6 +73,9 @@ export function assertToolCapability(
 ): void {
   const capability = tool.requiredCapability;
   if (capability && capabilities[capability] !== true) {
-    throw new Error(`Your role is not allowed to use ${tool.name}.`);
+    throw new ShopAssistantHttpError(
+      403,
+      `Your role is not allowed to use ${tool.name}.`,
+    );
   }
 }

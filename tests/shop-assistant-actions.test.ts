@@ -29,6 +29,30 @@ const conversation = readFileSync(
   "features/shop-assistant/components/ShopAssistantConversation.tsx",
   "utf8",
 );
+const workOrderTools = readFileSync(
+  "features/shop-assistant/server/tools/domains/workOrders.ts",
+  "utf8",
+);
+const workforceTools = readFileSync(
+  "features/shop-assistant/server/tools/domains/workforce.ts",
+  "utf8",
+);
+const customerTools = readFileSync(
+  "features/shop-assistant/server/tools/domains/customers.ts",
+  "utf8",
+);
+const schedulingTools = readFileSync(
+  "features/shop-assistant/server/tools/domains/scheduling.ts",
+  "utf8",
+);
+const toolTypes = readFileSync(
+  "features/shop-assistant/server/tools/types.ts",
+  "utf8",
+);
+const atomicMigration = readFileSync(
+  "supabase/migrations/20260721184500_shop_assistant_atomic_actions.sql",
+  "utf8",
+);
 const techHook = readFileSync("features/ai/hooks/useTechAssistant.ts", "utf8");
 
 describe("shop assistant tool execution contracts", () => {
@@ -71,12 +95,51 @@ describe("shop assistant tool execution contracts", () => {
     expect(confirmRoute).toContain("executeShopAssistantWriteTool");
   });
 
-  it("uses idempotency and terminal result replay for safe action execution", () => {
+  it("commits representative shop mutations and terminal results atomically", () => {
+    for (const rpcName of [
+      "shop_assistant_hold_work_order_atomic",
+      "shop_assistant_release_work_order_hold_atomic",
+      "shop_assistant_assign_work_order_atomic",
+      "shop_assistant_create_customer_atomic",
+      "shop_assistant_reschedule_booking_atomic",
+    ]) {
+      expect(atomicMigration).toContain(`function public.${rpcName}`);
+    }
+
+    expect(workOrderTools).toContain("shop_assistant_hold_work_order_atomic");
+    expect(workOrderTools).toContain("shop_assistant_release_work_order_hold_atomic");
+    expect(workforceTools).toContain("shop_assistant_assign_work_order_atomic");
+    expect(customerTools).toContain("shop_assistant_create_customer_atomic");
+    expect(schedulingTools).toContain("shop_assistant_reschedule_booking_atomic");
+    expect(atomicMigration).toContain("set status = 'succeeded'");
+  });
+
+  it("fails closed around work-order lifecycle and active technician work", () => {
+    expect(workOrderTools).toContain("HOLDABLE_WORK_ORDER_STATUSES");
+    expect(workOrderTools).toContain('"active"');
+    expect(atomicMigration).toContain("work_order_is_financially_locked");
+    expect(atomicMigration).toContain("seg.ended_at is null");
+    expect(atomicMigration).toContain("wol.punched_out_at is null");
+    expect(atomicMigration).toContain(
+      "Only active operational work orders can be placed on hold.",
+    );
+  });
+
+  it("uses idempotency, execution leases, and terminal result replay", () => {
     expect(actionStore).toContain("idempotency_key");
     expect(actionStore).toContain('error?.code !== "23505"');
-    expect(confirmRoute).toContain('acquired.row.status === "executing"');
-    expect(confirmRoute).toContain("mapActionResult");
+    expect(actionStore).toContain("SHOP_ASSISTANT_ACTION_EXECUTION_LEASE_MS");
+    expect(actionStore).toContain("executionLeaseExpired");
+    expect(confirmRoute).toContain("loadAction");
+    expect(confirmRoute).toContain('persisted.status === "executing"');
     expect(cancelRoute).toContain("cancelAction");
+  });
+
+  it("returns intentional authorization denials and accepts technician aliases", () => {
+    expect(toolTypes).toContain("new ShopAssistantHttpError");
+    expect(toolTypes).toContain("403");
+    expect(directIntent).toContain("canonicalizeRole");
+    expect(workforceTools).toContain("canonicalizeRole");
   });
 
   it("renders structured confirmation, success, failure, and cancellation states", () => {

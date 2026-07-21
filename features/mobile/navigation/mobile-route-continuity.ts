@@ -39,6 +39,12 @@ function mapWorkOrderPath(pathname: string): string {
 }
 
 function mapInspectionPath(pathname: string): string {
+  if (pathname.startsWith("/inspections/fleet-import")) {
+    return "/mobile/inspections/import";
+  }
+  if (pathname.startsWith("/inspections/fleet-review")) {
+    return "/mobile/inspections/import";
+  }
   if (pathname.startsWith("/inspections/maintenance-50-air")) {
     return "/mobile/inspections/maintenance-50-air";
   }

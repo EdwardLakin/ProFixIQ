@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
+import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { defineShopAssistantTool } from "../types";
 
 const WorkOrderSummarySchema = z.object({
@@ -32,6 +33,49 @@ type WorkOrderRow = {
   updated_at: string | null;
 };
 
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
+
+const HOLDABLE_WORK_ORDER_STATUSES = new Set([
+  "awaiting",
+  "awaiting_approval",
+  "planned",
+  "queued",
+  "in_progress",
+  "active",
+  "on_hold",
+]);
+
+const HOLDABLE_LINE_STATUSES = [
+  "awaiting",
+  "awaiting_approval",
+  "active",
+  "queued",
+  "in_progress",
+  "planned",
+];
+
+function normalizeStatus(value: string | null): string {
+  return String(value ?? "awaiting")
+    .trim()
+    .toLowerCase()
+    .replaceAll(" ", "_");
+}
+
+function rpcErrorMessage(error: RpcError): string {
+  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+}
+
 async function loadWorkOrder(
   workOrderId: string,
   shopId: string,
@@ -45,7 +89,7 @@ async function loadWorkOrder(
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  if (!data) throw new Error("Work order not found in this shop.");
+  if (!data) throw new ShopAssistantHttpError(404, "Work order not found in this shop.");
   return data as WorkOrderRow;
 }
 
@@ -85,7 +129,7 @@ export const readWorkOrderTool = defineShopAssistantTool({
 export const holdWorkOrderTool = defineShopAssistantTool({
   name: "hold_work_order",
   domain: "work_orders",
-  description: "Place a work order and its active lines on operational hold.",
+  description: "Place a work order and its eligible active lines on operational hold.",
   mode: "write",
   risk: "medium",
   requiredCapability: "canManageWorkOrders",
@@ -101,26 +145,30 @@ export const holdWorkOrderTool = defineShopAssistantTool({
       context.actor.shopId,
       context.actor.supabase,
     );
+    const status = normalizeStatus(row.status);
+    if (!HOLDABLE_WORK_ORDER_STATUSES.has(status)) {
+      throw new ShopAssistantHttpError(
+        409,
+        "Only active operational work orders can be placed on hold.",
+      );
+    }
+
     const label = workOrderLabel(row);
-    const { count } = await context.actor.supabase
+    const { count, error } = await context.actor.supabase
       .from("work_order_lines")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", context.actor.shopId)
       .eq("work_order_id", row.id)
-      .in("status", [
-        "awaiting",
-        "awaiting_approval",
-        "planned",
-        "queued",
-        "in_progress",
-      ]);
+      .in("status", HOLDABLE_LINE_STATUSES);
+    if (error) throw new Error(error.message);
 
     return {
       title: `Place ${label} on hold`,
       summary: `${label} will be placed on hold for: ${input.reason}`,
       consequences: [
-        `${count ?? 0} active line(s) will be paused.`,
-        "The work order will leave the active queue until the hold is released.",
+        `${count ?? 0} eligible line(s) will be paused.`,
+        "The action will fail closed if technician labor is still running.",
+        "Completed, invoiced, and financially locked work orders cannot be reopened.",
       ],
       targetVersions: row.updated_at
         ? { [`work_order:${row.id}`]: row.updated_at }
@@ -133,69 +181,23 @@ export const holdWorkOrderTool = defineShopAssistantTool({
     };
   },
   async execute(input, context) {
-    const row = await loadWorkOrder(
-      input.workOrderId,
-      context.actor.shopId,
-      context.actor.supabase,
+    if (!context.actionId) {
+      throw new Error("An action id is required for an atomic work-order hold.");
+    }
+
+    const rpc = context.actor.supabase as unknown as RpcClient;
+    const { data, error } = await rpc.rpc(
+      "shop_assistant_hold_work_order_atomic",
+      {
+        p_action_id: context.actionId,
+        p_shop_id: context.actor.shopId,
+        p_work_order_id: input.workOrderId,
+        p_actor_user_id: context.actor.userId,
+        p_reason: input.reason,
+      },
     );
-    const expectedVersion = context.targetVersions?.[`work_order:${row.id}`];
-    if (expectedVersion && row.updated_at !== expectedVersion) {
-      throw new Error(
-        "The work order changed after the preview. Review the latest state before confirming again.",
-      );
-    }
-
-    const now = new Date().toISOString();
-    let workOrderUpdate = context.actor.supabase
-      .from("work_orders")
-      .update({ status: "on_hold", updated_at: now })
-      .eq("shop_id", context.actor.shopId)
-      .eq("id", row.id);
-    if (expectedVersion) {
-      workOrderUpdate = workOrderUpdate.eq("updated_at", expectedVersion);
-    }
-    const { data: updatedWorkOrder, error: workOrderError } =
-      await workOrderUpdate
-        .select("id, custom_id, status, updated_at")
-        .maybeSingle();
-
-    if (workOrderError) throw new Error(workOrderError.message);
-    if (!updatedWorkOrder) {
-      throw new Error(
-        "The work order changed before the hold could be applied. Review and try again.",
-      );
-    }
-
-    const { data: updatedLines, error: lineError } = await context.actor.supabase
-      .from("work_order_lines")
-      .update({
-        status: "on_hold",
-        hold_reason: input.reason,
-        on_hold_since: now,
-        updated_at: now,
-      })
-      .eq("shop_id", context.actor.shopId)
-      .eq("work_order_id", row.id)
-      .in("status", [
-        "awaiting",
-        "awaiting_approval",
-        "planned",
-        "queued",
-        "in_progress",
-      ])
-      .select("id");
-
-    if (lineError) throw new Error(lineError.message);
-    const label = workOrderLabel(row);
-    return {
-      ok: true as const,
-      workOrderId: row.id,
-      customId: row.custom_id,
-      status: "on_hold",
-      affectedLines: updatedLines?.length ?? 0,
-      summary: `${label} is now on hold for ${input.reason}.`,
-      href: `/work-orders/${row.id}`,
-    };
+    if (error) throw new Error(rpcErrorMessage(error));
+    return WorkOrderMutationSchema.parse(data);
   },
 });
 
@@ -215,11 +217,21 @@ export const releaseWorkOrderHoldTool = defineShopAssistantTool({
       context.actor.shopId,
       context.actor.supabase,
     );
+    if (normalizeStatus(row.status) !== "on_hold") {
+      throw new ShopAssistantHttpError(
+        409,
+        "Only an on-hold work order can have its hold released.",
+      );
+    }
+
     const label = workOrderLabel(row);
     return {
       title: `Release the hold on ${label}`,
       summary: `${label} will return to the queue and its held lines will return to awaiting.`,
-      consequences: ["Technicians and advisors will see the work as available again."],
+      consequences: [
+        "Technicians and advisors will see the work as available again.",
+        "Completed, invoiced, and financially locked work orders are not eligible.",
+      ],
       targetVersions: row.updated_at
         ? { [`work_order:${row.id}`]: row.updated_at }
         : {},
@@ -227,59 +239,21 @@ export const releaseWorkOrderHoldTool = defineShopAssistantTool({
     };
   },
   async execute(input, context) {
-    const row = await loadWorkOrder(
-      input.workOrderId,
-      context.actor.shopId,
-      context.actor.supabase,
+    if (!context.actionId) {
+      throw new Error("An action id is required for an atomic hold release.");
+    }
+
+    const rpc = context.actor.supabase as unknown as RpcClient;
+    const { data, error } = await rpc.rpc(
+      "shop_assistant_release_work_order_hold_atomic",
+      {
+        p_action_id: context.actionId,
+        p_shop_id: context.actor.shopId,
+        p_work_order_id: input.workOrderId,
+        p_actor_user_id: context.actor.userId,
+      },
     );
-    const expectedVersion = context.targetVersions?.[`work_order:${row.id}`];
-    if (expectedVersion && row.updated_at !== expectedVersion) {
-      throw new Error(
-        "The work order changed after the preview. Review the latest state before confirming again.",
-      );
-    }
-
-    const now = new Date().toISOString();
-    let workOrderUpdate = context.actor.supabase
-      .from("work_orders")
-      .update({ status: "queued", updated_at: now })
-      .eq("shop_id", context.actor.shopId)
-      .eq("id", row.id);
-    if (expectedVersion) {
-      workOrderUpdate = workOrderUpdate.eq("updated_at", expectedVersion);
-    }
-    const { data: updatedWorkOrder, error: workOrderError } =
-      await workOrderUpdate.select("id").maybeSingle();
-    if (workOrderError) throw new Error(workOrderError.message);
-    if (!updatedWorkOrder) {
-      throw new Error(
-        "The work order changed before the hold could be released. Review and try again.",
-      );
-    }
-
-    const { data: updatedLines, error: lineError } = await context.actor.supabase
-      .from("work_order_lines")
-      .update({
-        status: "awaiting",
-        hold_reason: null,
-        on_hold_since: null,
-        updated_at: now,
-      })
-      .eq("shop_id", context.actor.shopId)
-      .eq("work_order_id", row.id)
-      .eq("status", "on_hold")
-      .select("id");
-    if (lineError) throw new Error(lineError.message);
-
-    const label = workOrderLabel(row);
-    return {
-      ok: true as const,
-      workOrderId: row.id,
-      customId: row.custom_id,
-      status: "queued",
-      affectedLines: updatedLines?.length ?? 0,
-      summary: `${label} is back in the queue.`,
-      href: `/work-orders/${row.id}`,
-    };
+    if (error) throw new Error(rpcErrorMessage(error));
+    return WorkOrderMutationSchema.parse(data);
   },
 });

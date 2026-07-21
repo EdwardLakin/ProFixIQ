@@ -23,8 +23,8 @@ export default function FleetFormImportPage() {
           Import a fleet inspection form
         </h1>
         <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-          Upload a customer&apos;s existing paper/PDF inspection sheet and turn it
-          into a reusable ProFixIQ template.
+          Upload or photograph a customer&apos;s existing inspection sheet and turn
+          it into a reusable ProFixIQ template. Processing continues in the background.
         </p>
       </div>
 

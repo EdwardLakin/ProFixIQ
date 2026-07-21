@@ -21,6 +21,7 @@ function getTitleFromPath(pathname: string): string {
   }
   if (pathname.startsWith("/mobile/work-orders")) return "Work orders";
   if (pathname.startsWith("/mobile/appointments")) return "Appointments";
+  if (pathname.startsWith("/mobile/inspections/import")) return "Import form";
   if (pathname.startsWith("/mobile/inspections")) return "Inspections";
   if (pathname.startsWith("/mobile/parts")) return "Parts";
   if (pathname.startsWith("/mobile/messages")) return "Inbox";
@@ -49,14 +50,21 @@ function getTitleFromPath(pathname: string): string {
 function isImmersiveRoute(pathname: string): boolean {
   if (pathname.startsWith("/mobile/jobs/")) return true;
 
+  if (pathname === "/mobile/inspections/import") return false;
+
   // Single-screen inspection runners provide their own Back/header bar. Deeper
-  // routes such as /[id]/run still rely on the shared mobile header.
+  // routes such as /[id]/run and static tools such as /import still rely on the
+  // shared mobile header.
   return /^\/mobile\/inspections\/[^/]+$/.test(pathname);
 }
 
-function shouldIgnoreAnchor(anchor: HTMLAnchorElement, event: MouseEvent): boolean {
+function shouldIgnoreAnchor(
+  anchor: HTMLAnchorElement,
+  event: MouseEvent,
+): boolean {
   if (event.defaultPrevented || event.button !== 0) return true;
-  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return true;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+    return true;
   if (anchor.hasAttribute("download")) return true;
   if (anchor.dataset.mobileRouteBypass === "true") return true;
 
@@ -93,10 +101,14 @@ export function MobileShell({ children, title }: Props) {
     // Listen at document level so links rendered by portals and shared modals
     // cannot accidentally escape from the mobile application shell.
     document.addEventListener("click", keepNavigationMobile, true);
-    return () => document.removeEventListener("click", keepNavigationMobile, true);
+    return () =>
+      document.removeEventListener("click", keepNavigationMobile, true);
   }, [router]);
 
-  if (pathname === "/mobile/sign-in" || pathname.startsWith("/mobile/sign-in/")) {
+  if (
+    pathname === "/mobile/sign-in" ||
+    pathname.startsWith("/mobile/sign-in/")
+  ) {
     return children;
   }
 
@@ -129,7 +141,9 @@ export function MobileShell({ children, title }: Props) {
             </button>
 
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{resolvedTitle}</div>
+              <div className="truncate text-sm font-semibold">
+                {resolvedTitle}
+              </div>
               <div className="truncate text-[0.62rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                 ProFixIQ Mobile
               </div>

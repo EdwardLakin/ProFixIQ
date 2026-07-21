@@ -2,8 +2,10 @@ import "server-only";
 
 import { z } from "zod";
 
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getTechnicianLoadMetricsWithClient } from "@/features/shared/lib/stats/getTechnicianLoadMetricsCore";
+import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { defineShopAssistantTool } from "../types";
 
 const TechnicianLoadSchema = z.object({
@@ -15,6 +17,42 @@ const TechnicianLoadSchema = z.object({
   utilizationPct: z.number(),
   shiftSecondsToday: z.number().nonnegative(),
 });
+
+const AssignmentResultSchema = z.object({
+  ok: z.literal(true),
+  workOrderId: z.string().uuid(),
+  technicianId: z.string().uuid(),
+  technicianName: z.string(),
+  assignedLines: z.number().int().nonnegative(),
+  summary: z.string(),
+  href: z.string(),
+});
+
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
+
+function isAssignableTechnicianRole(role: string | null | undefined): boolean {
+  const canonical = canonicalizeRole(role);
+  return (
+    canonical === "mechanic" ||
+    canonical === "lead_hand" ||
+    canonical === "foreman"
+  );
+}
+
+function rpcErrorMessage(error: RpcError): string {
+  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+}
 
 export const listTechnicianLoadTool = defineShopAssistantTool({
   name: "list_technician_load",
@@ -64,7 +102,8 @@ export const listTechnicianLoadTool = defineShopAssistantTool({
 export const assignWorkOrderTool = defineShopAssistantTool({
   name: "assign_work_order",
   domain: "workforce",
-  description: "Assign all unassigned job lines on one work order to a same-shop technician.",
+  description:
+    "Assign all eligible job lines on one work order to a same-shop technician.",
   mode: "write",
   risk: "medium",
   requiredCapability: "canAssignWork",
@@ -74,38 +113,39 @@ export const assignWorkOrderTool = defineShopAssistantTool({
     technicianId: z.string().uuid(),
     onlyUnassigned: z.boolean().default(true),
   }),
-  outputSchema: z.object({
-    ok: z.literal(true),
-    workOrderId: z.string().uuid(),
-    technicianId: z.string().uuid(),
-    technicianName: z.string(),
-    assignedLines: z.number().int().nonnegative(),
-    summary: z.string(),
-    href: z.string(),
-  }),
+  outputSchema: AssignmentResultSchema,
   async preview(input, context) {
     const admin = createAdminSupabase();
-    const [{ data: workOrder, error: workOrderError }, { data: technician, error: technicianError }] =
-      await Promise.all([
-        admin
-          .from("work_orders")
-          .select("id, custom_id, shop_id, updated_at")
-          .eq("id", input.workOrderId)
-          .eq("shop_id", context.actor.shopId)
-          .maybeSingle(),
-        admin
-          .from("profiles")
-          .select("id, shop_id, role, full_name")
-          .eq("id", input.technicianId)
-          .eq("shop_id", context.actor.shopId)
-          .maybeSingle(),
-      ]);
+    const [
+      { data: workOrder, error: workOrderError },
+      { data: technician, error: technicianError },
+    ] = await Promise.all([
+      admin
+        .from("work_orders")
+        .select("id, custom_id, shop_id, updated_at")
+        .eq("id", input.workOrderId)
+        .eq("shop_id", context.actor.shopId)
+        .maybeSingle(),
+      admin
+        .from("profiles")
+        .select("id, shop_id, role, full_name")
+        .eq("id", input.technicianId)
+        .eq("shop_id", context.actor.shopId)
+        .maybeSingle(),
+    ]);
     if (workOrderError) throw new Error(workOrderError.message);
     if (technicianError) throw new Error(technicianError.message);
-    if (!workOrder) throw new Error("Work order not found in this shop.");
-    if (!technician) throw new Error("Technician not found in this shop.");
-    if (!new Set(["mechanic", "tech", "foreman", "lead_hand"]).has(String(technician.role ?? "").toLowerCase())) {
-      throw new Error("Selected profile is not assignable as a technician.");
+    if (!workOrder) {
+      throw new ShopAssistantHttpError(404, "Work order not found in this shop.");
+    }
+    if (!technician) {
+      throw new ShopAssistantHttpError(404, "Technician not found in this shop.");
+    }
+    if (!isAssignableTechnicianRole(technician.role)) {
+      throw new ShopAssistantHttpError(
+        400,
+        "Selected profile is not assignable as a technician.",
+      );
     }
 
     let countQuery = admin
@@ -114,7 +154,9 @@ export const assignWorkOrderTool = defineShopAssistantTool({
       .eq("shop_id", context.actor.shopId)
       .eq("work_order_id", workOrder.id)
       .eq("line_type", "job");
-    if (input.onlyUnassigned) countQuery = countQuery.is("assigned_tech_id", null);
+    if (input.onlyUnassigned) {
+      countQuery = countQuery.is("assigned_tech_id", null);
+    }
     const { count, error: countError } = await countQuery;
     if (countError) throw new Error(countError.message);
 
@@ -128,6 +170,7 @@ export const assignWorkOrderTool = defineShopAssistantTool({
         input.onlyUnassigned
           ? "Existing technician assignments will remain unchanged."
           : "Existing primary technician assignments may be replaced.",
+        "Primary assignments and technician bridge records will be committed atomically.",
       ],
       targetVersions: workOrder.updated_at
         ? { [`work_order:${workOrder.id}`]: workOrder.updated_at }
@@ -140,72 +183,23 @@ export const assignWorkOrderTool = defineShopAssistantTool({
     };
   },
   async execute(input, context) {
-    const admin = createAdminSupabase();
-    const [{ data: workOrder, error: workOrderError }, { data: technician, error: technicianError }] =
-      await Promise.all([
-        admin
-          .from("work_orders")
-          .select("id, custom_id, shop_id, updated_at")
-          .eq("id", input.workOrderId)
-          .eq("shop_id", context.actor.shopId)
-          .maybeSingle(),
-        admin
-          .from("profiles")
-          .select("id, shop_id, role, full_name")
-          .eq("id", input.technicianId)
-          .eq("shop_id", context.actor.shopId)
-          .maybeSingle(),
-      ]);
-    if (workOrderError) throw new Error(workOrderError.message);
-    if (technicianError) throw new Error(technicianError.message);
-    if (!workOrder) throw new Error("Work order not found in this shop.");
-    if (!technician) throw new Error("Technician not found in this shop.");
-    if (!new Set(["mechanic", "tech", "foreman", "lead_hand"]).has(String(technician.role ?? "").toLowerCase())) {
-      throw new Error("Selected profile is not assignable as a technician.");
+    if (!context.actionId) {
+      throw new Error("An action id is required for atomic work assignment.");
     }
 
-    const expectedVersion = context.targetVersions?.[`work_order:${workOrder.id}`];
-    if (expectedVersion && workOrder.updated_at !== expectedVersion) {
-      throw new Error(
-        "The work order changed after the preview. Review the latest assignments before confirming again.",
-      );
-    }
-
-    let update = admin
-      .from("work_order_lines")
-      .update({ assigned_tech_id: technician.id })
-      .eq("shop_id", context.actor.shopId)
-      .eq("work_order_id", workOrder.id)
-      .eq("line_type", "job");
-    if (input.onlyUnassigned) update = update.is("assigned_tech_id", null);
-    const { data: updatedRows, error: updateError } = await update.select("id");
-    if (updateError) throw new Error(updateError.message);
-
-    if ((updatedRows?.length ?? 0) > 0) {
-      const { error: bridgeError } = await admin
-        .from("work_order_line_technicians")
-        .upsert(
-          (updatedRows ?? []).map((row) => ({
-            work_order_line_id: row.id,
-            technician_id: technician.id,
-            assigned_by: context.actor.userId,
-          })),
-          { onConflict: "work_order_line_id,technician_id" },
-        );
-      if (bridgeError) throw new Error(bridgeError.message);
-    }
-
-    const label = workOrder.custom_id
-      ? `WO #${workOrder.custom_id}`
-      : `WO ${workOrder.id.slice(0, 8)}`;
-    return {
-      ok: true as const,
-      workOrderId: workOrder.id,
-      technicianId: technician.id,
-      technicianName: technician.full_name ?? "Technician",
-      assignedLines: updatedRows?.length ?? 0,
-      summary: `${label} assigned ${updatedRows?.length ?? 0} line(s) to ${technician.full_name ?? "the selected technician"}.`,
-      href: `/work-orders/${workOrder.id}`,
-    };
+    const rpc = context.actor.supabase as unknown as RpcClient;
+    const { data, error } = await rpc.rpc(
+      "shop_assistant_assign_work_order_atomic",
+      {
+        p_action_id: context.actionId,
+        p_shop_id: context.actor.shopId,
+        p_work_order_id: input.workOrderId,
+        p_technician_id: input.technicianId,
+        p_actor_user_id: context.actor.userId,
+        p_only_unassigned: input.onlyUnassigned,
+      },
+    );
+    if (error) throw new Error(rpcErrorMessage(error));
+    return AssignmentResultSchema.parse(data);
   },
 });

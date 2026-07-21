@@ -9,11 +9,19 @@ import {
   INVOICE_IMPORT_BATCH_SIZE,
   processInvoiceImportJobBatch,
 } from "@/features/billing/server/invoice-import-job";
+import {
+  INSPECTION_FORM_IMPORT_BATCH_SIZE,
+  processInspectionFormImportJobBatch,
+} from "@/features/inspections/server/inspection-form-import-job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const SUPPORTED_IMPORT_TYPES = ["vehicle_history", "invoices"] as const;
+const SUPPORTED_IMPORT_TYPES = [
+  "vehicle_history",
+  "invoices",
+  "inspection_form",
+] as const;
 const STALE_PROCESSING_JOB_MINUTES = 15;
 type SupportedImportType = (typeof SUPPORTED_IMPORT_TYPES)[number];
 type ImportJobDispatchRow = {
@@ -88,6 +96,31 @@ async function failStaleProcessingJobs(admin: ReturnType<typeof createAdminSupab
   if (staleSelectError) throw staleSelectError;
   if (!staleJob) return 0;
 
+  // Inspection form imports are page-oriented and safe to retry. A serverless
+  // invocation can stop after a page is claimed, so release stale page locks
+  // and let the normal queue resume instead of failing the whole customer form.
+  if (staleJob.import_type === "inspection_form") {
+    const { error: rowsRecoveryError } = await admin
+      .from("import_job_rows")
+      .update({ status: "queued", error_message: null })
+      .eq("job_id", staleJob.id)
+      .eq("status", "processing");
+    if (rowsRecoveryError) throw rowsRecoveryError;
+
+    const { error: jobRecoveryError } = await admin
+      .from("import_jobs")
+      .update({
+        status: "queued",
+        error_message: null,
+        completed_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", staleJob.id)
+      .eq("status", "processing");
+    if (jobRecoveryError) throw jobRecoveryError;
+    return 0;
+  }
+
   await client
     .from("import_jobs")
     .update({
@@ -148,6 +181,14 @@ async function processImportType(
 ) {
   if (importType === "invoices") {
     return processInvoiceImportJobBatch(admin, jobId, INVOICE_IMPORT_BATCH_SIZE);
+  }
+
+  if (importType === "inspection_form") {
+    return processInspectionFormImportJobBatch(
+      admin,
+      jobId,
+      INSPECTION_FORM_IMPORT_BATCH_SIZE,
+    );
   }
 
   return processVehicleHistoryImportJobBatch(

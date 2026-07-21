@@ -12,6 +12,12 @@ const CustomerSchema = z.object({
   href: z.string(),
 });
 
+const CustomerCreateResultSchema = z.object({
+  ok: z.literal(true),
+  customer: CustomerSchema,
+  summary: z.string(),
+});
+
 type CustomerRow = {
   id: string;
   name: string | null;
@@ -21,12 +27,29 @@ type CustomerRow = {
   phone: string | null;
 };
 
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
+
 function customerName(row: CustomerRow): string {
   return (
     row.name?.trim() ||
     [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
     "Customer"
   );
+}
+
+function rpcErrorMessage(error: RpcError): string {
+  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
 }
 
 export const findCustomersTool = defineShopAssistantTool({
@@ -95,11 +118,7 @@ export const createCustomerTool = defineShopAssistantTool({
     email: z.string().email().optional(),
     phone: z.string().trim().min(3).max(50).optional(),
   }),
-  outputSchema: z.object({
-    ok: z.literal(true),
-    customer: CustomerSchema,
-    summary: z.string(),
-  }),
+  outputSchema: CustomerCreateResultSchema,
   async preview(input, context) {
     let duplicateCount = 0;
     if (input.email) {
@@ -123,37 +142,29 @@ export const createCustomerTool = defineShopAssistantTool({
         duplicateCount > 0
           ? "A same-shop customer already uses this email; review before confirming."
           : "No same-shop email duplicate was found.",
+        "The customer record and terminal assistant result will be committed atomically.",
       ],
       metadata: { duplicateCount },
     };
   },
   async execute(input, context) {
-    const { data, error } = await context.actor.supabase
-      .from("customers")
-      .insert({
-        shop_id: context.actor.shopId,
-        name: input.name,
-        email: input.email,
-        phone: input.phone,
-      })
-      .select("id, name, first_name, last_name, email, phone")
-      .single();
-    if (error || !data) {
-      throw new Error(error?.message ?? "Failed to create customer.");
+    if (!context.actionId) {
+      throw new Error("An action id is required for atomic customer creation.");
     }
 
-    const row = data as unknown as CustomerRow;
-    const customer = {
-      id: row.id,
-      name: customerName(row) || input.name,
-      email: row.email,
-      phone: row.phone,
-      href: `/customers/${row.id}`,
-    };
-    return {
-      ok: true as const,
-      customer,
-      summary: `${customer.name} was created as a shop customer.`,
-    };
+    const rpc = context.actor.supabase as unknown as RpcClient;
+    const { data, error } = await rpc.rpc(
+      "shop_assistant_create_customer_atomic",
+      {
+        p_action_id: context.actionId,
+        p_shop_id: context.actor.shopId,
+        p_actor_user_id: context.actor.userId,
+        p_name: input.name,
+        p_email: input.email ?? null,
+        p_phone: input.phone ?? null,
+      },
+    );
+    if (error) throw new Error(rpcErrorMessage(error));
+    return CustomerCreateResultSchema.parse(data);
   },
 });
