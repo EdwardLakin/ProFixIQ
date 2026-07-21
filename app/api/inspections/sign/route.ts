@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
     shopId,
     actorUserId: user.id,
   });
-  if (!resolved.ok) {
+  if (resolved.ok === false) {
     return NextResponse.json(
       { error: resolved.error },
       { status: resolved.status },
