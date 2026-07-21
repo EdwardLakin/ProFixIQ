@@ -9,6 +9,10 @@ const stateCache = readFileSync(
   "features/shop-assistant/server/state/shopStateCache.ts",
   "utf8",
 );
+const snapshotMigration = readFileSync(
+  "supabase/migrations/20260721190000_shop_assistant_state_snapshots.sql",
+  "utf8",
+);
 const stateRoute = readFileSync(
   "app/api/shop-assistant/state/route.ts",
   "utf8",
@@ -76,7 +80,18 @@ describe("shop assistant live state contracts", () => {
     expect(stateRoute).toContain("getOrRefreshShopState");
     expect(stateCache).toContain("buildShopState");
     expect(stateCache).toContain("DEFAULT_TTL_MS = 30_000");
+    expect(stateCache).toContain("roleMatches");
     expect(stateRoute).toContain('"cache-control": "private, no-store, max-age=0"');
+  });
+
+  it("invalidates every actor snapshot after a successful shop mutation", () => {
+    expect(stateCache).toContain("invalidate_shop_assistant_state_snapshots");
+    expect(snapshotMigration).toContain(
+      "function public.invalidate_shop_assistant_state_snapshots",
+    );
+    expect(snapshotMigration).toContain("security definer");
+    expect(snapshotMigration).toContain("where shop_id = p_shop_id");
+    expect(snapshotMigration).toContain("p_actor_user_id");
   });
 
   it("refreshes while visible instead of appending duplicate dashboard cards", () => {
