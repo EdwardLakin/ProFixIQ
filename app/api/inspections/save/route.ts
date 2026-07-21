@@ -85,9 +85,17 @@ export async function POST(req: NextRequest) {
       .filter(Boolean)
       .join(" — ");
     const lower = message.toLowerCase();
-    const status = lower.includes("locked") || lower.includes("not found") ? 409 : 400;
+    const status =
+      lower.includes("locked") ||
+      lower.includes("finalized") ||
+      lower.includes("not found") ||
+      lower.includes("newer server version") ||
+      lower.includes("conflict")
+        ? 409
+        : 400;
     return NextResponse.json({ error: message }, { status });
   }
 
   return NextResponse.json(data ?? { ok: true });
 }
+
