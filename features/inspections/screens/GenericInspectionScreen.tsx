@@ -2212,14 +2212,15 @@ type SmartMatchRow = {
         return;
       }
 
-      const mergedParts: Array<{ name: string; qty: number; cost?: number }> = [
-        ...((suggestion.parts ?? []) as Array<{
-          name: string;
-          qty: number;
-          cost?: number;
-        }>),
-        ...manualParts.map((p) => ({ name: p.description, qty: p.qty })),
-      ];
+      const mergedParts: Array<{ name: string; qty: number; cost?: number }> =
+        noPartsRequired
+          ? []
+          : manualParts
+              .map((part) => ({
+                name: String(part.description ?? "").trim(),
+                qty: Number(part.qty ?? 0),
+              }))
+              .filter((part) => part.name.length > 0 && part.qty > 0);
 
       const laborTime =
         manualLaborHours != null && !Number.isNaN(manualLaborHours)
@@ -2328,6 +2329,7 @@ type SmartMatchRow = {
                     qty: part.qty,
                   })),
               laborHours: laborTime,
+              price: Math.max(0, laborRate * laborTime),
               notes: complaint ?? undefined,
             },
             source: "inspection",
