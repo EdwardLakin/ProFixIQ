@@ -4,6 +4,7 @@ import {
   acquireActionExecution,
   completeAction,
   failAction,
+  loadAction,
   mapActionResult,
 } from "@/features/shop-assistant/server/actions/actionStore";
 import { findOrCreateActionMessage } from "@/features/shop-assistant/server/actions/actionMessages";
@@ -63,11 +64,16 @@ export async function POST(_request: Request, context: RouteContext) {
             targetVersions: asRecord(acquired.row.target_versions),
           },
         });
-        finalRow = await completeAction({
-          actor,
-          actionId: acquired.row.id,
-          result: output,
-        });
+
+        const persisted = await loadAction(actor, acquired.row.id);
+        finalRow =
+          persisted.status === "executing"
+            ? await completeAction({
+                actor,
+                actionId: acquired.row.id,
+                result: output,
+              })
+            : persisted;
       } catch (executionError: unknown) {
         finalRow = await failAction({
           actor,
