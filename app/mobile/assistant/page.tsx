@@ -51,10 +51,13 @@ export default function MobileAssistantPage() {
     messages,
     loading,
     sending,
+    actionInFlightId,
     error,
     canRetry,
     send,
     retry,
+    confirmAction,
+    cancelAction,
     clearConversation,
   } = useShopAssistant(contextKey);
 
@@ -78,6 +81,9 @@ export default function MobileAssistantPage() {
         error={error}
         canRetry={canRetry}
         onRetry={() => void retry()}
+        actionInFlightId={actionInFlightId}
+        onConfirmAction={(actionId) => void confirmAction(actionId)}
+        onCancelAction={(actionId) => void cancelAction(actionId)}
         className="max-h-[28rem]"
       />
 
@@ -100,7 +106,7 @@ export default function MobileAssistantPage() {
             type="button"
             variant="ghost"
             size="sm"
-            disabled={loading || sending}
+            disabled={loading || sending || Boolean(actionInFlightId)}
             onClick={() => {
               void clearConversation(context);
               setQuestion("");
@@ -112,7 +118,9 @@ export default function MobileAssistantPage() {
             type="button"
             variant="copper"
             size="sm"
-            disabled={loading || sending || !question.trim()}
+            disabled={
+              loading || sending || Boolean(actionInFlightId) || !question.trim()
+            }
             isLoading={sending}
             onClick={() => void submit()}
           >
