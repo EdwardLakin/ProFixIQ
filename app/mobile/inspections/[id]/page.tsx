@@ -170,7 +170,7 @@ export default function MobileInspectionRunnerPage() {
         // The work order is the canonical source for inspection identity context.
         // Mobile routes intentionally keep query strings small, so hydrate the
         // customer and vehicle here instead of starting a blank device-only copy.
-        let workOrderContext: Record<string, string> = {};
+        const workOrderContext: Record<string, string> = {};
         if (workOrderId) {
           const { data: workOrder, error: workOrderError } = await supabase
             .from("work_orders")
