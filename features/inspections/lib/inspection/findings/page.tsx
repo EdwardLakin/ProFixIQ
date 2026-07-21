@@ -358,7 +358,7 @@ export default function InspectionFindingsPage(): JSX.Element {
     setDraftUi((prev) => {
       const nextUi: DraftUiState = { ...prev };
 
-      for (const row of submissionFindings) {
+      for (const row of findings) {
         const key = findingKey(row.sectionIndex, row.itemIndex);
         nextUi[key] ??= {
           laborHoursText: laborHoursToText(row.item.laborHours),

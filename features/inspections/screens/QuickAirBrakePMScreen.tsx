@@ -309,13 +309,6 @@ export default function Maintenance50AirScreen(props: ScreenProps): JSX.Element 
       updateSessionQuoteLine(...args);
     }
   };
-  const startSession = (
-    ...args: Parameters<typeof startInspectionSession>
-  ) => {
-    if (draftReadyRef.current && !isLockedRef.current) {
-      startInspectionSession(...args);
-    }
-  };
   const resumeSession = (
     ...args: Parameters<typeof resumeInspectionSession>
   ) => {
