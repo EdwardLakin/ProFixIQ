@@ -1,14 +1,14 @@
 import "server-only";
 
+import type {
+  ShopAssistantContext,
+  ShopAssistantThreadContext,
+} from "@/features/shop-assistant/types";
 import { SHOP_ASSISTANT_AGENTS } from "./agentRegistry";
 import type {
   ShopAssistantAgentDefinition,
   ShopAssistantIntentClassification,
 } from "./types";
-import type {
-  ShopAssistantContext,
-  ShopAssistantThreadContext,
-} from "@/features/shop-assistant/types";
 
 const ACTION_VERBS = [
   "add",
@@ -28,6 +28,8 @@ const ACTION_VERBS = [
   "move",
   "notify",
   "order",
+  "place",
+  "put",
   "release",
   "remove",
   "reschedule",
@@ -96,7 +98,35 @@ function lastDomainAgentId(
 
 export function isActionLikeQuestion(question: string): boolean {
   const q = normalized(question);
-  return ACTION_VERBS.some((verb) => new RegExp(`\\b${verb}\\b`, "i").test(q));
+  const verbs = ACTION_VERBS.join("|");
+  return (
+    new RegExp(`^(?:please\\s+)?(?:${verbs})\\b`, "i").test(q) ||
+    new RegExp(
+      `\\b(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?(?:${verbs})\\b`,
+      "i",
+    ).test(q) ||
+    new RegExp(`\\b(?:i need you to|go ahead and)\\s+(?:${verbs})\\b`, "i").test(q)
+  );
+}
+
+function isCrossDomainSummary(question: string): boolean {
+  const q = normalized(question);
+  const domainSignals = [
+    /\b(?:work order|approval|queued|stalled)\b/,
+    /\b(?:booking|appointment|schedule)\b/,
+    /\b(?:part|inventory|stock|purchase order)\b/,
+    /\b(?:customer|client|message)\b/,
+    /\b(?:inspection)\b/,
+    /\b(?:invoice|billing|payment)\b/,
+    /\b(?:technician|tech|workforce|utilization)\b/,
+  ].filter((pattern) => pattern.test(q)).length;
+
+  return (
+    domainSignals >= 2 &&
+    /\b(?:across|overall|shop|what changed|today|everything|all departments|operations)\b/.test(
+      q,
+    )
+  );
 }
 
 export function classifyShopAssistantIntent(params: {
@@ -105,6 +135,18 @@ export function classifyShopAssistantIntent(params: {
   threadContext: ShopAssistantThreadContext;
 }): ShopAssistantIntentClassification {
   const question = normalized(params.question);
+  const actionLike = isActionLikeQuestion(params.question);
+
+  if (!actionLike && isCrossDomainSummary(params.question)) {
+    return {
+      agentId: "reporting_agent",
+      domain: "reporting",
+      confidence: 0.96,
+      reason: "matched a cross-domain shop summary request",
+      actionLike: false,
+    };
+  }
+
   const pageAgent = contextAgentId(params.pageContext);
   const lastAgent = lastDomainAgentId(params.threadContext);
   const scores = new Map<ShopAssistantAgentDefinition["id"], number>();
@@ -123,7 +165,10 @@ export function classifyShopAssistantIntent(params: {
       score += 2;
       agentReasons.push("matched current page context");
     }
-    if (lastAgent === agent.id && /\b(?:it|that|those|them|there|next|again)\b/i.test(question)) {
+    if (
+      lastAgent === agent.id &&
+      /\b(?:it|that|those|them|there|next|again)\b/i.test(question)
+    ) {
       score += 3;
       agentReasons.push("continued the active conversation domain");
     }
@@ -142,15 +187,20 @@ export function classifyShopAssistantIntent(params: {
   const selected = ranked[0]?.score
     ? ranked[0]
     : {
-        agent: SHOP_ASSISTANT_AGENTS.find(
-          (agent) => agent.id === (lastAgent ?? pageAgent ?? "reporting_agent"),
-        ) ?? SHOP_ASSISTANT_AGENTS.find((agent) => agent.id === "reporting_agent")!,
+        agent:
+          SHOP_ASSISTANT_AGENTS.find(
+            (agent) => agent.id === (lastAgent ?? pageAgent ?? "reporting_agent"),
+          ) ??
+          SHOP_ASSISTANT_AGENTS.find((agent) => agent.id === "reporting_agent")!,
         score: 1,
       };
   const nextScore = ranked[1]?.score ?? 0;
   const confidence = Math.min(
     0.99,
-    Math.max(0.45, 0.55 + selected.score * 0.05 + (selected.score - nextScore) * 0.03),
+    Math.max(
+      0.45,
+      0.55 + selected.score * 0.05 + (selected.score - nextScore) * 0.03,
+    ),
   );
 
   return {
@@ -160,6 +210,6 @@ export function classifyShopAssistantIntent(params: {
     reason:
       reasons.get(selected.agent.id)?.join(", ") ||
       "selected from active shop context",
-    actionLike: isActionLikeQuestion(params.question),
+    actionLike,
   };
 }
