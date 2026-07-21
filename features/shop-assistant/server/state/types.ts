@@ -1,6 +1,9 @@
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import type { ShopAssistantDomain } from "@/features/shop-assistant/types";
 
+export const SHOP_ASSISTANT_STATE_TTL_MS = 30_000;
+export const SHOP_ASSISTANT_MAX_STALE_MS = 2 * 60_000;
+
 export type ShopAssistantAlertLevel = "info" | "warning" | "critical";
 
 export type ShopAssistantAlert = {
