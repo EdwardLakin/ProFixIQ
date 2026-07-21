@@ -9,6 +9,10 @@ const stateCache = readFileSync(
   "features/shop-assistant/server/state/shopStateCache.ts",
   "utf8",
 );
+const stateTypes = readFileSync(
+  "features/shop-assistant/server/state/types.ts",
+  "utf8",
+);
 const snapshotMigration = readFileSync(
   "supabase/migrations/20260721190000_shop_assistant_state_snapshots.sql",
   "utf8",
@@ -83,7 +87,10 @@ describe("shop assistant live state contracts", () => {
     expect(stateRoute).toContain("requireShopAssistantActor");
     expect(stateRoute).toContain("getOrRefreshShopState");
     expect(stateCache).toContain("buildShopState");
-    expect(stateCache).toContain("DEFAULT_TTL_MS = 90_000");
+    expect(stateTypes).toContain("SHOP_ASSISTANT_STATE_TTL_MS = 90_000");
+    expect(stateCache).toContain(
+      "const DEFAULT_TTL_MS = SHOP_ASSISTANT_STATE_TTL_MS",
+    );
     expect(stateCache).toContain("roleMatches");
     expect(stateCache).toContain("createAdminSupabase");
     expect(stateCache).toContain("adminDb()");
@@ -92,6 +99,14 @@ describe("shop assistant live state contracts", () => {
     );
     expect(snapshotMigration).toContain("to service_role");
     expect(stateRoute).toContain('"cache-control": "private, no-store, max-age=0"');
+  });
+
+  it("bounds stale fallback and never reuses an invalidated projection", () => {
+    expect(stateTypes).toContain("SHOP_ASSISTANT_MAX_STALE_MS");
+    expect(stateCache).toContain("canUseStaleFallback");
+    expect(stateCache).toContain("nowMs - expiresAtMs <= SHOP_ASSISTANT_MAX_STALE_MS");
+    expect(stateCache).toContain("!existing?.invalidated_at");
+    expect(stateCache).toContain("if (canUseStaleFallback && existingState)");
   });
 
   it("invalidates every actor snapshot after a successful shop mutation", () => {
