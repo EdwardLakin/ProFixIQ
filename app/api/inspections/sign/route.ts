@@ -228,14 +228,12 @@ export async function POST(req: NextRequest) {
   const profileResult = await supabase
     .from("profiles")
     .select(
-      "shop_id, full_name, first_name, last_name, tech_signature_path, tech_signature_hash",
+      "shop_id, full_name, tech_signature_path, tech_signature_hash",
     )
     .eq("id", user.id)
     .maybeSingle<{
       shop_id: string | null;
       full_name: string | null;
-      first_name: string | null;
-      last_name: string | null;
       tech_signature_path: string | null;
       tech_signature_hash: string | null;
     }>();
@@ -256,9 +254,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const profileName =
-    (profile?.full_name ?? "").trim() ||
-    `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+  const authMetadataName =
+    typeof user.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name.trim()
+      : typeof user.user_metadata?.name === "string"
+        ? user.user_metadata.name.trim()
+        : "";
+  const profileName = (profile?.full_name ?? "").trim() || authMetadataName;
   const effectiveSignedName =
     role === "technician" ? profileName : signedName.trim();
 

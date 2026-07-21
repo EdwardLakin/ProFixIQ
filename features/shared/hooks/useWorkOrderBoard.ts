@@ -52,7 +52,35 @@ export function useWorkOrderBoard(
       return;
     }
 
-    setRows((data ?? []) as WorkOrderBoardRow[]);
+    const boardRows = (data ?? []) as WorkOrderBoardRow[];
+
+    if (variant !== "shop" || boardRows.length === 0) {
+      setRows(boardRows);
+      setLoading(false);
+      return;
+    }
+
+    const workOrderIds = boardRows.map((row) => row.work_order_id);
+    const { data: activeSegments } = await supabase
+      .from("work_order_line_labor_segments")
+      .select("work_order_id")
+      .in("work_order_id", workOrderIds)
+      .is("ended_at", null);
+
+    const activeWorkOrderIds = new Set(
+      (activeSegments ?? [])
+        .map((segment) => segment.work_order_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+
+    setRows(
+      boardRows.map((row) =>
+        activeWorkOrderIds.has(row.work_order_id) &&
+        row.overall_stage !== "completed"
+          ? { ...row, overall_stage: "in_progress" }
+          : row,
+      ),
+    );
     setLoading(false);
   }, [opts?.fleetId, opts?.limit, supabase, variant]);
 
@@ -69,6 +97,15 @@ export function useWorkOrderBoard(
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_order_lines" },
+        () => fetchRows(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_line_labor_segments",
+        },
         () => fetchRows(),
       )
       .on(
