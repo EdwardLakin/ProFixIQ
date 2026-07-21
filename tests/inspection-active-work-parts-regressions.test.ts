@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const signRoute = readFileSync("app/api/inspections/sign/route.ts", "utf8");
+const autosaveHook = readFileSync(
+  "features/inspections/hooks/useInspectionAutosave.ts",
+  "utf8",
+);
 const boardHook = readFileSync(
   "features/shared/hooks/useWorkOrderBoard.ts",
   "utf8",
@@ -63,8 +67,9 @@ describe("active work and inspection parts regressions", () => {
     expect(genericScreen).toContain(
       "estimateQuoteLineId: createdQuoteLineId ?? quoteId",
     );
-    expect(genericScreen).toContain(
+    expect(autosaveHook).toContain(
       "Saved to shop • syncs across devices",
     );
   });
 });
+
