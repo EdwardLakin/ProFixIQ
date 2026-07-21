@@ -5,7 +5,9 @@ import { useMemo, useState } from "react";
 
 import AssistantConversation from "@/features/assistant/components/AssistantConversation";
 import AssistantResponseCard from "@/features/assistant/components/AssistantResponseCard";
+import ShopAssistantOverview from "@/features/assistant/components/ShopAssistantOverview";
 import { useAssistant } from "@/features/assistant/hooks/useAssistant";
+import { useShopState } from "@/features/assistant/hooks/useShopState";
 import type { AssistantContext } from "@/features/assistant/types/assistant";
 import { Button } from "@shared/components/ui/Button";
 
@@ -55,6 +57,7 @@ export default function MobileAssistantPage() {
     cancelAction,
     clearConversation,
   } = useAssistant(contextKey);
+  const shopState = useShopState(context);
 
   const submit = async () => {
     const value = question.trim();
@@ -74,23 +77,20 @@ export default function MobileAssistantPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 px-3 py-3 sm:px-4">
-      <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-[var(--theme-shadow-medium)]">
-        <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-          Shop assistant
+      <ShopAssistantOverview
+        state={shopState.state}
+        loading={shopState.loading}
+        refreshing={shopState.refreshing}
+        error={shopState.error}
+        onRefresh={shopState.refresh}
+        compact
+      />
+
+      {contextLabel ? (
+        <div className="inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-xs text-[color:var(--theme-text-secondary)]">
+          Context: {contextLabel}
         </div>
-        <h1 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
-          Ask or take action
-        </h1>
-        <p className="mt-1 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          Ask across the shop or request an operational change. Record changes are
-          shown for review and require confirmation before they run.
-        </p>
-        {contextLabel ? (
-          <div className="mt-3 inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Context: {contextLabel}
-          </div>
-        ) : null}
-      </section>
+      ) : null}
 
       {hydrating ? (
         <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
@@ -105,13 +105,13 @@ export default function MobileAssistantPage() {
           htmlFor="mobile-assistant-question"
           className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]"
         >
-          Question or command
+          Ask or take action
         </label>
         <textarea
           id="mobile-assistant-question"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask about shop status or request a reviewed action, such as putting a work order on hold for parts."
+          placeholder="Ask how the shop is doing or request a reviewed operational action."
           className="mt-2 min-h-32 w-full rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/30"
         />
         <div className="mt-3 flex items-center justify-between gap-2">

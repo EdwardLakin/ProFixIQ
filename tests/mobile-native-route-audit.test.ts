@@ -67,7 +67,9 @@ describe("mobile-native navigation", () => {
       "Service requests",
     );
     expect(read("app/mobile/offline/page.tsx")).toContain("Offline &amp; sync");
-    expect(read("app/mobile/assistant/page.tsx")).toContain("Ask or take action");
+    expect(read("app/mobile/assistant/page.tsx")).toContain(
+      "Shop command center",
+    );
   });
 
   it("uses the existing shop-scoped operations payload", () => {

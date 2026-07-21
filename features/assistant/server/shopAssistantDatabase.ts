@@ -24,6 +24,15 @@ export type AssistantMessageRow = {
   created_at: string;
 };
 
+export type AssistantShopStateRow = {
+  shop_id: string;
+  snapshot: Json;
+  version: number;
+  refreshed_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AssistantActionRequestStatus =
   | "pending"
   | "executing"
@@ -58,6 +67,24 @@ export type AssistantActionRequestRow = {
 type AssistantPersistenceDatabase = {
   public: {
     Tables: {
+      assistant_shop_states: {
+        Row: AssistantShopStateRow;
+        Insert: {
+          shop_id: string;
+          snapshot?: Json;
+          version?: number;
+          refreshed_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<
+          Pick<
+            AssistantShopStateRow,
+            "snapshot" | "version" | "refreshed_at" | "updated_at"
+          >
+        >;
+        Relationships: [];
+      };
       assistant_conversations: {
         Row: AssistantConversationRow;
         Insert: {
@@ -155,8 +182,8 @@ export type ShopAssistantSupabaseClient =
   SupabaseClient<AssistantPersistenceDatabase>;
 
 /**
- * The migration and this narrow database overlay are kept together until the
- * next generated Supabase type refresh. It avoids weakening the application-wide
+ * Migrations and this narrow database overlay are kept together until the next
+ * generated Supabase type refresh. It avoids weakening the application-wide
  * client type while allowing the newly added assistant tables to be used safely.
  */
 export function asShopAssistantClient(
