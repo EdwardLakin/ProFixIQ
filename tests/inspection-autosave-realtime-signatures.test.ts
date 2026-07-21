@@ -19,6 +19,7 @@ const signaturePanel = readFileSync(
 );
 const signRoute = readFileSync("app/api/inspections/sign/route.ts", "utf8");
 const loadRoute = readFileSync("app/api/inspections/load/route.ts", "utf8");
+const saveRoute = readFileSync("app/api/inspections/save/route.ts", "utf8");
 const migration = readFileSync(
   "supabase/migrations/20260721160000_inspection_live_autosave_signature_hardening.sql",
   "utf8",
@@ -103,6 +104,8 @@ describe("inspection autosave, realtime, and signatures", () => {
   });
 
   it("resolves linked profile identities for technician signatures", () => {
+    expect(loadRoute).toContain('.eq("user_id", user.id)');
+    expect(saveRoute).toContain('.eq("user_id", user.id)');
     expect(signRoute).toContain('.eq("user_id", user.id)');
     expect(signaturePanel).toContain('.eq("user_id", user.id)');
     expect(signatureIdentityMigration).toContain(
