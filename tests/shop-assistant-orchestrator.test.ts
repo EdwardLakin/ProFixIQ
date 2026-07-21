@@ -21,6 +21,10 @@ const stateCache = readFileSync(
   "features/shop-assistant/server/state/shopStateCache.ts",
   "utf8",
 );
+const stateTypes = readFileSync(
+  "features/shop-assistant/server/state/types.ts",
+  "utf8",
+);
 const stateRoute = readFileSync(
   "app/api/shop-assistant/state/route.ts",
   "utf8",
@@ -113,7 +117,11 @@ describe("shop assistant orchestration contracts", () => {
     expect(migration).toContain("shop_assistant_state_snapshots");
     expect(migration).toContain("primary key (shop_id, user_id)");
     expect(migration).toContain("enable row level security");
-    expect(stateCache).toContain("DEFAULT_TTL_MS = 90_000");
+    expect(stateTypes).toContain("SHOP_ASSISTANT_STATE_TTL_MS = 90_000");
+    expect(stateTypes).toContain("SHOP_ASSISTANT_MAX_STALE_MS");
+    expect(stateCache).toContain(
+      "const DEFAULT_TTL_MS = SHOP_ASSISTANT_STATE_TTL_MS",
+    );
     expect(stateCache).toContain("buildShopState");
     expect(stateCache).toContain("existingState");
     expect(stateRoute).toContain("getOrRefreshShopState");
