@@ -1,5 +1,6 @@
 import "server-only";
 
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import {
   createPendingAction,
@@ -378,14 +379,19 @@ export async function routeDirectToolIntent(params: {
   if (assignMatch) {
     const workOrder = await resolveWorkOrder(params);
     const techQuery = assignMatch[2].replace(/[.!?]+$/, "").trim();
-    const { data: techs, error } = await params.actor.supabase
+    const { data: matchedProfiles, error } = await params.actor.supabase
       .from("profiles")
       .select("id, full_name, role")
       .eq("shop_id", params.actor.shopId)
       .ilike("full_name", `%${techQuery.replace(/[%,]/g, " ")}%`)
-      .in("role", ["mechanic", "tech", "foreman", "lead_hand"])
-      .limit(10);
+      .limit(25);
     if (error) throw new Error(error.message);
+    const techs = (matchedProfiles ?? [])
+      .filter((profile) => {
+        const role = canonicalizeRole(profile.role);
+        return role === "mechanic" || role === "lead_hand" || role === "foreman";
+      })
+      .slice(0, 10);
     if (!workOrder) {
       return {
         kind: "clarification_required",
@@ -393,11 +399,11 @@ export async function routeDirectToolIntent(params: {
         fields: [{ name: "workOrder", label: "Work order", type: "text" }],
       };
     }
-    if (!techs || techs.length !== 1) {
+    if (techs.length !== 1) {
       return {
         kind: "clarification_required",
         content:
-          techs && techs.length > 1
+          techs.length > 1
             ? `More than one technician matched “${techQuery}”. Select one.`
             : `No same-shop technician matched “${techQuery}”.`,
         fields: [
@@ -405,7 +411,7 @@ export async function routeDirectToolIntent(params: {
             name: "technicianId",
             label: "Technician",
             type: "select",
-            options: (techs ?? []).map((tech) => ({
+            options: techs.map((tech) => ({
               label: tech.full_name ?? tech.id,
               value: tech.id,
             })),
