@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 import { defineShopAssistantTool } from "../types";
@@ -34,9 +35,7 @@ type WorkOrderRow = {
 async function loadWorkOrder(
   workOrderId: string,
   shopId: string,
-  supabase: Parameters<typeof defineShopAssistantTool>[0] extends never
-    ? never
-    : any,
+  supabase: SupabaseClient<any>,
 ): Promise<WorkOrderRow> {
   const { data, error } = await supabase
     .from("work_orders")
@@ -241,15 +240,22 @@ export const releaseWorkOrderHoldTool = defineShopAssistantTool({
     }
 
     const now = new Date().toISOString();
-    const { data: updatedWorkOrder, error: workOrderError } = await context.actor.supabase
+    let workOrderUpdate = context.actor.supabase
       .from("work_orders")
       .update({ status: "queued", updated_at: now })
       .eq("shop_id", context.actor.shopId)
-      .eq("id", row.id)
-      .select("id")
-      .maybeSingle();
+      .eq("id", row.id);
+    if (expectedVersion) {
+      workOrderUpdate = workOrderUpdate.eq("updated_at", expectedVersion);
+    }
+    const { data: updatedWorkOrder, error: workOrderError } =
+      await workOrderUpdate.select("id").maybeSingle();
     if (workOrderError) throw new Error(workOrderError.message);
-    if (!updatedWorkOrder) throw new Error("Work order could not be released.");
+    if (!updatedWorkOrder) {
+      throw new Error(
+        "The work order changed before the hold could be released. Review and try again.",
+      );
+    }
 
     const { data: updatedLines, error: lineError } = await context.actor.supabase
       .from("work_order_lines")
