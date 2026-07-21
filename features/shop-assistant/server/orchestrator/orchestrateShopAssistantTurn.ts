@@ -11,7 +11,10 @@ import type { ShopAssistantThreadContext } from "@/features/shop-assistant/types
 import { getShopAssistantAgent } from "./agentRegistry";
 import { resolveOrchestratorEntities } from "./entityResolver";
 import { classifyShopAssistantIntent } from "./intentClassifier";
-import { buildStateGroundedAnswer } from "./stateGroundedAnswer";
+import {
+  buildStateGroundedAnswer,
+  shouldUseShopState,
+} from "./stateGroundedAnswer";
 import type {
   ShopAssistantOrchestratorInput,
   ShopAssistantOrchestratorResult,
@@ -50,7 +53,7 @@ function agentPayload(params: {
   domain: string;
   confidence: number;
   reason: string;
-  stateGeneratedAt: string;
+  stateGeneratedAt?: string;
 }) {
   return {
     agent: {
@@ -59,7 +62,9 @@ function agentPayload(params: {
       confidence: params.confidence,
       reason: params.reason,
     },
-    stateGeneratedAt: params.stateGeneratedAt,
+    ...(params.stateGeneratedAt
+      ? { stateGeneratedAt: params.stateGeneratedAt }
+      : {}),
   };
 }
 
@@ -70,16 +75,11 @@ export async function orchestrateShopAssistantTurn(
     pageContext: input.pageContext,
     threadContext: input.threadContext,
   });
-  const [state, classification] = await Promise.all([
-    getOrRefreshShopState({ actor: input.actor }),
-    Promise.resolve(
-      classifyShopAssistantIntent({
-        question: input.question,
-        pageContext: entities.context,
-        threadContext: entities.threadContext,
-      }),
-    ),
-  ]);
+  const classification = classifyShopAssistantIntent({
+    question: input.question,
+    pageContext: entities.context,
+    threadContext: entities.threadContext,
+  });
   const agent = getShopAssistantAgent(classification.agentId);
 
   const shouldTryDirectTools =
@@ -107,7 +107,6 @@ export async function orchestrateShopAssistantTurn(
         domain: agent.domain,
         confidence: classification.confidence,
         reason: classification.reason,
-        stateGeneratedAt: state.generatedAt,
       }),
       domain: agent.domain,
       intent: "technician_ai_boundary",
@@ -125,7 +124,6 @@ export async function orchestrateShopAssistantTurn(
           domain: agent.domain,
           confidence: classification.confidence,
           reason: classification.reason,
-          stateGeneratedAt: state.generatedAt,
         }),
         allowedTools: agent.allowedTools,
       },
@@ -134,34 +132,37 @@ export async function orchestrateShopAssistantTurn(
     };
   }
 
-  const stateAnswer = buildStateGroundedAnswer({
-    question: input.question,
-    state,
-    classification,
-  });
-  if (stateAnswer) {
-    return {
-      kind: "answer",
-      content: stateAnswer,
-      payload: {
-        ...agentPayload({
-          agentId: agent.id,
-          domain: agent.domain,
-          confidence: classification.confidence,
-          reason: classification.reason,
-          stateGeneratedAt: state.generatedAt,
-        }),
-        source: "live_shop_state",
-        metrics: state.metrics,
-        alertIds: state.alerts.slice(0, 8).map((alert) => alert.id),
-      },
-      domain: agent.domain,
-      intent: "live_shop_state",
-      resolvedContext: {
-        ...entities.threadContext,
-        lastDomain: agent.domain === "diagnostics" ? undefined : agent.domain,
-      },
-    };
+  if (shouldUseShopState(input.question, classification)) {
+    const state = await getOrRefreshShopState({ actor: input.actor });
+    const stateAnswer = buildStateGroundedAnswer({
+      question: input.question,
+      state,
+      classification,
+    });
+    if (stateAnswer) {
+      return {
+        kind: "answer",
+        content: stateAnswer,
+        payload: {
+          ...agentPayload({
+            agentId: agent.id,
+            domain: agent.domain,
+            confidence: classification.confidence,
+            reason: classification.reason,
+            stateGeneratedAt: state.generatedAt,
+          }),
+          source: "live_shop_state",
+          metrics: state.metrics,
+          alertIds: state.alerts.slice(0, 8).map((alert) => alert.id),
+        },
+        domain: agent.domain,
+        intent: "live_shop_state",
+        resolvedContext: {
+          ...entities.threadContext,
+          lastDomain: agent.domain === "diagnostics" ? undefined : agent.domain,
+        },
+      };
+    }
   }
 
   const answer = await answerAssistant({
@@ -191,7 +192,6 @@ export async function orchestrateShopAssistantTurn(
         domain: agent.domain,
         confidence: classification.confidence,
         reason: classification.reason,
-        stateGeneratedAt: state.generatedAt,
       }),
       source: "specialized_agent_fallback",
       answer,
