@@ -62,25 +62,35 @@ describe("shop assistant live state contracts", () => {
     expect(stateBuilder).toContain("dedupeAlerts");
   });
 
-  it("gates suggestions and sensitive alerts through canonical actor capabilities", () => {
+  it("gates suggestions and service-role alerts through canonical actor capabilities", () => {
     expect(stateBuilder).toContain("capabilities.canAuthorizeQuotes");
     expect(stateBuilder).toContain("capabilities.canManageParts");
     expect(stateBuilder).toContain("capabilities.canAssignWork");
     expect(stateBuilder).toContain("capabilities.canManageBilling");
     expect(stateBuilder).toContain("capabilities.canManageScheduling");
     expect(stateBuilder).toContain("FINANCIAL_ALERT_CODES");
+    expect(stateBuilder).toContain("WORK_ORDER_ALERT_CODES");
+    expect(stateBuilder).toContain("WORKFORCE_ALERT_CODES");
+    expect(stateBuilder).toContain("SHOP_AGGREGATE_ALERT_CODES");
     expect(stateBuilder).toContain("optimization_pricing_normalization");
     expect(stateBuilder).toContain("optimization_missed_revenue");
     expect(stateBuilder).toContain("capabilities.canViewFinancials");
     expect(stateBuilder).toContain("notificationVisibleToActor");
+    expect(stateBuilder).toContain("return capabilities.canViewShopWideData");
   });
 
-  it("serves cached current state through an authenticated no-store route", () => {
+  it("serves server-owned cached state through an authenticated no-store route", () => {
     expect(stateRoute).toContain("requireShopAssistantActor");
     expect(stateRoute).toContain("getOrRefreshShopState");
     expect(stateCache).toContain("buildShopState");
     expect(stateCache).toContain("DEFAULT_TTL_MS = 30_000");
     expect(stateCache).toContain("roleMatches");
+    expect(stateCache).toContain("createAdminSupabase");
+    expect(stateCache).toContain("adminDb()");
+    expect(snapshotMigration).toContain(
+      "revoke insert, update, delete",
+    );
+    expect(snapshotMigration).toContain("to service_role");
     expect(stateRoute).toContain('"cache-control": "private, no-store, max-age=0"');
   });
 
