@@ -13,6 +13,10 @@ const stateTypes = readFileSync(
   "features/shop-assistant/server/state/types.ts",
   "utf8",
 );
+const generatedDatabaseTypes = readFileSync(
+  "shared/types/types/supabase.ts",
+  "utf8",
+);
 const snapshotMigration = readFileSync(
   "supabase/migrations/20260721190000_shop_assistant_state_snapshots.sql",
   "utf8",
@@ -99,6 +103,19 @@ describe("shop assistant live state contracts", () => {
     );
     expect(snapshotMigration).toContain("to service_role");
     expect(stateRoute).toContain('"cache-control": "private, no-store, max-age=0"');
+  });
+
+  it("keeps the snapshot table and invalidation RPC in generated database types", () => {
+    expect(generatedDatabaseTypes).toContain("shop_assistant_state_snapshots: {");
+    expect(generatedDatabaseTypes).toContain(
+      "invalidate_shop_assistant_state_snapshots: {",
+    );
+    expect(stateCache).toContain(
+      'Database["public"]["Tables"]["shop_assistant_state_snapshots"]["Row"]',
+    );
+    expect(stateCache).toContain("import type { Database, Json }");
+    expect(stateCache).not.toContain("SupabaseClient<any>");
+    expect(stateCache).not.toContain("as unknown as AssistantDb");
   });
 
   it("bounds stale fallback and never reuses an invalidated projection", () => {
