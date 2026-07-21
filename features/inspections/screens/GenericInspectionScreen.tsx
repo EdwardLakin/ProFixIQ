@@ -43,7 +43,10 @@ import TireGridHydraulic from "@inspections/lib/inspection/ui/TireGridHydraulic"
 import BatteryGrid from "@inspections/lib/inspection/ui/BatteryGrid";
 
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
+import {
+  InspectionAutosaveStatus,
+  useInspectionRealtimeAutosave,
+} from "@inspections/hooks/useInspectionRealtimeAutosave";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
@@ -887,6 +890,7 @@ type SmartMatchRow = {
 
   const {
     session,
+    replaceSession,
     updateInspection,
     updateItem,
     updateSection,
@@ -897,6 +901,34 @@ type SmartMatchRow = {
     addQuoteLine,
     updateQuoteLine,
   } = useInspectionSession(persistedSession ?? initialSession);
+
+  const autosaveState = useInspectionRealtimeAutosave({
+    session,
+    workOrderLineId,
+    enabled:
+      Boolean(workOrderLineId) &&
+      draftBootLoaded &&
+      serverBootLoaded &&
+      !inspectionCompletedRef.current,
+    locked: isLocked,
+    onRemoteSession: (remoteSession) => {
+      replaceSession(remoteSession);
+      localDraftUpdatedAtRef.current = inspectionDraftTimestamp(remoteSession);
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(remoteSession));
+      } catch {
+        // The server copy remains authoritative if local storage is unavailable.
+      }
+    },
+    onRemoteLocked: () => {
+      setIsLocked(true);
+      try {
+        localStorage.setItem(lockKey, "1");
+      } catch {
+        // Server lock is authoritative.
+      }
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -2729,25 +2761,7 @@ type SmartMatchRow = {
 
   const actions = (
     <>
-      <SaveInspectionButton
-        session={session}
-        workOrderLineId={workOrderLineId}
-        disabled={isLocked}
-        draftKey={draftKey}
-        onRecoveryState={(state, operationKey) => {
-          setRecoveryState(state);
-          recoveryOperationKeyRef.current = operationKey;
-          queuedSessionRef.current = operationKey ? session : null;
-          skipNextQueuedEditCheckRef.current = false;
-          setRecoveryMessage(
-            state === "queued"
-              ? "Inspection is safe on this device and queued for server sync."
-              : state === "conflicted"
-                ? "Inspection is safe on this device, but sync needs review."
-                : "Inspection progress is saved on this device and the server.",
-          );
-        }}
-      />
+      <InspectionAutosaveStatus state={autosaveState} />
 
       <Button
         type="button"
