@@ -233,6 +233,7 @@ export async function GET() {
       {
         token: extracted.token,
         expiresAt: extracted.expiresAt ?? null,
+        transcriptionModel,
       },
       {
         status: 200,
