@@ -37,68 +37,6 @@ function numericValue(value: unknown): number | null {
   return null;
 }
 
-function hasMeaningfulJson(value: unknown): boolean {
-  if (value == null) return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "object") {
-    return Object.keys(value as Record<string, unknown>).length > 0;
-  }
-  if (typeof value === "string") return value.trim().length > 0;
-  return Boolean(value);
-}
-
-function isInfoLine(line: Record<string, unknown>): boolean {
-  const lineType = String(line.line_type ?? "").trim().toLowerCase();
-  const jobType = String(line.job_type ?? "").trim().toLowerCase();
-  return lineType === "info" || lineType === "note" || jobType === "info";
-}
-
-function lineRequiresParts(line: Record<string, unknown>): boolean {
-  if (line.no_parts_required === true || isInfoLine(line)) return false;
-  const jobType = String(line.job_type ?? "").trim().toLowerCase();
-  const lineType = String(line.line_type ?? "").trim().toLowerCase();
-  if (
-    jobType === "inspection" ||
-    jobType === "diagnosis" ||
-    lineType === "inspection" ||
-    lineType === "diagnostic"
-  ) {
-    return (
-      line.parts_required === true ||
-      hasMeaningfulJson(line.parts_required) ||
-      hasMeaningfulJson(line.parts_needed)
-    );
-  }
-  if (line.parts_required === true) return true;
-  if (hasMeaningfulJson(line.parts_required)) return true;
-  if (hasMeaningfulJson(line.parts_needed)) return true;
-  if (typeof line.parts === "string" && line.parts.trim()) return true;
-  if (line.parts_verification_required === true) return true;
-
-  const text = [
-    line.description,
-    line.complaint,
-    line.cause,
-    line.correction,
-    line.notes,
-    line.job_type,
-    line.service_code,
-  ]
-    .map((value) => String(value ?? "").toLowerCase())
-    .join(" ");
-
-  if (
-    /\b(oil|filter|air filter|cabin filter|fuel filter|brake|pads?|rotors?|battery|tire|spark plug|belt|hose|coolant|transmission fluid|differential fluid|wiper)\b/.test(
-      text,
-    )
-  ) {
-    return true;
-  }
-
-  const status = String(line.status ?? "").trim().toLowerCase();
-  return status === "pending_parts" || status === "awaiting_parts";
-}
-
 function partRequestItemHasBillablePrice(row: Record<string, unknown>): boolean {
   const price =
     numericValue(row.quoted_price) ??
@@ -142,20 +80,18 @@ export async function reviewWorkOrder({
     }
   }
 
-  const { data: stagedPartRows } = await supabase
+  const { data: stagedPartRows, error: stagedPartsError } = await supabase
     .from("work_order_parts")
     .select(
-      "work_order_line_id, quantity, quantity_requested, quantity_returned, quantity_cancelled, unit_price, unit_sell_price_snapshot, total_price, is_active",
+      "work_order_line_id, quantity_requested, quantity_returned, quantity_cancelled, unit_price, unit_sell_price_snapshot, total_price, is_active",
     )
     .eq("work_order_id", workOrderId)
     .eq("shop_id", shopId);
+  if (stagedPartsError) throw stagedPartsError;
   for (const row of stagedPartRows ?? []) {
     const record = row as Record<string, unknown>;
     const lineId = typeof row.work_order_line_id === "string" ? row.work_order_line_id : "";
-    const requested =
-      numericValue(record.quantity_requested) ??
-      numericValue(record.quantity) ??
-      0;
+    const requested = numericValue(record.quantity_requested) ?? 0;
     const quantity = Math.max(
       0,
       requested -
@@ -317,14 +253,6 @@ export async function reviewWorkOrder({
     const noCharge = record.no_charge === true;
     const laborNA = record.labor_marked_na === true;
     const hasBillableParts = hasBillablePartsByLine.get(String(line.id)) === true;
-    if (lineRequiresParts(record) && !hasBillableParts) {
-      issues.push({
-        kind: "missing_required_parts",
-        lineId: line.id,
-        message: `Required approved parts are not attached to line: ${line.description ?? line.complaint ?? "job"}`,
-      });
-    }
-
     const laborHours = numericValue(line.labor_time) ?? 0;
     const lineLaborRate = numericValue(record.labor_rate);
     const effectiveLaborRate =
