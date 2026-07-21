@@ -28,7 +28,7 @@ function relevantAlertCodes(
   }
 }
 
-function shouldUseState(
+export function shouldUseShopState(
   question: string,
   classification: ShopAssistantIntentClassification,
 ): boolean {
@@ -52,7 +52,7 @@ export function buildStateGroundedAnswer(params: {
   state: ShopAssistantState;
   classification: ShopAssistantIntentClassification;
 }): string | null {
-  if (!shouldUseState(params.question, params.classification)) return null;
+  if (!shouldUseShopState(params.question, params.classification)) return null;
 
   const metrics = params.state.metrics;
   const lines: string[] = [];
@@ -78,7 +78,9 @@ export function buildStateGroundedAnswer(params: {
   }
 
   const matchesCode = relevantAlertCodes(params.classification);
-  const alerts = params.state.alerts.filter((alert) => matchesCode(alert.code)).slice(0, 4);
+  const alerts = params.state.alerts
+    .filter((alert) => matchesCode(alert.code))
+    .slice(0, 4);
   if (alerts.length > 0) {
     lines.push("Needs attention:");
     for (const alert of alerts) {
