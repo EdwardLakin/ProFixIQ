@@ -2,8 +2,12 @@ import "server-only";
 
 import type { z } from "zod";
 
-import { createCustomerTool, findCustomersTool } from "./domains/customers";
+import type {
+  ShopAssistantActionRisk,
+  ShopAssistantDomain,
+} from "@/features/shop-assistant/types";
 import { sendConversationMessageTool } from "./domains/communications";
+import { createCustomerTool, findCustomersTool } from "./domains/customers";
 import { listInspectionsTool } from "./domains/inspections";
 import { listLowStockPartsTool, listPartsBlockersTool } from "./domains/inventory";
 import { listReadyInvoicesTool, readInvoiceStatusTool } from "./domains/invoices";
@@ -15,12 +19,13 @@ import {
   releaseWorkOrderHoldTool,
 } from "./domains/workOrders";
 import { assignWorkOrderTool, listTechnicianLoadTool } from "./domains/workforce";
-import type {
-  AnyShopAssistantTool,
-  ShopAssistantActionPreviewDraft,
-  ShopAssistantToolContext,
+import {
+  assertToolCapability,
+  type ActorCapabilityKey,
+  type ShopAssistantActionPreviewDraft,
+  type ShopAssistantConfirmationPolicy,
+  type ShopAssistantToolContext,
 } from "./types";
-import { assertToolCapability } from "./types";
 
 const TOOL_DEFINITIONS = [
   readWorkOrderTool,
@@ -42,9 +47,24 @@ const TOOL_DEFINITIONS = [
   readBusinessSnapshotTool,
 ] as const;
 
-type RuntimeTool = AnyShopAssistantTool & {
+type RuntimeTool = {
+  name: string;
+  domain: ShopAssistantDomain;
+  description: string;
+  mode: "read" | "write";
+  risk: ShopAssistantActionRisk;
+  requiredCapability?: ActorCapabilityKey;
+  confirmation: ShopAssistantConfirmationPolicy;
   inputSchema: z.ZodTypeAny;
   outputSchema: z.ZodTypeAny;
+  preview?: (
+    input: unknown,
+    context: ShopAssistantToolContext,
+  ) => Promise<ShopAssistantActionPreviewDraft>;
+  execute: (
+    input: unknown,
+    context: ShopAssistantToolContext,
+  ) => Promise<unknown>;
 };
 
 const TOOL_MAP = new Map<string, RuntimeTool>();
@@ -59,12 +79,12 @@ export type ShopAssistantToolName = (typeof TOOL_DEFINITIONS)[number]["name"];
 
 export type ShopAssistantToolMetadata = {
   name: string;
-  domain: RuntimeTool["domain"];
+  domain: ShopAssistantDomain;
   description: string;
-  mode: RuntimeTool["mode"];
-  risk: RuntimeTool["risk"];
-  confirmation: RuntimeTool["confirmation"];
-  requiredCapability?: RuntimeTool["requiredCapability"];
+  mode: "read" | "write";
+  risk: ShopAssistantActionRisk;
+  confirmation: ShopAssistantConfirmationPolicy;
+  requiredCapability?: ActorCapabilityKey;
 };
 
 export function listShopAssistantTools(): ShopAssistantToolMetadata[] {
@@ -95,9 +115,9 @@ export async function runShopAssistantReadTool(params: {
     throw new Error(`${tool.name} is a write tool and requires an action record.`);
   }
   assertToolCapability(tool, params.context.actor.capabilities);
-  const input = tool.inputSchema.parse(params.input);
+  const input = tool.inputSchema.parse(params.input) as unknown;
   const output = await tool.execute(input, params.context);
-  return tool.outputSchema.parse(output);
+  return tool.outputSchema.parse(output) as unknown;
 }
 
 export async function previewShopAssistantWriteTool(params: {
@@ -117,7 +137,7 @@ export async function previewShopAssistantWriteTool(params: {
     throw new Error(`${tool.name} is missing its confirmation preview.`);
   }
   assertToolCapability(tool, params.context.actor.capabilities);
-  const input = tool.inputSchema.parse(params.input);
+  const input = tool.inputSchema.parse(params.input) as unknown;
   const preview = await tool.preview(input, params.context);
   return {
     input,
@@ -144,7 +164,7 @@ export async function executeShopAssistantWriteTool(params: {
     throw new Error(`${tool.name} is not an executable write action.`);
   }
   assertToolCapability(tool, params.context.actor.capabilities);
-  const input = tool.inputSchema.parse(params.input);
+  const input = tool.inputSchema.parse(params.input) as unknown;
   const output = await tool.execute(input, params.context);
-  return tool.outputSchema.parse(output);
+  return tool.outputSchema.parse(output) as unknown;
 }
