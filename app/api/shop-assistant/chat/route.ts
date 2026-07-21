@@ -306,7 +306,10 @@ export async function POST(request: Request) {
       thread = await updateShopAssistantThreadContext({
         actor,
         thread,
-        context: direct.resolvedContext ?? {},
+        context:
+          direct.kind === "clarification_required"
+            ? {}
+            : (direct.resolvedContext ?? {}),
         title: shouldSetTitle ? question.slice(0, 80) : undefined,
       });
       const messages = await loadShopAssistantMessages(actor, thread.id);
