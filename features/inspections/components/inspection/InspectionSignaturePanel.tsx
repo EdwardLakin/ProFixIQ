@@ -14,6 +14,9 @@ export type InspectionSignaturePanelProps = {
   role: SignatureRole;
   defaultName?: string;
   onSigned?: () => void;
+  beforeSign: () => Promise<
+    { syncRevision?: number | null } | null | void
+  >;
 
   /**
    * Optional: where to send a tech to save their signature (one-time setup).
@@ -39,7 +42,7 @@ function roleSubtext(role: SignatureRole): string {
     return "Uses the saved signature from your profile (no re-signing every time).";
   if (role === "advisor")
     return "Sign to approve/confirm this inspection snapshot.";
-  return "Sign to acknowledge and lock this inspection snapshot.";
+  return "A staff user records the customer's typed acknowledgement; no drawn customer signature is captured.";
 }
 
 function confirmText(role: SignatureRole): string {
@@ -57,23 +60,12 @@ type ProfileResponse = {
   error?: string;
   fullName?: string | null;
   full_name?: string | null;
-  firstName?: string | null;
-  first_name?: string | null;
-  lastName?: string | null;
-  last_name?: string | null;
   name?: string | null;
 };
 
 function pickNameFromProfile(json: ProfileResponse | null): string | null {
   if (!json) return null;
-  const firstName = json.firstName ?? json.first_name;
-  const lastName = json.lastName ?? json.last_name;
-  const candidates = [
-    json.fullName,
-    json.full_name,
-    json.name,
-    [firstName, lastName].filter(Boolean).join(" "),
-  ]
+  const candidates = [json.fullName, json.full_name, json.name]
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter((value) => value.length > 0);
 
@@ -95,6 +87,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
   role,
   defaultName,
   onSigned,
+  beforeSign,
   techSettingsHref,
   lockNameInput,
 }) => {
@@ -167,17 +160,24 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("full_name, first_name, last_name")
+          .select("full_name")
           .eq("id", user.id)
           .maybeSingle<ProfileResponse>();
         if (error) return;
 
-        const profileName = pickNameFromProfile(data ?? null);
-        if (!profileName) return;
+        const authMetadataName =
+          typeof user.user_metadata?.full_name === "string"
+            ? user.user_metadata.full_name.trim()
+            : typeof user.user_metadata?.name === "string"
+              ? user.user_metadata.name.trim()
+              : "";
+        const resolvedName =
+          pickNameFromProfile(data ?? null) || authMetadataName || null;
+        if (!resolvedName) return;
 
         if (!cancelled) {
-          setName(profileName);
-          setAutoFilledName(profileName);
+          setName(resolvedName);
+          setAutoFilledName(resolvedName);
         }
       } catch {
         // Name autofill is a convenience; the technician can type a fallback.
@@ -212,6 +212,23 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
     setBusy(true);
 
     try {
+      // Signing must always cover the latest server snapshot. The API then
+      // resolves the technician name and saved signature from the authenticated
+      // profile instead of trusting browser-supplied evidence.
+      const prepared = await beforeSign();
+      const expectedSyncRevision =
+        prepared &&
+        typeof prepared.syncRevision === "number" &&
+        Number.isSafeInteger(prepared.syncRevision) &&
+        prepared.syncRevision > 0
+          ? prepared.syncRevision
+          : null;
+      if (expectedSyncRevision == null) {
+        throw new Error(
+          "Inspection did not finish saving to the server. Wait for autosave and sign again.",
+        );
+      }
+
       const response = await fetch("/api/inspections/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -221,6 +238,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           workOrderLineId: resolvedWorkOrderLineId,
           role,
           signedName: name.trim(),
+          expectedSyncRevision,
         }),
       });
 
@@ -312,14 +330,16 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
 
       {role === "technician" ? (
         <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
-          If signing fails, it usually means no saved signature exists yet.
+          Your saved profile signature is applied automatically when you sign.
           {techSettingsHref ? (
             <>
               {" "}
-              Add one in{" "}
-              <span className="font-medium text-[color:var(--theme-text-primary)]">
-                Tech Settings
-              </span>
+              <a
+                href={techSettingsHref}
+                className="font-medium text-[color:var(--theme-text-primary)] underline underline-offset-2"
+              >
+                Manage signature
+              </a>
               .
             </>
           ) : null}
@@ -333,7 +353,13 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           disabled={busy || loadingName || !canResolveInspection}
           className="inline-flex items-center rounded-lg border border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {busy ? "Signing…" : "Sign"}
+          {busy
+            ? role === "customer"
+              ? "Recording…"
+              : "Signing…"
+            : role === "customer"
+              ? "Record acknowledgement"
+              : "Sign"}
         </button>
       </div>
     </div>
@@ -341,3 +367,4 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
 };
 
 export default InspectionSignaturePanel;
+
