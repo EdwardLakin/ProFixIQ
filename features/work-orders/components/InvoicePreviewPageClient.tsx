@@ -766,6 +766,11 @@ export default function InvoicePreviewPageClient({
     return map;
   }, [reviewIssues]);
 
+  const generalReviewIssues = useMemo(
+    () => reviewIssues.filter((issue) => !issue.lineId),
+    [reviewIssues],
+  );
+
   const canTakeStripePayment = Boolean(shopId && stripeAccountId);
   const invoiceCurrency =
     activeInvoiceVersion?.currency ??
@@ -1144,29 +1149,31 @@ export default function InvoicePreviewPageClient({
         {!activeInvoiceVersion && !reviewOk ? (
           <div className="rounded-xl border border-amber-500/30 bg-[color:var(--theme-surface-inset)] px-3 py-2">
             <div className="text-[0.7rem] uppercase tracking-[0.18em] text-amber-200">
-              Invoice blocked
+              Invoice needs attention
             </div>
             <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-              Fix the items below, then refresh this page.
+              Complete the required items below before sending the invoice.
             </div>
 
             {reviewError ? (
               <div className="mt-2 text-[0.75rem] text-red-200">{reviewError}</div>
             ) : null}
 
-            <ul className="mt-2 space-y-1 text-[0.8rem] text-[color:var(--theme-text-primary)]">
-              {(reviewIssues ?? []).slice(0, 12).map((i, idx) => (
-                <li key={`${i.kind}-${idx}`} className="flex gap-2">
-                  <span className="text-amber-300">•</span>
-                  <span>{i.message}</span>
-                </li>
-              ))}
-            </ul>
+            {generalReviewIssues.length > 0 ? (
+              <ul className="mt-2 space-y-1 text-[0.8rem] text-[color:var(--theme-text-primary)]">
+                {generalReviewIssues.slice(0, 12).map((issue, index) => (
+                  <li key={`${issue.kind}-${index}`} className="flex gap-2">
+                    <span className="text-amber-300">•</span>
+                    <span>{issue.message}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             {issuesByLineId.size > 0 ? (
               <div className="mt-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
                 <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                  Line issues
+                  Required line updates
                 </div>
                 <ul className="mt-2 space-y-2 text-[0.8rem] text-[color:var(--theme-text-primary)]">
                   {(effectiveLines ?? [])
