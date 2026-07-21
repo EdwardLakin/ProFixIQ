@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 const BILLING_STATUSES = ["completed", "ready_to_invoice", "invoiced"];
@@ -33,9 +33,10 @@ export async function GET() {
   const rows = await Promise.all(
     (data ?? []).map(async (row) => {
       try {
-        const snapshot = await getInvoiceSnapshotForWorkOrder({
+        const snapshot = await getIssuableInvoiceSnapshot({
           supabase: access.supabase,
           workOrderId: row.id,
+          shopId,
         });
 
         return {

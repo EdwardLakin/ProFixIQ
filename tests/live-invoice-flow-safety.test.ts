@@ -8,6 +8,9 @@ const previewClient = readFileSync("features/work-orders/components/InvoicePrevi
 const sendRoute = readFileSync("app/api/invoices/send/route.ts", "utf8");
 const snapshotSource = readFileSync("features/invoices/server/getInvoiceSnapshot.ts", "utf8");
 const billingRoute = readFileSync("app/api/billing/work-orders/route.ts", "utf8");
+const invoiceRoute = readFileSync("app/api/work-orders/[id]/invoice/route.ts", "utf8");
+const invoicePdfRoute = readFileSync("app/api/work-orders/[id]/invoice-pdf/route.ts", "utf8");
+const workOrderView = readFileSync("features/work-orders/app/work-orders/view/page.tsx", "utf8");
 const manualPayment = readFileSync("features/invoices/components/RecordManualPayment.tsx", "utf8");
 
 describe("regular live invoice flow safety", () => {
@@ -29,6 +32,8 @@ describe("regular live invoice flow safety", () => {
     expect(reviewSource).toContain("work_order_parts");
     expect(reviewSource).toContain("work_order_part_allocations");
     expect(reviewSource).toContain("part_request_items");
+    expect(reviewSource).toContain('"parts_not_issued"');
+    expect(reviewSource).toContain("Complete the parts handoff before invoicing");
   });
 
   it("flags invalid or suspicious labor totals before invoice readiness passes", () => {
@@ -48,12 +53,26 @@ describe("regular live invoice flow safety", () => {
     expect(previewClient).toContain("canonicalInvoiceTotal");
   });
 
-  it("loads billing cards from the canonical server snapshot and surfaces pricing failures", () => {
+  it("uses the net-issued snapshot for billing, review, and draft PDF surfaces", () => {
     expect(billingPage).toContain('fetch("/api/billing/work-orders"');
     expect(billingPage).toContain("pricing_error");
-    expect(billingRoute).toContain("getInvoiceSnapshotForWorkOrder");
+    expect(billingRoute).toContain("getIssuableInvoiceSnapshot");
+    expect(invoiceRoute).toContain("getIssuableInvoiceSnapshot");
+    expect(invoicePdfRoute).toContain("getIssuableInvoiceSnapshot");
     expect(billingRoute).toContain("pricing_error");
     expect(billingRoute).not.toContain("catch {");
+  });
+
+  it("never turns allocation acquisition cost into a customer invoice price", () => {
+    expect(snapshotSource).toContain(
+      "Allocation cost is an internal valuation",
+    );
+    expect(snapshotSource).not.toContain("safeNumber(a.unit_cost) ||");
+  });
+
+  it("advances completed work orders through the protected mark-ready route", () => {
+    expect(workOrderView).toContain("/api/work-orders/${woId}/mark-ready");
+    expect(workOrderView).not.toContain('.update({\n                status: "ready_to_invoice"');
   });
 
   it("billing Invoice button navigates to preview instead of sending", () => {

@@ -133,6 +133,7 @@ export async function reviewWorkOrder({
   kind,
 }: Args): Promise<{ ok: boolean; issues: ReviewIssue[] }> {
   const hasBillablePartsByLine = new Map<string, boolean>();
+  const hasAttachedPartsByLine = new Map<string, boolean>();
   const invoicePartIssues: ReviewIssue[] = [];
 
   const { data: allocationRows } = await supabase
@@ -149,6 +150,7 @@ export async function reviewWorkOrder({
     if (lineId && qty > 0 && (unitCost == null || unitCost > 0)) {
       hasBillablePartsByLine.set(lineId, true);
     }
+    if (lineId && qty > 0) hasAttachedPartsByLine.set(lineId, true);
   }
 
   const { data: stagedPartRows } = await supabase
@@ -170,6 +172,7 @@ export async function reviewWorkOrder({
     ) {
       hasBillablePartsByLine.set(lineId, true);
     }
+    if (lineId && quantity > 0) hasAttachedPartsByLine.set(lineId, true);
   }
 
   const { data: requestItemRows } = await supabase
@@ -193,6 +196,9 @@ export async function reviewWorkOrder({
       partRequestItemHasBillablePrice(record)
     ) {
       hasBillablePartsByLine.set(lineId, true);
+    }
+    if (lineId && partRequestItemQuantity(record) > 0) {
+      hasAttachedPartsByLine.set(lineId, true);
     }
   }
 
@@ -324,10 +330,18 @@ export async function reviewWorkOrder({
     const laborNA = record.labor_marked_na === true;
     const hasBillableParts = hasBillablePartsByLine.get(String(line.id)) === true;
     if (lineRequiresParts(record) && !hasBillableParts) {
+      const hasAttachedParts =
+        hasAttachedPartsByLine.get(String(line.id)) === true;
       issues.push({
-        kind: "missing_required_parts",
+        kind:
+          kind === "invoice_review" && hasAttachedParts
+            ? "parts_not_issued"
+            : "missing_required_parts",
         lineId: line.id,
-        message: `Required parts are missing from line: ${line.description ?? line.complaint ?? "job"}`,
+        message:
+          kind === "invoice_review" && hasAttachedParts
+            ? `Attached parts are awaiting issue to the job. Complete the parts handoff before invoicing: ${line.description ?? line.complaint ?? "job"}`
+            : `Required parts are missing from line: ${line.description ?? line.complaint ?? "job"}`,
       });
     }
 

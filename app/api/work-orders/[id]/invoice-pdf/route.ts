@@ -8,7 +8,7 @@ import {
 } from "@/features/branding/server/getActiveBrandForRender";
 import { isFrozenInvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
-import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import {
   premiumInvoiceFilename,
   renderPremiumInvoicePdf,
@@ -55,7 +55,11 @@ export async function GET(
     });
     const snapshot =
       activeVersion?.snapshot ??
-      (await getInvoiceSnapshotForWorkOrder({ supabase, workOrderId }));
+      (await getIssuableInvoiceSnapshot({
+        supabase,
+        workOrderId,
+        shopId: workOrder.shop_id,
+      }));
     const { data: invoice } = activeVersion?.invoice_id
       ? await supabase
           .from("invoices")
