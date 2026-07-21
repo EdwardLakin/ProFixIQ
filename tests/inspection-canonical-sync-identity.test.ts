@@ -24,9 +24,9 @@ describe("inspection canonical cross-device synchronization", () => {
 
   it("uses a newer server revision for initial cross-device hydration", () => {
     expect(autosave).toContain("preferCanonicalServer = false");
-    expect(autosave).toContain("const serverIsAhead = revision(remote) > revision(local)");
+    expect(autosave).toContain("const serverIsAhead = revision(remote) > localRevision");
     expect(autosave).toContain(
-      "preferCanonicalServer && serverIsAhead && !hasPendingLocalSave",
+      "preferCanonicalServer &&",
     );
     expect(autosave).toContain("await pullLatest(true)");
   });
@@ -36,5 +36,7 @@ describe("inspection canonical cross-device synchronization", () => {
       "const hasPendingLocalSave = Boolean(pendingOperationKeyRef.current)",
     );
     expect(autosave).toContain("pendingOperationKeyRef.current = recoveredKey");
+    expect(autosave).toContain("const hasUnversionedRecovery =");
+    expect(autosave).toContain("!hasUnversionedRecovery");
   });
 });
