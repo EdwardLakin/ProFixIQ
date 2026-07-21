@@ -16,6 +16,10 @@ const actorSource = readFileSync(
   "utf8",
 );
 const chatRoute = readFileSync("app/api/shop-assistant/chat/route.ts", "utf8");
+const diagnosticBoundary = readFileSync(
+  "features/shop-assistant/server/orchestrator/agents/diagnosticBoundaryAgent.ts",
+  "utf8",
+);
 const migration = readFileSync(
   "supabase/migrations/20260721180000_shop_assistant_threads_actions.sql",
   "utf8",
@@ -67,7 +71,9 @@ describe("shop assistant reliability contracts", () => {
 
   it("keeps technician diagnostics isolated inside the existing work-order assistant", () => {
     expect(actorSource).toContain('canonicalRole === "mechanic"');
-    expect(chatRoute).toContain("technicianRedirectAnswer");
+    expect(chatRoute).toContain("orchestrateShopAssistantTurn");
+    expect(diagnosticBoundary).toContain("Technician AI");
+    expect(diagnosticBoundary).toContain("allowedTools: []");
     expect(techHook).toContain('postJSON("/api/assistant/answer"');
     expect(techHook).not.toContain("/api/shop-assistant/chat");
   });
