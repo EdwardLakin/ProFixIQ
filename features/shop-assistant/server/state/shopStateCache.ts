@@ -62,11 +62,15 @@ export async function getOrRefreshShopState(params: {
   force?: boolean;
   ttlMs?: number;
 }): Promise<ShopAssistantState> {
-  const ttlMs = Math.min(Math.max(params.ttlMs ?? DEFAULT_TTL_MS, 5_000), 120_000);
+  const ttlMs = Math.min(
+    Math.max(params.ttlMs ?? DEFAULT_TTL_MS, 5_000),
+    120_000,
+  );
   const nowMs = Date.now();
   const existing = await loadSnapshot(params.actor).catch(() => null);
-  const existingState = isShopAssistantState(existing?.snapshot)
-    ? existing.snapshot
+  const existingSnapshot = existing?.snapshot;
+  const existingState = isShopAssistantState(existingSnapshot)
+    ? existingSnapshot
     : null;
   const isFresh = Boolean(
     !params.force &&
