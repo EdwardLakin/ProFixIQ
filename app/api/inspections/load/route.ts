@@ -29,15 +29,19 @@ export async function GET(req: NextRequest) {
         work_order_id: string | null;
         work_order_line_id: string | null;
         summary: Json | null;
-
+        locked: boolean | null;
+        finalized_at: string | null;
+        finalized_by: string | null;
       }
     | null = null;
 
   if (inspectionId) {
     const { data, error } = await supabase
       .from("inspections")
-      .select("id, work_order_id, work_order_line_id, summary")
+      .select("id, work_order_id, work_order_line_id, summary, locked, finalized_at, finalized_by")
       .eq("id", inspectionId)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) {
@@ -48,8 +52,10 @@ export async function GET(req: NextRequest) {
   } else if (workOrderLineId) {
     const { data, error } = await supabase
       .from("inspections")
-      .select("id, work_order_id, work_order_line_id, summary")
+      .select("id, work_order_id, work_order_line_id, summary, locked, finalized_at, finalized_by")
       .eq("work_order_line_id", workOrderLineId)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .limit(1)
       .maybeSingle();
 
     if (error) {
@@ -70,6 +76,8 @@ export async function GET(req: NextRequest) {
       .from("inspection_sessions")
       .select("state")
       .eq("work_order_line_id", resolvedWorkOrderLineId)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .limit(1)
       .maybeSingle();
 
     if (sessionErr) {
@@ -103,8 +111,9 @@ export async function GET(req: NextRequest) {
     workOrderId: hydratedSession.workOrderId ?? null,
     workOrderLineId: hydratedSession.workOrderLineId ?? null,
     inspectionMeta: {
-      locked: false,
-      finalizedAt: null,
+      locked: Boolean(inspectionRow?.locked),
+      finalizedAt: inspectionRow?.finalized_at ?? null,
+      finalizedBy: inspectionRow?.finalized_by ?? null,
       reopenedAt: null,
       reopenedBy: null,
       reopenReason: null,

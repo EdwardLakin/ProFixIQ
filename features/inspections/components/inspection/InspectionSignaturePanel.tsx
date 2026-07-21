@@ -36,7 +36,7 @@ function roleLabel(role: SignatureRole): string {
 
 function roleSubtext(role: SignatureRole): string {
   if (role === "technician")
-    return "Uses your saved signature (no re-signing every time).";
+    return "Uses the saved signature from your profile (no re-signing every time).";
   if (role === "advisor")
     return "Sign to approve/confirm this inspection snapshot.";
   return "Sign to acknowledge and lock this inspection snapshot.";
@@ -51,13 +51,6 @@ function confirmText(role: SignatureRole): string {
   }
   return "I confirm that I have reviewed this inspection and that the information above is accurate to the best of my knowledge.";
 }
-
-type SavedSigResponse = {
-  ok?: boolean;
-  error?: string;
-  signatureImagePath?: string | null;
-  signatureHash?: string | null;
-};
 
 type ProfileResponse = {
   ok?: boolean;
@@ -151,40 +144,6 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
     }
   }, [defaultName, role]);
 
-  async function fetchSavedTechSignature(): Promise<{
-    signatureImagePath: string;
-    signatureHash: string | null;
-  } | null> {
-    try {
-      const response = await fetch("/api/profile/signature", {
-        method: "GET",
-        credentials: "include",
-        headers: { "Cache-Control": "no-store" },
-      });
-
-      const json = (await response
-        .json()
-        .catch(() => null)) as SavedSigResponse | null;
-
-      if (!response.ok || json?.error) {
-        throw new Error(json?.error || "Failed to load saved signature");
-      }
-
-      const path = json?.signatureImagePath ?? null;
-      if (!path) return null;
-
-      return {
-        signatureImagePath: path,
-        signatureHash: json?.signatureHash ?? null,
-      };
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to load saved signature";
-      toast.error(message);
-      return null;
-    }
-  }
-
   // Tech convenience: auto-fill name from profile if missing.
   useEffect(() => {
     if (role !== "technician") {
@@ -253,25 +212,6 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
     setBusy(true);
 
     try {
-      let signatureImagePath: string | null = null;
-      let signatureHash: string | null = null;
-
-      if (role === "technician") {
-        const saved = await fetchSavedTechSignature();
-        if (!saved?.signatureImagePath) {
-          if (techSettingsHref) {
-            toast.error(
-              "No saved tech signature. Please add one in Tech Settings.",
-            );
-          } else {
-            toast.error("No saved tech signature. Add one in Tech Settings.");
-          }
-          return;
-        }
-        signatureImagePath = saved.signatureImagePath;
-        signatureHash = saved.signatureHash;
-      }
-
       const response = await fetch("/api/inspections/sign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -281,8 +221,6 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           workOrderLineId: resolvedWorkOrderLineId,
           role,
           signedName: name.trim(),
-          signatureImagePath,
-          signatureHash,
         }),
       });
 

@@ -225,39 +225,20 @@ export async function POST(req: NextRequest) {
   const requestedInspectionId = cleanUuid(bodyUnknown.inspectionId);
   const workOrderLineId = cleanUuid(bodyUnknown.workOrderLineId);
 
-  let effectiveSignedName = signedName.trim();
-  if (!effectiveSignedName && role === "technician") {
-    const profileNameResult = await supabase
-      .from("profiles")
-      .select("full_name, first_name, last_name")
-      .eq("id", user.id)
-      .maybeSingle<{
-        full_name?: string | null;
-        first_name?: string | null;
-        last_name?: string | null;
-      }>();
-
-    if (!profileNameResult.error) {
-      const full = (profileNameResult.data?.full_name ?? "").trim();
-      const joined = `${profileNameResult.data?.first_name ?? ""} ${
-        profileNameResult.data?.last_name ?? ""
-      }`.trim();
-      effectiveSignedName = full || joined;
-    }
-  }
-
-  if (!effectiveSignedName) {
-    return NextResponse.json(
-      { error: "Signed name is required." },
-      { status: 400 },
-    );
-  }
-
   const profileResult = await supabase
     .from("profiles")
-    .select("shop_id")
+    .select(
+      "shop_id, full_name, first_name, last_name, tech_signature_path, tech_signature_hash",
+    )
     .eq("id", user.id)
-    .maybeSingle<{ shop_id: string | null }>();
+    .maybeSingle<{
+      shop_id: string | null;
+      full_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      tech_signature_path: string | null;
+      tech_signature_hash: string | null;
+    }>();
 
   if (profileResult.error) {
     return NextResponse.json(
@@ -266,11 +247,46 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const shopId = profileResult.data?.shop_id ?? null;
+  const profile = profileResult.data;
+  const shopId = profile?.shop_id ?? null;
   if (!shopId) {
     return NextResponse.json(
       { error: "Your profile is missing shop_id; cannot sign inspection." },
       { status: 403 },
+    );
+  }
+
+  const profileName =
+    (profile?.full_name ?? "").trim() ||
+    `${profile?.first_name ?? ""} ${profile?.last_name ?? ""}`.trim();
+  const effectiveSignedName =
+    role === "technician" ? profileName : signedName.trim();
+
+  if (!effectiveSignedName) {
+    return NextResponse.json(
+      {
+        error:
+          role === "technician"
+            ? "Add your full name to your profile before signing."
+            : "Signed name is required.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const effectiveSignatureImagePath =
+    role === "technician"
+      ? profile?.tech_signature_path ?? null
+      : signatureImagePath ?? null;
+  const effectiveSignatureHash =
+    role === "technician"
+      ? profile?.tech_signature_hash ?? null
+      : signatureHash ?? null;
+
+  if (role === "technician" && !effectiveSignatureImagePath) {
+    return NextResponse.json(
+      { error: "No saved technician signature. Add one in Tech Settings." },
+      { status: 409 },
     );
   }
 
@@ -281,7 +297,7 @@ export async function POST(req: NextRequest) {
     shopId,
     actorUserId: user.id,
   });
-  if (!resolved.ok) {
+  if (resolved.ok === false) {
     return NextResponse.json(
       { error: resolved.error },
       { status: resolved.status },
@@ -292,8 +308,8 @@ export async function POST(req: NextRequest) {
     p_inspection_id: resolved.inspectionId,
     p_role: role,
     p_signed_name: effectiveSignedName,
-    p_signature_image_path: signatureImagePath ?? null,
-    p_signature_hash: signatureHash ?? null,
+    p_signature_image_path: effectiveSignatureImagePath,
+    p_signature_hash: effectiveSignatureHash,
   });
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });

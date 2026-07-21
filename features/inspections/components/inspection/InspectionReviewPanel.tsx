@@ -7,7 +7,6 @@ import type {
   InspectionItem,
 } from "@inspections/lib/inspection/types";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
-import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
 import { Button } from "@shared/components/ui/Button";
@@ -163,10 +162,6 @@ export default function InspectionReviewPanel({
           <div className="flex flex-wrap items-center justify-end gap-2">
             {workOrderLineId && (
               <>
-                <SaveInspectionButton
-                  session={session}
-                  workOrderLineId={workOrderLineId}
-                />
                 <FinishInspectionButton
                   session={session}
                   workOrderLineId={workOrderLineId}
@@ -322,6 +317,7 @@ export default function InspectionReviewPanel({
           {/* Technician signature – no default name until it’s part of the session type */}
           <InspectionSignaturePanel
             inspectionId={session.id as string | undefined | null}
+            workOrderLineId={workOrderLineId}
             role="technician"
             onSigned={() => {
               if (!onSessionChange) return;
@@ -335,6 +331,7 @@ export default function InspectionReviewPanel({
           {/* Customer signature */}
           <InspectionSignaturePanel
             inspectionId={session.id as string | undefined | null}
+            workOrderLineId={workOrderLineId}
             role="customer"
             defaultName={customerDefaultName}
             onSigned={() => {
