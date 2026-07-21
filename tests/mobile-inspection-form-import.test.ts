@@ -49,6 +49,32 @@ describe("mobile inspection form imports", () => {
     expect(review).toContain("Copy desktop link");
   });
 
+  it("supports typed customer and fleet names from a server-scoped directory", () => {
+    const importer = read(
+      "features/inspections/components/FleetFormImportCard.tsx",
+    );
+    const uploadRoute = read("app/api/inspection-form-imports/route.ts");
+    expect(importer).toContain("Search or type a customer name");
+    expect(importer).toContain("Search or type a fleet name");
+    expect(importer).toContain("customerName");
+    expect(importer).toContain("fleetName");
+    expect(uploadRoute).toContain('.from("customers")');
+    expect(uploadRoute).toContain('.from("fleets")');
+    expect(uploadRoute).toContain('.eq("shop_id", access.profile.shop_id)');
+  });
+
+  it("uploads mobile photos directly with signed storage targets", () => {
+    const importer = read(
+      "features/inspections/components/FleetFormImportCard.tsx",
+    );
+    const uploadRoute = read("app/api/inspection-form-imports/route.ts");
+    expect(importer).toContain("uploadToSignedUrl");
+    expect(importer).toContain('action: "prepare"');
+    expect(importer).toContain('action: "finalize"');
+    expect(uploadRoute).toContain("createSignedUploadUrl");
+    expect(uploadRoute).toContain("request-size limit");
+  });
+
   it("removes the browser-only sessionStorage handoff", () => {
     expect(read("app/inspections/fleet-review/page.tsx")).not.toContain(
       "sessionStorage",
