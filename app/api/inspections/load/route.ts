@@ -31,6 +31,32 @@ type InspectionPhotoRow = {
   image_url: string | null;
 };
 
+type WorkOrderContextRow = {
+  customer_id: string | null;
+  vehicle_id: string | null;
+};
+type CustomerContextRow = {
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+};
+type VehicleContextRow = {
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  vin: string | null;
+  license_plate: string | null;
+  mileage: string | null;
+  color: string | null;
+  unit_number: string | null;
+  engine_hours: number | null;
+};
+
 function normalizeItemName(value: unknown): string {
   return typeof value === "string"
     ? value.trim().toLowerCase().replace(/\s+/g, " ")
@@ -231,6 +257,63 @@ export async function GET(req: NextRequest) {
 
   const canonicalInspectionId =
     inspectionRow?.id ?? session.id ?? inspectionId ?? "";
+  const canonicalWorkOrderId =
+    inspectionRow?.work_order_id ?? session.workOrderId ?? null;
+
+  let customerContext: CustomerContextRow | null = null;
+  let vehicleContext: VehicleContextRow | null = null;
+  if (canonicalWorkOrderId) {
+    const { data: workOrder, error: workOrderError } = await supabase
+      .from("work_orders")
+      .select("customer_id, vehicle_id")
+      .eq("id", canonicalWorkOrderId)
+      .eq("shop_id", shopId)
+      .maybeSingle<WorkOrderContextRow>();
+
+    if (workOrderError) {
+      console.error("[inspections/load] work-order context failed", workOrderError);
+    } else if (workOrder) {
+      const [customerResult, vehicleResult] = await Promise.all([
+        workOrder.customer_id
+          ? supabase
+              .from("customers")
+              .select(
+                "first_name, last_name, phone, email, address, city, province, postal_code",
+              )
+              .eq("id", workOrder.customer_id)
+              .eq("shop_id", shopId)
+              .maybeSingle<CustomerContextRow>()
+          : Promise.resolve({ data: null, error: null }),
+        workOrder.vehicle_id
+          ? supabase
+              .from("vehicles")
+              .select(
+                "year, make, model, vin, license_plate, mileage, color, unit_number, engine_hours",
+              )
+              .eq("id", workOrder.vehicle_id)
+              .eq("shop_id", shopId)
+              .maybeSingle<VehicleContextRow>()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      if (customerResult.error) {
+        console.error(
+          "[inspections/load] customer context failed",
+          customerResult.error,
+        );
+      } else {
+        customerContext = customerResult.data;
+      }
+      if (vehicleResult.error) {
+        console.error(
+          "[inspections/load] vehicle context failed",
+          vehicleResult.error,
+        );
+      } else {
+        vehicleContext = vehicleResult.data;
+      }
+    }
+  }
+
   let canonicalPhotos: InspectionPhotoRow[] = [];
   if (canonicalInspectionId) {
     const { data: photoRows, error: photoError } = await supabase
@@ -250,8 +333,38 @@ export async function GET(req: NextRequest) {
     {
       ...session,
       id: canonicalInspectionId,
-      workOrderId: inspectionRow?.work_order_id ?? session.workOrderId ?? null,
+      workOrderId: canonicalWorkOrderId,
       workOrderLineId: resolvedWorkOrderLineId ?? session.workOrderLineId ?? null,
+      customer: customerContext
+        ? {
+            ...(session.customer ?? {}),
+            first_name: customerContext.first_name ?? "",
+            last_name: customerContext.last_name ?? "",
+            phone: customerContext.phone ?? "",
+            email: customerContext.email ?? "",
+            address: customerContext.address ?? "",
+            city: customerContext.city ?? "",
+            province: customerContext.province ?? "",
+            postal_code: customerContext.postal_code ?? "",
+          }
+        : session.customer,
+      vehicle: vehicleContext
+        ? {
+            ...(session.vehicle ?? {}),
+            year: vehicleContext.year != null ? String(vehicleContext.year) : "",
+            make: vehicleContext.make ?? "",
+            model: vehicleContext.model ?? "",
+            vin: vehicleContext.vin ?? "",
+            license_plate: vehicleContext.license_plate ?? "",
+            mileage: vehicleContext.mileage ?? "",
+            color: vehicleContext.color ?? "",
+            unit_number: vehicleContext.unit_number ?? "",
+            engine_hours:
+              vehicleContext.engine_hours != null
+                ? String(vehicleContext.engine_hours)
+                : "",
+          }
+        : session.vehicle,
     },
     canonicalPhotos,
   );
