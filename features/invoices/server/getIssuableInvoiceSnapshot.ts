@@ -3,10 +3,8 @@ import type { Database } from "@shared/types/types/supabase";
 import {
   getInvoiceSnapshotForWorkOrder,
   type InvoiceSnapshot,
-  type InvoiceSnapshotPart,
 } from "@/features/invoices/server/getInvoiceSnapshot";
 import { calculateInvoiceTotals, roundMoney } from "@/features/invoices/lib/invoiceTotals";
-import { selectApprovedAttachedInvoiceParts } from "@/features/invoices/lib/approvedInvoiceParts";
 
 type DB = Database;
 
@@ -25,14 +23,13 @@ export async function getIssuableInvoiceSnapshot(input: {
     workOrderId: input.workOrderId,
   });
 
-  // Customer approval materializes durable work_order_parts with frozen sell
-  // prices. Inventory reservation, picking, and issue are operational stock
-  // events; they must not add, remove, or reprice an approved customer charge.
-  // Allocation/request fallbacks remain useful while building a draft, but an
-  // invoice may only use the canonical parts attached to the work-order line.
-  const parts: InvoiceSnapshotPart[] = selectApprovedAttachedInvoiceParts(
-    base.parts,
-  );
+  // getInvoiceSnapshotForWorkOrder has already resolved each completed line's
+  // attached parts through the deployed-schema-compatible precedence chain:
+  // work_order_parts, backed allocations, then linked request items. Do not
+  // filter that canonical result by its diagnostic source label; legacy rows
+  // can legitimately resolve through a fallback while remaining attached to
+  // the same approved work-order line.
+  const parts = [...base.parts];
   const partsCost = roundMoney(
     parts.reduce((sum, part) => sum + finite(part.totalPrice), 0),
   );

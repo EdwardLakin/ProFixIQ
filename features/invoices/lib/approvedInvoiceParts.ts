@@ -22,9 +22,3 @@ export function resolveApprovedPartInvoiceQuantity(
       Math.max(0, finite(input.quantityCancelled)),
   );
 }
-
-export function selectApprovedAttachedInvoiceParts<
-  T extends { source?: string },
->(parts: readonly T[]): T[] {
-  return parts.filter((part) => part.source === "work_order_part");
-}

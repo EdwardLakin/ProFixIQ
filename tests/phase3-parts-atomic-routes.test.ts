@@ -43,7 +43,10 @@ describe("phase 3 atomic parts routes", () => {
     const issuableSnapshot = source(
       "features/invoices/server/getIssuableInvoiceSnapshot.ts",
     );
-    expect(issuableSnapshot).toContain("selectApprovedAttachedInvoiceParts");
+    expect(issuableSnapshot).toContain("const parts = [...base.parts]");
+    expect(issuableSnapshot).not.toContain(
+      'part.source === "work_order_part"',
+    );
     expect(issuableSnapshot).not.toContain("get_invoice_net_issued_parts");
   });
 
