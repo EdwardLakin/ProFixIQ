@@ -5,7 +5,7 @@ alter table public.import_jobs
 
 alter table public.import_jobs
   add constraint import_jobs_import_type_check
-  check (import_type in ('vehicle_history', 'invoices', 'inspection_form'));
+  check (import_type in ('vehicle_history', 'invoices', 'vehicles', 'inspection_form'));
 
 alter table public.import_job_rows
   drop constraint if exists import_job_rows_status_check;
