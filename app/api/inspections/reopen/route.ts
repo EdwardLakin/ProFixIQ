@@ -1,79 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-const REOPEN_ALLOWED_ROLES = new Set(["admin", "advisor", "owner", "manager"]);
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function asString(v: unknown): string | null {
-  return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
+
+type ReopenResult = {
+  ok?: boolean;
+  already_open?: boolean;
+  inspection_id?: string;
+  reopened_at?: string;
+  signing_cycle?: number;
+};
+
+type ReopenRpcClient = {
+  rpc: (
+    name: "reopen_inspection",
+    args: { p_inspection_id: string; p_reason: string },
+  ) => Promise<{
+    data: ReopenResult | null;
+    error: { message: string } | null;
+  }>;
+};
 
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
-
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userResult = await supabase.auth.getUser();
+  if (userResult.error || !userResult.data.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const body = (await req.json().catch(() => null)) as {
     inspectionId?: unknown;
     reason?: unknown;
   } | null;
-
   const inspectionId = asString(body?.inspectionId);
   const reason = asString(body?.reason);
 
-  if (!inspectionId) return NextResponse.json({ error: "inspectionId is required" }, { status: 400 });
-  if (!reason) return NextResponse.json({ error: "Reopen reason is required" }, { status: 400 });
-
-  const { data: me, error: meErr } = await supabase
-    .from("profiles")
-    .select("id, shop_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (meErr || !me?.shop_id) {
-    return NextResponse.json({ error: meErr?.message ?? "Missing profile/shop scope" }, { status: 400 });
+  if (!inspectionId || !UUID_RE.test(inspectionId)) {
+    return NextResponse.json(
+      { error: "A valid inspectionId is required." },
+      { status: 400 },
+    );
+  }
+  if (!reason) {
+    return NextResponse.json(
+      { error: "Reopen reason is required." },
+      { status: 400 },
+    );
   }
 
-  if (!REOPEN_ALLOWED_ROLES.has(String(me.role ?? "").toLowerCase())) {
-    return NextResponse.json({ error: "Forbidden: only admin/advisor/owner/manager can reopen inspections." }, { status: 403 });
+  const { data, error } = await (supabase as unknown as ReopenRpcClient).rpc(
+    "reopen_inspection",
+    {
+      p_inspection_id: inspectionId,
+      p_reason: reason,
+    },
+  );
+
+  if (error) {
+    const lower = error.message.toLowerCase();
+    const status = lower.includes("only an admin")
+      ? 403
+      : lower.includes("does not belong")
+        ? 403
+        : lower.includes("not found")
+          ? 404
+          : 409;
+    return NextResponse.json({ error: error.message }, { status });
   }
 
-  const { data: inspection, error: inspectionErr } = await supabase
-    .from("inspections")
-    .select("id, shop_id, locked")
-    .eq("id", inspectionId)
-    .maybeSingle();
-
-  if (inspectionErr) return NextResponse.json({ error: inspectionErr.message }, { status: 500 });
-  if (!inspection) return NextResponse.json({ error: "Inspection not found" }, { status: 404 });
-  if (inspection.shop_id !== me.shop_id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-  if (!inspection.locked) {
-    return NextResponse.json({ ok: true, alreadyOpen: true });
-  }
-
-  const nowIso = new Date().toISOString();
-  const reopenPatch: Record<string, unknown> = {
-    locked: false,
-    status: "in_progress",
-    is_draft: true,
-    completed: false,
-    reopened_at: nowIso,
-    reopened_by: user.id,
-    reopen_reason: reason,
-    updated_at: nowIso,
-  };
-
-  const { error: updateErr } = await supabase
-    .from("inspections")
-    .update(reopenPatch)
-    .eq("id", inspectionId);
-
-  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
-
-  return NextResponse.json({ ok: true, reopenedAt: nowIso });
+  return NextResponse.json({
+    ok: true,
+    alreadyOpen: Boolean(data?.already_open),
+    inspectionId: data?.inspection_id ?? inspectionId,
+    reopenedAt: data?.reopened_at ?? null,
+    signingCycle: data?.signing_cycle ?? 0,
+  });
 }
