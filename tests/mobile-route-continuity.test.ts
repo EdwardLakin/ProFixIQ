@@ -57,6 +57,7 @@ describe("mobile route continuity", () => {
     expect(queue).toContain("READY_FOR_BILLING_STATUSES");
     expect(queue).toContain('new Set(["completed", "ready_to_invoice"])');
     expect(queue).toContain('fetch("/api/billing/work-orders"');
+    expect(queue).toContain('cache: "no-store"');
     expect(queue).not.toContain("canManageBilling");
     expect(route).toContain("ROLE_GROUPS.billingOperators");
     expect(route).toContain('requiredCapability: "canManageWorkOrders"');
