@@ -211,14 +211,27 @@ export async function POST(req: NextRequest) {
   const requestedInspectionId = cleanUuid(bodyUnknown.inspectionId);
   const workOrderLineId = cleanUuid(bodyUnknown.workOrderLineId);
 
-  const { data: profile, error: profileError } = await supabase
+  const profileColumns =
+    "shop_id, full_name, tech_signature_path, tech_signature_hash, role";
+  let profileResult = await supabase
     .from("profiles")
-    .select(
-      "shop_id, full_name, tech_signature_path, tech_signature_hash, role",
-    )
+    .select(profileColumns)
     .eq("id", user.id)
     .maybeSingle<ProfileRow>();
 
+  // Older and imported staff profiles can keep the auth identity in user_id
+  // while id remains the employee/profile identity. Both are valid in ProFixIQ.
+  if (!profileResult.data && !profileResult.error) {
+    profileResult = await supabase
+      .from("profiles")
+      .select(profileColumns)
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle<ProfileRow>();
+  }
+
+  const profile = profileResult.data;
+  const profileError = profileResult.error;
   if (profileError) {
     return NextResponse.json(
       { error: `Unable to read profile: ${profileError.message}` },
