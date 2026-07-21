@@ -2,12 +2,24 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type {
-  ShopAssistantState,
-  ShopAssistantStateResponse,
+import {
+  SHOP_ASSISTANT_MAX_STALE_MS,
+  SHOP_ASSISTANT_STATE_TTL_MS,
+  type ShopAssistantState,
+  type ShopAssistantStateResponse,
 } from "@/features/shop-assistant/server/state/types";
 
 const REFRESH_INTERVAL_MS = 45_000;
+const MAX_CLIENT_STATE_AGE_MS =
+  SHOP_ASSISTANT_STATE_TTL_MS + SHOP_ASSISTANT_MAX_STALE_MS;
+
+function stateIsWithinGraceWindow(state: ShopAssistantState): boolean {
+  const generatedAtMs = new Date(state.generatedAt).getTime();
+  return (
+    Number.isFinite(generatedAtMs) &&
+    Date.now() - generatedAtMs <= MAX_CLIENT_STATE_AGE_MS
+  );
+}
 
 export function useShopAssistantState(refreshToken?: string | number) {
   const [state, setState] = useState<ShopAssistantState | null>(null);
@@ -44,6 +56,9 @@ export function useShopAssistantState(refreshToken?: string | number) {
       setState(payload.state);
     } catch (refreshError: unknown) {
       if (controller.signal.aborted) return;
+      setState((current) =>
+        current && stateIsWithinGraceWindow(current) ? current : null,
+      );
       setError(
         refreshError instanceof Error
           ? refreshError.message
