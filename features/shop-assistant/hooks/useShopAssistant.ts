@@ -14,6 +14,7 @@ import type {
 } from "@/features/shop-assistant/types";
 
 type RetryRequest = ShopAssistantChatRequest;
+type ActionCommand = "confirm" | "cancel";
 
 function newClientMessageId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -64,9 +65,11 @@ export function useShopAssistant(resetKey?: string) {
   const [role, setRole] = useState<CanonicalRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [actionInFlightId, setActionInFlightId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const actionAbortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
 
   const loadMessages = useCallback(async (threadId: string) => {
@@ -120,7 +123,10 @@ export function useShopAssistant(resetKey?: string) {
 
   useEffect(() => {
     void restore();
-    return () => abortRef.current?.abort();
+    return () => {
+      abortRef.current?.abort();
+      actionAbortRef.current?.abort();
+    };
   }, [resetKey, restore]);
 
   const createConversation = useCallback(
@@ -223,15 +229,63 @@ export function useShopAssistant(resetKey?: string) {
     await sendRequest(retryRequest);
   }, [retryRequest, sendRequest]);
 
+  const runAction = useCallback(async (actionId: string, command: ActionCommand) => {
+    if (!actionId || actionAbortRef.current) return;
+    setActionInFlightId(actionId);
+    setError(null);
+    const controller = new AbortController();
+    actionAbortRef.current = controller;
+
+    try {
+      const response = await fetch(
+        `/api/shop-assistant/actions/${encodeURIComponent(actionId)}/${command}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          signal: controller.signal,
+        },
+      );
+      const payload = await readJson<ShopAssistantChatResponse>(response);
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.ok ? "Shop action failed" : payload.error);
+      }
+
+      setThread(payload.thread);
+      setMessages((current) => mergeMessages(current, payload.messages));
+    } catch (actionError: unknown) {
+      if (controller.signal.aborted) return;
+      setError(
+        actionError instanceof Error ? actionError.message : "Shop action failed",
+      );
+    } finally {
+      if (actionAbortRef.current === controller) actionAbortRef.current = null;
+      setActionInFlightId(null);
+    }
+  }, []);
+
+  const confirmAction = useCallback(
+    async (actionId: string) => runAction(actionId, "confirm"),
+    [runAction],
+  );
+
+  const cancelAction = useCallback(
+    async (actionId: string) => runAction(actionId, "cancel"),
+    [runAction],
+  );
+
   const clearConversation = useCallback(
     async (context?: ShopAssistantContext) => {
       abortRef.current?.abort();
+      actionAbortRef.current?.abort();
       await createConversation(context);
     },
     [createConversation],
   );
 
-  const cancel = useCallback(() => abortRef.current?.abort(), []);
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+    actionAbortRef.current?.abort();
+  }, []);
 
   return {
     thread,
@@ -239,10 +293,13 @@ export function useShopAssistant(resetKey?: string) {
     role,
     loading,
     sending,
+    actionInFlightId,
     error,
     canRetry: Boolean(retryRequest),
     send,
     retry,
+    confirmAction,
+    cancelAction,
     cancel,
     clearConversation,
     refresh: restore,

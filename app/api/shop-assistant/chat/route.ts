@@ -6,6 +6,7 @@ import type {
   AssistantConversationMessage,
   AssistantResolvedContext,
 } from "@/features/agent/assistant/types";
+import { routeDirectToolIntent } from "@/features/shop-assistant/server/actions/directToolIntent";
 import {
   requireShopAssistantActor,
   shopAssistantErrorMessage,
@@ -22,10 +23,13 @@ import {
   updateShopAssistantThreadContext,
 } from "@/features/shop-assistant/server/threadStore";
 import type {
+  ShopAssistantActionPreview,
+  ShopAssistantActionResult,
   ShopAssistantChatRequest,
   ShopAssistantChatResponse,
   ShopAssistantMessage,
   ShopAssistantThreadContext,
+  ShopAssistantTurn,
 } from "@/features/shop-assistant/types";
 
 function isTechnicianDiagnosticRequest(question: string): boolean {
@@ -92,6 +96,73 @@ function contextFromResolved(
   };
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function actionPreviewFromPayload(
+  payload: Record<string, unknown>,
+): ShopAssistantActionPreview | null {
+  const action = asRecord(payload.action);
+  if (
+    typeof action.id !== "string" ||
+    typeof action.toolName !== "string" ||
+    typeof action.title !== "string" ||
+    typeof action.summary !== "string" ||
+    typeof action.expiresAt !== "string"
+  ) {
+    return null;
+  }
+  return action as unknown as ShopAssistantActionPreview;
+}
+
+function actionResultFromPayload(
+  payload: Record<string, unknown>,
+): ShopAssistantActionResult | null {
+  const action = asRecord(payload.action);
+  if (
+    typeof action.id !== "string" ||
+    typeof action.toolName !== "string" ||
+    typeof action.status !== "string" ||
+    typeof action.summary !== "string"
+  ) {
+    return null;
+  }
+  return action as unknown as ShopAssistantActionResult;
+}
+
+function clarificationFieldsFromPayload(
+  payload: Record<string, unknown>,
+): Extract<ShopAssistantTurn, { kind: "clarification_required" }>["fields"] {
+  return Array.isArray(payload.fields)
+    ? (payload.fields as Extract<
+        ShopAssistantTurn,
+        { kind: "clarification_required" }
+      >["fields"])
+    : [];
+}
+
+function turnFromMessage(message: ShopAssistantMessage): ShopAssistantTurn {
+  const actionPreview = actionPreviewFromPayload(message.payload);
+  if (message.kind === "confirmation" && actionPreview) {
+    return { kind: "confirmation_required", message, action: actionPreview };
+  }
+
+  const actionResult = actionResultFromPayload(message.payload);
+  if ((message.kind === "action_result" || message.kind === "error") && actionResult) {
+    return { kind: "action_result", message, action: actionResult };
+  }
+
+  const fields = clarificationFieldsFromPayload(message.payload);
+  if (fields.length > 0) {
+    return { kind: "clarification_required", message, fields };
+  }
+
+  return { kind: "answer", message };
+}
+
 function responseFromExisting(params: {
   thread: Awaited<ReturnType<typeof getOrCreateShopAssistantThread>>;
   messages: ShopAssistantMessage[];
@@ -101,10 +172,7 @@ function responseFromExisting(params: {
     ok: true,
     thread: params.thread,
     messages: params.messages,
-    turn: {
-      kind: "answer",
-      message: params.reply,
-    },
+    turn: turnFromMessage(params.reply),
   };
 }
 
@@ -196,6 +264,77 @@ export async function POST(request: Request) {
     }
 
     const storedMessages = await loadShopAssistantMessages(actor, thread.id);
+    const direct = await routeDirectToolIntent({
+      actor,
+      threadId: thread.id,
+      clientMessageId,
+      question,
+      pageContext: body?.context,
+      threadContext: thread.context,
+    });
+
+    if (direct) {
+      const kind =
+        direct.kind === "confirmation_required"
+          ? "confirmation"
+          : direct.kind === "action_result"
+            ? "action_result"
+            : "text";
+      const payload: Record<string, unknown> = {
+        requestClientMessageId: clientMessageId,
+      };
+      if (direct.kind === "read_result") {
+        payload.toolName = direct.toolName;
+        payload.output = direct.output;
+      } else if (direct.kind === "confirmation_required") {
+        payload.action = direct.action;
+      } else if (direct.kind === "action_result") {
+        payload.action = direct.action;
+      } else {
+        payload.fields = direct.fields;
+      }
+
+      const reply = await insertAssistantMessage({
+        actor,
+        threadId: thread.id,
+        kind,
+        content: direct.content,
+        payload,
+      });
+
+      const shouldSetTitle = thread.title === "Shop Assistant";
+      thread = await updateShopAssistantThreadContext({
+        actor,
+        thread,
+        context:
+          direct.kind === "clarification_required"
+            ? {}
+            : (direct.resolvedContext ?? {}),
+        title: shouldSetTitle ? question.slice(0, 80) : undefined,
+      });
+      const messages = await loadShopAssistantMessages(actor, thread.id);
+
+      const turn: ShopAssistantTurn =
+        direct.kind === "confirmation_required"
+          ? { kind: "confirmation_required", message: reply, action: direct.action }
+          : direct.kind === "action_result"
+            ? { kind: "action_result", message: reply, action: direct.action }
+            : direct.kind === "clarification_required"
+              ? {
+                  kind: "clarification_required",
+                  message: reply,
+                  fields: direct.fields,
+                }
+              : { kind: "answer", message: reply };
+
+      return NextResponse.json<ShopAssistantChatResponse>({
+        ok: true,
+        thread,
+        messages,
+        turn,
+      });
+    }
+
     const answer = isTechnicianDiagnosticRequest(question)
       ? technicianRedirectAnswer()
       : await answerAssistant({
