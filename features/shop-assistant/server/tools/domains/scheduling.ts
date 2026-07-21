@@ -2,7 +2,10 @@ import "server-only";
 
 import { z } from "zod";
 
-import { defineShopAssistantTool } from "../types";
+import {
+  defineShopAssistantTool,
+  type ShopAssistantToolContext,
+} from "../types";
 
 const BookingSchema = z.object({
   id: z.string().uuid(),
@@ -54,9 +57,7 @@ function mapBooking(row: BookingRow) {
 
 async function loadBooking(
   bookingId: string,
-  context: Parameters<
-    NonNullable<ReturnType<typeof defineShopAssistantTool>["execute"]>
-  >[1],
+  context: ShopAssistantToolContext,
 ): Promise<BookingRow> {
   const { data, error } = await context.actor.supabase
     .from("bookings")
@@ -133,7 +134,9 @@ export const rescheduleBookingTool = defineShopAssistantTool({
       summary: `Move the appointment from ${booking.starts_at} to ${input.startsAt}.`,
       consequences: [
         "The new time will immediately replace the current appointment time.",
-        input.note ? "The supplied note will be appended to the appointment." : "No note will be added.",
+        input.note
+          ? "The supplied note will be appended to the appointment."
+          : "No note will be added.",
       ],
       targetVersions: booking.updated_at
         ? { [`booking:${booking.id}`]: booking.updated_at }
