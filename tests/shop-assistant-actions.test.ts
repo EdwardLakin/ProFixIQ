@@ -144,9 +144,15 @@ describe("shop assistant tool execution contracts", () => {
     expect(cancelRoute).toContain("cancelAction");
   });
 
-  it("returns intentional authorization denials and accepts technician aliases", () => {
+  it("returns and persists intentional non-retryable authorization denials", () => {
     expect(toolTypes).toContain("new ShopAssistantHttpError");
     expect(toolTypes).toContain("403");
+    expect(chatRoute).toContain("const status = shopAssistantErrorStatus(error)");
+    expect(chatRoute).toContain("const retryable = status >= 500");
+    expect(chatRoute).toContain("retryable,");
+  });
+
+  it("accepts canonical technician aliases", () => {
     expect(directIntent).toContain("canonicalizeRole");
     expect(workforceTools).toContain("canonicalizeRole");
   });
