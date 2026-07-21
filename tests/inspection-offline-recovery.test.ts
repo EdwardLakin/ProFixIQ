@@ -4,11 +4,15 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 const drafts = read("features/inspections/lib/inspection/offlineDrafts.ts");
 const screen = read("features/inspections/screens/GenericInspectionScreen.tsx");
-const saveButton = read(
-  "features/inspections/components/inspection/SaveInspectionButton.tsx",
+const autosave = read(
+  "features/inspections/hooks/useInspectionAutosave.ts",
 );
 const save = read("features/inspections/lib/inspection/save.ts");
 const findings = read("features/inspections/lib/inspection/findings/page.tsx");
+const quickScreens = [
+  read("features/inspections/screens/QuickPMScreen.tsx"),
+  read("features/inspections/screens/QuickAirBrakePMScreen.tsx"),
+];
 
 describe("technician inspection offline recovery", () => {
   it("stores expiring drafts under the authenticated user and shop scope", () => {
@@ -28,19 +32,16 @@ describe("technician inspection offline recovery", () => {
     expect(drafts).toContain('state: "editing" as const');
   });
 
-  it("recovers before server boot and refuses to replace a newer device draft", () => {
+  it("recovers before server hydration and preserves meaningful newer device edits", () => {
     expect(screen).toContain("getInspectionOfflineDraft");
-    expect(screen).toContain("if (!draftBootLoaded) return");
-    expect(screen).toContain(
-      "serverUpdatedAt >= localDraftUpdatedAtRef.current",
-    );
-    expect(screen).toContain("the older server copy was not applied");
+    expect(screen).toContain("replaceSession(preferred)");
+    expect(screen).toContain("recoveryOperationKey:");
     expect(screen).toContain("!draftBootLoaded ||");
     expect(screen).toContain("!serverBootLoaded ||");
     expect(screen).toContain("const localDraftUpdatedAtRef = useRef(0)");
-    expect(screen).toContain(
-      "inspectionCompletedRef.current || !serverBootLoaded",
-    );
+    expect(autosave).toContain("remoteShouldReplace");
+    expect(autosave).toContain("hasMeaningfulLocalChanges");
+    expect(autosave).toContain("recoveryOperationKey?.trim()");
   });
 
   it("detaches newer edits from an older queued save", () => {
@@ -49,10 +50,46 @@ describe("technician inspection offline recovery", () => {
     expect(screen).toContain('draftState = "editing"');
     expect(screen).toContain("operationKey = undefined");
     expect(screen).toContain("state: draftState");
-    expect(drafts).toContain(
-      "sessionTimestamp(draft.session) > sessionTimestamp(queuedSession)",
-    );
+    expect(drafts).toContain("newestLocalTimestamp");
+    expect(drafts).toContain("await dismissOfflineMutation(draft.operationKey)");
+    expect(drafts).toContain("supersededMutation");
     expect(drafts).toContain('state: "editing" as const');
+    expect(screen).toContain("newerSessionHint: persistedSession");
+    for (const quick of quickScreens) {
+      expect(quick).toContain("recoveryOperationKey,");
+      expect(quick).toContain("setRecoveryOperationKey(operationKey)");
+      expect(quick).toContain("newerSessionHint: browserSession");
+      expect(quick).toContain("restoredMatchesIdentity");
+      expect(quick).toContain("durableDraft?.operationKey");
+    }
+  });
+
+  it("recovers a synced operation acknowledgement before issuing a newer revision", () => {
+    expect(drafts).toContain('if (queued.status === "synced")');
+    expect(drafts).toContain("awaitingAcknowledgement");
+    expect(save).toContain(
+      "!result.queued && !result.conflicted && !serverResponse.current",
+    );
+    expect(save).toContain("serverResponse.current = await postInspectionSave(payload)");
+    expect(save).toContain("queued: true");
+  });
+
+  it("blocks findings edits while submission is in flight and preserves explicit no-parts decisions", () => {
+    expect(findings).toContain("busyRef.current = true");
+    expect(findings).toContain("assertSubmissionCurrent()");
+    expect(findings).toContain("latestSessionRef.current");
+    expect(findings).toContain("activeDraftKeyRef.current");
+    expect(findings).toContain("const noPartsRequired =");
+    expect(findings).toContain("no_parts_required: noPartsRequired");
+    expect(findings).toContain("submissionFindings.length > 0");
+    const finalizeResponseStart = findings.indexOf("const pdfJson =");
+    const finalizeResponseCheck = findings.indexOf(
+      "if (!pdfRes.ok || !pdfJson?.ok)",
+      finalizeResponseStart,
+    );
+    expect(
+      findings.slice(finalizeResponseStart, finalizeResponseCheck),
+    ).not.toContain("assertSubmissionCurrent()");
   });
 
   it("clears durable and legacy drafts from the mounted findings flow", () => {
@@ -63,7 +100,9 @@ describe("technician inspection offline recovery", () => {
     expect(findings.indexOf("await removeInspectionOfflineDraft")).toBeLessThan(
       findings.indexOf('new CustomEvent("inspection:completed"'),
     );
-    expect(saveButton).toContain("? result.operationKey");
-    expect(save).toContain("return { ...result, operationKey }");
+    expect(screen).not.toContain("<SaveInspectionButton");
+    expect(autosave).toContain("saveInspectionOfflineDraft");
+    expect(save).toContain("operationKey,");
+    expect(save).toContain("syncRevision: serverResponse.current?.sync_revision");
   });
 });
