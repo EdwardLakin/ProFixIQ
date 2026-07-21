@@ -22,6 +22,13 @@ const ACTIVE_WORK_ORDER_STATUSES = [
 
 const READY_TO_INVOICE_STATUSES = ["completed", "ready_to_invoice"];
 
+const FINANCIAL_ALERT_CODES = new Set([
+  "optimization_pricing_normalization",
+  "optimization_missed_revenue",
+]);
+
+const BILLING_ALERT_CODES = new Set(["invoice_unsent_too_long"]);
+
 function startOfUtcDay(now: Date): string {
   return new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
@@ -41,6 +48,26 @@ function mapNotificationCode(code: string): string {
   return code;
 }
 
+function notificationVisibleToActor(
+  item: PersistedAssistantNotification,
+  capabilities: ActorCapabilities,
+): boolean {
+  if (FINANCIAL_ALERT_CODES.has(item.code)) {
+    return capabilities.canViewFinancials;
+  }
+  if (BILLING_ALERT_CODES.has(item.code)) {
+    return capabilities.canManageBilling;
+  }
+  return true;
+}
+
+function notificationHref(
+  item: PersistedAssistantNotification,
+): string | undefined {
+  if (item.code === "invoice_unsent_too_long") return "/billing";
+  return item.href ?? undefined;
+}
+
 function mapNotification(
   item: PersistedAssistantNotification,
 ): ShopAssistantAlert {
@@ -55,7 +82,7 @@ function mapNotification(
           : "info",
     title: item.title,
     message: item.message,
-    href: item.href ?? undefined,
+    href: notificationHref(item),
     entityType: item.entity_type ?? undefined,
     entityId: item.entity_id ?? undefined,
   };
@@ -279,7 +306,9 @@ export async function buildShopState(
       row.utilizationPct <= 40,
   );
 
-  const mappedNotifications = persistedNotifications.map(mapNotification);
+  const mappedNotifications = persistedNotifications
+    .filter((item) => notificationVisibleToActor(item, actor.capabilities))
+    .map(mapNotification);
   const syntheticAlerts: ShopAssistantAlert[] = [];
 
   for (const row of idleTechnicians.slice(0, 4)) {
@@ -296,7 +325,7 @@ export async function buildShopState(
   }
 
   const readyToInvoice = readyResult.error ? 0 : Number(readyResult.count ?? 0);
-  if (readyToInvoice > 0) {
+  if (readyToInvoice > 0 && actor.capabilities.canManageBilling) {
     syntheticAlerts.push({
       id: "invoice-ready:shop",
       code: "invoice_ready",
