@@ -1142,12 +1142,12 @@ export default function FocusedJobModal(props: {
     <>
       {Shell}
 
-      {openVehicleHistory && vehicle?.id ? (
+      {openVehicleHistory && vehicle?.id && workOrder?.id && line?.id ? (
         <VehicleHistoryModal
           isOpen={openVehicleHistory}
           onClose={() => setOpenVehicleHistory(false)}
-          vehicleId={vehicle.id}
-          shopId={(workOrder?.shop_id as string | null) ?? null}
+          workOrderId={workOrder.id}
+          workOrderLineId={line.id}
         />
       ) : null}
 
