@@ -9,12 +9,16 @@ const stateCache = readFileSync(
   "features/shop-assistant/server/state/shopStateCache.ts",
   "utf8",
 );
+const stateDatabase = readFileSync(
+  "features/shop-assistant/server/state/database.ts",
+  "utf8",
+);
 const stateTypes = readFileSync(
   "features/shop-assistant/server/state/types.ts",
   "utf8",
 );
-const generatedDatabaseTypes = readFileSync(
-  "shared/types/types/supabase.ts",
+const snapshotDatabaseTypes = readFileSync(
+  "shared/types/types/supabase-shop-assistant.ts",
   "utf8",
 );
 const snapshotMigration = readFileSync(
@@ -96,8 +100,7 @@ describe("shop assistant live state contracts", () => {
       "const DEFAULT_TTL_MS = SHOP_ASSISTANT_STATE_TTL_MS",
     );
     expect(stateCache).toContain("roleMatches");
-    expect(stateCache).toContain("createAdminSupabase");
-    expect(stateCache).toContain("adminDb()");
+    expect(stateCache).toContain("createShopAssistantStateAdminClient");
     expect(snapshotMigration).toContain(
       "revoke insert, update, delete",
     );
@@ -105,15 +108,15 @@ describe("shop assistant live state contracts", () => {
     expect(stateRoute).toContain('"cache-control": "private, no-store, max-age=0"');
   });
 
-  it("keeps the snapshot table and invalidation RPC in generated database types", () => {
-    expect(generatedDatabaseTypes).toContain("shop_assistant_state_snapshots: {");
-    expect(generatedDatabaseTypes).toContain(
-      "invalidate_shop_assistant_state_snapshots: {",
+  it("keeps snapshot storage and invalidation fully typed", () => {
+    expect(snapshotDatabaseTypes).toContain("ShopAssistantStateSnapshotsTable");
+    expect(snapshotDatabaseTypes).toContain("shop_assistant_state_snapshots");
+    expect(snapshotDatabaseTypes).toContain(
+      "invalidate_shop_assistant_state_snapshots",
     );
-    expect(stateCache).toContain(
-      'Database["public"]["Tables"]["shop_assistant_state_snapshots"]["Row"]',
-    );
-    expect(stateCache).toContain("import type { Database, Json }");
+    expect(stateDatabase).toContain("createClient<ShopAssistantDatabase>");
+    expect(stateCache).toContain("ShopAssistantStateSnapshotRow");
+    expect(stateCache).toContain("import type { Json }");
     expect(stateCache).not.toContain("SupabaseClient<any>");
     expect(stateCache).not.toContain("as unknown as AssistantDb");
   });
