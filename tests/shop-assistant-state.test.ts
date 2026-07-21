@@ -5,6 +5,10 @@ const stateBuilder = readFileSync(
   "features/shop-assistant/server/state/buildShopState.ts",
   "utf8",
 );
+const stateCache = readFileSync(
+  "features/shop-assistant/server/state/shopStateCache.ts",
+  "utf8",
+);
 const stateRoute = readFileSync(
   "app/api/shop-assistant/state/route.ts",
   "utf8",
@@ -15,6 +19,18 @@ const stateHook = readFileSync(
 );
 const dashboard = readFileSync(
   "features/shop-assistant/components/ShopAssistantDashboard.tsx",
+  "utf8",
+);
+const alertList = readFileSync(
+  "features/shop-assistant/components/ShopAlertList.tsx",
+  "utf8",
+);
+const suggestionList = readFileSync(
+  "features/shop-assistant/components/ShopSuggestionList.tsx",
+  "utf8",
+);
+const mobileContinuity = readFileSync(
+  "features/mobile/navigation/mobile-route-continuity.ts",
   "utf8",
 );
 const mobilePage = readFileSync("app/mobile/assistant/page.tsx", "utf8");
@@ -42,17 +58,24 @@ describe("shop assistant live state contracts", () => {
     expect(stateBuilder).toContain("dedupeAlerts");
   });
 
-  it("gates suggestions through canonical actor capabilities", () => {
+  it("gates suggestions and sensitive alerts through canonical actor capabilities", () => {
     expect(stateBuilder).toContain("capabilities.canAuthorizeQuotes");
     expect(stateBuilder).toContain("capabilities.canManageParts");
     expect(stateBuilder).toContain("capabilities.canAssignWork");
     expect(stateBuilder).toContain("capabilities.canManageBilling");
     expect(stateBuilder).toContain("capabilities.canManageScheduling");
+    expect(stateBuilder).toContain("FINANCIAL_ALERT_CODES");
+    expect(stateBuilder).toContain("optimization_pricing_normalization");
+    expect(stateBuilder).toContain("optimization_missed_revenue");
+    expect(stateBuilder).toContain("capabilities.canViewFinancials");
+    expect(stateBuilder).toContain("notificationVisibleToActor");
   });
 
-  it("serves current state through an authenticated no-store route", () => {
+  it("serves cached current state through an authenticated no-store route", () => {
     expect(stateRoute).toContain("requireShopAssistantActor");
-    expect(stateRoute).toContain("buildShopState");
+    expect(stateRoute).toContain("getOrRefreshShopState");
+    expect(stateCache).toContain("buildShopState");
+    expect(stateCache).toContain("DEFAULT_TTL_MS = 30_000");
     expect(stateRoute).toContain('"cache-control": "private, no-store, max-age=0"');
   });
 
@@ -69,5 +92,13 @@ describe("shop assistant live state contracts", () => {
     expect(dashboard).toContain("ShopSuggestionList");
     expect(desktopPage).toContain("<ShopAssistantDashboard");
     expect(mobilePage).toContain("<ShopAssistantDashboard");
+  });
+
+  it("keeps alert and suggestion navigation on mobile-native routes", () => {
+    expect(alertList).toContain("resolveMobileHref");
+    expect(alertList).toContain('pathname.startsWith("/mobile")');
+    expect(suggestionList).toContain("resolveMobileHref");
+    expect(mobileContinuity).toContain('pathname.startsWith("/quote-review")');
+    expect(mobileContinuity).toContain('pathname.startsWith("/billing")');
   });
 });
