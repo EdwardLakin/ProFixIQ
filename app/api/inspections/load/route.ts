@@ -26,6 +26,56 @@ function asString(value: unknown): string | null {
     : null;
 }
 
+type InspectionPhotoRow = {
+  item_name: string | null;
+  image_url: string | null;
+};
+
+function normalizeItemName(value: unknown): string {
+  return typeof value === "string"
+    ? value.trim().toLowerCase().replace(/\s+/g, " ")
+    : "";
+}
+
+function mergeCanonicalPhotos(
+  session: InspectionSession,
+  photos: InspectionPhotoRow[],
+): InspectionSession {
+  if (!photos.length) return session;
+
+  const byItem = new Map<string, string[]>();
+  for (const photo of photos) {
+    const itemKey = normalizeItemName(photo.item_name);
+    const url = asString(photo.image_url);
+    if (!itemKey || !url) continue;
+    const current = byItem.get(itemKey) ?? [];
+    if (!current.includes(url)) current.push(url);
+    byItem.set(itemKey, current);
+  }
+  if (!byItem.size) return session;
+
+  const consumed = new Set<string>();
+  return {
+    ...session,
+    sections: (session.sections ?? []).map((section) => ({
+      ...section,
+      items: (section.items ?? []).map((item) => {
+        const key = normalizeItemName(item.item ?? item.name);
+        const canonical = !consumed.has(key) ? byItem.get(key) : undefined;
+        if (!canonical?.length) return item;
+        consumed.add(key);
+        const existing = Array.isArray(item.photoUrls) ? item.photoUrls : [];
+        return {
+          ...item,
+          photoUrls: [...existing, ...canonical].filter(
+            (url, index, all) => all.indexOf(url) === index,
+          ),
+        };
+      }),
+    })),
+  };
+}
+
 export async function GET(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
   const inspectionId = asString(req.nextUrl.searchParams.get("inspectionId"));
@@ -169,12 +219,32 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const hydratedSession: InspectionSession = {
-    ...session,
-    id: inspectionRow?.id ?? session.id ?? inspectionId ?? "",
-    workOrderId: inspectionRow?.work_order_id ?? session.workOrderId ?? null,
-    workOrderLineId: resolvedWorkOrderLineId ?? session.workOrderLineId ?? null,
-  };
+  const canonicalInspectionId =
+    inspectionRow?.id ?? session.id ?? inspectionId ?? "";
+  let canonicalPhotos: InspectionPhotoRow[] = [];
+  if (canonicalInspectionId) {
+    const { data: photoRows, error: photoError } = await supabase
+      .from("inspection_photos")
+      .select("item_name, image_url")
+      .eq("inspection_id", canonicalInspectionId)
+      .order("created_at", { ascending: true });
+
+    if (photoError) {
+      console.error("[inspections/load] canonical photo hydration failed", photoError);
+    } else {
+      canonicalPhotos = (photoRows ?? []) as InspectionPhotoRow[];
+    }
+  }
+
+  const hydratedSession = mergeCanonicalPhotos(
+    {
+      ...session,
+      id: canonicalInspectionId,
+      workOrderId: inspectionRow?.work_order_id ?? session.workOrderId ?? null,
+      workOrderLineId: resolvedWorkOrderLineId ?? session.workOrderLineId ?? null,
+    },
+    canonicalPhotos,
+  );
 
   return NextResponse.json({
     session: hydratedSession,
