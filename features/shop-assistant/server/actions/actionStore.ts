@@ -15,6 +15,8 @@ import type {
 
 type AssistantDb = SupabaseClient<any>;
 
+export const SHOP_ASSISTANT_ACTION_EXECUTION_LEASE_MS = 2 * 60 * 1000;
+
 export type ShopAssistantActionRow = {
   id: string;
   thread_id: string;
@@ -71,6 +73,28 @@ function normalizeStatus(value: string): ShopAssistantActionStatus {
     return value;
   }
   return "pending_confirmation";
+}
+
+function isTerminalStatus(value: string): boolean {
+  return (
+    value === "succeeded" ||
+    value === "failed" ||
+    value === "cancelled" ||
+    value === "expired"
+  );
+}
+
+function executionLeaseExpired(
+  row: ShopAssistantActionRow,
+  nowMs = Date.now(),
+): boolean {
+  if (row.status !== "executing") return false;
+  const leaseAnchor = row.execution_started_at ?? row.updated_at;
+  const leaseStartedAt = new Date(leaseAnchor).getTime();
+  return (
+    !Number.isFinite(leaseStartedAt) ||
+    leaseStartedAt <= nowMs - SHOP_ASSISTANT_ACTION_EXECUTION_LEASE_MS
+  );
 }
 
 function normalizeDomain(value: string): ShopAssistantDomain {
@@ -257,17 +281,56 @@ export async function acquireActionExecution(params: {
     row: await loadAction(params.actor, params.actionId),
   });
 
-  if (current.status !== "pending_confirmation") {
-    return { row: current, acquired: false };
-  }
   if (current.requested_by !== params.actor.userId) {
     throw new ShopAssistantHttpError(
       403,
       "Only the staff member who requested this action can confirm it.",
     );
   }
+  if (isTerminalStatus(current.status)) {
+    return { row: current, acquired: false };
+  }
 
   const now = new Date().toISOString();
+  if (current.status === "executing") {
+    if (!executionLeaseExpired(current)) {
+      return { row: current, acquired: false };
+    }
+
+    let recovery = dbFor(params.actor)
+      .from("shop_assistant_actions")
+      .update({
+        confirmed_by: params.actor.userId,
+        execution_started_at: now,
+        execution_finished_at: null,
+        error: null,
+        updated_at: now,
+      })
+      .eq("id", params.actionId)
+      .eq("shop_id", params.actor.shopId)
+      .eq("requested_by", params.actor.userId)
+      .eq("status", "executing");
+    recovery = current.execution_started_at
+      ? recovery.eq("execution_started_at", current.execution_started_at)
+      : recovery.is("execution_started_at", null);
+
+    const { data, error } = await recovery
+      .select(ACTION_SELECT)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (data) {
+      return { row: data as ShopAssistantActionRow, acquired: true };
+    }
+    return {
+      row: await loadAction(params.actor, params.actionId),
+      acquired: false,
+    };
+  }
+
+  if (current.status !== "pending_confirmation") {
+    return { row: current, acquired: false };
+  }
+
   const { data, error } = await dbFor(params.actor)
     .from("shop_assistant_actions")
     .update({
@@ -275,6 +338,8 @@ export async function acquireActionExecution(params: {
       confirmed_by: params.actor.userId,
       confirmed_at: now,
       execution_started_at: now,
+      execution_finished_at: null,
+      error: null,
       updated_at: now,
     })
     .eq("id", params.actionId)
@@ -311,10 +376,11 @@ export async function completeAction(params: {
     .select(ACTION_SELECT)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) {
-    throw new Error("Action execution result could not be persisted.");
-  }
-  return data as ShopAssistantActionRow;
+  if (data) return data as ShopAssistantActionRow;
+
+  const current = await loadAction(params.actor, params.actionId);
+  if (isTerminalStatus(current.status)) return current;
+  throw new Error("Action execution result could not be persisted.");
 }
 
 export async function failAction(params: {
