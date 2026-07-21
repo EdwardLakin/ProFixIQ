@@ -303,6 +303,9 @@ export async function POST(request: Request) {
       turn: resultTurn(result, reply),
     });
   } catch (error: unknown) {
+    const status = shopAssistantErrorStatus(error);
+    const retryable = status >= 500;
+
     if (actor && threadId && requestClientMessageId) {
       try {
         await insertAssistantMessage({
@@ -312,7 +315,7 @@ export async function POST(request: Request) {
           content: shopAssistantErrorMessage(error),
           payload: {
             requestClientMessageId,
-            retryable: true,
+            retryable,
           },
         });
       } catch {
@@ -324,9 +327,9 @@ export async function POST(request: Request) {
       {
         ok: false,
         error: shopAssistantErrorMessage(error),
-        retryable: shopAssistantErrorStatus(error) >= 500,
+        retryable,
       },
-      { status: shopAssistantErrorStatus(error) },
+      { status },
     );
   }
 }
