@@ -2122,6 +2122,7 @@ type SmartMatchRow = {
     const itExt = it as unknown as {
       parts?: { description: string; qty: number }[];
       laborHours?: number | null;
+      noPartsRequired?: boolean;
       name?: string | null;
 
       // ✅ estimate state (persisted on the item)
@@ -2142,6 +2143,7 @@ type SmartMatchRow = {
 
     const manualLaborHours =
       typeof itExt.laborHours === "number" ? itExt.laborHours : null;
+    const noPartsRequired = itExt.noPartsRequired === true;
 
     inFlightRef.current.add(key);
 
@@ -2255,6 +2257,7 @@ type SmartMatchRow = {
           .filter((p) => p.description.length > 0 && p.qty > 0);
 
         let createdJobId: string | null = null;
+        let createdQuoteLineId: string | null = existingQuoteId;
 
         if (existingLineId) {
           const updateRes = await fetch(
@@ -2318,7 +2321,12 @@ type SmartMatchRow = {
             complaint,
             suggestion: {
               ...suggestion,
-              parts: mergedParts,
+              parts: noPartsRequired
+                ? []
+                : cleanParts.map((part) => ({
+                    name: part.description,
+                    qty: part.qty,
+                  })),
               laborHours: laborTime,
               notes: complaint ?? undefined,
             },
@@ -2327,8 +2335,11 @@ type SmartMatchRow = {
           });
 
           const createdId = (created as unknown as { id?: unknown })?.id;
-          createdJobId =
-            (createdId ? String(createdId) : null) || workOrderLineId || null;
+          createdQuoteLineId = createdId ? String(createdId) : null;
+
+          if (!createdQuoteLineId) {
+            throw new Error("Quote line created without an id");
+          }
 
           updateInspection({
             voiceMeta: {
@@ -2337,54 +2348,22 @@ type SmartMatchRow = {
             } satisfies VoiceMeta,
           });
 
-          if (cleanParts.length > 0) {
-            try {
-              const res = await fetch("/api/parts/requests/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  workOrderId,
-                  jobId: createdJobId,
-                  notes: String(it.notes ?? "") || null,
-                  items: cleanParts,
-                }),
-              });
-
-              if (!res.ok) {
-                const body = (await res.json().catch(() => null)) as unknown;
-                // eslint-disable-next-line no-console
-                console.error("Parts request error", body);
-                toast.error("Line added, but parts request failed", {
-                  id: toastId,
-                });
-                return;
-              }
-
-              toast.success("Line + parts request created from inspection", {
-                id: toastId,
-              });
-            } catch (err: unknown) {
-              // eslint-disable-next-line no-console
-              console.error("Parts request failed", err);
-              toast.error("Line added, but couldn't reach parts request service", {
-                id: toastId,
-              });
-              return;
-            }
-          } else {
-            toast.success("Added to work order (no parts requested)", {
-              id: toastId,
-            });
-          }
+          toast.success(
+            cleanParts.length > 0 && !noPartsRequired
+              ? "Added to Quote Review with parts request"
+              : "Added to Quote Review — no parts required",
+            { id: toastId },
+          );
         }
 
-        if (createdJobId) {
+        if (createdJobId || createdQuoteLineId) {
           updateItem(secIdx, itemIdx, {
             estimateSubmitted: true,
             estimateSubmittedAt: itExt.estimateSubmittedAt ?? nowIso,
             estimateLastUpdatedAt: nowIso,
             estimateWorkOrderLineId: createdJobId,
-            estimateQuoteLineId: quoteId,
+            estimateQuoteLineId: createdQuoteLineId ?? quoteId,
+            noPartsRequired: noPartsRequired || cleanParts.length === 0,
           } as ItemPatch);
         }
       } else {
@@ -3299,6 +3278,17 @@ type SmartMatchRow = {
                                 laborHours: hours,
                               } as ItemPatch);
                             }}
+                            onUpdateNoPartsRequired={(
+                              secIdx: number,
+                              itemIdx: number,
+                              value: boolean,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                noPartsRequired: value,
+                                ...(value ? { parts: [] } : {}),
+                              } as ItemPatch);
+                            }}
                             requireNoteForAI
                             onSubmitAI={(secIdx: number, itemIdx: number) => {
                               void submitAIForItem(secIdx, itemIdx);
@@ -3408,7 +3398,7 @@ type SmartMatchRow = {
         <div className="mx-auto flex max-w-[1240px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="grid grid-cols-2 gap-2 [&>*]:w-full [&>*:last-child:nth-child(odd)]:col-span-2 sm:flex sm:flex-wrap sm:items-center sm:[&>*]:w-auto">{actions}</div>
           <div className="order-first text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:order-none">
-            Draft auto-saves locally
+            Saved to shop • syncs across devices
           </div>
         </div>
       </div>
