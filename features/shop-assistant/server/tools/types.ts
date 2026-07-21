@@ -9,6 +9,12 @@ import type {
   ShopAssistantDomain,
 } from "@/features/shop-assistant/types";
 
+export type ActorCapabilityKey = {
+  [Key in keyof ActorCapabilities]: ActorCapabilities[Key] extends boolean
+    ? Key
+    : never;
+}[keyof ActorCapabilities];
+
 export type ShopAssistantConfirmationPolicy =
   | "never"
   | "required"
@@ -36,7 +42,7 @@ export type ShopAssistantToolDefinition<TInput, TOutput> = {
   description: string;
   mode: "read" | "write";
   risk: ShopAssistantActionRisk;
-  requiredCapability?: keyof ActorCapabilities;
+  requiredCapability?: ActorCapabilityKey;
   confirmation: ShopAssistantConfirmationPolicy;
   inputSchema: z.ZodType<TInput>;
   outputSchema: z.ZodType<TOutput>;
@@ -59,11 +65,11 @@ export function defineShopAssistantTool<TInput, TOutput>(
 }
 
 export function assertToolCapability(
-  tool: Pick<AnyShopAssistantTool, "name" | "requiredCapability">,
+  tool: { name: string; requiredCapability?: ActorCapabilityKey },
   capabilities: ActorCapabilities,
-) {
+): void {
   const capability = tool.requiredCapability;
-  if (capability && !capabilities[capability]) {
+  if (capability && capabilities[capability] !== true) {
     throw new Error(`Your role is not allowed to use ${tool.name}.`);
   }
 }
