@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
 type InspectionRow = {
   id: string;
@@ -37,6 +39,7 @@ export default function MobileInspectionsListPage() {
   const [rows, setRows] = useState<InspectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [canImportForms, setCanImportForms] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -44,6 +47,17 @@ export default function MobileInspectionsListPage() {
       setLoading(true);
       setError(null);
       try {
+        const actor = await resolveCurrentActor(supabase);
+        const role = canonicalizeRole(actor.profile?.role);
+        if (active) {
+          setCanImportForms(
+            role === "owner" ||
+              role === "admin" ||
+              role === "manager" ||
+              role === "advisor" ||
+              role === "service",
+          );
+        }
         const { data, error: queryError } = await supabase
           .from("inspection_sessions")
           .select(
@@ -99,6 +113,17 @@ export default function MobileInspectionsListPage() {
       </header>
 
       <div className="grid grid-cols-2 gap-2">
+        {canImportForms ? (
+          <Link
+            href="/mobile/inspections/import"
+            className="col-span-2 rounded-2xl border border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)] p-4 text-sm font-semibold text-[color:var(--theme-text-primary)]"
+          >
+            Import customer form
+            <div className="mt-1 text-xs font-normal text-[color:var(--theme-text-secondary)]">
+              Photograph a paper checklist and process it in the background
+            </div>
+          </Link>
+        ) : null}
         <Link
           href="/mobile/tech/queue"
           className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 text-sm font-semibold text-[color:var(--theme-text-primary)]"

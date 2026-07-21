@@ -1,0 +1,60 @@
+import { existsSync, readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const read = (path: string) => readFileSync(path, "utf8");
+
+describe("mobile inspection form imports", () => {
+  it("uses the canonical durable import queue with tenant-scoped approval", () => {
+    const migration = read(
+      "supabase/migrations/20260721170000_mobile_inspection_form_imports.sql",
+    );
+    expect(migration).toContain("'inspection_form'");
+    expect(migration).toContain("shop_id = public.current_shop_id()");
+    expect(migration).toContain("for update");
+    expect(migration).toContain("result_record_id");
+    expect(migration).toContain("approve_inspection_form_import");
+  });
+
+  it("keeps upload processing out of the request and resumable by cron", () => {
+    const uploadRoute = read("app/api/inspection-form-imports/route.ts");
+    const worker = read(
+      "features/inspections/server/inspection-form-import-job.ts",
+    );
+    const tick = read("app/api/internal/import-jobs/tick/route.ts");
+    expect(uploadRoute).toContain("after(async () =>");
+    expect(uploadRoute).toContain('import_type: "inspection_form"');
+    expect(worker).toContain('.eq("status", "queued")');
+    expect(worker).toContain('status: "processing"');
+    expect(tick).toContain('"inspection_form"');
+    expect(tick).toContain('update({ status: "queued", error_message: null })');
+    expect(read("app/api/fleet/forms/upload/route.ts")).toContain(
+      "createInspectionFormImport",
+    );
+  });
+
+  it("provides camera-first mobile upload and lightweight review routes", () => {
+    expect(existsSync("app/mobile/inspections/import/page.tsx")).toBe(true);
+    expect(existsSync("app/mobile/inspections/import/[jobId]/page.tsx")).toBe(
+      true,
+    );
+    const importer = read(
+      "features/inspections/components/FleetFormImportCard.tsx",
+    );
+    const review = read(
+      "features/inspections/components/InspectionFormImportReview.tsx",
+    );
+    expect(importer).toContain('capture="environment"');
+    expect(importer).toContain("Pages in reading order");
+    expect(review).toContain("Approve and save template");
+    expect(review).toContain("Copy desktop link");
+  });
+
+  it("removes the browser-only sessionStorage handoff", () => {
+    expect(read("app/inspections/fleet-review/page.tsx")).not.toContain(
+      "sessionStorage",
+    );
+    expect(
+      read("features/inspections/components/FleetFormImportCard.tsx"),
+    ).not.toContain("sessionStorage");
+  });
+});
