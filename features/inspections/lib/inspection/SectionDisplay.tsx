@@ -59,6 +59,12 @@ interface SectionDisplayProps {
     hours: number | null,
   ) => void;
 
+  onUpdateNoPartsRequired?: (
+    sectionIndex: number,
+    itemIndex: number,
+    noPartsRequired: boolean,
+  ) => void;
+
   /** Optional external collapse control (used by sticky header). */
   isCollapsed?: boolean;
   onToggleCollapse?: (sectionIndex: number) => void;
@@ -92,6 +98,7 @@ type ItemExtended = InspectionSection["items"][number] & {
   // parts + labor
   parts?: PartRow[];
   laborHours?: number | null;
+  noPartsRequired?: boolean;
 };
 
 function isGridSection(title: string): boolean {
@@ -181,6 +188,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onDismissSmartMatch,
     onUpdateParts,
     onUpdateLaborHours,
+    onUpdateNoPartsRequired,
     isCollapsed,
     onToggleCollapse,
   } = props;
@@ -227,7 +235,8 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
   const canEditPartsLabor =
     typeof onUpdateParts === "function" ||
-    typeof onUpdateLaborHours === "function";
+    typeof onUpdateLaborHours === "function" ||
+    typeof onUpdateNoPartsRequired === "function";
 
   // ✅ per-item UI state: collapse + edit
   const [partsOpenByKey, setPartsOpenByKey] = useState<Record<string, boolean>>(
@@ -554,9 +563,34 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                         const currentParts = getParts(item);
                         const currentLabor = getLaborHours(item);
+                        const noPartsRequired = item.noPartsRequired === true;
 
                         const handlePartsChange = (parts: PartRow[]) => {
                           onUpdateParts?.(sectionIndex, itemIndex, parts);
+                          if (
+                            parts.some(
+                              (part) =>
+                                part.description.trim().length > 0 || part.qty > 0,
+                            )
+                          ) {
+                            onUpdateNoPartsRequired?.(
+                              sectionIndex,
+                              itemIndex,
+                              false,
+                            );
+                          }
+                        };
+
+                        const handleNoPartsRequiredChange = (checked: boolean) => {
+                          if (checked) {
+                            clearQtyDraftPrefix(`${k}:part:`);
+                            onUpdateParts?.(sectionIndex, itemIndex, []);
+                          }
+                          onUpdateNoPartsRequired?.(
+                            sectionIndex,
+                            itemIndex,
+                            checked,
+                          );
                         };
 
                         const handleLaborChange = (hours: number | null) => {
@@ -653,6 +687,26 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 )}
                               </div>
                             </div>
+
+                            <label className="mb-2 flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                              <input
+                                type="checkbox"
+                                checked={noPartsRequired}
+                                disabled={lockInputs}
+                                onChange={(event) =>
+                                  handleNoPartsRequiredChange(
+                                    event.currentTarget.checked,
+                                  )
+                                }
+                                className="h-4 w-4 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
+                              />
+                              <span>
+                                No parts required
+                                <span className="ml-2 font-normal text-[color:var(--theme-text-muted)]">
+                                  Blank parts also skip Parts workflow.
+                                </span>
+                              </span>
+                            </label>
 
                             {partsOpen && (
                               <>
@@ -763,12 +817,12 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                                   <button
                                     type="button"
-                                    disabled={lockInputs}
+                                    disabled={lockInputs || noPartsRequired}
                                     onClick={addEmptyPart}
                                     className={[
                                       "mt-1 inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]",
                                       "hover:border-accent/80 hover:text-accent",
-                                      lockInputs
+                                      lockInputs || noPartsRequired
                                         ? "opacity-50 cursor-not-allowed hover:border-[color:var(--theme-border-soft)] hover:text-[color:var(--theme-text-primary)]"
                                         : "",
                                     ].join(" ")}
