@@ -89,6 +89,28 @@ describe("regular live invoice flow safety", () => {
     expect(sendRoute).toContain("approved parts were not materialized");
   });
 
+  it("shows completed readiness as state instead of a disabled action", () => {
+    expect(billingPage).toContain("Ready ✓");
+    expect(billingPage).toContain(
+      "Review passed. This work order is already ready to invoice.",
+    );
+    expect(billingPage).toContain("statusLower === \"ready_to_invoice\"");
+    expect(billingPage).not.toContain(
+      'disabled={\n                        r.status === "invoiced" ||',
+    );
+  });
+
+  it("renders each invoice blocker only once", () => {
+    expect(previewClient).toContain("generalReviewIssues");
+    expect(previewClient).toContain(
+      "reviewIssues.filter((issue) => !issue.lineId)",
+    );
+    expect(previewClient).toContain("Required line updates");
+    expect(previewClient).not.toContain(
+      "(reviewIssues ?? []).slice(0, 12)",
+    );
+  });
+
   it("keeps post-issue accounting and manual POS actions reachable", () => {
     expect(billingPage).toContain("Open Invoice");
     expect(previewClient).toContain("SyncInvoiceToQuickBooksButton");
