@@ -347,7 +347,7 @@ export function useInspectionAutosave({
     [applyRemoteMeta, identityKey, workOrderLineId],
   );
 
-  const pullLatest = useCallback(async () => {
+  const pullLatest = useCallback(async (preferCanonicalServer = false) => {
     if (!enabled || (!inspectionId && !workOrderLineId)) return;
 
     const params = new URLSearchParams();
@@ -380,7 +380,18 @@ export function useInspectionAutosave({
     };
     const remote = json?.session;
     if (hasDurableSession(remote)) {
-      applyRemote(remote, meta);
+      const local = latestSessionRef.current;
+      const serverIsAhead = revision(remote) > revision(local);
+      const hasPendingLocalSave = Boolean(pendingOperationKeyRef.current);
+
+      // On first hydration, the durable server revision is canonical across
+      // devices. A queued offline operation remains protected and will replay;
+      // an ordinary stale browser draft must not hide newer mobile/desktop work.
+      applyRemote(
+        remote,
+        meta,
+        preferCanonicalServer && serverIsAhead && !hasPendingLocalSave,
+      );
     } else {
       applyRemoteMeta(meta);
     }
@@ -407,7 +418,7 @@ export function useInspectionAutosave({
 
     const promise = (async () => {
       try {
-        await pullLatest();
+        await pullLatest(true);
         if (!cancelled) {
           setLastError(null);
           setState((current) => (current === "saved" ? current : "idle"));
