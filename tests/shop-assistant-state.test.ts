@@ -1,0 +1,73 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const stateBuilder = readFileSync(
+  "features/shop-assistant/server/state/buildShopState.ts",
+  "utf8",
+);
+const stateRoute = readFileSync(
+  "app/api/shop-assistant/state/route.ts",
+  "utf8",
+);
+const stateHook = readFileSync(
+  "features/shop-assistant/hooks/useShopAssistantState.ts",
+  "utf8",
+);
+const dashboard = readFileSync(
+  "features/shop-assistant/components/ShopAssistantDashboard.tsx",
+  "utf8",
+);
+const mobilePage = readFileSync("app/mobile/assistant/page.tsx", "utf8");
+const desktopPage = readFileSync("app/assistant/page.tsx", "utf8");
+
+describe("shop assistant live state contracts", () => {
+  it("builds the required shop-wide metrics without an LLM", () => {
+    expect(stateBuilder).toContain("openWorkOrders");
+    expect(stateBuilder).toContain("stalledWorkOrders");
+    expect(stateBuilder).toContain("overdueApprovals");
+    expect(stateBuilder).toContain("delayedParts");
+    expect(stateBuilder).toContain("idleTechnicians");
+    expect(stateBuilder).toContain("readyToInvoice");
+    expect(stateBuilder).toContain("todaysBookings");
+    expect(stateBuilder).not.toContain("getOpenAIClient");
+  });
+
+  it("maps proactive alerts for stalled work, approvals, parts, idle capacity, and invoices", () => {
+    expect(stateBuilder).toContain("work_order_waiting_too_long");
+    expect(stateBuilder).toContain("work_order_on_hold_too_long");
+    expect(stateBuilder).toContain("approval_waiting");
+    expect(stateBuilder).toContain("parts_delivery_overdue");
+    expect(stateBuilder).toContain("technician_idle");
+    expect(stateBuilder).toContain("invoice_ready");
+    expect(stateBuilder).toContain("dedupeAlerts");
+  });
+
+  it("gates suggestions through canonical actor capabilities", () => {
+    expect(stateBuilder).toContain("capabilities.canAuthorizeQuotes");
+    expect(stateBuilder).toContain("capabilities.canManageParts");
+    expect(stateBuilder).toContain("capabilities.canAssignWork");
+    expect(stateBuilder).toContain("capabilities.canManageBilling");
+    expect(stateBuilder).toContain("capabilities.canManageScheduling");
+  });
+
+  it("serves current state through an authenticated no-store route", () => {
+    expect(stateRoute).toContain("requireShopAssistantActor");
+    expect(stateRoute).toContain("buildShopState");
+    expect(stateRoute).toContain('"cache-control": "private, no-store, max-age=0"');
+  });
+
+  it("refreshes while visible instead of appending duplicate dashboard cards", () => {
+    expect(stateHook).toContain("REFRESH_INTERVAL_MS");
+    expect(stateHook).toContain("document.visibilityState");
+    expect(stateHook).toContain("setState(payload.state)");
+    expect(stateHook).not.toContain("setState((current) => [");
+  });
+
+  it("loads the live dashboard before a prompt on desktop and mobile", () => {
+    expect(dashboard).toContain("ShopStateMetricGrid");
+    expect(dashboard).toContain("ShopAlertList");
+    expect(dashboard).toContain("ShopSuggestionList");
+    expect(desktopPage).toContain("<ShopAssistantDashboard");
+    expect(mobilePage).toContain("<ShopAssistantDashboard");
+  });
+});
