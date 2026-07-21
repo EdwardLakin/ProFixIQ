@@ -1,5 +1,6 @@
 -- Cached, actor-scoped shop-state snapshots for the shop-wide assistant.
 -- Snapshots are short-lived and never replace source-of-truth operational tables.
+-- Authenticated staff may read only their own snapshot; server code owns writes.
 
 create table if not exists public.shop_assistant_state_snapshots (
   shop_id uuid not null,
@@ -105,68 +106,30 @@ using (
     from public.profiles p
     where p.id = auth.uid()
       and p.shop_id = shop_assistant_state_snapshots.shop_id
-      and lower(coalesce(p.role, '')) not in ('customer', 'driver', 'mechanic', 'tech', 'technician')
+      and lower(coalesce(p.role, '')) not in (
+        'customer',
+        'driver',
+        'mechanic',
+        'tech',
+        'technician'
+      )
   )
 );
 
+-- Remove legacy client-write policies if an earlier preview applied this migration.
 drop policy if exists shop_assistant_state_snapshots_owner_insert
   on public.shop_assistant_state_snapshots;
-create policy shop_assistant_state_snapshots_owner_insert
-on public.shop_assistant_state_snapshots
-for insert
-to authenticated
-with check (
-  user_id = auth.uid()
-  and exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.shop_id = shop_assistant_state_snapshots.shop_id
-      and lower(coalesce(p.role, '')) not in ('customer', 'driver', 'mechanic', 'tech', 'technician')
-  )
-);
-
 drop policy if exists shop_assistant_state_snapshots_owner_update
   on public.shop_assistant_state_snapshots;
-create policy shop_assistant_state_snapshots_owner_update
-on public.shop_assistant_state_snapshots
-for update
-to authenticated
-using (
-  user_id = auth.uid()
-  and exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.shop_id = shop_assistant_state_snapshots.shop_id
-  )
-)
-with check (
-  user_id = auth.uid()
-  and exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.shop_id = shop_assistant_state_snapshots.shop_id
-  )
-);
-
 drop policy if exists shop_assistant_state_snapshots_owner_delete
   on public.shop_assistant_state_snapshots;
-create policy shop_assistant_state_snapshots_owner_delete
-on public.shop_assistant_state_snapshots
-for delete
-to authenticated
-using (
-  user_id = auth.uid()
-  and exists (
-    select 1
-    from public.profiles p
-    where p.id = auth.uid()
-      and p.shop_id = shop_assistant_state_snapshots.shop_id
-  )
-);
 
-grant select, insert, update, delete
+revoke insert, update, delete
+  on public.shop_assistant_state_snapshots
+  from authenticated;
+grant select
   on public.shop_assistant_state_snapshots
   to authenticated;
+grant select, insert, update, delete
+  on public.shop_assistant_state_snapshots
+  to service_role;
