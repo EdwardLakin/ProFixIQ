@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type {
   ShopAssistantActionPreview,
@@ -83,6 +83,17 @@ function resultClasses(status: ShopAssistantActionResult["status"]): string {
   return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]";
 }
 
+function isTerminalActionStatus(
+  status: ShopAssistantActionResult["status"],
+): boolean {
+  return (
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "expired"
+  );
+}
+
 export default function ShopAssistantConversation({
   messages,
   loading = false,
@@ -95,6 +106,14 @@ export default function ShopAssistantConversation({
   className = "",
 }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
+  const terminalActionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const message of messages) {
+      const result = actionResultFromMessage(message);
+      if (result && isTerminalActionStatus(result.status)) ids.add(result.id);
+    }
+    return ids;
+  }, [messages]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
@@ -118,10 +137,14 @@ export default function ShopAssistantConversation({
         const actionExpired = actionPreview
           ? new Date(actionPreview.expiresAt).getTime() <= Date.now()
           : false;
+        const actionFinished = actionPreview
+          ? terminalActionIds.has(actionPreview.id)
+          : false;
         const canAct =
           Boolean(actionPreview) &&
           actionPreview?.status === "pending_confirmation" &&
-          !actionExpired;
+          !actionExpired &&
+          !actionFinished;
 
         return (
           <article
@@ -173,12 +196,14 @@ export default function ShopAssistantConversation({
                 ) : null}
 
                 <div className="text-[0.68rem] text-[color:var(--theme-text-muted)]">
-                  {actionExpired
-                    ? "This confirmation has expired. Ask again to generate a current preview."
-                    : `Expires ${new Date(actionPreview.expiresAt).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}`}
+                  {actionFinished
+                    ? "This confirmation is closed. The action result appears below."
+                    : actionExpired
+                      ? "This confirmation has expired. Ask again to generate a current preview."
+                      : `Expires ${new Date(actionPreview.expiresAt).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}`}
                 </div>
 
                 {canAct ? (
