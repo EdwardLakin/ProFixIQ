@@ -9,6 +9,7 @@ const bookingSql = read(
   "supabase/migrations/20260715080100_phase7_atomic_portal_booking_lifecycle.sql",
 );
 const confirmPage = read("app/portal/auth/confirm/page.tsx");
+const activationRoute = read("app/portal/auth/activate/route.ts");
 const inviteRoute = read("app/api/portal/invites/accept/route.ts");
 const setupRoute = read("app/api/portal/qr/setup/route.ts");
 const canonicalInviteService = read(
@@ -31,6 +32,12 @@ describe("Phase 7 portal identity and booking lifecycle", () => {
     expect(setupRoute).toContain("issueCustomerPortalInvite");
     expect(canonicalInviteService).toContain("new URLSearchParams({");
     expect(canonicalInviteService).toContain("invite: inviteId");
+    expect(canonicalInviteService).toContain("properties?.hashed_token");
+    expect(canonicalInviteService).toContain('mode: "portal"');
+    expect(canonicalInviteService).not.toContain("properties?.action_link");
+    expect(activationRoute).toContain("supabase.auth.verifyOtp");
+    expect(activationRoute).toContain("token_hash: tokenHash");
+    expect(activationRoute).toContain('new URL("/portal/auth/confirm"');
     expect(confirmPage).toContain("/api/portal/invites/accept");
     expect(confirmPage).not.toContain('.from("customers")');
     expect(confirmPage).not.toContain('.from("customer_portal_invites")');
