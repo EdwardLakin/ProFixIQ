@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Button } from "@shared/components/ui/Button";
 import type { Database } from "@shared/types/types/supabase";
@@ -17,17 +16,21 @@ type BillingWorkOrder = Pick<
   WorkOrder,
   "id" | "custom_id" | "status" | "updated_at" | "created_at"
 > & {
-  customers: Pick<Customer, "first_name" | "last_name" | "name"> | null;
+  customers: Pick<Customer, "first_name" | "last_name" | "email"> | null;
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
 
-const READY_FOR_BILLING_STATUSES = ["completed", "ready_to_invoice"] as const;
+type BillingWorkOrdersResponse =
+  | { ok: true; rows: BillingWorkOrder[] }
+  | { ok?: false; error?: string };
+
+const READY_FOR_BILLING_STATUSES = new Set(["completed", "ready_to_invoice"]);
 
 function customerLabel(customer: BillingWorkOrder["customers"]): string {
   if (!customer) return "No customer";
   return (
     [customer.first_name, customer.last_name].filter(Boolean).join(" ").trim() ||
-    customer.name?.trim() ||
+    customer.email?.trim() ||
     "Customer"
   );
 }
@@ -59,47 +62,29 @@ export default function MobileReadyToInvoiceQueue() {
     setForbidden(false);
 
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError || !user) throw new Error("Unauthorized");
+      const response = await fetch("/api/billing/work-orders", {
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => ({}))) as BillingWorkOrdersResponse;
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("role, shop_id")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (profileError) throw new Error(profileError.message);
-      if (!profile?.shop_id) throw new Error("Your shop scope could not be resolved.");
-
-      const capabilities = getActorCapabilities({ role: profile.role });
-      if (!capabilities.canManageBilling) {
-        setForbidden(true);
-        setRows([]);
-        return;
+      if (!response.ok || payload.ok !== true) {
+        if (response.status === 401 || response.status === 403) {
+          setForbidden(true);
+          setRows([]);
+          return;
+        }
+        throw new Error(
+          payload.ok === false && payload.error
+            ? payload.error
+            : "Ready-to-invoice work could not be loaded.",
+        );
       }
 
-      const { data, error: queryError } = await supabase
-        .from("work_orders")
-        .select(
-          `
-            id,
-            custom_id,
-            status,
-            updated_at,
-            created_at,
-            customers:customers(first_name,last_name,name),
-            vehicles:vehicles(year,make,model,license_plate)
-          `,
-        )
-        .eq("shop_id", profile.shop_id)
-        .in("status", [...READY_FOR_BILLING_STATUSES])
-        .order("updated_at", { ascending: false })
-        .limit(100);
-      if (queryError) throw new Error(queryError.message);
-
-      setRows((data ?? []) as unknown as BillingWorkOrder[]);
+      setRows(
+        payload.rows.filter(
+          (row) => row.status != null && READY_FOR_BILLING_STATUSES.has(row.status),
+        ),
+      );
     } catch (caught: unknown) {
       setRows([]);
       setError(
@@ -110,7 +95,7 @@ export default function MobileReadyToInvoiceQueue() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     void load();
