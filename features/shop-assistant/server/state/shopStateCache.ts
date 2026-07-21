@@ -21,7 +21,7 @@ type SnapshotRow = {
   updated_at: string;
 };
 
-const DEFAULT_TTL_MS = 30_000;
+const DEFAULT_TTL_MS = 90_000;
 const SNAPSHOT_SELECT =
   "shop_id, user_id, role, snapshot, version, refreshed_at, expires_at, invalidated_at, updated_at";
 
