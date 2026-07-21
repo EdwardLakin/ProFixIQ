@@ -38,6 +38,58 @@ create trigger shop_assistant_state_snapshots_set_updated_at
 before update on public.shop_assistant_state_snapshots
 for each row execute function public.shop_assistant_state_set_updated_at();
 
+create or replace function public.invalidate_shop_assistant_state_snapshots(
+  p_shop_id uuid,
+  p_actor_user_id uuid
+) returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_now timestamptz := now();
+  v_count integer := 0;
+begin
+  if p_shop_id is null or p_actor_user_id is null then
+    raise exception using errcode = '22023', message = 'Shop and actor are required.';
+  end if;
+
+  if coalesce(auth.role(), '') <> 'service_role'
+     and auth.uid() is distinct from p_actor_user_id then
+    raise exception using errcode = '42501', message = 'Actor identity does not match the authenticated user.';
+  end if;
+
+  perform 1
+  from public.profiles p
+  where p.id = p_actor_user_id
+    and p.shop_id = p_shop_id
+    and lower(replace(coalesce(p.role, ''), ' ', '_')) not in (
+      'customer',
+      'driver',
+      'mechanic',
+      'tech',
+      'technician'
+    );
+  if not found then
+    raise exception using errcode = '42501', message = 'Actor cannot invalidate shop assistant state for this shop.';
+  end if;
+
+  update public.shop_assistant_state_snapshots
+  set expires_at = v_now,
+      invalidated_at = v_now,
+      updated_at = v_now
+  where shop_id = p_shop_id;
+
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
+revoke all on function public.invalidate_shop_assistant_state_snapshots(uuid, uuid)
+  from public;
+grant execute on function public.invalidate_shop_assistant_state_snapshots(uuid, uuid)
+  to authenticated, service_role;
+
 alter table public.shop_assistant_state_snapshots enable row level security;
 
 drop policy if exists shop_assistant_state_snapshots_owner_select
@@ -53,7 +105,7 @@ using (
     from public.profiles p
     where p.id = auth.uid()
       and p.shop_id = shop_assistant_state_snapshots.shop_id
-      and lower(coalesce(p.role, '')) not in ('customer', 'driver', 'mechanic')
+      and lower(coalesce(p.role, '')) not in ('customer', 'driver', 'mechanic', 'tech', 'technician')
   )
 );
 
@@ -70,7 +122,7 @@ with check (
     from public.profiles p
     where p.id = auth.uid()
       and p.shop_id = shop_assistant_state_snapshots.shop_id
-      and lower(coalesce(p.role, '')) not in ('customer', 'driver', 'mechanic')
+      and lower(coalesce(p.role, '')) not in ('customer', 'driver', 'mechanic', 'tech', 'technician')
   )
 );
 
