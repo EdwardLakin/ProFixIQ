@@ -15,6 +15,9 @@ describe("mobile route continuity", () => {
     ["/work-orders/board", "/mobile/dispatch"],
     ["/work-orders/create", "/mobile/work-orders/create"],
     ["/work-orders/abc/quote-review", "/mobile/work-orders/abc"],
+    ["/quote-review/abc", "/mobile/work-orders/abc"],
+    ["/quote-review", "/mobile/work-orders"],
+    ["/billing", "/mobile/work-orders"],
     ["/tech/queue", "/mobile/tech/queue"],
     ["/appointments?day=2026-07-19", "/mobile/appointments?day=2026-07-19"],
     [
