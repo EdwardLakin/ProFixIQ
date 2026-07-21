@@ -1,0 +1,46 @@
+name: Shop Assistant Validation
+
+on:
+  push:
+    branches:
+      - agent/shop-wide-assistant-actions
+  pull_request:
+    paths:
+      - "app/api/shop-assistant/**"
+      - "app/assistant/**"
+      - "app/mobile/assistant/**"
+      - "features/shop-assistant/**"
+      - "tests/shop-assistant-*.test.ts"
+      - ".github/workflows/shop-assistant-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: >-
+          pnpm exec eslint
+          app/api/shop-assistant
+          app/assistant/page.tsx
+          app/mobile/assistant/page.tsx
+          features/shop-assistant
+          tests/shop-assistant-reliability.test.ts
+          tests/shop-assistant-state.test.ts
+          tests/shop-assistant-actions.test.ts
+      - run: >-
+          pnpm exec vitest run
+          tests/shop-assistant-reliability.test.ts
+          tests/shop-assistant-state.test.ts
+          tests/shop-assistant-actions.test.ts
+      - run: node scripts/audit-api-routes.mjs
