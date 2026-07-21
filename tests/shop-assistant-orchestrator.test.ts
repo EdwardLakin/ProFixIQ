@@ -75,16 +75,25 @@ describe("shop assistant orchestration contracts", () => {
 
   it("routes every shop turn through the central orchestrator", () => {
     expect(chatRoute).toContain("orchestrateShopAssistantTurn");
-    expect(chatRoute).not.toContain('from "@/features/agent/assistant/server/answerAssistant"');
+    expect(chatRoute).not.toContain(
+      'from "@/features/agent/assistant/server/answerAssistant"',
+    );
     expect(chatRoute).not.toContain("routeDirectToolIntent({");
     expect(orchestrator).toContain("routeDirectToolIntent");
     expect(orchestrator).toContain("answerAssistant");
   });
 
-  it("tries registered tools before refusing an unsupported mutation", () => {
+  it("routes registered tools before loading live state or refusing an unsupported mutation", () => {
+    expect(
+      orchestrator.indexOf("const direct = await routeDirectToolIntent"),
+    ).toBeLessThan(
+      orchestrator.indexOf("const state = await getOrRefreshShopState"),
+    );
     expect(orchestrator.indexOf("routeDirectToolIntent")).toBeLessThan(
       orchestrator.indexOf('kind: "unsupported_action"'),
     );
+    expect(orchestrator).toContain("shouldUseShopState");
+    expect(stateAnswer).toContain("export function shouldUseShopState");
     expect(orchestrator).toContain("No shop record was changed");
     expect(classifier).toContain('"put"');
     expect(classifier).toContain('"place"');
@@ -104,7 +113,7 @@ describe("shop assistant orchestration contracts", () => {
     expect(migration).toContain("shop_assistant_state_snapshots");
     expect(migration).toContain("primary key (shop_id, user_id)");
     expect(migration).toContain("enable row level security");
-    expect(stateCache).toContain("DEFAULT_TTL_MS = 30_000");
+    expect(stateCache).toContain("DEFAULT_TTL_MS = 90_000");
     expect(stateCache).toContain("buildShopState");
     expect(stateCache).toContain("existingState");
     expect(stateRoute).toContain("getOrRefreshShopState");
