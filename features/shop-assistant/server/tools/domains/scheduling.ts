@@ -2,6 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
+import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import {
   defineShopAssistantTool,
   type ShopAssistantToolContext,
@@ -43,6 +44,19 @@ type BookingRow = {
   updated_at: string | null;
 };
 
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
+
 function mapBooking(row: BookingRow) {
   return {
     id: row.id,
@@ -53,6 +67,10 @@ function mapBooking(row: BookingRow) {
     vehicleId: row.vehicle_id,
     workOrderId: row.work_order_id,
   };
+}
+
+function rpcErrorMessage(error: RpcError): string {
+  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
 }
 
 async function loadBooking(
@@ -68,7 +86,9 @@ async function loadBooking(
     .eq("id", bookingId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) throw new Error("Appointment not found in this shop.");
+  if (!data) {
+    throw new ShopAssistantHttpError(404, "Appointment not found in this shop.");
+  }
   return data as BookingRow;
 }
 
@@ -137,6 +157,7 @@ export const rescheduleBookingTool = defineShopAssistantTool({
         input.note
           ? "The supplied note will be appended to the appointment."
           : "No note will be added.",
+        "The appointment update and terminal assistant result will be committed atomically.",
       ],
       targetVersions: booking.updated_at
         ? { [`booking:${booking.id}`]: booking.updated_at }
@@ -145,47 +166,24 @@ export const rescheduleBookingTool = defineShopAssistantTool({
     };
   },
   async execute(input, context) {
-    const booking = await loadBooking(input.bookingId, context);
-    const expectedVersion = context.targetVersions?.[`booking:${booking.id}`];
-    if (expectedVersion && booking.updated_at !== expectedVersion) {
-      throw new Error(
-        "The appointment changed after the preview. Review the latest schedule before confirming again.",
-      );
+    if (!context.actionId) {
+      throw new Error("An action id is required for atomic appointment rescheduling.");
     }
 
-    const notes = input.note
-      ? [booking.notes, input.note].filter(Boolean).join("\n")
-      : booking.notes;
-    let update = context.actor.supabase
-      .from("bookings")
-      .update({
-        starts_at: input.startsAt,
-        ends_at: input.endsAt ?? booking.ends_at,
-        notes,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("shop_id", context.actor.shopId)
-      .eq("id", booking.id);
-    if (expectedVersion) update = update.eq("updated_at", expectedVersion);
-
-    const { data, error } = await update
-      .select(
-        "id, starts_at, ends_at, status, customer_id, vehicle_id, work_order_id, notes, updated_at",
-      )
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!data) {
-      throw new Error(
-        "The appointment changed before it could be rescheduled. Review and try again.",
-      );
-    }
-
-    const mapped = mapBooking(data as BookingRow);
-    return {
-      ok: true as const,
-      booking: mapped,
-      summary: `Appointment ${mapped.id.slice(0, 8)} was moved to ${mapped.startsAt}.`,
-      href: "/dashboard/appointments",
-    };
+    const rpc = context.actor.supabase as unknown as RpcClient;
+    const { data, error } = await rpc.rpc(
+      "shop_assistant_reschedule_booking_atomic",
+      {
+        p_action_id: context.actionId,
+        p_shop_id: context.actor.shopId,
+        p_booking_id: input.bookingId,
+        p_actor_user_id: context.actor.userId,
+        p_starts_at: input.startsAt,
+        p_ends_at: input.endsAt ?? null,
+        p_note: input.note ?? null,
+      },
+    );
+    if (error) throw new Error(rpcErrorMessage(error));
+    return BookingMutationSchema.parse(data);
   },
 });
