@@ -83,7 +83,7 @@ describe("shop assistant live state contracts", () => {
     expect(stateRoute).toContain("requireShopAssistantActor");
     expect(stateRoute).toContain("getOrRefreshShopState");
     expect(stateCache).toContain("buildShopState");
-    expect(stateCache).toContain("DEFAULT_TTL_MS = 30_000");
+    expect(stateCache).toContain("DEFAULT_TTL_MS = 90_000");
     expect(stateCache).toContain("roleMatches");
     expect(stateCache).toContain("createAdminSupabase");
     expect(stateCache).toContain("adminDb()");
