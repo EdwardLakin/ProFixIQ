@@ -58,9 +58,11 @@ jobs:
           tests/shop-assistant-reliability.test.ts
           tests/shop-assistant-state.test.ts
           tests/shop-assistant-actions.test.ts
+          tests/shop-assistant-orchestrator.test.ts
       - run: >-
           pnpm exec vitest run
           tests/shop-assistant-reliability.test.ts
           tests/shop-assistant-state.test.ts
           tests/shop-assistant-actions.test.ts
+          tests/shop-assistant-orchestrator.test.ts
       - run: node scripts/audit-api-routes.mjs
