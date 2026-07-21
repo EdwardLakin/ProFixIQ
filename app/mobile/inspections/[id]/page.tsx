@@ -166,6 +166,70 @@ export default function MobileInspectionRunnerPage() {
           String(data.vehicle_type ?? ""),
           gridOverride,
         );
+
+        // The work order is the canonical source for inspection identity context.
+        // Mobile routes intentionally keep query strings small, so hydrate the
+        // customer and vehicle here instead of starting a blank device-only copy.
+        let workOrderContext: Record<string, string> = {};
+        if (workOrderId) {
+          const { data: workOrder, error: workOrderError } = await supabase
+            .from("work_orders")
+            .select("customer_id, vehicle_id")
+            .eq("id", workOrderId)
+            .maybeSingle();
+
+          if (workOrderError) throw workOrderError;
+
+          const [customerResult, vehicleResult] = await Promise.all([
+            workOrder?.customer_id
+              ? supabase
+                  .from("customers")
+                  .select(
+                    "first_name, last_name, phone, email, address, city, province, postal_code",
+                  )
+                  .eq("id", workOrder.customer_id)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+            workOrder?.vehicle_id
+              ? supabase
+                  .from("vehicles")
+                  .select(
+                    "year, make, model, vin, license_plate, mileage, color, unit_number, engine_hours",
+                  )
+                  .eq("id", workOrder.vehicle_id)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+          ]);
+
+          if (customerResult.error) throw customerResult.error;
+          if (vehicleResult.error) throw vehicleResult.error;
+
+          const put = (key: string, value: unknown) => {
+            if (value !== null && value !== undefined && String(value).trim()) {
+              workOrderContext[key] = String(value);
+            }
+          };
+          const customer = customerResult.data;
+          const vehicle = vehicleResult.data;
+          put("first_name", customer?.first_name);
+          put("last_name", customer?.last_name);
+          put("phone", customer?.phone);
+          put("email", customer?.email);
+          put("address", customer?.address);
+          put("city", customer?.city);
+          put("province", customer?.province);
+          put("postal_code", customer?.postal_code);
+          put("year", vehicle?.year);
+          put("make", vehicle?.make);
+          put("model", vehicle?.model);
+          put("vin", vehicle?.vin);
+          put("license_plate", vehicle?.license_plate);
+          put("mileage", vehicle?.mileage);
+          put("color", vehicle?.color);
+          put("unit_number", vehicle?.unit_number);
+          put("engine_hours", vehicle?.engine_hours);
+        }
+
         const runtimeParams: Record<string, string> = {};
         new URLSearchParams(searchKey).forEach((value, key) => {
           runtimeParams[key] = value;
@@ -177,6 +241,7 @@ export default function MobileInspectionRunnerPage() {
         if (workOrderId) runtimeParams.workOrderId = workOrderId;
         runtimeParams.templateId = templateId;
         runtimeParams.template = "generic";
+        Object.assign(runtimeParams, workOrderContext);
 
         sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
         sessionStorage.setItem(
