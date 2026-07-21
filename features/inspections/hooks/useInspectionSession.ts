@@ -158,6 +158,8 @@ export default function useInspectionSession(initialSession?: Partial<SessionWit
 
   const stamp = () => ({ lastUpdated: new Date().toISOString() });
 
+  const replaceSession = (next: SessionWithLineId) => setSession(next);
+
   const updateInspection = (updates: Partial<SessionWithLineId>) =>
     setSession((prev) => ({ ...prev, ...updates, ...stamp() }));
 
@@ -242,6 +244,7 @@ export default function useInspectionSession(initialSession?: Partial<SessionWit
 
   return {
     session,
+    replaceSession,
     updateInspection,
     updateSection,
     updateItem,
