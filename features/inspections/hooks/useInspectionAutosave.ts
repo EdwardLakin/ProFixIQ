@@ -381,16 +381,24 @@ export function useInspectionAutosave({
     const remote = json?.session;
     if (hasDurableSession(remote)) {
       const local = latestSessionRef.current;
-      const serverIsAhead = revision(remote) > revision(local);
+      const localRevision = revision(local);
+      const serverIsAhead = revision(remote) > localRevision;
       const hasPendingLocalSave = Boolean(pendingOperationKeyRef.current);
+      const hasUnversionedRecovery =
+        localRevision === 0 &&
+        Boolean(local) &&
+        hasMeaningfulLocalChanges(local as InspectionSession);
 
       // On first hydration, the durable server revision is canonical across
-      // devices. A queued offline operation remains protected and will replay;
-      // an ordinary stale browser draft must not hide newer mobile/desktop work.
+      // devices. Queued offline work and older unversioned recovery drafts stay
+      // protected so a previously rejected save is never silently discarded.
       applyRemote(
         remote,
         meta,
-        preferCanonicalServer && serverIsAhead && !hasPendingLocalSave,
+        preferCanonicalServer &&
+          serverIsAhead &&
+          !hasPendingLocalSave &&
+          !hasUnversionedRecovery,
       );
     } else {
       applyRemoteMeta(meta);
