@@ -13,6 +13,14 @@ describe("mobile inspection form imports", () => {
     expect(migration).toContain("for update");
     expect(migration).toContain("result_record_id");
     expect(migration).toContain("approve_inspection_form_import");
+    const repairMigration = read(
+      "supabase/migrations/20260722023000_repair_inspection_form_import_schema.sql",
+    );
+    expect(repairMigration).toContain("'inspection_form'");
+    expect(repairMigration).toContain(
+      "add column if not exists result_record_id",
+    );
+    expect(repairMigration).toContain("approve_inspection_form_import");
   });
 
   it("keeps upload processing out of the request and resumable by cron", () => {
@@ -58,9 +66,15 @@ describe("mobile inspection form imports", () => {
     expect(importer).toContain("Search or type a fleet name");
     expect(importer).toContain("customerName");
     expect(importer).toContain("fleetName");
+    expect(importer).toContain('role="combobox"');
+    expect(importer).toContain('role="option"');
+    expect(importer).toContain("Selected:");
+    expect(importer).not.toContain("<datalist");
     expect(uploadRoute).toContain('.from("customers")');
     expect(uploadRoute).toContain('.from("fleets")');
     expect(uploadRoute).toContain('.eq("shop_id", access.profile.shop_id)');
+    expect(uploadRoute).toContain("customer.first_name");
+    expect(uploadRoute).toContain("customer.last_name");
   });
 
   it("uploads mobile photos directly with signed storage targets", () => {
@@ -73,6 +87,26 @@ describe("mobile inspection form imports", () => {
     expect(importer).toContain('action: "finalize"');
     expect(uploadRoute).toContain("createSignedUploadUrl");
     expect(uploadRoute).toContain("request-size limit");
+  });
+
+  it("checks schema readiness before upload and preserves directory results", () => {
+    const importer = read(
+      "features/inspections/components/FleetFormImportCard.tsx",
+    );
+    const uploadRoute = read("app/api/inspection-form-imports/route.ts");
+    expect(uploadRoute).toContain("IMPORT_SETUP_ERROR");
+    expect(uploadRoute).toContain("schema readiness check");
+    expect(uploadRoute).toContain("removeUploadedPages");
+    expect(importer).toContain("importReady");
+    expect(importer).toContain("setupError");
+  });
+
+  it("keeps the import tool inside the shared mobile shell", () => {
+    const shell = read("components/layout/MobileShell.tsx");
+    const page = read("app/mobile/inspections/import/page.tsx");
+    expect(shell).toContain('pathname === "/mobile/inspections/import"');
+    expect(shell).toContain('return "Import form"');
+    expect(page).not.toContain("<main");
   });
 
   it("removes the browser-only sessionStorage handoff", () => {
