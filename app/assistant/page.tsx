@@ -4,13 +4,13 @@
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import PageShell from "@/features/shared/components/PageShell";
-import { Button } from "@shared/components/ui/Button";
-import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
-import { useAssistant } from "@/features/assistant/hooks/useAssistant";
-import AssistantResponseCard from "@/features/assistant/components/AssistantResponseCard";
-import type { AssistantContext } from "@/features/assistant/types/assistant";
+import PageShell from "@/features/shared/components/PageShell";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
+import ShopAssistantConversation from "@/features/shop-assistant/components/ShopAssistantConversation";
+import { useShopAssistant } from "@/features/shop-assistant/hooks/useShopAssistant";
+import type { ShopAssistantContext } from "@/features/shop-assistant/types";
+import { Button } from "@shared/components/ui/Button";
 
 const EXAMPLE_PROMPTS = [
   "Which work orders are waiting on approvals right now?",
@@ -19,33 +19,62 @@ const EXAMPLE_PROMPTS = [
   "Show repeat issues for this vehicle and what we recommended last time.",
 ];
 
+function optionalParam(params: URLSearchParams, key: string): string | undefined {
+  const value = params.get(key)?.trim();
+  return value || undefined;
+}
+
 export default function AssistantPage() {
   const [query, setQuery] = useState("");
-  const { ask, loading, data } = useAssistant();
   const searchParams = useSearchParams();
+  const searchKey = searchParams.toString();
 
-  const context = useMemo<AssistantContext>(() => {
-    const workOrderId = searchParams.get("workOrderId") ?? undefined;
-    const vehicleId = searchParams.get("vehicleId") ?? undefined;
-    const customerId = searchParams.get("customerId") ?? undefined;
-    const bookingId = searchParams.get("bookingId") ?? undefined;
-    const pageType = searchParams.get("pageType") ?? undefined;
-    const pageTitle = searchParams.get("pageTitle") ?? undefined;
-
+  const context = useMemo<ShopAssistantContext>(() => {
+    const params = new URLSearchParams(searchKey);
     return {
-      workOrderId,
-      vehicleId,
-      customerId,
-      bookingId,
-      pageType,
-      pageTitle,
+      workOrderId: optionalParam(params, "workOrderId"),
+      vehicleId: optionalParam(params, "vehicleId"),
+      customerId: optionalParam(params, "customerId"),
+      bookingId: optionalParam(params, "bookingId"),
+      invoiceId: optionalParam(params, "invoiceId"),
+      pageType: optionalParam(params, "pageType") ?? "desktop",
+      pageTitle: optionalParam(params, "pageTitle") ?? "Shop Assistant",
     };
-  }, [searchParams]);
+  }, [searchKey]);
+
+  const contextKey = useMemo(
+    () =>
+      [
+        context.pageType,
+        context.workOrderId,
+        context.vehicleId,
+        context.customerId,
+        context.bookingId,
+        context.invoiceId,
+      ]
+        .filter(Boolean)
+        .join(":"),
+    [context],
+  );
+
+  const {
+    messages,
+    loading,
+    sending,
+    error,
+    canRetry,
+    send,
+    retry,
+    clearConversation,
+  } = useShopAssistant(contextKey);
 
   const contextChips = useMemo(
     () => [
       { label: "Shop-wide", active: true },
-      { label: "Current page", active: Boolean(context.pageType || context.pageTitle) },
+      {
+        label: "Current page",
+        active: Boolean(context.pageType || context.pageTitle),
+      },
       { label: "Current customer", active: Boolean(context.customerId) },
       { label: "Current vehicle", active: Boolean(context.vehicleId) },
       { label: "Current work order", active: Boolean(context.workOrderId) },
@@ -53,10 +82,17 @@ export default function AssistantPage() {
     [context],
   );
 
+  const submit = async () => {
+    const value = query.trim();
+    if (!value || sending) return;
+    setQuery("");
+    await send(value, context);
+  };
+
   return (
     <PageShell
       title="Shop Assistant"
-      description="Your universal shop intelligence surface for questions, explanations, and cross-record history."
+      description="Your durable, shop-wide operations conversation across work orders, customers, scheduling, parts, billing, and workforce."
     >
       <div className={`${ui.panel} ${ui.panelPadding} space-y-4`}>
         <div className="desktop-panel-soft p-4">
@@ -78,16 +114,24 @@ export default function AssistantPage() {
             ))}
           </div>
           <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
-            Ask across work orders, customers, vehicles, inspections, approvals,
-            bookings, invoices, fleet, parts, and staff/shop activity. Current-page
-            context is applied when available.
+            Conversations persist across reloads. Diagnostic guidance remains inside
+            each work order&apos;s Technician AI.
           </p>
         </div>
 
+        <ShopAssistantConversation
+          messages={messages}
+          loading={loading}
+          error={error}
+          canRetry={canRetry}
+          onRetry={() => void retry()}
+          className="max-h-[34rem]"
+        />
+
         <textarea
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask a shop question, request an explanation, or compare records..."
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Ask about shop operations or request an action…"
           className="desktop-input min-h-[120px] w-full resize-y rounded-2xl px-3 py-2 text-[color:var(--theme-text-primary)]"
         />
 
@@ -104,17 +148,24 @@ export default function AssistantPage() {
           ))}
         </div>
 
-        <div className="mt-4 flex justify-center">
+        <div className="flex items-center justify-between gap-3">
           <Button
-            onClick={() => ask(query, context)}
-            isLoading={loading}
-            disabled={!query.trim()}
+            type="button"
+            variant="ghost"
+            disabled={loading || sending}
+            onClick={() => void clearConversation(context)}
           >
-            Ask Assistant
+            New conversation
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void submit()}
+            isLoading={sending}
+            disabled={loading || sending || !query.trim()}
+          >
+            Send
           </Button>
         </div>
-
-        <AssistantResponseCard data={data} />
       </div>
     </PageShell>
   );
