@@ -29,8 +29,13 @@ function mapWorkOrderPath(pathname: string): string {
     return "/mobile/work-orders/create";
   }
 
-  const viewId = firstPathSegmentAfter(pathname, "/work-orders/view");
-  if (viewId) return `/mobile/work-orders/${viewId}`;
+  if (pathname === "/work-orders/view" || pathname === "/work-orders/view/") {
+    return "/mobile/work-orders";
+  }
+  if (pathname.startsWith("/work-orders/view/")) {
+    const viewId = firstPathSegmentAfter(pathname, "/work-orders/view");
+    if (viewId) return `/mobile/work-orders/${viewId}`;
+  }
 
   const workOrderId = firstPathSegmentAfter(pathname, "/work-orders");
   return workOrderId
