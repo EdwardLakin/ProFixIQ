@@ -17,8 +17,8 @@ const steps = [
   },
   {
     icon: MailCheck,
-    title: "Create your password",
-    body: "Open the one-time email, set a password, and continue into your portal.",
+    title: "Activate from the email",
+    body: "The secure email creates and links your portal access. You do not need to register separately.",
   },
 ];
 
@@ -34,10 +34,10 @@ export default function PortalSignUpForm() {
         Customer portal
       </div>
       <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[color:var(--theme-text-primary)]">
-        Activate portal access
+        Portal activation help
       </h1>
       <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-        Customer accounts are created from a shop invitation or a verified shop QR code. This keeps your records private and correctly linked.
+        Customer accounts must be created from a shop invitation or a verified shop QR code. If your link expired or was already used, ask the shop to resend it.
       </p>
 
       <div className="mt-6 space-y-3">
@@ -54,9 +54,13 @@ export default function PortalSignUpForm() {
         ))}
       </div>
 
+      <div className="mt-6 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
+        Creating a general ProFixIQ account will not connect your customer or vehicle records. Always start from the activation email sent by your shop.
+      </div>
+
       <div className="mt-6 grid gap-2 sm:grid-cols-2">
         <Link href="/portal/auth/sign-in" className="rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-center text-sm font-bold text-[color:var(--theme-text-on-accent)]">
-          I already activated
+          Sign in if activated
         </Link>
         <Link href="/" className="rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-3 text-center text-sm font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]">
           Back to ProFixIQ

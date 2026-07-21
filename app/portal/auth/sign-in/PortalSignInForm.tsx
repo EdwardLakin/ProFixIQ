@@ -27,6 +27,11 @@ export default function PortalSignInForm() {
   useEffect(() => {
     const requested = searchParams.get("portal");
     if (requested === "fleet" || requested === "customer") setPortalType(requested);
+    if (searchParams.get("activation") === "invalid") {
+      setError(
+        "This activation link is invalid or has expired. Ask your shop to resend your customer portal invitation.",
+      );
+    }
   }, [searchParams]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -183,9 +188,9 @@ export default function PortalSignInForm() {
           <>Fleet access is invitation-only. Contact your shop or fleet administrator if you need an invitation.</>
         ) : (
           <>
-            Need access? Open the invitation from your shop or{" "}
+            Portal access is created from your shop invitation. There is no separate account sign-up. If you need access, ask your shop to resend the invitation or{" "}
             <Link href="/portal/auth/sign-up" className="font-semibold text-[var(--accent-copper)] hover:underline">
-              learn how to enroll
+              view activation help
             </Link>
             .
           </>
