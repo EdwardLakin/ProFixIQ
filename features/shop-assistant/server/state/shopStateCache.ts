@@ -1,41 +1,19 @@
 import "server-only";
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 import type { ShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { buildShopState } from "@/features/shop-assistant/server/state/buildShopState";
+import { createShopAssistantStateAdminClient } from "@/features/shop-assistant/server/state/database";
 import {
   SHOP_ASSISTANT_MAX_STALE_MS,
   SHOP_ASSISTANT_STATE_TTL_MS,
   type ShopAssistantState,
 } from "@/features/shop-assistant/server/state/types";
-
-type AssistantDb = SupabaseClient<any>;
-
-type SnapshotRow = {
-  shop_id: string;
-  user_id: string;
-  role: string | null;
-  snapshot: unknown;
-  version: number;
-  refreshed_at: string;
-  expires_at: string;
-  invalidated_at: string | null;
-  updated_at: string;
-};
+import type { Json } from "@shared/types/types/supabase";
+import type { ShopAssistantStateSnapshotRow } from "@shared/types/types/supabase-shop-assistant";
 
 const DEFAULT_TTL_MS = SHOP_ASSISTANT_STATE_TTL_MS;
 const SNAPSHOT_SELECT =
   "shop_id, user_id, role, snapshot, version, refreshed_at, expires_at, invalidated_at, updated_at";
-
-function dbFor(actor: ShopAssistantActor): AssistantDb {
-  return actor.supabase as unknown as AssistantDb;
-}
-
-function adminDb(): AssistantDb {
-  return createAdminSupabase() as unknown as AssistantDb;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -55,15 +33,15 @@ function isShopAssistantState(value: unknown): value is ShopAssistantState {
 
 async function loadSnapshot(
   actor: ShopAssistantActor,
-): Promise<SnapshotRow | null> {
-  const { data, error } = await dbFor(actor)
+): Promise<ShopAssistantStateSnapshotRow | null> {
+  const { data, error } = await createShopAssistantStateAdminClient()
     .from("shop_assistant_state_snapshots")
     .select(SNAPSHOT_SELECT)
     .eq("shop_id", actor.shopId)
     .eq("user_id", actor.userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return (data as SnapshotRow | null) ?? null;
+  return data ?? null;
 }
 
 export async function getOrRefreshShopState(params: {
@@ -104,14 +82,15 @@ export async function getOrRefreshShopState(params: {
     const state = await buildShopState(params.actor);
     const refreshedAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + ttlMs).toISOString();
-    const { error } = await adminDb()
+    const snapshot = JSON.parse(JSON.stringify(state)) as Json;
+    const { error } = await createShopAssistantStateAdminClient()
       .from("shop_assistant_state_snapshots")
       .upsert(
         {
           shop_id: params.actor.shopId,
           user_id: params.actor.userId,
           role: params.actor.role,
-          snapshot: state,
+          snapshot,
           version: Number(existing?.version ?? 0) + 1,
           refreshed_at: refreshedAt,
           expires_at: expiresAt,
@@ -131,7 +110,7 @@ export async function getOrRefreshShopState(params: {
 export async function invalidateShopState(
   actor: ShopAssistantActor,
 ): Promise<void> {
-  const { error } = await dbFor(actor).rpc(
+  const { error } = await createShopAssistantStateAdminClient().rpc(
     "invalidate_shop_assistant_state_snapshots",
     {
       p_shop_id: actor.shopId,
