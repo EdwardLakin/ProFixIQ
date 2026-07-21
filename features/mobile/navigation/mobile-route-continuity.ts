@@ -166,7 +166,7 @@ export function resolveMobileHref(rawHref: string | null | undefined): string | 
   } else if (pathname.startsWith("/quote-review")) {
     mobilePath = mapQuoteReviewPath(pathname);
   } else if (pathname.startsWith("/billing")) {
-    mobilePath = "/mobile/work-orders";
+    mobilePath = "/mobile/billing";
   } else if (pathname.startsWith("/tech/queue")) {
     mobilePath = "/mobile/tech/queue";
   } else if (pathname.startsWith("/tech/performance")) {
