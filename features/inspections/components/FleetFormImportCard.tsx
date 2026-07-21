@@ -8,6 +8,13 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Button } from "@shared/components/ui/Button";
 
 type Option = { id: string; label: string };
+type SignedUpload = {
+  path: string;
+  token: string;
+  originalName: string;
+  mime: string;
+  size: number;
+};
 type ImportListItem = {
   id: string;
   state: "queued" | "processing" | "ready_for_review" | "failed" | "approved";
@@ -46,6 +53,8 @@ export default function FleetFormImportCard({ mobile = false }: { mobile?: boole
   const [dutyClass, setDutyClass] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [fleetId, setFleetId] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [fleetName, setFleetName] = useState("");
   const [customers, setCustomers] = useState<Option[]>([]);
   const [fleets, setFleets] = useState<Option[]>([]);
   const [imports, setImports] = useState<ImportListItem[]>([]);
@@ -55,9 +64,13 @@ export default function FleetFormImportCard({ mobile = false }: { mobile?: boole
   const loadImports = useCallback(async () => {
     const response = await fetch("/api/inspection-form-imports", { cache: "no-store" });
     const body = (await response.json().catch(() => null)) as
-      | { imports?: ImportListItem[] }
+      | { imports?: ImportListItem[]; customers?: Option[]; fleets?: Option[] }
       | null;
-    if (response.ok) setImports(body?.imports ?? []);
+    if (response.ok) {
+      setImports(body?.imports ?? []);
+      setCustomers(body?.customers ?? []);
+      setFleets(body?.fleets ?? []);
+    }
   }, []);
 
   useEffect(() => {
@@ -73,37 +86,6 @@ export default function FleetFormImportCard({ mobile = false }: { mobile?: boole
     }, 5000);
     return () => window.clearInterval(interval);
   }, [imports, loadImports]);
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      const [customerResult, fleetResult] = await Promise.all([
-        supabase
-          .from("customers")
-          .select("id, name, business_name, first_name, last_name")
-          .order("name", { ascending: true })
-          .limit(200),
-        supabase.from("fleets").select("id, name").order("name").limit(100),
-      ]);
-      if (!active) return;
-      setCustomers(
-        (customerResult.data ?? []).map((customer) => ({
-          id: customer.id,
-          label:
-            customer.business_name ||
-            customer.name ||
-            [customer.first_name, customer.last_name].filter(Boolean).join(" ") ||
-            "Customer",
-        })),
-      );
-      setFleets(
-        (fleetResult.data ?? []).map((fleet) => ({ id: fleet.id, label: fleet.name })),
-      );
-    })();
-    return () => {
-      active = false;
-    };
-  }, [supabase]);
 
   const addFiles = (incoming: File[]) => {
     setError(null);
@@ -134,22 +116,65 @@ export default function FleetFormImportCard({ mobile = false }: { mobile?: boole
     setSubmitting(true);
     setError(null);
     try {
-      const data = new FormData();
-      files.forEach((file) => data.append("files", file));
-      data.set("title", title);
-      data.set("vehicleType", vehicleType);
-      data.set("dutyClass", dutyClass);
-      data.set("customerId", customerId);
-      data.set("fleetId", fleetId);
+      const prepareResponse = await fetch("/api/inspection-form-imports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "prepare",
+          files: files.map((file) => ({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          })),
+        }),
+      });
+      const prepareBody = (await prepareResponse.json().catch(() => null)) as
+        | { uploadId?: string; uploads?: SignedUpload[]; error?: string }
+        | null;
+      if (!prepareResponse.ok || !prepareBody?.uploadId || !prepareBody.uploads) {
+        throw new Error(prepareBody?.error || "Unable to prepare the form upload.");
+      }
+
+      for (let index = 0; index < prepareBody.uploads.length; index += 1) {
+        const upload = prepareBody.uploads[index];
+        const file = files[index];
+        const { error: uploadError } = await supabase.storage
+          .from("fleet-forms")
+          .uploadToSignedUrl(upload.path, upload.token, file, {
+            contentType: upload.mime,
+            upsert: false,
+          });
+        if (uploadError) {
+          throw new Error(`Unable to upload page ${index + 1}. ${uploadError.message}`);
+        }
+      }
+
       const response = await fetch("/api/inspection-form-imports", {
         method: "POST",
-        body: data,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "finalize",
+          uploadId: prepareBody.uploadId,
+          uploads: prepareBody.uploads.map((upload) => ({
+            path: upload.path,
+            originalName: upload.originalName,
+            mime: upload.mime,
+            size: upload.size,
+          })),
+          title,
+          vehicleType,
+          dutyClass,
+          customerId,
+          customerName,
+          fleetId,
+          fleetName,
+        }),
       });
       const body = (await response.json().catch(() => null)) as
         | { jobId?: string; error?: string }
         | null;
       if (!response.ok || !body?.jobId) {
-        throw new Error(body?.error || "Unable to upload the form.");
+        throw new Error(body?.error || "Unable to finish the form upload.");
       }
       router.push(
         mobile
@@ -181,17 +206,39 @@ export default function FleetFormImportCard({ mobile = false }: { mobile?: boole
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-xs text-[color:var(--theme-text-secondary)]">
             Customer (optional)
-            <select value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]">
-              <option value="">No customer selected</option>
-              {customers.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-            </select>
+            <input
+              list="inspection-import-customers"
+              value={customerName}
+              onChange={(event) => {
+                const value = event.target.value;
+                setCustomerName(value);
+                setCustomerId(customers.find((option) => option.label.toLocaleLowerCase() === value.trim().toLocaleLowerCase())?.id ?? "");
+              }}
+              placeholder="Search or type a customer name"
+              autoComplete="off"
+              className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]"
+            />
+            <datalist id="inspection-import-customers">
+              {customers.map((option) => <option key={option.id} value={option.label} />)}
+            </datalist>
           </label>
           <label className="text-xs text-[color:var(--theme-text-secondary)]">
             Fleet account (optional)
-            <select value={fleetId} onChange={(e) => setFleetId(e.target.value)} className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]">
-              <option value="">No fleet selected</option>
-              {fleets.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-            </select>
+            <input
+              list="inspection-import-fleets"
+              value={fleetName}
+              onChange={(event) => {
+                const value = event.target.value;
+                setFleetName(value);
+                setFleetId(fleets.find((option) => option.label.toLocaleLowerCase() === value.trim().toLocaleLowerCase())?.id ?? "");
+              }}
+              placeholder="Search or type a fleet name"
+              autoComplete="off"
+              className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]"
+            />
+            <datalist id="inspection-import-fleets">
+              {fleets.map((option) => <option key={option.id} value={option.label} />)}
+            </datalist>
           </label>
           <label className="text-xs text-[color:var(--theme-text-secondary)] md:col-span-2">
             Template name (optional)
