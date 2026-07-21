@@ -6,7 +6,9 @@ on:
       - "app/api/shop-assistant/**"
       - "app/assistant/**"
       - "app/mobile/assistant/**"
+      - "app/mobile/billing/**"
       - "features/shop-assistant/**"
+      - "features/billing/mobile/**"
       - "features/mobile/navigation/mobile-route-continuity.ts"
       - "tests/shop-assistant-*.test.ts"
       - "tests/mobile-route-continuity.test.ts"
@@ -56,7 +58,9 @@ jobs:
           app/api/shop-assistant
           app/assistant/page.tsx
           app/mobile/assistant/page.tsx
+          app/mobile/billing/page.tsx
           features/shop-assistant
+          features/billing/mobile
           features/mobile/navigation/mobile-route-continuity.ts
           tests/shop-assistant-reliability.test.ts
           tests/shop-assistant-state.test.ts
