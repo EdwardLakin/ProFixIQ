@@ -3,8 +3,10 @@ import "server-only";
 
 export const runtime = "nodejs";
 
+import { createHash } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { generateInspectionPDF } from "@/features/inspections/lib/inspection/pdf";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
@@ -12,10 +14,44 @@ import type { InspectionSession } from "@/features/inspections/lib/inspection/ty
 
 type DB = Database;
 
-type Body = { workOrderLineId?: string };
+type Body = {
+  workOrderLineId?: string;
+  expectedSyncRevision?: number;
+};
+
+type FinalizeInspectionArgs = {
+  p_inspection_id: string;
+  p_work_order_line_id: string;
+  p_actor_user_id: string;
+  p_expected_sync_revision: number;
+  p_pdf_storage_path: string;
+  p_pdf_sha256: string;
+  p_pdf_url: string | null;
+};
+
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
+type FinalizeRpcClient = {
+  rpc: (
+    name: "finalize_inspection_pdf_atomic",
+    args: FinalizeInspectionArgs,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
 
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
+}
+
+function isStorageAlreadyExistsError(error: unknown): boolean {
+  if (!isRecord(error)) return false;
+  const status = Number(error.statusCode ?? error.status);
+  const message = [error.message, error.error]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  return status === 409 || /already exists|duplicate/i.test(message);
 }
 
 function asString(x: unknown): string | null {
@@ -36,8 +72,22 @@ export async function POST(req: NextRequest) {
   }
 
   const workOrderLineId = asString((raw as Body).workOrderLineId);
+  const expectedSyncRevision = (raw as Body).expectedSyncRevision;
   if (!workOrderLineId) {
-    return NextResponse.json({ error: "Missing workOrderLineId" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing workOrderLineId" },
+      { status: 400 },
+    );
+  }
+  if (
+    typeof expectedSyncRevision !== "number" ||
+    !Number.isSafeInteger(expectedSyncRevision) ||
+    expectedSyncRevision < 1
+  ) {
+    return NextResponse.json(
+      { error: "Missing or invalid expectedSyncRevision" },
+      { status: 400 },
+    );
   }
 
   // 2) Auth
@@ -64,110 +114,148 @@ export async function POST(req: NextRequest) {
   if (lineErr) {
     // eslint-disable-next-line no-console
     console.error("[inspections/finalize/pdf] line lookup failed", lineErr);
-    return NextResponse.json({ error: "Failed to look up work order line" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to look up work order line" },
+      { status: 500 },
+    );
   }
 
   const workOrderId = asString(line?.work_order_id);
   const shopId = asString(line?.work_orders?.shop_id);
 
   if (!workOrderId) {
-    return NextResponse.json({ error: "Work order line missing work_order_id" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Work order line missing work_order_id" },
+      { status: 400 },
+    );
   }
   if (!shopId) {
-    return NextResponse.json({ error: "Work order line missing shop_id" }, { status: 400 });
-  }
-
-  // ✅ Ensure Storage policy can evaluate current_shop_id()
-  // If your policy uses current_shop_id(), this MUST be set server-side.
-  const { error: ctxErr } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
-  if (ctxErr) {
-    // eslint-disable-next-line no-console
-    console.error("[inspections/finalize/pdf] set_current_shop_id failed", ctxErr);
     return NextResponse.json(
-      { error: ctxErr.message || "Failed to set shop context" },
-      { status: 500 },
+      { error: "Work order line missing shop_id" },
+      { status: 400 },
     );
   }
 
-  const nowIso = new Date().toISOString();
+  const { data: profile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", user.id)
+    .maybeSingle<{ shop_id: string | null }>();
 
-  // 4) Load inspection summary + ensure canonical inspections row exists
-  //    - First try inspections.summary
-  //    - Fallback to inspection_sessions.state
-  //    - If inspections row doesn't exist, UPSERT it (draft first, then finalize below)
+  if (profileErr || profile?.shop_id !== shopId) {
+    return NextResponse.json(
+      { error: profileErr?.message ?? "Forbidden" },
+      { status: 403 },
+    );
+  }
 
+  // Storage requests run in a separate transaction, so a transaction-local
+  // shop GUC cannot authorize them. Scope is verified above; the admin client
+  // is used only for this exact tenant-derived object path.
+  const storageSupabase = createAdminClient();
+
+  // 4) Autosave creates the canonical draft. Finalization reads the newest
+  // deterministic row and never relies on a production uniqueness constraint.
   const { data: insp, error: inspErr } = await supabase
     .from("inspections")
-    .select("id, work_order_id, work_order_line_id, summary, pdf_storage_path")
+    .select(
+      "id, work_order_id, work_order_line_id, summary, pdf_storage_path, updated_at, locked, completed, is_draft",
+    )
     .eq("work_order_line_id", workOrderLineId)
+    .eq("shop_id", shopId)
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: false })
+    .limit(1)
     .maybeSingle<
       Pick<
         DB["public"]["Tables"]["inspections"]["Row"],
-        "id" | "work_order_id" | "work_order_line_id" | "summary" | "pdf_storage_path"
+        | "id"
+        | "work_order_id"
+        | "work_order_line_id"
+        | "summary"
+        | "pdf_storage_path"
+        | "updated_at"
+        | "locked"
+        | "completed"
+        | "is_draft"
       >
     >();
 
   if (inspErr) {
     // eslint-disable-next-line no-console
-    console.error("[inspections/finalize/pdf] inspections lookup failed", inspErr);
-    return NextResponse.json({ error: "Failed to load inspection" }, { status: 500 });
+    console.error(
+      "[inspections/finalize/pdf] inspections lookup failed",
+      inspErr,
+    );
+    return NextResponse.json(
+      { error: "Failed to load inspection" },
+      { status: 500 },
+    );
   }
 
-  let summary = (insp?.summary ?? null) as unknown as InspectionSession | null;
+  if (!insp?.id) {
+    return NextResponse.json(
+      { error: "Inspection has not finished autosaving yet. Try again." },
+      { status: 409 },
+    );
+  }
+  if (insp.locked || insp.completed || insp.is_draft === false) {
+    return NextResponse.json(
+      { error: "Inspection is already finalized and locked." },
+      { status: 409 },
+    );
+  }
+
+  let summary = (insp.summary ?? null) as unknown as InspectionSession | null;
 
   if (!summary) {
     const { data: sess, error: sessErr } = await supabase
       .from("inspection_sessions")
       .select("state")
       .eq("work_order_line_id", workOrderLineId)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: false })
+      .limit(1)
       .maybeSingle<{ state: Json | null }>();
 
     if (sessErr) {
       // eslint-disable-next-line no-console
-      console.error("[inspections/finalize/pdf] session lookup failed", sessErr);
-      return NextResponse.json({ error: "Inspection session missing" }, { status: 404 });
+      console.error(
+        "[inspections/finalize/pdf] session lookup failed",
+        sessErr,
+      );
+      return NextResponse.json(
+        { error: "Inspection session missing" },
+        { status: 404 },
+      );
     }
 
     summary = (sess?.state ?? null) as unknown as InspectionSession | null;
   }
 
   if (!summary || typeof summary !== "object") {
-    return NextResponse.json({ error: "Inspection summary missing/invalid" }, { status: 400 });
-  }
-
-  // ✅ Ensure inspections row exists (UPSERT by work_order_line_id)
-  // This makes finalize idempotent and guarantees invoice/email can attach.
-  const { data: ensured, error: ensureErr } = await supabase
-    .from("inspections")
-    .upsert(
-      {
-        work_order_id: workOrderId,
-        work_order_line_id: workOrderLineId,
-        shop_id: shopId,
-        user_id: user.id,
-        summary: summary as unknown as Json,
-        // keep it draft until PDF upload succeeds
-        is_draft: true,
-        completed: false,
-        locked: false,
-        status: "draft",
-        updated_at: nowIso,
-      } satisfies DB["public"]["Tables"]["inspections"]["Insert"],
-      { onConflict: "work_order_line_id" },
-    )
-    .select("id, pdf_storage_path")
-    .single<{ id: string; pdf_storage_path: string | null }>();
-
-  if (ensureErr || !ensured?.id) {
-    // eslint-disable-next-line no-console
-    console.error("[inspections/finalize/pdf] inspections upsert failed", ensureErr);
     return NextResponse.json(
-      { error: ensureErr?.message ?? "Failed to create inspection record" },
-      { status: 500 },
+      { error: "Inspection summary missing/invalid" },
+      { status: 400 },
     );
   }
 
-  const inspectionId = ensured.id;
+  const summaryRevision =
+    typeof summary.syncRevision === "number" &&
+    Number.isFinite(summary.syncRevision)
+      ? Math.max(0, Math.trunc(summary.syncRevision))
+      : 0;
+  if (summaryRevision !== expectedSyncRevision) {
+    return NextResponse.json(
+      {
+        error:
+          "Inspection changed on another device. Review the latest version and finalize again.",
+      },
+      { status: 409 },
+    );
+  }
+
+  const inspectionId = insp.id;
   const brand = await getActiveBrandForRender(shopId);
 
   // 5) Generate PDF
@@ -176,6 +264,8 @@ export async function POST(req: NextRequest) {
     shopName: null,
     colors: brand.colors,
   });
+  const pdfBuffer = Buffer.from(pdfBytes);
+  const pdfHash = createHash("sha256").update(pdfBuffer).digest("hex");
 
   // 6) Upload to storage (Policy-based: path includes shop id)
   const bucket = "inspection_pdfs";
@@ -184,13 +274,13 @@ export async function POST(req: NextRequest) {
   const inspPart = safeFilePart(String(inspectionId));
   const linePart = safeFilePart(workOrderLineId);
 
-  const path = `shops/${shopPart}/work_orders/${woPart}/inspections/${inspPart}/line_${linePart}.pdf`;
+  const path = `shops/${shopPart}/work_orders/${woPart}/inspections/${inspPart}/line_${linePart}_r${summaryRevision}_${pdfHash}.pdf`;
 
-  const { error: uploadErr } = await supabase.storage
+  const { error: uploadErr } = await storageSupabase.storage
     .from(bucket)
-    .upload(path, Buffer.from(pdfBytes), { contentType: "application/pdf", upsert: true });
+    .upload(path, pdfBuffer, { contentType: "application/pdf", upsert: false });
 
-  if (uploadErr) {
+  if (uploadErr && !isStorageAlreadyExistsError(uploadErr)) {
     // eslint-disable-next-line no-console
     console.error("[inspections/finalize/pdf] upload failed", {
       message: uploadErr.message,
@@ -216,39 +306,53 @@ export async function POST(req: NextRequest) {
   }
 
   // Optional: signed URL for quick-open in UI
-  const { data: signed, error: signedErr } = await supabase.storage
+  const { data: signed, error: signedErr } = await storageSupabase.storage
     .from(bucket)
     .createSignedUrl(path, 60 * 60 * 24 * 30);
 
   if (signedErr) {
     // eslint-disable-next-line no-console
-    console.warn("[inspections/finalize/pdf] createSignedUrl failed", signedErr);
+    console.warn(
+      "[inspections/finalize/pdf] createSignedUrl failed",
+      signedErr,
+    );
   }
 
-  const nowIso2 = new Date().toISOString();
+  // 7) Publish the immutable object only if the persisted summary revision is
+  // still the one used to generate it. The RPC locks and rechecks the row.
+  const finalizeRpc = storageSupabase as unknown as FinalizeRpcClient;
+  const { error: finalizeErr } = await finalizeRpc.rpc(
+    "finalize_inspection_pdf_atomic",
+    {
+      p_inspection_id: inspectionId,
+      p_work_order_line_id: workOrderLineId,
+      p_actor_user_id: user.id,
+      p_expected_sync_revision: expectedSyncRevision,
+      p_pdf_storage_path: path,
+      p_pdf_sha256: pdfHash,
+      p_pdf_url: signed?.signedUrl ?? null,
+    },
+  );
 
-  // 7) Update inspections record (mark complete + store PDF path/url)
-  const { error: updErr } = await supabase
-    .from("inspections")
-    .update(
-      {
-        pdf_storage_path: path,
-        pdf_url: signed?.signedUrl ?? null,
-        locked: true,
-        completed: true,
-        is_draft: false,
-        finalized_at: nowIso2,
-        finalized_by: user.id,
-        updated_at: nowIso2,
-        status: "completed",
-      } satisfies DB["public"]["Tables"]["inspections"]["Update"],
-    )
-    .eq("id", inspectionId);
-
-  if (updErr) {
+  if (finalizeErr) {
     // eslint-disable-next-line no-console
-    console.error("[inspections/finalize/pdf] inspections update failed", updErr);
-    return NextResponse.json({ error: updErr.message }, { status: 500 });
+    console.error(
+      "[inspections/finalize/pdf] atomic finalization failed",
+      finalizeErr,
+    );
+    const message = [finalizeErr.message, finalizeErr.details, finalizeErr.hint]
+      .filter(Boolean)
+      .join(" — ");
+    const lower = message.toLowerCase();
+    const status =
+      lower.includes("changed on another device") ||
+      lower.includes("saved inspection revision") ||
+      lower.includes("already finalized") ||
+      lower.includes("locked") ||
+      lower.includes("not found")
+        ? 409
+        : 400;
+    return NextResponse.json({ error: message }, { status });
   }
 
   return NextResponse.json({

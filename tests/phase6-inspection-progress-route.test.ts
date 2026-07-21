@@ -17,6 +17,10 @@ describe("Phase 6 inspection progress route", () => {
     expect(route).toContain("A stable Idempotency-Key is required.");
     expect(client).toContain('"Idempotency-Key": payload.operationKey');
     expect(client).toContain("clientMutationId: operationKey");
+    expect(client).toContain("operationKey?: string");
+    expect(client).toContain(
+      'orderKey: `${workOrderLineId}:inspection-progress`',
+    );
   });
 
   it("uses only the canonical atomic RPC for critical writes", () => {
@@ -32,7 +36,13 @@ describe("Phase 6 inspection progress route", () => {
     expect(replay).toContain("operationKey,");
   });
 
-  it("preserves HTTP status for permanent-error classification", () => {
+  it("preserves HTTP status and server revision acknowledgements", () => {
     expect(client).toContain("error.status = res.status");
+    expect(client).toContain(
+      "syncRevision: serverResponse.current?.sync_revision",
+    );
+    expect(route).toContain('lower.includes("newer server version")');
+    expect(route).toContain("? 409");
   });
 });
+

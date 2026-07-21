@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -44,7 +44,7 @@ async function sha256Base64(dataUrl: string): Promise<string> {
 }
 
 export default function MobileTechSettingsPage(): JSX.Element {
-  const supabase = createBrowserSupabase();
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   // profile fields (from profiles table)
   const [loading, setLoading] = useState(true);
@@ -196,11 +196,16 @@ export default function MobileTechSettingsPage(): JSX.Element {
       const path = `tech-signatures/${profileId}/${hash}.png`;
 
       const up = await supabase.storage.from("signatures").upload(path, blob, {
-        upsert: true,
+        upsert: false,
         contentType: "image/png",
       });
 
-      if (up.error) throw up.error;
+      if (
+        up.error &&
+        !/already exists|resource exists|duplicate/i.test(up.error.message)
+      ) {
+        throw up.error;
+      }
 
       const update: Database["public"]["Tables"]["profiles"]["Update"] = {
         tech_signature_path: path,
@@ -600,3 +605,4 @@ function CheckboxRow({
     </label>
   );
 }
+
