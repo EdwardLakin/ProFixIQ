@@ -7,7 +7,9 @@ on:
       - "app/assistant/**"
       - "app/mobile/assistant/**"
       - "features/shop-assistant/**"
+      - "features/mobile/navigation/mobile-route-continuity.ts"
       - "tests/shop-assistant-*.test.ts"
+      - "tests/mobile-route-continuity.test.ts"
       - ".github/workflows/shop-assistant-validation.yml"
   workflow_dispatch:
 
@@ -55,14 +57,17 @@ jobs:
           app/assistant/page.tsx
           app/mobile/assistant/page.tsx
           features/shop-assistant
+          features/mobile/navigation/mobile-route-continuity.ts
           tests/shop-assistant-reliability.test.ts
           tests/shop-assistant-state.test.ts
           tests/shop-assistant-actions.test.ts
           tests/shop-assistant-orchestrator.test.ts
+          tests/mobile-route-continuity.test.ts
       - run: >-
           pnpm exec vitest run
           tests/shop-assistant-reliability.test.ts
           tests/shop-assistant-state.test.ts
           tests/shop-assistant-actions.test.ts
           tests/shop-assistant-orchestrator.test.ts
+          tests/mobile-route-continuity.test.ts
       - run: node scripts/audit-api-routes.mjs
