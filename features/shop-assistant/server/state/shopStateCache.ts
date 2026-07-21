@@ -68,10 +68,13 @@ export async function getOrRefreshShopState(params: {
   );
   const nowMs = Date.now();
   const existing = await loadSnapshot(params.actor).catch(() => null);
+  const roleMatches =
+    (existing?.role ?? null) === (params.actor.role ?? null);
   const existingSnapshot = existing?.snapshot;
-  const existingState = isShopAssistantState(existingSnapshot)
-    ? existingSnapshot
-    : null;
+  const existingState =
+    roleMatches && isShopAssistantState(existingSnapshot)
+      ? existingSnapshot
+      : null;
   const isFresh = Boolean(
     !params.force &&
       existingState &&
@@ -111,15 +114,12 @@ export async function getOrRefreshShopState(params: {
 export async function invalidateShopState(
   actor: ShopAssistantActor,
 ): Promise<void> {
-  const now = new Date().toISOString();
-  const { error } = await dbFor(actor)
-    .from("shop_assistant_state_snapshots")
-    .update({
-      expires_at: now,
-      invalidated_at: now,
-      updated_at: now,
-    })
-    .eq("shop_id", actor.shopId)
-    .eq("user_id", actor.userId);
+  const { error } = await dbFor(actor).rpc(
+    "invalidate_shop_assistant_state_snapshots",
+    {
+      p_shop_id: actor.shopId,
+      p_actor_user_id: actor.userId,
+    },
+  );
   if (error) throw new Error(error.message);
 }
