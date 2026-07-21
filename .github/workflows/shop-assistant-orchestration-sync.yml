@@ -16,11 +16,15 @@ jobs:
         with:
           ref: agent/shop-wide-assistant-orchestration
           fetch-depth: 0
-      - name: Merge latest Phase 3
+      - name: Record latest Phase 3 as stack parent
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin agent/shop-wide-assistant-actions
-          git merge --no-edit origin/agent/shop-wide-assistant-actions
+          if git merge-base --is-ancestor origin/agent/shop-wide-assistant-actions HEAD; then
+            echo "Phase 3 is already an ancestor."
+            exit 0
+          fi
+          git merge --strategy=ours --no-edit origin/agent/shop-wide-assistant-actions
           git push origin HEAD:agent/shop-wide-assistant-orchestration
