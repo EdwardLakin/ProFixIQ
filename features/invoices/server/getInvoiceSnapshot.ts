@@ -873,11 +873,9 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       : undefined;
     const qtyRaw = safeNumber(a.qty);
     const qty = qtyRaw > 0 ? qtyRaw : 1;
-    // Match FocusedJobModal's allocated-parts calculation exactly. The current
-    // work-order flow stores and displays the allocation price from unit_cost.
-    // Request/catalog values remain fallbacks for records without that value.
+    // Allocation cost is an internal valuation and must never become a customer
+    // charge. Prefer the request's customer quote, then the catalog sell price.
     const unitPrice =
-      safeNumber(a.unit_cost) ||
       (requestItem ? itemUnitPrice(requestItem) : 0) ||
       safeNumber(p?.price) ||
       safeNumber(p?.default_price);

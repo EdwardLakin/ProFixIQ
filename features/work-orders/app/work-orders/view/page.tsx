@@ -616,18 +616,30 @@ export default function WorkOrdersView(): JSX.Element {
             .replaceAll(" ", "_");
 
           if (statusLower === "completed") {
-            const { error } = await supabase
-              .from("work_orders")
-              .update({
-                status: "ready_to_invoice",
-              } as DB["public"]["Tables"]["work_orders"]["Update"])
-              .eq("id", woId)
-              .eq("status", "completed");
+            const operationKey = crypto.randomUUID();
+            const readyResponse = await fetch(
+              `/api/work-orders/${woId}/mark-ready`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Idempotency-Key": operationKey,
+                },
+                body: JSON.stringify({ operationKey }),
+              },
+            );
+            const readyPayload = (await readyResponse.json().catch(() => null)) as
+              | { error?: string }
+              | null;
 
-            if (error) {
+            if (!readyResponse.ok) {
               console.warn(
                 "[invoice-review] could not advance status:",
-                error.message,
+                readyPayload?.error ?? readyResponse.statusText,
+              );
+              toast.error(
+                readyPayload?.error ??
+                  "Work order could not be marked ready to invoice.",
               );
             } else {
               toast.success("Moved to Ready to invoice");
@@ -649,7 +661,7 @@ export default function WorkOrdersView(): JSX.Element {
         setReviewLoadingId(null);
       }
     },
-    [load, rows, supabase],
+    [load, rows],
   );
 
   useEffect(() => {

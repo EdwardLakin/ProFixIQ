@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { reviewWorkOrder } from "../_lib/reviewWorkOrder";
-import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
+import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import { getActiveInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
 
 
@@ -95,7 +95,11 @@ export async function GET(
     });
     const snapshot =
       activeInvoiceVersion?.snapshot ??
-      (await getInvoiceSnapshotForWorkOrder({ supabase, workOrderId: woId }));
+      (await getIssuableInvoiceSnapshot({
+        supabase,
+        workOrderId: woId,
+        shopId: scopedWorkOrder.shop_id,
+      }));
     return NextResponse.json(
       { snapshot, activeInvoiceVersion },
       { headers: { "Cache-Control": "private, no-store" } },
