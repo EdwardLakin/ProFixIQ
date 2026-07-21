@@ -3,6 +3,9 @@ import "server-only";
 import type { ShopAssistantState } from "@/features/shop-assistant/server/state/types";
 import type { ShopAssistantIntentClassification } from "./types";
 
+const SHOP_STATE_QUESTION_PATTERN =
+  /\b(?:status|summary|priorit|focus|attention|today|how(?:'s| is)|overview|current|what changed|what needs|shop picture|operations|everything|all departments)\b/i;
+
 function relevantAlertCodes(
   classification: ShopAssistantIntentClassification,
 ): (code: string) => boolean {
@@ -32,7 +35,6 @@ export function shouldUseShopState(
   question: string,
   classification: ShopAssistantIntentClassification,
 ): boolean {
-  if (classification.agentId === "reporting_agent") return true;
   if (
     classification.agentId === "customers_agent" ||
     classification.agentId === "customer_communications_agent" ||
@@ -42,8 +44,10 @@ export function shouldUseShopState(
   ) {
     return false;
   }
-  return /\b(?:status|summary|priorit|focus|attention|today|how(?:'s| is)|overview|current|what changed|what needs)\b/i.test(
-    question,
+
+  return (
+    SHOP_STATE_QUESTION_PATTERN.test(question) ||
+    classification.reason === "matched a cross-domain shop summary request"
   );
 }
 
