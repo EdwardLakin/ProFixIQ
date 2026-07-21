@@ -184,7 +184,7 @@ export default function TechSettingsPage() {
 
       const blob = dataUrlToBlob(dataUrl);
       const hash = await sha256Base64(dataUrl);
-      const path = `tech-signatures/${profileId}.png`;
+      const path = `tech-signatures/${profileId}/${hash}.png`;
 
       const up = await supabase.storage.from("signatures").upload(path, blob, {
         upsert: true,
