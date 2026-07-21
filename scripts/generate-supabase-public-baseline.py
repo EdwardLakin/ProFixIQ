@@ -201,8 +201,6 @@ def include_public_statement(statement: str) -> bool:
         ("CREATE SCHEMA ", "ALTER SCHEMA ", "COMMENT ON SCHEMA ")
     ):
         return False
-    if '"extensions".' in leading[:180]:
-        return False
     if upper.startswith(
         (
             "CREATE EVENT TRIGGER ",
@@ -212,6 +210,28 @@ def include_public_statement(statement: str) -> bool:
     ):
         return False
     return True
+
+
+PUBLIC_TABLE_PATTERN = re.compile(
+    r'CREATE TABLE IF NOT EXISTS "public"\."([^"]+)"',
+    re.IGNORECASE,
+)
+
+
+def validate_selected_public_tables(
+    source: str,
+    statements: list[str],
+) -> None:
+    source_tables = set(PUBLIC_TABLE_PATTERN.findall(source))
+    selected_tables = set(
+        PUBLIC_TABLE_PATTERN.findall("\n".join(statements))
+    )
+    missing_tables = sorted(source_tables - selected_tables)
+    if missing_tables:
+        raise RuntimeError(
+            "Public baseline selection omitted tables: "
+            + ", ".join(missing_tables)
+        )
 
 
 def validate_snapshot(source: str) -> None:
@@ -245,6 +265,7 @@ def render_baseline(source: str) -> str:
     ]
     if not statements:
         raise RuntimeError("No public schema statements were selected")
+    validate_selected_public_tables(source, statements)
 
     all_core_expression = " and\n      ".join(
         f"to_regclass('public.{table}') is not null"
