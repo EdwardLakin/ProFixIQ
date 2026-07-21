@@ -158,8 +158,6 @@ export default function useInspectionSession(initialSession?: Partial<SessionWit
 
   const stamp = () => ({ lastUpdated: new Date().toISOString() });
 
-  const replaceSession = (next: SessionWithLineId) => setSession(next);
-
   const updateInspection = (updates: Partial<SessionWithLineId>) =>
     setSession((prev) => ({ ...prev, ...updates, ...stamp() }));
 
@@ -225,6 +223,16 @@ export default function useInspectionSession(initialSession?: Partial<SessionWit
       ...stamp(),
     }));
   };
+
+  // Hydration must preserve the persisted timestamp, progress position,
+  // transcript, completion state, and sync revision. startSession is only for a
+  // genuinely new inspection.
+  const replaceSession = (sessionData: Partial<SessionWithLineId>) =>
+    setSession((prev) => ({
+      ...prev,
+      ...sessionData,
+      sections: sessionData.sections ?? prev.sections,
+    }));
 
   const pauseSession = () =>
     updateInspection({ isPaused: true, status: "paused" });
