@@ -68,6 +68,9 @@ interface SectionDisplayProps {
   /** Optional external collapse control (used by sticky header). */
   isCollapsed?: boolean;
   onToggleCollapse?: (sectionIndex: number) => void;
+
+  /** Render canonical status, notes, photos, parts and labor below a compact grid. */
+  showGridFindings?: boolean;
 }
 
 type PartRow = { description: string; qty: number };
@@ -191,6 +194,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     onUpdateNoPartsRequired,
     isCollapsed,
     onToggleCollapse,
+    showGridFindings = false,
   } = props;
 
   const items = (section.items ?? []) as ItemExtended[];
@@ -272,8 +276,15 @@ export default function SectionDisplay(props: SectionDisplayProps) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-4">
         {gridSection ? (
-          <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
-            {resolvedTitle}
+          <div>
+            <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
+              {showGridFindings ? "Findings & evidence" : resolvedTitle}
+            </div>
+            {showGridFindings ? (
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                Status, notes, photos, parts and labor saved on the same inspection items as the measurements above.
+              </p>
+            ) : null}
           </div>
         ) : (
           <button
@@ -353,7 +364,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
       {open && (
         <div className="pt-3">
           {/* Grid sections render their own UI elsewhere */}
-          {gridSection ? (
+          {gridSection && !showGridFindings ? (
             <div />
           ) : (
             <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)]">
