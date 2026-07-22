@@ -41,7 +41,7 @@ type Props = {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children?: React.ReactNode;
-  /** Existing server route used only for optional online enrichment. */
+  /** Existing server route retained for the manual form action. */
   action?: string;
 };
 
@@ -190,7 +190,7 @@ export default function VinCaptureModal({
     [userId],
   );
 
-  const handleFoundVin = useCallback(
+  const handleManualVin = useCallback(
     async (rawVin: string) => {
       const normalized = normalizeVinInput(rawVin);
       if (!normalized.isValid) {
@@ -203,6 +203,41 @@ export default function VinCaptureModal({
       setIsDecoding(true);
       setCaptureError(null);
 
+      try {
+        const decoded = await decodeVin(normalized.vin, userId);
+        if (decoded.error) {
+          setCaptureError(decoded.error);
+          return;
+        }
+
+        const enriched = decoded as DecodeVinResponseExtended;
+        applyDecodedVehicle(normalized.vin, enriched);
+        fetchRecallData(normalized.vin, enriched);
+        setOpen(false);
+      } catch {
+        setCaptureError(
+          "VIN decoding is temporarily unavailable. The VIN can still be entered directly in the vehicle form.",
+        );
+      } finally {
+        captureLockRef.current = false;
+        setIsDecoding(false);
+      }
+    },
+    [applyDecodedVehicle, fetchRecallData, setOpen, userId],
+  );
+
+  const handleScannedVin = useCallback(
+    (rawVin: string) => {
+      const normalized = normalizeVinInput(rawVin);
+      if (!normalized.isValid) {
+        setCaptureError(normalized.message);
+        return;
+      }
+      if (captureLockRef.current) return;
+
+      captureLockRef.current = true;
+      setCaptureError(null);
+
       const local = decodeVinLocally(normalized.vin);
       const localDecoded: DecodeVinResponseExtended = {
         year: local?.year ?? null,
@@ -210,16 +245,13 @@ export default function VinCaptureModal({
         manufacturer: local?.manufacturer ?? null,
       };
 
-      // The VIN and locally-known fields land immediately. This keeps intake fast
-      // and functional without network or a third-party scan/OCR service.
+      // Scanning is local-first: the VIN and known fields land immediately and
+      // the camera modal closes without waiting for network enrichment.
       applyDecodedVehicle(normalized.vin, localDecoded);
       setOpen(false);
-      setIsDecoding(false);
 
       if (typeof navigator !== "undefined" && !navigator.onLine) return;
 
-      // Existing vPIC decoding remains optional background enrichment. A failure
-      // leaves the locally captured VIN and manual form untouched.
       void decodeVin(normalized.vin, userId)
         .then((decoded) => {
           if (decoded.error) return;
@@ -228,7 +260,7 @@ export default function VinCaptureModal({
           fetchRecallData(normalized.vin, enriched);
         })
         .catch(() => {
-          // Intake is already complete locally.
+          // Local intake is already complete.
         });
     },
     [applyDecodedVehicle, fetchRecallData, setOpen, userId],
@@ -256,7 +288,7 @@ export default function VinCaptureModal({
         <VinCaptureModalContent
           action={action}
           userId={userId}
-          onManualSubmit={handleFoundVin}
+          onManualSubmit={handleManualVin}
           isDecoding={isDecoding}
           error={captureError}
           onClearError={() => setCaptureError(null)}
@@ -266,7 +298,7 @@ export default function VinCaptureModal({
           }}
           scanSlot={
             <VehicleIntakeScanner
-              onFoundVin={(vin) => void handleFoundVin(vin)}
+              onFoundVin={handleScannedVin}
               onError={setCaptureError}
               isBusy={isDecoding}
             />
