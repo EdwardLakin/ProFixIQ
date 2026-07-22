@@ -40,6 +40,8 @@ interface InspectionItemCardProps {
     unit: string,
   ) => void;
   variant?: "card" | "row";
+  /** Hide duplicate status inputs when a grid already owns status selection. */
+  showStatusControls?: boolean;
 }
 
 function getItemLabel(raw: InspectionItem): string {
@@ -83,6 +85,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     onUpdateValue,
     onUpdateUnit,
     variant = "card",
+    showStatusControls = true,
   } = props;
 
   const label = getItemLabel(item);
@@ -205,7 +208,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   className="h-9 w-20 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[12px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
                 />
               </div>
-            ) : (
+            ) : showStatusControls ? (
               <StatusButtons
                 item={item}
                 sectionIndex={sectionIndex}
@@ -224,6 +227,26 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                 compact
                 wrap
               />
+            ) : (
+              <span
+                aria-label="Current item status"
+                className={[
+                  "inline-flex h-8 items-center rounded-full border px-3 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                  isFail
+                    ? "border-red-500/35 bg-red-500/10 text-red-700 dark:text-red-200"
+                    : isRec
+                      ? "border-amber-500/35 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                      : status === "ok" || status === "pass"
+                        ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
+                        : "border-sky-500/35 bg-sky-500/10 text-sky-700 dark:text-sky-200",
+                ].join(" ")}
+              >
+                {status === "recommend"
+                  ? "REC"
+                  : status === "na"
+                    ? "N/A"
+                    : status || "Open"}
+              </span>
             )}
           </div>
         </div>
