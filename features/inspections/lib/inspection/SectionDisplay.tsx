@@ -142,6 +142,22 @@ function isSubmittedItem(item: ItemExtended): boolean {
   return item.estimateSubmitted === true;
 }
 
+function hasGridFindingEvidence(item: ItemExtended): boolean {
+  const status = String(item.status ?? "").trim().toLowerCase();
+  const photoUrls = Array.isArray(item.photoUrls) ? item.photoUrls : [];
+
+  return (
+    status === "fail" ||
+    status === "recommend" ||
+    getNote(item).trim().length > 0 ||
+    photoUrls.length > 0 ||
+    getParts(item).length > 0 ||
+    getLaborHours(item) !== null ||
+    item.noPartsRequired === true ||
+    item.estimateSubmitted === true
+  );
+}
+
 function submittedAt(item: ItemExtended): string | null {
   const raw = item.estimateSubmittedAt;
   return typeof raw === "string" && raw.trim() ? raw : null;
@@ -271,19 +287,33 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     });
   };
 
+  const displayEntries = items
+    .map((item, itemIndex) => ({ item, itemIndex }))
+    .filter(({ item }) => !showGridFindings || hasGridFindingEvidence(item));
+
+  if (showGridFindings && displayEntries.length === 0) {
+    return null;
+  }
+
   return (
-    <div>
+    <div
+      className={
+        showGridFindings
+          ? "mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
+          : undefined
+      }
+    >
       {/* Header */}
       <div className="grid gap-4 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div className="min-w-0">
           {gridSection ? (
             <div>
               <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
-                {showGridFindings ? "Findings & evidence" : resolvedTitle}
+                {showGridFindings ? "Finding details" : resolvedTitle}
               </div>
               {showGridFindings ? (
                 <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                  Status, notes, photos, parts and labor saved on the same inspection items as the measurements above.
+                  Notes, photos, parts and labor for items marked Fail or Recommend above.
                 </p>
               ) : null}
             </div>
@@ -298,16 +328,18 @@ export default function SectionDisplay(props: SectionDisplayProps) {
             </button>
           )}
 
-          <div
-            className="mt-3 flex flex-wrap items-center gap-1.5"
-            aria-label="Section item counts"
-          >
-            <StatusBadge variant="success">{stats.ok} OK</StatusBadge>
-            <StatusBadge variant="danger">{stats.fail} FAIL</StatusBadge>
-            <StatusBadge variant="info">{stats.na} NA</StatusBadge>
-            <StatusBadge variant="warning">{stats.recommend} REC</StatusBadge>
-            <StatusBadge variant="neutral">{stats.unset} Open</StatusBadge>
-          </div>
+          {!showGridFindings ? (
+            <div
+              className="mt-3 flex flex-wrap items-center gap-1.5"
+              aria-label="Section item counts"
+            >
+              <StatusBadge variant="success">{stats.ok} OK</StatusBadge>
+              <StatusBadge variant="danger">{stats.fail} FAIL</StatusBadge>
+              <StatusBadge variant="info">{stats.na} NA</StatusBadge>
+              <StatusBadge variant="warning">{stats.recommend} REC</StatusBadge>
+              <StatusBadge variant="neutral">{stats.unset} Open</StatusBadge>
+            </div>
+          ) : null}
         </div>
 
         {showBulkButtons ? (
@@ -381,10 +413,10 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               <div className="hidden border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2.5 lg:block">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    Item · Status · Notes
+                    {showGridFindings ? "Item · Evidence" : "Item · Status · Notes"}
                   </div>
                   <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    Item · Status · Notes
+                    {showGridFindings ? "Item · Evidence" : "Item · Status · Notes"}
                   </div>
                 </div>
               </div>
@@ -402,7 +434,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   "[&>*]:hover:border-[color:var(--theme-border-strong)]",
                 ].join(" ")}
               >
-                {items.map((item, itemIndex) => {
+                {displayEntries.map(({ item, itemIndex }) => {
                   const keyBase =
                     (item.item ??
                       item.name ??
@@ -477,6 +509,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         onUpdateNote={onUpdateNote}
                         onUpload={onUpload}
                         variant="row"
+                        showStatusControls={!showGridFindings}
                       />
 
                       {(() => {
