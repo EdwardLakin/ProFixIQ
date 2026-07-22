@@ -26,6 +26,45 @@ jobs:
           version: 2.101.0
           github-token: ${{ github.token }}
 
+      - name: Reject duplicate migration versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from collections import defaultdict
+          from pathlib import Path
+          import re
+
+          versions: dict[str, list[str]] = defaultdict(list)
+          invalid: list[str] = []
+
+          for path in sorted(Path("supabase/migrations").glob("*.sql")):
+              match = re.match(r"^(\d+)_", path.name)
+              if match is None:
+                  invalid.append(path.name)
+                  continue
+              versions[match.group(1)].append(path.name)
+
+          duplicates = {
+              version: names
+              for version, names in versions.items()
+              if len(names) > 1
+          }
+
+          if invalid or duplicates:
+              if invalid:
+                  print("Migration filenames without a numeric version prefix:")
+                  for name in invalid:
+                      print(f"  - {name}")
+              if duplicates:
+                  print("Duplicate Supabase migration versions:")
+                  for version, names in sorted(duplicates.items()):
+                      print(f"  {version}:")
+                      for name in names:
+                          print(f"    - {name}")
+              raise SystemExit(1)
+          PY
+
       - name: Verify the generated baseline is deterministic
         shell: bash
         run: |
