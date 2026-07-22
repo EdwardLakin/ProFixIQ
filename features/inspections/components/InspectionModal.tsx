@@ -228,33 +228,42 @@ export default function InspectionModal({
   }, [open]);
 
   const panelWidth = compact ? "max-w-6xl" : "max-w-[1440px]";
-  const bodyHeight = compact ? "h-[78vh]" : "h-[calc(94vh-64px)]";
+  const bodyHeight = compact ? "h-[82vh]" : "h-[calc(96vh-64px)]";
 
   const cardBase =
-    "overflow-hidden rounded-[1.5rem] border border-[color:var(--theme-border-strong)] " +
-    "bg-[color:var(--theme-surface-panel-strong)] " +
-    "shadow-[0_32px_90px_rgba(15,23,42,0.28)]";
+    "overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] " +
+    "bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] " +
+    "shadow-[var(--theme-shadow-medium)]";
 
-  const innerShell = "bg-[color:var(--theme-surface-page)]";
+  const innerShell = "bg-[var(--theme-gradient-panel)]";
 
   return (
     <Dialog
       open={open}
       // ✅ Backdrop click + Esc will call close()
       onClose={close}
-      className="pfq-inspection-modal fixed inset-0 z-[300] flex items-center justify-center px-2 py-3 sm:px-4 sm:py-5"
+      className="pfq-inspection-modal fixed inset-0 z-[500] flex items-center justify-center px-2 py-3 sm:px-4 sm:py-5"
     >
       {/* clickable dimmed backdrop */}
-      <div className="fixed inset-0 z-[290] bg-slate-950/55 backdrop-blur-[3px]" aria-hidden />
+      <div
+        className="fixed inset-0 bg-[color:var(--theme-surface-inset)]/90 backdrop-blur-md"
+        aria-hidden
+      />
 
       <Dialog.Panel
-        className={`relative z-[310] mx-auto w-full ${panelWidth} ${cardBase}`}
+        className={`relative z-[510] mx-auto w-full ${panelWidth} ${cardBase}`}
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="absolute inset-x-0 top-0 z-20 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
+        <div className="pointer-events-none absolute inset-x-10 top-0 z-10 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.14),transparent_72%)]" />
+
         {/* Header */}
-        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-4 py-3 sm:px-5">
+        <div className="relative flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <Dialog.Title className="text-base font-semibold tracking-[-0.02em] text-[color:var(--theme-text-primary)] sm:text-lg">
+            <Dialog.Title
+              className="truncate text-[0.8rem] uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)]"
+              style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+            >
               {title}
             </Dialog.Title>
 
@@ -271,14 +280,14 @@ export default function InspectionModal({
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--brand-primary)]"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)]"
             >
               {compact ? "Expand" : "Shrink"}
             </button>
             <button
               type="button"
               onClick={close}
-              className="grid h-9 w-9 place-items-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-sm text-[color:var(--theme-text-secondary)] transition hover:border-[color:var(--brand-primary)] hover:text-[color:var(--theme-text-primary)]"
+              className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[0.78rem] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)] active:scale-95"
               aria-label="Close inspection"
             >
               ✕
