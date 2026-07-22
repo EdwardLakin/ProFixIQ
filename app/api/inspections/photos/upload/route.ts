@@ -274,7 +274,7 @@ export async function POST(req: NextRequest) {
         error: "Unable to resolve shop for inspection photo upload",
         debug: {
           source: resolved.source,
-          inspectionId: resolvedInspectionId,
+          inspectionId: requestedInspectionId,
           workOrderId,
           workOrderLineId,
         },
@@ -364,7 +364,7 @@ export async function POST(req: NextRequest) {
       if (shopId && mediaUrl) {
         const mediaEvent = await buildInspectionMediaCapturedEvent({
           shopId,
-          inspectionId: requestedInspectionId,
+          inspectionId: resolvedInspectionId,
           workOrderId,
           itemName,
           notes,
