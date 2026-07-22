@@ -9,6 +9,12 @@ const autosave = read(
 );
 const save = read("features/inspections/lib/inspection/save.ts");
 const findings = read("features/inspections/lib/inspection/findings/page.tsx");
+const recovery = read(
+  "features/inspections/components/inspection/InspectionConflictRecoveryPanel.tsx",
+);
+const recoveryMerge = read(
+  "features/inspections/lib/inspection/conflictRecovery.ts",
+);
 describe("technician inspection offline recovery", () => {
   it("stores expiring drafts under the authenticated user and shop scope", () => {
     expect(drafts).toContain('const KIND = "inspection-draft"');
@@ -92,5 +98,20 @@ describe("technician inspection offline recovery", () => {
     expect(autosave).toContain("saveInspectionOfflineDraft");
     expect(save).toContain("operationKey,");
     expect(save).toContain("syncRevision: serverResponse.current?.sync_revision");
+  });
+
+  it("requires an explicit server-versus-device recovery decision", () => {
+    expect(screen).toContain("<InspectionConflictRecoveryPanel");
+    expect(recovery).toContain("Nothing is chosen by time");
+    expect(recovery).toContain("Apply selected & sync");
+    expect(recovery).toContain("Keep shop copy");
+    expect(recoveryMerge).toContain("syncRevision: args.server.syncRevision");
+    expect(recoveryMerge).toContain("Uploaded evidence is append-only");
+    expect(autosave).toContain("const resolveConflict = useCallback");
+    expect(autosave).toContain("preserveConflictUntilAcknowledged");
+    expect(save).toContain("deferSupersededDismissal");
+    expect(save).toContain("cannot destroy the only remaining device copy");
+    expect(autosave).toContain("automaticallyMergeInspectionConflict");
+    expect(recoveryMerge).toContain("installed app, then mobile web, then desktop");
   });
 });
