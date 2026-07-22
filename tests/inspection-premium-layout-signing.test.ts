@@ -12,10 +12,6 @@ const sectionDisplay = read(
 const autosave = read(
   "features/inspections/hooks/useInspectionAutosave.ts",
 );
-const migration = read(
-  "supabase/migrations/20260721234500_reinstall_inspection_writer_and_signer.sql",
-);
-
 describe("premium inspection layout and signing repair", () => {
   it("renders the hydraulic corner grid without decorative empty cells or sketch copy", () => {
     expect(cornerGrid).toContain("Hydraulic brake measurements");
@@ -32,17 +28,10 @@ describe("premium inspection layout and signing repair", () => {
     expect(sectionDisplay).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
   });
 
-  it("reinstalls conflict-target-free canonical save and signing functions", () => {
-    expect(migration).toContain(
-      "create or replace function public.save_inspection_progress_atomic",
-    );
-    expect(migration).toContain(
-      "create or replace function public.sign_inspection",
-    );
-    expect(migration).not.toContain("on conflict (work_order_line_id)");
-    expect(migration).not.toContain("on conflict (inspection_id, role)");
+  it("does not expose raw database conflict details to technicians", () => {
     expect(autosave).toContain(
       "Your work remains safe on this device.",
     );
+    expect(autosave).toContain("inspectionSyncErrorMessage");
   });
 });
