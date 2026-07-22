@@ -1,3 +1,4 @@
+# Keep the Phase 3 contract aligned with the ordered Supabase clean replay.
 name: Phase 3 Parts Validation
 
 on:
