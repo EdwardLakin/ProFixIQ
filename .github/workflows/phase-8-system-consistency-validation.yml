@@ -36,7 +36,7 @@ jobs:
           app/api/work-orders/lines/update-from-inspection/route.ts
           tests/phase8-approval-consistency-contract.test.ts
           tests/phase8-readiness-ai-legacy-contract.test.ts
-      - run: >-
-          pnpm exec vitest run
-          tests/phase8-approval-consistency-contract.test.ts
-          tests/phase8-readiness-ai-legacy-contract.test.ts
+      - name: Validate approval consistency contract
+        run: pnpm exec vitest run tests/phase8-approval-consistency-contract.test.ts
+      - name: Validate readiness AI legacy contract
+        run: pnpm exec vitest run tests/phase8-readiness-ai-legacy-contract.test.ts
