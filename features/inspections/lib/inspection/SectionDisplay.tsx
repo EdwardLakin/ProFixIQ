@@ -499,7 +499,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         }}
                         sectionIndex={sectionIndex}
                         itemIndex={itemIndex}
-                        showNotes={showNotes && isFailOrRec}
+                        showNotes={showNotes && (isFailOrRec || showGridFindings)}
                         showPhotos={showPhotos}
                         inspectionId={inspectionId}
                         workOrderId={workOrderId}
@@ -510,6 +510,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         onUpload={onUpload}
                         variant="row"
                         showStatusControls={!showGridFindings}
+                        showEvidenceFields={showGridFindings}
                       />
 
                       {(() => {
