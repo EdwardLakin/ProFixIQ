@@ -1,25 +1,18 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import ModalShell from "@/features/shared/components/ModalShell";
-import VinCaptureModalContent from "@/features/vehicles/components/VinCaptureModal";
-import { decodeVin, mapDecodedVinToVehicleSelectValues } from "@/features/shared/lib/vin/decodeVin";
-import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
-import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-// Optional: tame TS around experimental BarcodeDetector
-declare global {
-  interface Window {
-    BarcodeDetector?: new (opts?: { formats?: string[] }) => {
-      detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
-    };
-  }
-}
+import ModalShell from "@/features/shared/components/ModalShell";
+import {
+  decodeVin,
+  mapDecodedVinToVehicleSelectValues,
+  type DecodedVin,
+} from "@/features/shared/lib/vin/decodeVin";
+import { decodeVinLocally } from "@/features/shared/lib/vin/localDecodeVin";
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
+import VehicleIntakeScanner from "@/features/vehicles/components/VehicleIntakeScanner";
+import VinCaptureModalContent from "@/features/vehicles/components/VinCaptureModal";
+import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 
 export type VinDecodedDetail = {
   vin: string;
@@ -31,8 +24,6 @@ export type VinDecodedDetail = {
   engine?: string | null;
   engineFamily?: string | null;
   engineType?: string | null;
-
-  // extra fields from /api/vin
   engineDisplacementL?: string | null;
   engineCylinders?: string | null;
   fuelType?: string | null;
@@ -50,13 +41,11 @@ type Props = {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children?: React.ReactNode;
-  /** server route that upserts (defaults to /api/vin) */
+  /** Existing server route used only for optional online enrichment. */
   action?: string;
 };
 
-type DecodeVinResponse = Awaited<ReturnType<typeof decodeVin>>;
-
-type DecodeVinResponseExtended = DecodeVinResponse & {
+type DecodeVinResponseExtended = DecodedVin & {
   engineDisplacementL?: string | null;
   engineCylinders?: string | null;
   fuelType?: string | null;
@@ -68,222 +57,33 @@ type DecodeVinResponseExtended = DecodeVinResponse & {
   gvwr?: string | null;
 };
 
-function isLikelyVin(s: string) {
-  return normalizeVinInput(s).isValid;
-}
+function buildDecodedDetail(
+  vin: string,
+  decoded: DecodeVinResponseExtended,
+): VinDecodedDetail {
+  const mapped = mapDecodedVinToVehicleSelectValues(decoded);
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-
-function describeOcrError(status: number, fallback?: string | null) {
-  if (status === 413) return "Image is too large. Upload an image 8 MB or smaller, or enter the VIN manually.";
-  if (status === 415) return "Unsupported image type. Upload a JPEG, PNG, WebP, HEIC, or enter the VIN manually.";
-  return fallback || "Could not read a VIN from this image. Retake the photo, upload another, or enter it manually.";
-}
-
-/** Scanner pane used in scanSlot */
-function ScannerPane({
-  onFoundVin,
-  onError,
-  isBusy,
-}: {
-  userId: string;
-  onFoundVin: (vin: string) => void;
-  onError: (message: string) => void;
-  isBusy: boolean;
-}) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState(false);
-  const lockedRef = useRef(false);
-
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let raf = 0;
-    let detector:
-      | InstanceType<NonNullable<typeof window.BarcodeDetector>>
-      | null = null;
-
-    const start = async () => {
-      setError(null);
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-          audio: false,
-        });
-        if (!videoRef.current) return;
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setActive(true);
-
-        if (window.BarcodeDetector) {
-          detector = new window.BarcodeDetector({
-            formats: ["code_39", "code_128", "pdf417", "data_matrix"],
-          });
-
-          const scan = async () => {
-            if (!videoRef.current || lockedRef.current) return;
-            try {
-              const bitmap = await createImageBitmap(videoRef.current);
-              const codes = await detector!.detect(bitmap);
-              if (codes?.length) {
-                for (const c of codes) {
-                  const raw = String(c.rawValue ?? "");
-                  const cleaned = normalizeVinInput(raw);
-                  if (cleaned.isValid) {
-                    lockedRef.current = true;
-                    onFoundVin(cleaned.vin);
-                    return;
-                  }
-                }
-              }
-            } catch {
-              /* ignore transient decode errors */
-            }
-            raf = requestAnimationFrame(scan);
-          };
-          raf = requestAnimationFrame(scan);
-        } else {
-          const message =
-            "Live barcode detection is not supported in this browser. Upload a photo or enter the VIN manually.";
-          setError(message);
-          onError(message);
-        }
-      } catch {
-        const message =
-          "Camera unavailable. Upload a photo or enter the VIN manually.";
-        setError(message);
-        onError(message);
-      }
-    };
-
-    start();
-
-    return () => {
-      cancelAnimationFrame(raf);
-      setActive(false);
-      try {
-        stream?.getTracks()?.forEach((t) => t.stop());
-      } catch {
-        /* no-op */
-      }
-    };
-  }, [onError, onFoundVin]);
-
-  return (
-    <div
-      className={`space-y-3 ${
-        isBusy ? "ring-2 ring-cyan-500/60 rounded-md animate-pulse" : ""
-      }`}
-    >
-      {isBusy && (
-        <div className="flex items-center gap-2 rounded border border-cyan-500/50 bg-[color:var(--desktop-item-bg)] px-3 py-2">
-          <span className="inline-block h-4 w-4 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
-          <span className="text-xs text-cyan-100">
-            Decoding VIN… this can take a moment
-          </span>
-        </div>
-      )}
-
-      <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-2">
-        <video
-          ref={videoRef}
-          className="aspect-video w-full rounded bg-[color:var(--theme-surface-page)]"
-          playsInline
-          muted
-          autoPlay
-        />
-      </div>
-
-      {error ? (
-        <div className="text-xs text-[color:var(--theme-text-primary)]">{error}</div>
-      ) : (
-        <div className="text-xs text-[color:var(--theme-text-secondary)]">
-          {active
-            ? "Point the camera at the VIN barcode / label…"
-            : "Initializing camera…"}
-        </div>
-      )}
-
-      {/* Photo upload → OCR route */}
-      <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
-        <div className="mb-2 text-sm text-[color:var(--theme-text-primary)]">
-          Or upload a photo of the VIN label
-        </div>
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          disabled={isBusy}
-          className="block w-full text-xs text-[color:var(--theme-text-secondary)] file:mr-3 file:rounded file:border-0 file:bg-[linear-gradient(135deg,rgba(197,122,74,0.9),rgba(197,122,74,0.75))] file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-[color:var(--theme-text-on-accent)] hover:file:bg-[linear-gradient(135deg,rgba(197,122,74,1),rgba(197,122,74,0.85))] disabled:opacity-60"
-          onChange={async (e) => {
-            if (isBusy) return;
-            const file = e.target.files?.[0];
-            if (!file) return;
-
-            if (!file.type.startsWith("image/")) {
-              onError("Unsupported file type. Upload an image or enter the VIN manually.");
-              e.target.value = "";
-              return;
-            }
-
-            if (file.size > MAX_IMAGE_BYTES) {
-              onError("Image is too large. Upload an image 8 MB or smaller, or enter the VIN manually.");
-              e.target.value = "";
-              return;
-            }
-
-            try {
-              const formData = new FormData();
-              formData.append("image", file);
-
-              const res = await fetch("/api/vin/extract-from-image", {
-                method: "POST",
-                body: formData,
-              });
-
-              if (!res.ok) {
-                const body = (await res.json().catch(() => ({}))) as {
-                  error?: string | null;
-                };
-                onError(describeOcrError(res.status, body.error));
-                e.target.value = "";
-                return;
-              }
-
-              const data = (await res.json()) as { vin?: string | null };
-              const extractedVin = normalizeVinInput(data?.vin);
-              const vin = extractedVin.vin;
-              if (!extractedVin.isValid || !isLikelyVin(vin)) {
-                onError(
-                  "No clear VIN found in the photo. Retake it, upload another photo, or type the VIN manually.",
-                );
-                e.target.value = "";
-                return;
-              }
-
-              onFoundVin(vin);
-            } catch (err) {
-              console.error(err);
-              onError(
-                "OCR failed while reading the photo. Try again, upload another photo, or enter the VIN manually.",
-              );
-            } finally {
-              e.target.value = "";
-            }
-          }}
-        />
-        <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
-          Tip: Take a close, well-lit photo of the VIN sticker on the door frame or
-          dash.
-        </div>
-      </div>
-
-      <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-        We will decode with NHTSA and fill the vehicle form; you stay in control
-        of saving.
-      </div>
-    </div>
-  );
+  return {
+    vin,
+    year: decoded.year ?? null,
+    make: decoded.make ?? null,
+    model: decoded.model ?? null,
+    trim: decoded.trim ?? null,
+    submodel: decoded.submodel ?? decoded.trim ?? null,
+    engine: decoded.engine ?? null,
+    engineFamily: decoded.engineFamily ?? null,
+    engineType: decoded.engineType ?? null,
+    engineDisplacementL: decoded.engineDisplacementL ?? null,
+    engineCylinders: decoded.engineCylinders ?? null,
+    fuelType: mapped.fuel_type ?? null,
+    transmission: mapped.transmission ?? null,
+    transmissionType:
+      decoded.transmissionType ?? decoded.transmission ?? null,
+    driveType: mapped.drivetrain ?? null,
+    bodyClass: decoded.bodyClass ?? null,
+    manufacturer: decoded.manufacturer ?? null,
+    gvwr: decoded.gvwr ?? null,
+  };
 }
 
 export default function VinCaptureModal({
@@ -297,23 +97,31 @@ export default function VinCaptureModal({
   const [internalOpen, setInternalOpen] = useState(false);
   const [isDecoding, setIsDecoding] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const captureLockRef = useRef(false);
 
   const isControlled = typeof open === "boolean";
   const isOpen = isControlled ? (open as boolean) : internalOpen;
 
   const setOpen = useCallback(
-    (val: boolean) => {
-      if (isControlled) onOpenChange?.(val);
-      else setInternalOpen(val);
+    (value: boolean) => {
+      if (isControlled) onOpenChange?.(value);
+      else setInternalOpen(value);
     },
     [isControlled, onOpenChange],
   );
 
-  const setVehicleDraft = useWorkOrderDraft((s) => s.setVehicle);
+  const setVehicleDraft = useWorkOrderDraft((state) => state.setVehicle);
+  const onDecodedRef = useRef<Props["onDecoded"]>(onDecoded);
 
-  // Lock body scroll when modal is open
+  useEffect(() => {
+    onDecodedRef.current = onDecoded;
+  }, [onDecoded]);
+
   useEffect(() => {
     if (!isOpen) return;
+    captureLockRef.current = false;
+    setCaptureError(null);
+
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -321,113 +129,110 @@ export default function VinCaptureModal({
     };
   }, [isOpen]);
 
-  // Keep latest onDecoded
-  const onDecodedRef = useRef<Props["onDecoded"]>(onDecoded);
-  useEffect(() => {
-    onDecodedRef.current = onDecoded;
-  }, [onDecoded]);
+  const applyDecodedVehicle = useCallback(
+    (vin: string, decoded: DecodeVinResponseExtended) => {
+      const mapped = mapDecodedVinToVehicleSelectValues(decoded);
 
-  // Listen for result events (if server form posts and emits later)
+      setVehicleDraft({
+        vin,
+        year: decoded.year ?? null,
+        make: decoded.make ?? null,
+        model: decoded.model ?? null,
+        trim: decoded.trim ?? null,
+        submodel: decoded.submodel ?? decoded.trim ?? null,
+        engine: decoded.engine ?? null,
+        engine_family: decoded.engineFamily ?? null,
+        engine_type: decoded.engineType ?? null,
+        transmission_type:
+          decoded.transmissionType ?? decoded.transmission ?? null,
+        fuel_type: mapped.fuel_type ?? null,
+        drivetrain: mapped.drivetrain ?? null,
+        transmission: mapped.transmission ?? null,
+      });
+
+      onDecodedRef.current?.(buildDecodedDetail(vin, decoded));
+    },
+    [setVehicleDraft],
+  );
+
   useEffect(() => {
-    const handler = (evt: Event) => {
-      const ce = evt as CustomEvent<VinDecodedDetail>;
-      const detail = ce?.detail;
-      if (detail?.vin) {
-        onDecodedRef.current?.(detail);
-        setOpen(false);
-      }
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<VinDecodedDetail>)?.detail;
+      if (!detail?.vin) return;
+      onDecodedRef.current?.(detail);
+      setOpen(false);
     };
+
     window.addEventListener("vin:decoded", handler as EventListener);
     return () =>
       window.removeEventListener("vin:decoded", handler as EventListener);
   }, [setOpen]);
 
-  const handleFoundVin = useCallback(
-    async (vin: string) => {
-      const normalizedVin = normalizeVinInput(vin);
-      if (!normalizedVin.isValid) {
-        setCaptureError(normalizedVin.message);
-        return;
-      }
-      if (isDecoding) return; // prevent double fires
-      setIsDecoding(true);
-      try {
-        const resp = await decodeVin(normalizedVin.vin, userId);
-        if (resp?.error) {
-          setCaptureError(resp.error);
-          return;
-        }
+  const fetchRecallData = useCallback(
+    (vin: string, decoded: DecodeVinResponseExtended) => {
+      if (!decoded.year || !decoded.make || !decoded.model) return;
 
-        const extended = resp as DecodeVinResponseExtended;
-        const mapped = mapDecodedVinToVehicleSelectValues(extended);
-
-        // hydrate shared draft
-        setVehicleDraft({
-          vin: normalizedVin.vin,
-          year: resp.year ?? null,
-          make: resp.make ?? null,
-          model: resp.model ?? null,
-          trim: resp.trim ?? null,
-          submodel: resp.submodel ?? resp.trim ?? null,
-          engine: resp.engine ?? null,
-          engine_family: resp.engineFamily ?? null,
-          engine_type: resp.engineType ?? null,
-          transmission_type: resp.transmissionType ?? extended.transmission ?? null,
-          fuel_type: mapped.fuel_type ?? null,
-          drivetrain: mapped.drivetrain ?? null,
-          transmission: mapped.transmission ?? null,
-        });
-
-        const detail: VinDecodedDetail = {
-          vin: normalizedVin.vin,
-          year: resp.year ?? null,
-          make: resp.make ?? null,
-          model: resp.model ?? null,
-          trim: resp.trim ?? null,
-          submodel: resp.submodel ?? resp.trim ?? null,
-          engine: resp.engine ?? null,
-          engineFamily: resp.engineFamily ?? null,
-          engineType: resp.engineType ?? null,
-          engineDisplacementL: extended.engineDisplacementL ?? null,
-          engineCylinders: extended.engineCylinders ?? null,
-          fuelType: mapped.fuel_type ?? null,
-          transmission: mapped.transmission ?? null,
-          transmissionType: resp.transmissionType ?? extended.transmission ?? null,
-          driveType: mapped.drivetrain ?? null,
-          bodyClass: extended.bodyClass ?? null,
-          manufacturer: extended.manufacturer ?? null,
-          gvwr: extended.gvwr ?? null,
-        };
-
-        onDecodedRef.current?.(detail);
-
-        // fire-and-forget recalls fetch
-        try {
-          void fetch("/api/recalls/fetch", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              vin: normalizedVin.vin,
-              year: resp.year ?? undefined,
-              make: resp.make ?? undefined,
-              model: resp.model ?? undefined,
-              user_id: userId,
-            }),
-            keepalive: true,
-          });
-        } catch {
-          /* non-blocking */
-        }
-
-        setCaptureError(null);
-        setOpen(false);
-      } finally {
-        setIsDecoding(false);
-      }
+      void fetch("/api/recalls/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vin,
+          year: decoded.year,
+          make: decoded.make,
+          model: decoded.model,
+          user_id: userId,
+        }),
+        keepalive: true,
+      }).catch(() => {
+        // Recall enrichment must never block vehicle intake.
+      });
     },
-    [userId, setVehicleDraft, setOpen, isDecoding],
+    [userId],
   );
 
+  const handleFoundVin = useCallback(
+    async (rawVin: string) => {
+      const normalized = normalizeVinInput(rawVin);
+      if (!normalized.isValid) {
+        setCaptureError(normalized.message);
+        return;
+      }
+      if (captureLockRef.current) return;
+
+      captureLockRef.current = true;
+      setIsDecoding(true);
+      setCaptureError(null);
+
+      const local = decodeVinLocally(normalized.vin);
+      const localDecoded: DecodeVinResponseExtended = {
+        year: local?.year ?? null,
+        make: local?.make ?? null,
+        manufacturer: local?.manufacturer ?? null,
+      };
+
+      // The VIN and locally-known fields land immediately. This keeps intake fast
+      // and functional without network or a third-party scan/OCR service.
+      applyDecodedVehicle(normalized.vin, localDecoded);
+      setOpen(false);
+      setIsDecoding(false);
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+
+      // Existing vPIC decoding remains optional background enrichment. A failure
+      // leaves the locally captured VIN and manual form untouched.
+      void decodeVin(normalized.vin, userId)
+        .then((decoded) => {
+          if (decoded.error) return;
+          const enriched = decoded as DecodeVinResponseExtended;
+          applyDecodedVehicle(normalized.vin, enriched);
+          fetchRecallData(normalized.vin, enriched);
+        })
+        .catch(() => {
+          // Intake is already complete locally.
+        });
+    },
+    [applyDecodedVehicle, fetchRecallData, setOpen, userId],
+  );
 
   return (
     <>
@@ -444,8 +249,8 @@ export default function VinCaptureModal({
       <ModalShell
         isOpen={isOpen}
         onClose={() => setOpen(false)}
-        title="Add Vehicle by VIN"
-        size="md"
+        title="Vehicle Intake Scan"
+        size="lg"
         hideFooter={true}
       >
         <VinCaptureModalContent
@@ -460,9 +265,8 @@ export default function VinCaptureModal({
             setOpen(false);
           }}
           scanSlot={
-            <ScannerPane
-              userId={userId}
-              onFoundVin={handleFoundVin}
+            <VehicleIntakeScanner
+              onFoundVin={(vin) => void handleFoundVin(vin)}
               onError={setCaptureError}
               isBusy={isDecoding}
             />
