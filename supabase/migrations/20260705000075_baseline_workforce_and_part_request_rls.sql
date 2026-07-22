@@ -31,6 +31,37 @@ create index if not exists idx_wolls_tech_start
 create index if not exists idx_wolls_active_tech
   on public.work_order_line_labor_segments(technician_id)
   where ended_at is null;
+
+-- Preserve historical evidence rather than silently closing competing open
+-- segments. Existing databases with conflicts fail before the unique index with
+-- technician-specific diagnostics so an administrator can reconcile them.
+do $$
+declare
+  v_conflicts text;
+begin
+  select string_agg(
+    technician_id::text || ' (' || open_count::text || ' open)',
+    ', ' order by technician_id::text
+  )
+  into v_conflicts
+  from (
+    select technician_id, count(*) as open_count
+    from public.work_order_line_labor_segments
+    where ended_at is null
+    group by technician_id
+    having count(*) > 1
+    order by technician_id
+    limit 20
+  ) conflicts;
+
+  if v_conflicts is not null then
+    raise exception using errcode = 'P0001',
+      message = 'WORKFORCE_OPEN_SEGMENT_CONFLICTS: reconcile multiple open labor segments before migration: '
+        || v_conflicts;
+  end if;
+end
+$$;
+
 create unique index if not exists uq_wolls_active_by_tech
   on public.work_order_line_labor_segments(technician_id)
   where ended_at is null;
@@ -134,6 +165,9 @@ create policy part_request_items_shop_delete
   for delete to authenticated
   using (shop_id = public.current_shop_id());
 
+-- A request-line link must keep the request, work-order line, and (when known)
+-- work order inside the same tenant. This prevents a valid Shop A request from
+-- being linked to a known Shop B line UUID.
 drop policy if exists part_request_lines_shop_select on public.part_request_lines;
 create policy part_request_lines_shop_select
   on public.part_request_lines
@@ -142,8 +176,12 @@ create policy part_request_lines_shop_select
     exists (
       select 1
       from public.part_requests pr
+      join public.work_order_lines wl
+        on wl.id = part_request_lines.work_order_line_id
       where pr.id = part_request_lines.request_id
         and pr.shop_id = public.current_shop_id()
+        and wl.shop_id = public.current_shop_id()
+        and (pr.work_order_id is null or wl.work_order_id = pr.work_order_id)
     )
   );
 
@@ -155,8 +193,12 @@ create policy part_request_lines_shop_insert
     exists (
       select 1
       from public.part_requests pr
+      join public.work_order_lines wl
+        on wl.id = part_request_lines.work_order_line_id
       where pr.id = part_request_lines.request_id
         and pr.shop_id = public.current_shop_id()
+        and wl.shop_id = public.current_shop_id()
+        and (pr.work_order_id is null or wl.work_order_id = pr.work_order_id)
     )
   );
 
@@ -168,16 +210,24 @@ create policy part_request_lines_shop_update
     exists (
       select 1
       from public.part_requests pr
+      join public.work_order_lines wl
+        on wl.id = part_request_lines.work_order_line_id
       where pr.id = part_request_lines.request_id
         and pr.shop_id = public.current_shop_id()
+        and wl.shop_id = public.current_shop_id()
+        and (pr.work_order_id is null or wl.work_order_id = pr.work_order_id)
     )
   )
   with check (
     exists (
       select 1
       from public.part_requests pr
+      join public.work_order_lines wl
+        on wl.id = part_request_lines.work_order_line_id
       where pr.id = part_request_lines.request_id
         and pr.shop_id = public.current_shop_id()
+        and wl.shop_id = public.current_shop_id()
+        and (pr.work_order_id is null or wl.work_order_id = pr.work_order_id)
     )
   );
 
@@ -189,7 +239,11 @@ create policy part_request_lines_shop_delete
     exists (
       select 1
       from public.part_requests pr
+      join public.work_order_lines wl
+        on wl.id = part_request_lines.work_order_line_id
       where pr.id = part_request_lines.request_id
         and pr.shop_id = public.current_shop_id()
+        and wl.shop_id = public.current_shop_id()
+        and (pr.work_order_id is null or wl.work_order_id = pr.work_order_id)
     )
   );
