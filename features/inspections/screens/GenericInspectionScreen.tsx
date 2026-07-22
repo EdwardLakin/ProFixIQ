@@ -3266,8 +3266,7 @@ type SmartMatchRow = {
                             }
                           />
                           )}
-                          <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                            <SectionDisplay
+                          <SectionDisplay
                             title={section.title}
                             showGridFindings
                             section={{ ...section, items: itemsWithHints }}
@@ -3346,7 +3345,6 @@ type SmartMatchRow = {
                             }}
                             onDismissSmartMatch={dismissSmartMatch}
                           />
-                          </div>
                         </>
                       ) : (
                         <>
