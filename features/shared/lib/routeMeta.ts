@@ -220,18 +220,6 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
   },
 
-  // Maintenance templates (if you still expose them directly)
-  "/maintenance50": {
-    title: () => "Maintenance 50",
-    icon: "🧰",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
-  },
-  "/maintenance50-air": {
-    title: () => "Maintenance 50 (Air)",
-    icon: "🧰",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech"],
-  },
-
   // ----------------------------------------------------------------
   // Parts
   // ----------------------------------------------------------------

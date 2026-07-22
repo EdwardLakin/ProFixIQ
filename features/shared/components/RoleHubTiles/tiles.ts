@@ -84,20 +84,6 @@ export const TILES: Tile[] = [
 
   // --- Inspections ---
   {
-    href: "/inspections/maintenance50",
-    title: "Maintenance 50",
-    subtitle: "Quick checklist",
-    roles: ["advisor", "manager", "owner", "admin", "mechanic"],
-    scopes: ["inspections", "all"],
-  },
-  {
-    href: "/inspections/maintenance50-air",
-    title: "Maintenance 50 – Air",
-    subtitle: "CVIP-style (air brakes)",
-    roles: ["advisor", "manager", "owner", "admin", "mechanic"],
-    scopes: ["inspections", "all"],
-  },
-  {
     href: "/inspections/custom-inspection",
     title: "Custom Builder",
     subtitle: "Design your own",

@@ -7,11 +7,6 @@ const autosave = read("features/inspections/hooks/useInspectionAutosave.ts");
 const generic = read(
   "features/inspections/screens/GenericInspectionScreen.tsx",
 );
-const quickScreens = [
-  read("features/inspections/screens/QuickPMScreen.tsx"),
-  read("features/inspections/screens/QuickAirBrakePMScreen.tsx"),
-];
-
 describe("inspection identity and lock guards", () => {
   it("never persists or arbitrates a session from another work-order line", () => {
     expect(autosave).toContain("function sessionMatchesWorkOrderLine(");
@@ -51,49 +46,4 @@ describe("inspection identity and lock guards", () => {
     );
   });
 
-  it("boots each quick screen under its exact draft identity", () => {
-    for (const screen of quickScreens) {
-      expect(screen).toContain(
-        "const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);",
-      );
-      expect(screen).toContain(
-        "const draftReady = draftBootLoaded && loadedDraftKey === draftKey;",
-      );
-      expect(screen).toContain("enabled: draftReady,");
-      expect(screen).toContain("hydrated: serverBootLoaded,");
-      expect(screen).toContain(
-        "const inspectionReady = draftReady && serverBootLoaded;",
-      );
-      expect(screen).toContain("setDraftBootLoaded(false);");
-      expect(screen).toContain("setLoadedDraftKey(null);");
-      expect(screen).toContain("setLoadedDraftKey(draftKey);");
-      expect(screen).toContain("if (!draftReady) return;");
-      expect(screen).toContain("disabled={isLocked || !inspectionReady}");
-      expect(screen).toContain("recoveryOperationKey,");
-      expect(screen).toContain("durableDraft?.operationKey");
-    }
-  });
-
-  it("applies realtime locks synchronously and stops voice mutations", () => {
-    for (const screen of quickScreens) {
-      const applyStart = screen.indexOf(
-        "const applyLockedState = (nextLocked: boolean): void => {",
-      );
-      const refUpdate = screen.indexOf(
-        "isLockedRef.current = nextLocked;",
-        applyStart,
-      );
-      const stateUpdate = screen.indexOf("setIsLocked(nextLocked);", applyStart);
-      expect(applyStart).toBeGreaterThan(-1);
-      expect(refUpdate).toBeGreaterThan(applyStart);
-      expect(stateUpdate).toBeGreaterThan(refUpdate);
-      expect(screen).toContain("if (nextLocked) stopRecognition();");
-      expect(screen).toContain(
-        "if (draftReadyRef.current && !isLockedRef.current)",
-      );
-      expect(screen).toContain(
-        "onRemoteMeta: (meta) => applyLockedState(meta.locked),",
-      );
-    }
-  });
 });

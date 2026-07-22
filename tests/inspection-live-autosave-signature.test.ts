@@ -20,8 +20,6 @@ const mobileSettings = read(
 );
 const screens = [
   read("features/inspections/screens/GenericInspectionScreen.tsx"),
-  read("features/inspections/screens/QuickPMScreen.tsx"),
-  read("features/inspections/screens/QuickAirBrakePMScreen.tsx"),
   read("features/inspections/components/inspection/InspectionReviewPanel.tsx"),
 ];
 
@@ -59,7 +57,7 @@ describe("inspection live autosave and saved signatures", () => {
     );
   });
 
-  it("autosaves every active inspection surface and removes manual save controls", () => {
+  it("autosaves the canonical inspection surfaces and removes manual save controls", () => {
     for (const screen of screens) {
       expect(screen).toContain("useInspectionAutosave");
       expect(screen).not.toContain("<SaveInspectionButton");
