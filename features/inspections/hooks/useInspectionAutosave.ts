@@ -8,12 +8,21 @@ import {
   useState,
 } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import { saveInspectionSession } from "@inspections/lib/inspection/save";
+import {
+  replayQueuedInspectionSaves,
+  saveInspectionSession,
+} from "@inspections/lib/inspection/save";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import {
   saveInspectionOfflineDraft,
   type InspectionDraftRecoveryState,
 } from "@inspections/lib/inspection/offlineDrafts";
+import { dismissOfflineMutation } from "@/features/shared/lib/offline/mutations";
+import {
+  automaticallyMergeInspectionConflict,
+  inspectionSyncClientId,
+  inspectionSyncSource,
+} from "@inspections/lib/inspection/conflictRecovery";
 
 export type InspectionSyncState =
   | "hydrating"
@@ -579,6 +588,8 @@ export function useInspectionAutosave({
     async (
       snapshot: InspectionSession,
       requireServer = false,
+      preserveConflictUntilAcknowledged = false,
+      allowAutomaticRecovery = true,
     ): Promise<PersistResult> => {
       if (identityRef.current !== identityKey) {
         return {
@@ -670,6 +681,7 @@ export function useInspectionAutosave({
             supersedesOperationKey: canReuseOperationKey
               ? undefined
               : previousOperationKey,
+            deferSupersededDismissal: preserveConflictUntilAcknowledged,
           },
         );
 
@@ -699,7 +711,7 @@ export function useInspectionAutosave({
         let persistedSnapshot = snapshot;
         if (!result.queued && !result.conflicted) {
           const acknowledgedSnapshot: InspectionSession = {
-            ...snapshot,
+            ...(result.savedSession ?? snapshot),
             id: result.inspectionId ?? snapshot.id,
             syncRevision: result.syncRevision ?? snapshot.syncRevision,
             serverUpdatedAt:
@@ -790,6 +802,34 @@ export function useInspectionAutosave({
               operationKey,
             });
           }
+          if (allowAutomaticRecovery) {
+            try {
+              const params = new URLSearchParams({ workOrderLineId });
+              const response = await fetch(
+                `/api/inspections/load?${params.toString()}`,
+                { credentials: "include", cache: "no-store" },
+              );
+              const json = (await response.json().catch(() => null)) as
+                | { session?: InspectionSession | null }
+                | null;
+              if (response.ok && hasDurableSession(json?.session)) {
+                const merged = automaticallyMergeInspectionConflict({
+                  device: snapshot,
+                  server: json.session,
+                  currentSource: inspectionSyncSource(),
+                  currentClientId: inspectionSyncClientId(),
+                });
+                if (merged) {
+                  latestSessionRef.current = merged;
+                  onRemoteSessionRef.current(merged);
+                  return persistSnapshot(merged, true, true, false);
+                }
+              }
+            } catch {
+              // The protected conflict draft remains available for the rare
+              // manual fallback when automatic recovery cannot finish.
+            }
+          }
           onRecoveryStateRef.current?.("conflicted", operationKey);
         }
         setLastError(message);
@@ -848,6 +888,53 @@ export function useInspectionAutosave({
       return task;
     },
     [enabled, identityKey, persistSnapshot],
+  );
+
+  const resolveConflict = useCallback(
+    async (resolved: InspectionSession): Promise<InspectionSession> => {
+      if (!sessionMatchesWorkOrderLine(resolved, workOrderLineId)) {
+        throw new Error(
+          "Recovered inspection belongs to a different work-order line.",
+        );
+      }
+
+      const staleOperationKey = pendingOperationKeyRef.current;
+      const alreadyCanonical =
+        fingerprint(resolved) === lastServerFingerprintRef.current;
+      latestSessionRef.current = resolved;
+      onRemoteSessionRef.current(resolved);
+
+      const result = await persistSnapshot(resolved, true, true);
+      if (!result.durable) {
+        throw new Error(
+          "The reviewed inspection could not be saved to the shop yet.",
+        );
+      }
+
+      // If every choice kept the already-acknowledged shop copy there is no
+      // replacement write to perform. It is now safe to clear the rejected
+      // operation. Otherwise saveInspectionSession clears it only after ACK.
+      if (alreadyCanonical && staleOperationKey) {
+        await dismissOfflineMutation(staleOperationKey);
+      }
+      pendingOperationKeyRef.current = undefined;
+      pendingOperationFingerprintRef.current = "";
+      lastQueuedFingerprintRef.current = "";
+      await replayQueuedInspectionSaves();
+
+      if (draftKey) {
+        await saveInspectionOfflineDraft({
+          draftKey,
+          session: result.session,
+          state: "editing",
+        });
+      }
+      setLastError(null);
+      setState("saved");
+      onRecoveryStateRef.current?.("editing");
+      return result.session;
+    },
+    [draftKey, persistSnapshot, workOrderLineId],
   );
 
   const flush = useCallback(
@@ -941,6 +1028,7 @@ export function useInspectionAutosave({
     lastError,
     flush,
     flushToServer,
+    resolveConflict,
     refresh: pullLatest,
     label: inspectionSyncLabel(state, locked),
   };
