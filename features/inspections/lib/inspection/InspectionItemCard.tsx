@@ -42,6 +42,8 @@ interface InspectionItemCardProps {
   variant?: "card" | "row";
   /** Hide duplicate status inputs when a grid already owns status selection. */
   showStatusControls?: boolean;
+  /** Keep existing evidence visible even when the current status later changes. */
+  showEvidenceFields?: boolean;
 }
 
 function getItemLabel(raw: InspectionItem): string {
@@ -86,6 +88,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     onUpdateUnit,
     variant = "card",
     showStatusControls = true,
+    showEvidenceFields = false,
   } = props;
 
   const label = getItemLabel(item);
@@ -266,7 +269,9 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
         ) : null}
 
         {showPhotos &&
-          (item.status === "fail" || item.status === "recommend") && (
+          (item.status === "fail" ||
+            item.status === "recommend" ||
+            showEvidenceFields) && (
             <div className="mt-1">
               <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -372,7 +377,9 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
       )}
 
       {showPhotos &&
-        (item.status === "fail" || item.status === "recommend") && (
+        (item.status === "fail" ||
+            item.status === "recommend" ||
+            showEvidenceFields) && (
           <div className="mt-2">
             <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
