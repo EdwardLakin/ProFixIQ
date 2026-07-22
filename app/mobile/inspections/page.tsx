@@ -10,6 +10,8 @@ import { canonicalizeRole } from "@/features/shared/lib/rbac";
 
 type InspectionRow = {
   id: string;
+  work_order_id: string | null;
+  work_order_line_id: string | null;
   custom_id: string | null;
   status: string | null;
   created_at: string | null;
@@ -61,7 +63,7 @@ export default function MobileInspectionsListPage() {
         const { data, error: queryError } = await supabase
           .from("inspection_sessions")
           .select(
-            "id, custom_id, status, created_at, customer_name, vehicle_label",
+            "id, work_order_id, work_order_line_id, custom_id, status, created_at, customer_name, vehicle_label",
           )
           .order("created_at", { ascending: false })
           .limit(50);
@@ -72,6 +74,8 @@ export default function MobileInspectionsListPage() {
         setRows(
           (data ?? []).map((row) => ({
             id: row.id,
+            work_order_id: row.work_order_id ?? null,
+            work_order_line_id: row.work_order_line_id ?? null,
             custom_id: row.custom_id ?? null,
             status: row.status ?? null,
             created_at: row.created_at ?? null,
@@ -165,10 +169,15 @@ export default function MobileInspectionsListPage() {
               ? format(new Date(row.created_at), "PP p")
               : "—";
 
+            const canonicalHref =
+              row.work_order_id && row.work_order_line_id
+                ? `/mobile/work-orders/${row.work_order_id}?focus=${encodeURIComponent(row.work_order_line_id)}`
+                : "/mobile/work-orders";
+
             return (
               <Link
                 key={row.id}
-                href={`/mobile/inspections/${row.id}`}
+                href={canonicalHref}
                 className="block rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)] shadow-sm shadow-[var(--theme-shadow-medium)] active:scale-[0.99]"
               >
                 <div className="flex items-center justify-between gap-2">
@@ -189,9 +198,14 @@ export default function MobileInspectionsListPage() {
                       {row.vehicle_label ?? "No vehicle"}
                     </div>
                   </div>
-                  <span className="ml-2 shrink-0 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-                    {created}
-                  </span>
+                  <div className="ml-2 shrink-0 text-right">
+                    <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
+                      {created}
+                    </div>
+                    <div className="mt-1 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-[var(--accent-copper)]">
+                      Open canonical job
+                    </div>
+                  </div>
                 </div>
               </Link>
             );
