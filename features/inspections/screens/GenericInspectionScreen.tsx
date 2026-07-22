@@ -47,7 +47,6 @@ import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionForm
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
-import InspectionConflictRecoveryPanel from "@inspections/components/inspection/InspectionConflictRecoveryPanel";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
@@ -966,7 +965,6 @@ type SmartMatchRow = {
     flushToServer: flushAutosaveToServer,
     label: autosaveLabel,
     lastError: autosaveError,
-    resolveConflict,
   } = useInspectionAutosave({
     session,
     inspectionId,
@@ -1000,7 +998,7 @@ type SmartMatchRow = {
         state === "queued"
           ? "Inspection is safe on this device and queued for server sync."
           : state === "conflicted"
-            ? "Inspection is safe on this device, but sync needs review."
+            ? "Sync paused to protect this device copy. It has not replaced the shop copy."
             : "Inspection progress is saved and available on all devices.",
       );
     },
@@ -1014,14 +1012,20 @@ type SmartMatchRow = {
         const recovered = await getInspectionOfflineDraft({
           draftKey,
           sessionHint: persistedSession ?? initialSession,
-          newerSessionHint: persistedSession,
         });
         if (cancelled) return;
         if (recovered) {
           const recoveredAt = inspectionDraftTimestamp(recovered.session);
           const legacyAt = inspectionDraftTimestamp(persistedSession);
+          // A conflicted IndexedDB draft is the protected device snapshot. Do
+          // not let a later legacy localStorage timestamp replace it with the
+          // already-loaded shop copy.
           const preferred =
-            recoveredAt >= legacyAt ? recovered.session : persistedSession;
+            recovered.state === "conflicted"
+              ? recovered.session
+              : recoveredAt >= legacyAt
+                ? recovered.session
+                : persistedSession;
           if (preferred) {
             replaceSession(preferred);
             localDraftUpdatedAtRef.current = inspectionDraftTimestamp(preferred);
@@ -1036,7 +1040,7 @@ type SmartMatchRow = {
             recovered.state === "queued"
               ? "Recovered inspection · server save is queued."
               : recovered.state === "conflicted"
-                ? "Recovered inspection · sync needs review."
+                ? "Recovered device copy · sync is paused without changing the shop copy."
                 : `Recovered inspection saved ${new Date(recovered.savedAt).toLocaleString()}.`,
           );
         }
@@ -2865,22 +2869,6 @@ type SmartMatchRow = {
           >
             {recoveryMessage}
           </div>
-        )}
-        {recoveryState === "conflicted" && workOrderLineId && (
-          <InspectionConflictRecoveryPanel
-            deviceSession={session}
-            workOrderLineId={workOrderLineId}
-            onResolve={async (resolved) => {
-              const saved = await resolveConflict(resolved);
-              replaceSession(saved);
-              recoveryOperationKeyRef.current = undefined;
-              queuedSessionRef.current = null;
-              setRecoveryState("editing");
-              setRecoveryMessage(
-                "Reviewed inspection is saved and available on all devices.",
-              );
-            }}
-          />
         )}
         <div className={headerCard}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-2">
