@@ -3164,7 +3164,8 @@ type SmartMatchRow = {
 
                     <div className="mt-3 md:mt-4">
                       {useGrid ? (
-                        batterySection ? (
+                        <>
+                          {batterySection ? (
                           <BatteryGrid
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
@@ -3264,7 +3265,89 @@ type SmartMatchRow = {
                               })
                             }
                           />
-                        )
+                          )}
+                          <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                            <SectionDisplay
+                            title={section.title}
+                            showGridFindings
+                            section={{ ...section, items: itemsWithHints }}
+                            sectionIndex={sectionIndex}
+                            showNotes
+                            showPhotos
+                            inspectionId={inspectionId}
+                            workOrderId={workOrderId}
+                            workOrderLineId={workOrderLineId || null}
+                            draftKey={draftKey}
+                            onUpdateStatus={(
+                              secIdx: number,
+                              itemIdx: number,
+                              statusValue: InspectionItemStatus,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                status: statusValue,
+                              } as ItemPatch);
+                              autoAdvanceFrom(secIdx, itemIdx);
+                            }}
+                            onUpdateNote={handleUpdateNoteWithSmartMatch}
+                            onUpload={(
+                              photoUrl: string,
+                              secIdx: number,
+                              itemIdx: number,
+                            ) => {
+                              if (guardLocked()) return;
+                              const prev =
+                                session.sections[secIdx].items[itemIdx].photoUrls ??
+                                [];
+                              updateItem(secIdx, itemIdx, {
+                                photoUrls: [...prev, photoUrl],
+                              } as ItemPatch);
+                            }}
+                            onUpdateParts={(
+                              secIdx: number,
+                              itemIdx: number,
+                              parts: { description: string; qty: number }[],
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                parts,
+                              } as ItemPatch);
+                            }}
+                            onUpdateLaborHours={(
+                              secIdx: number,
+                              itemIdx: number,
+                              hours: number | null,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                laborHours: hours,
+                              } as ItemPatch);
+                            }}
+                            onUpdateNoPartsRequired={(
+                              secIdx: number,
+                              itemIdx: number,
+                              value: boolean,
+                            ) => {
+                              if (guardLocked()) return;
+                              updateItem(secIdx, itemIdx, {
+                                noPartsRequired: value,
+                                ...(value ? { parts: [] } : {}),
+                              } as ItemPatch);
+                            }}
+                            requireNoteForAI
+                            onSubmitAI={(secIdx: number, itemIdx: number) => {
+                              void submitAIForItem(secIdx, itemIdx);
+                            }}
+                            isSubmittingAI={isSubmittingAI}
+                            smartMatchByKey={smartMatchByKey}
+                            smartMatchLoadingByKey={smartMatchLoadingByKey}
+                            onAcceptSmartMatch={(secIdx: number, itemIdx: number) => {
+                              void acceptSmartMatch(secIdx, itemIdx);
+                            }}
+                            onDismissSmartMatch={dismissSmartMatch}
+                          />
+                          </div>
+                        </>
                       ) : (
                         <>
                                                     <SectionDisplay
