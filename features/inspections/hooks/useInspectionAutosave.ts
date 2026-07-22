@@ -64,6 +64,12 @@ type RealtimeInspectionRow = {
   work_order_line_id?: string | null;
 };
 
+type RealtimeSessionRow = {
+  state?: unknown;
+  updated_at?: string | null;
+  work_order_line_id?: string | null;
+};
+
 type PersistResult = {
   session: InspectionSession;
   durable: boolean;
@@ -482,7 +488,35 @@ export function useInspectionAutosave({
           }
         },
       )
-      .subscribe();
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "inspection_sessions",
+          filter: `work_order_line_id=eq.${workOrderLineId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") return;
+          const row = (payload.new ?? {}) as RealtimeSessionRow;
+          if (hasDurableSession(row.state)) {
+            // Session rows carry progress only. Lock/finalization metadata comes
+            // from the canonical inspections row so a progress event can never
+            // temporarily unlock a signed inspection.
+            applyRemote(row.state);
+          }
+        },
+      )
+      .subscribe((status) => {
+        // Reconcile once the channel is live. This closes the gap between the
+        // initial HTTP load and Realtime subscription without trusting event
+        // delivery as the only cross-device transport.
+        if (status === "SUBSCRIBED") {
+          void pullLatest().catch(() => {
+            // The periodic canonical refresh remains available as fallback.
+          });
+        }
+      });
 
     return () => {
       void supabase.removeChannel(channel);
@@ -491,9 +525,40 @@ export function useInspectionAutosave({
     applyRemote,
     applyRemoteMeta,
     enabled,
+    pullLatest,
     supabase,
     workOrderLineId,
   ]);
+
+  useEffect(() => {
+    if (!enabled || !hydrated || !workOrderLineId) return;
+
+    const refreshCanonical = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+
+      void pullLatest().catch(() => {
+        // Realtime can still deliver while a refresh request fails. The next
+        // interval/focus event retries without changing the local draft.
+      });
+    };
+
+    // Realtime is the fast path. A lightweight canonical refresh is the
+    // reliability path for suspended mobile sockets and separately stored
+    // inspection photos, which do not update the inspections row themselves.
+    const interval = window.setInterval(refreshCanonical, 5000);
+    document.addEventListener("visibilitychange", refreshCanonical);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshCanonical);
+    };
+  }, [enabled, hydrated, pullLatest, workOrderLineId]);
 
   const persistSnapshot = useCallback(
     async (
