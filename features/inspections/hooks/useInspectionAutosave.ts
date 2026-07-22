@@ -500,7 +500,10 @@ export function useInspectionAutosave({
           if (payload.eventType === "DELETE") return;
           const row = (payload.new ?? {}) as RealtimeSessionRow;
           if (hasDurableSession(row.state)) {
-            applyRemote(row.state, { updatedAt: row.updated_at ?? null });
+            // Session rows carry progress only. Lock/finalization metadata comes
+            // from the canonical inspections row so a progress event can never
+            // temporarily unlock a signed inspection.
+            applyRemote(row.state);
           }
         },
       )
