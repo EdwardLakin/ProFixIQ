@@ -174,6 +174,21 @@ function errorStatus(error: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function inspectionSyncErrorMessage(error: unknown): string {
+  const raw =
+    error instanceof Error ? error.message : "Inspection autosave failed.";
+
+  if (
+    raw
+      .toLowerCase()
+      .includes("no unique or exclusion constraint matching the on conflict")
+  ) {
+    return "Inspection sync needs a server update. Your work remains safe on this device.";
+  }
+
+  return raw;
+}
+
 export function inspectionSyncLabel(
   state: InspectionSyncState,
   locked = false,
@@ -761,8 +776,7 @@ export function useInspectionAutosave({
         };
       } catch (error) {
         if (identityRef.current !== identityKey) throw error;
-        const message =
-          error instanceof Error ? error.message : "Inspection autosave failed.";
+        const message = inspectionSyncErrorMessage(error);
         const conflicted = errorStatus(error) === 409;
         pendingOperationKeyRef.current = operationKey;
         pendingOperationFingerprintRef.current = nextFingerprint;
@@ -780,7 +794,7 @@ export function useInspectionAutosave({
         }
         setLastError(message);
         setState(conflicted ? "conflicted" : "error");
-        throw error;
+        throw new Error(message);
       }
     },
     [draftKey, identityKey, locked, workOrderLineId],
