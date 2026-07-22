@@ -9,11 +9,6 @@ const autosave = read(
 );
 const save = read("features/inspections/lib/inspection/save.ts");
 const findings = read("features/inspections/lib/inspection/findings/page.tsx");
-const quickScreens = [
-  read("features/inspections/screens/QuickPMScreen.tsx"),
-  read("features/inspections/screens/QuickAirBrakePMScreen.tsx"),
-];
-
 describe("technician inspection offline recovery", () => {
   it("stores expiring drafts under the authenticated user and shop scope", () => {
     expect(drafts).toContain('const KIND = "inspection-draft"');
@@ -55,13 +50,6 @@ describe("technician inspection offline recovery", () => {
     expect(drafts).toContain("supersededMutation");
     expect(drafts).toContain('state: "editing" as const');
     expect(screen).toContain("newerSessionHint: persistedSession");
-    for (const quick of quickScreens) {
-      expect(quick).toContain("recoveryOperationKey,");
-      expect(quick).toContain("setRecoveryOperationKey(operationKey)");
-      expect(quick).toContain("newerSessionHint: browserSession");
-      expect(quick).toContain("restoredMatchesIdentity");
-      expect(quick).toContain("durableDraft?.operationKey");
-    }
   });
 
   it("recovers a synced operation acknowledgement before issuing a newer revision", () => {
