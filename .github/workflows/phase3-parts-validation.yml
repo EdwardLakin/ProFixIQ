@@ -27,5 +27,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm lint -- app/api/parts app/api/work-orders/lines app/api/invoices/send/route.ts features/invoices/server/getIssuableInvoiceSnapshot.ts tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
+      - run: pnpm exec eslint app/api/parts app/api/work-orders/lines app/api/invoices/send/route.ts features/invoices/server/getIssuableInvoiceSnapshot.ts tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
       - run: pnpm vitest run tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
