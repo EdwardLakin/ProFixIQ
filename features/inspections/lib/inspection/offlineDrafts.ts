@@ -7,7 +7,6 @@ import {
   saveOfflineSnapshot,
 } from "@/features/shared/lib/offline/database";
 import {
-  dismissOfflineMutation,
   hydrateOfflineMutationQueue,
   listOfflineMutations,
   resolveOfflineMutationScope,
@@ -16,13 +15,6 @@ import {
 
 const KIND = "inspection-draft";
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 14;
-
-function sessionTimestamp(session: Partial<InspectionSession> | null): number {
-  const parsed = session?.lastUpdated
-    ? new Date(session.lastUpdated).getTime()
-    : 0;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 export type InspectionDraftRecoveryState = "editing" | "queued" | "conflicted";
 
@@ -73,7 +65,6 @@ export async function saveInspectionOfflineDraft(args: {
 export async function getInspectionOfflineDraft(args: {
   draftKey: string;
   sessionHint: Partial<InspectionSession>;
-  newerSessionHint?: Partial<InspectionSession> | null;
 }): Promise<InspectionOfflineDraft | null> {
   const scope = await scopeFor(args.sessionHint);
   if (!scope) return null;
@@ -109,40 +100,26 @@ export async function getInspectionOfflineDraft(args: {
       await saveInspectionOfflineDraft(awaitingAcknowledgement);
       return awaitingAcknowledgement;
     }
-    const queuedSession =
+    const queuedSessionCandidate =
       (queued.payload && typeof queued.payload === "object"
         ? (queued.payload as { session?: Partial<InspectionSession> }).session
         : null) ?? null;
-    const newestLocalTimestamp = Math.max(
-      sessionTimestamp(draft.session),
-      sessionTimestamp(args.newerSessionHint ?? null),
-    );
-    if (newestLocalTimestamp > sessionTimestamp(queuedSession)) {
-      try {
-        await dismissOfflineMutation(draft.operationKey);
-      } catch {
-        return { ...draft, state: "conflicted" };
-      }
-      const supersededMutation = listOfflineMutations(scope).find(
-        (mutation) =>
-          mutation.clientMutationId === draft.operationKey &&
-          mutation.status !== "synced",
-      );
-      if (supersededMutation) {
-        // A syncing mutation cannot be removed safely. Keep its lineage visible
-        // instead of reusing the key for a different payload.
-        return { ...draft, state: "conflicted" };
-      }
-      const reconciled = {
-        ...draft,
-        state: "editing" as const,
-        operationKey: undefined,
-      };
-      await saveInspectionOfflineDraft(reconciled);
-      return reconciled;
-    }
+    const queuedSession =
+      queuedSessionCandidate &&
+      Array.isArray(queuedSessionCandidate.sections) &&
+      queuedSessionCandidate.sections.length > 0
+        ? (queuedSessionCandidate as InspectionSession)
+        : null;
     if (queued.status === "conflicted") {
-      return { ...draft, state: "conflicted" };
+      // The queued payload is the exact device snapshot rejected by the
+      // server. It is safer than a later screen/localStorage copy, which may
+      // already have been replaced by a canonical load. Never dismiss or
+      // rewrite this operation while it is conflicted.
+      return {
+        ...draft,
+        session: queuedSession ?? draft.session,
+        state: "conflicted",
+      };
     }
   }
   return draft;

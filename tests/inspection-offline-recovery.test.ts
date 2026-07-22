@@ -9,12 +9,6 @@ const autosave = read(
 );
 const save = read("features/inspections/lib/inspection/save.ts");
 const findings = read("features/inspections/lib/inspection/findings/page.tsx");
-const recovery = read(
-  "features/inspections/components/inspection/InspectionConflictRecoveryPanel.tsx",
-);
-const recoveryMerge = read(
-  "features/inspections/lib/inspection/conflictRecovery.ts",
-);
 describe("technician inspection offline recovery", () => {
   it("stores expiring drafts under the authenticated user and shop scope", () => {
     expect(drafts).toContain('const KIND = "inspection-draft"');
@@ -45,17 +39,26 @@ describe("technician inspection offline recovery", () => {
     expect(autosave).toContain("recoveryOperationKey?.trim()");
   });
 
-  it("detaches newer edits from an older queued save", () => {
+  it("preserves queued device evidence until a replacement is acknowledged", () => {
     expect(screen).toContain("saveInspectionOfflineDraft");
     expect(screen).toContain("queuedSessionRef.current !== session");
     expect(screen).toContain('draftState = "editing"');
     expect(screen).toContain("operationKey = undefined");
     expect(screen).toContain("state: draftState");
-    expect(drafts).toContain("newestLocalTimestamp");
-    expect(drafts).toContain("await dismissOfflineMutation(draft.operationKey)");
-    expect(drafts).toContain("supersededMutation");
-    expect(drafts).toContain('state: "editing" as const');
-    expect(screen).toContain("newerSessionHint: persistedSession");
+    expect(drafts).not.toContain("newestLocalTimestamp");
+    expect(drafts).not.toContain("dismissOfflineMutation");
+    expect(drafts).toContain("session: queuedSession ?? draft.session");
+    expect(screen).not.toContain("newerSessionHint");
+
+    const queueRun = save.indexOf(
+      "const result = await runMutationWithOfflineQueue",
+    );
+    const dismissSuperseded = save.lastIndexOf(
+      "await dismissOfflineMutation(supersededKey)",
+    );
+    expect(queueRun).toBeGreaterThan(-1);
+    expect(dismissSuperseded).toBeGreaterThan(queueRun);
+    expect(save).toContain("serverResponse.current");
   });
 
   it("recovers a synced operation acknowledgement before issuing a newer revision", () => {
@@ -100,18 +103,13 @@ describe("technician inspection offline recovery", () => {
     expect(save).toContain("syncRevision: serverResponse.current?.sync_revision");
   });
 
-  it("requires an explicit server-versus-device recovery decision", () => {
-    expect(screen).toContain("<InspectionConflictRecoveryPanel");
-    expect(recovery).toContain("Nothing is chosen by time");
-    expect(recovery).toContain("Apply selected & sync");
-    expect(recovery).toContain("Keep shop copy");
-    expect(recoveryMerge).toContain("syncRevision: args.server.syncRevision");
-    expect(recoveryMerge).toContain("Uploaded evidence is append-only");
-    expect(autosave).toContain("const resolveConflict = useCallback");
-    expect(autosave).toContain("preserveConflictUntilAcknowledged");
-    expect(save).toContain("deferSupersededDismissal");
-    expect(save).toContain("cannot destroy the only remaining device copy");
-    expect(autosave).toContain("automaticallyMergeInspectionConflict");
-    expect(recoveryMerge).toContain("installed app, then mobile web, then desktop");
+  it("pauses conflicts without destructive override or priority merging", () => {
+    expect(screen).not.toContain("<InspectionConflictRecoveryPanel");
+    expect(screen).toContain('recovered.state === "conflicted"');
+    expect(autosave).not.toContain("const resolveConflict = useCallback");
+    expect(autosave).not.toContain("automaticallyMergeInspectionConflict");
+    expect(autosave).toContain("Sync paused · device copy protected");
+    expect(screen).toContain("It has not replaced the shop copy");
+    expect(save).toContain("until its replacement is acknowledged");
   });
 });
