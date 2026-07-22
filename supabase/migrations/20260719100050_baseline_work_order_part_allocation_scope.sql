@@ -54,28 +54,9 @@ where wol.id = a.work_order_line_id
   and a.shop_id is null
   and wol.shop_id is not null;
 
--- Link only unambiguous legacy rows; ambiguous evidence remains line-scoped and
--- is not guessed into a potentially incorrect materialized part record.
-update public.work_order_part_allocations a
-set work_order_part_id = candidate.id
-from lateral (
-  select wop.id
-  from public.work_order_parts wop
-  where wop.work_order_line_id = a.work_order_line_id
-    and wop.part_id = a.part_id
-    and (a.shop_id is null or wop.shop_id = a.shop_id)
-  order by wop.created_at desc nulls last, wop.id desc
-  limit 1
-) candidate
-where a.work_order_part_id is null
-  and 1 = (
-    select count(*)
-    from public.work_order_parts wop
-    where wop.work_order_line_id = a.work_order_line_id
-      and wop.part_id = a.part_id
-      and (a.shop_id is null or wop.shop_id = a.shop_id)
-  );
-
+-- Do not guess work_order_part_id for legacy rows. The line, part, location, and
+-- stock-move evidence remains intact, while canonical future allocations store
+-- the direct materialized-part relationship.
 create index if not exists work_order_part_allocations_wop_idx
   on public.work_order_part_allocations(work_order_part_id, location_id)
   where work_order_part_id is not null;
