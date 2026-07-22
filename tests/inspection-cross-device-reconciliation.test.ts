@@ -55,7 +55,10 @@ describe("inspection cross-device reconciliation and shared modal styling", () =
     const lineLookup = photoRoute.indexOf(
       '.eq("work_order_line_id", workOrderLineId)',
     );
-    const uuidLookup = photoRoute.indexOf('.eq("id", inspectionId)');
+    const uuidLookup = photoRoute.indexOf(
+      '.eq("id", inspectionId)',
+      lineLookup,
+    );
     expect(lineLookup).toBeGreaterThan(-1);
     expect(uuidLookup).toBeGreaterThan(lineLookup);
     expect(photoRoute).toContain('.eq("shop_id", shopId)');
