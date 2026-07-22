@@ -348,9 +348,10 @@ export interface InspectionSession {
   lastUpdated?: string;
   syncRevision?: number;
   serverUpdatedAt?: string | null;
+  syncSource?: "installed" | "mobile_web" | "desktop";
+  syncClientId?: string | null;
   customer?: SessionCustomer | null;
   vehicle?: SessionVehicle | null;
   sections: InspectionCategory[];
   quote?: Array<QuoteLine | QuoteLineItem>;
 }
-
