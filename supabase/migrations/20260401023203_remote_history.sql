@@ -1,0 +1,2 @@
+-- Historical migration already recorded on the production database.
+-- Preserved locally so Supabase migration history remains synchronized.
