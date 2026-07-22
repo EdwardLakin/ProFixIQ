@@ -2735,8 +2735,8 @@ type SmartMatchRow = {
     ? "relative mx-auto max-w-[1280px] px-3 py-4 pb-6 md:px-5 md:py-5"
     : "relative mx-auto max-w-5xl px-3 md:px-4 py-6 pb-[calc(9.5rem+env(safe-area-inset-bottom))]";
 
-  const headerCard = `${PANEL_VARIANTS.primary} rounded-2xl px-4 py-4 md:px-5 md:py-5 mb-3`;
-  const sectionCard = `${PANEL_VARIANTS.primary} rounded-2xl px-3 py-3 md:px-5 md:py-5 mb-4`;
+  const headerCard = `${PANEL_VARIANTS.primary} rounded-[22px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] px-4 py-4 shadow-[var(--theme-shadow-medium)] md:px-5 md:py-5 mb-3`;
+  const sectionCard = `${PANEL_VARIANTS.primary} rounded-[22px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] px-3 py-3 shadow-[var(--theme-shadow-soft)] md:px-5 md:py-5 mb-4`;
   const supportCard = "space-y-3";
   const passiveCard = `${PANEL_VARIANTS.passive} rounded-xl px-3 py-2.5 md:px-4 md:py-3`;
 
@@ -3476,7 +3476,7 @@ type SmartMatchRow = {
   return (
     <PageShell
       title={session?.templateitem || templateName || "Inspection"}
-      description="Run guided inspections, capture notes, and push items into work orders."
+      description="Complete a free-form inspection, capture evidence, and keep every device in sync."
     >
       {body}
     </PageShell>
