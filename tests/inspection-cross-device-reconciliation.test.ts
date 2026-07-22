@@ -14,6 +14,12 @@ const genericScreen = readFileSync(
   "features/inspections/screens/GenericInspectionScreen.tsx",
   "utf8",
 );
+const loadRoute = readFileSync("app/api/inspections/load/route.ts", "utf8");
+const saveRoute = readFileSync("app/api/inspections/save/route.ts", "utf8");
+const photoRoute = readFileSync(
+  "app/api/inspections/photos/upload/route.ts",
+  "utf8",
+);
 
 describe("inspection cross-device reconciliation and shared modal styling", () => {
   it("reconciles both canonical persistence tables", () => {
@@ -43,5 +49,30 @@ describe("inspection cross-device reconciliation and shared modal styling", () =
     expect(inspectionModal).toContain("var(--font-blackops)");
     expect(genericScreen).toContain("rounded-[22px]");
     expect(genericScreen).toContain("keep every device in sync");
+  });
+
+  it("resolves installed-app photo uploads by canonical work-order line", () => {
+    const lineLookup = photoRoute.indexOf(
+      '.eq("work_order_line_id", workOrderLineId)',
+    );
+    const uuidLookup = photoRoute.indexOf('.eq("id", inspectionId)');
+    expect(lineLookup).toBeGreaterThan(-1);
+    expect(uuidLookup).toBeGreaterThan(lineLookup);
+    expect(photoRoute).toContain('.eq("shop_id", shopId)');
+  });
+
+  it("recovers append-only evidence from every inspection row for the line", () => {
+    expect(loadRoute).toContain("photoInspectionIds");
+    expect(loadRoute).toContain(
+      '.eq("work_order_line_id", resolvedWorkOrderLineId)',
+    );
+    expect(loadRoute).toContain('.in("inspection_id", photoInspectionIds)');
+  });
+
+  it("returns a structured revision conflict without discarding device work", () => {
+    expect(saveRoute).toContain('"INSPECTION_REVISION_CONFLICT"');
+    expect(saveRoute).toContain("recoveryRequired: true");
+    expect(saveRoute).toContain("serverRevision:");
+    expect(saveRoute).toContain("serverUpdatedAt:");
   });
 });
