@@ -104,30 +104,14 @@ export async function POST(req: NextRequest) {
         ? 409
         : 400;
     if (status === 409) {
-      const { data: canonical } = await supabase
-        .from("inspections")
-        .select("id, summary, updated_at")
-        .eq("shop_id", profile.shop_id)
-        .eq("work_order_line_id", workOrderLineId)
-        .order("updated_at", { ascending: false, nullsFirst: false })
-        .order("id", { ascending: false })
-        .limit(1)
-        .maybeSingle<{
-          id: string;
-          summary: Json | null;
-          updated_at: string | null;
-        }>();
-      const canonicalSession =
-        (canonical?.summary as unknown as InspectionSession | null) ?? null;
-
       return NextResponse.json(
         {
           error: message,
           code: "INSPECTION_REVISION_CONFLICT",
           recoveryRequired: true,
-          canonicalInspectionId: canonical?.id ?? null,
-          serverRevision: canonicalSession?.syncRevision ?? null,
-          serverUpdatedAt: canonical?.updated_at ?? null,
+          workOrderLineId,
+          serverRevision: null,
+          serverUpdatedAt: null,
         },
         { status },
       );
@@ -138,4 +122,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json(data ?? { ok: true });
 }
-

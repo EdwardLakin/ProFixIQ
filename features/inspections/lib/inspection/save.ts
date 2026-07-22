@@ -7,6 +7,7 @@ import {
   runMutationWithOfflineQueue,
 } from "@/features/shared/lib/offline/mutations";
 import { replayAllOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { stampInspectionSyncSource } from "@inspections/lib/inspection/conflictRecovery";
 
 const ACTION_SAVE_INSPECTION = "inspection:save-session";
 
@@ -20,6 +21,7 @@ type SaveInspectionOptions = {
   operationKey?: string;
   requireServer?: boolean;
   supersedesOperationKey?: string;
+  deferSupersededDismissal?: boolean;
 };
 
 type InspectionSaveResponse = {
@@ -73,6 +75,7 @@ export async function saveInspectionSession(
   inspectionId?: string;
   syncRevision?: number;
   savedAt?: string;
+  savedSession?: InspectionSession;
 }> {
   if (!workOrderLineId) {
     throw new Error("Missing workOrderLineId");
@@ -83,14 +86,19 @@ export async function saveInspectionSession(
     (typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
       : `${workOrderLineId}:${Date.now()}`);
+  const authoredSession = stampInspectionSyncSource(session);
   const payload: InspectionSavePayload = {
     workOrderLineId,
-    session,
+    session: authoredSession,
     operationKey,
   };
 
   const supersededKey = options.supersedesOperationKey?.trim();
-  if (supersededKey && supersededKey !== operationKey) {
+  if (
+    supersededKey &&
+    supersededKey !== operationKey &&
+    !options.deferSupersededDismissal
+  ) {
     // A distinct key prevents an in-flight replay from acknowledging a newer
     // payload. Queued (not syncing) snapshots are safely coalesced away.
     await dismissOfflineMutation(supersededKey);
@@ -126,6 +134,20 @@ export async function saveInspectionSession(
     serverResponse.current = await postInspectionSave(payload);
   }
 
+  if (
+    supersededKey &&
+    supersededKey !== operationKey &&
+    options.deferSupersededDismissal &&
+    !result.queued &&
+    !result.conflicted &&
+    serverResponse.current
+  ) {
+    // Conflict recovery keeps the rejected device snapshot until the reviewed
+    // replacement has a server acknowledgement. A failed recovery therefore
+    // cannot destroy the only remaining device copy.
+    await dismissOfflineMutation(supersededKey);
+  }
+
   if (typeof navigator !== "undefined" && navigator.onLine) {
     await replayQueuedInspectionSaves();
   }
@@ -136,5 +158,6 @@ export async function saveInspectionSession(
     inspectionId: serverResponse.current?.inspection_id,
     syncRevision: serverResponse.current?.sync_revision,
     savedAt: serverResponse.current?.saved_at,
+    savedSession: authoredSession,
   };
 }

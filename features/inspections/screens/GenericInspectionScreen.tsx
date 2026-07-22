@@ -47,6 +47,7 @@ import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionForm
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 import InspectionSignaturePanel from "@inspections/components/inspection/InspectionSignaturePanel";
+import InspectionConflictRecoveryPanel from "@inspections/components/inspection/InspectionConflictRecoveryPanel";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
@@ -965,6 +966,7 @@ type SmartMatchRow = {
     flushToServer: flushAutosaveToServer,
     label: autosaveLabel,
     lastError: autosaveError,
+    resolveConflict,
   } = useInspectionAutosave({
     session,
     inspectionId,
@@ -2863,6 +2865,22 @@ type SmartMatchRow = {
           >
             {recoveryMessage}
           </div>
+        )}
+        {recoveryState === "conflicted" && workOrderLineId && (
+          <InspectionConflictRecoveryPanel
+            deviceSession={session}
+            workOrderLineId={workOrderLineId}
+            onResolve={async (resolved) => {
+              const saved = await resolveConflict(resolved);
+              replaceSession(saved);
+              recoveryOperationKeyRef.current = undefined;
+              queuedSessionRef.current = null;
+              setRecoveryState("editing");
+              setRecoveryMessage(
+                "Reviewed inspection is saved and available on all devices.",
+              );
+            }}
+          />
         )}
         <div className={headerCard}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-2">
