@@ -123,7 +123,9 @@ create policy fleets_actor_select
     )
     or exists (
       select 1 from public.fleet_members fm
-      where fm.fleet_id = fleets.id and fm.user_id = auth.uid()
+      where fm.fleet_id = fleets.id
+        and fm.shop_id = fleets.shop_id
+        and fm.user_id = auth.uid()
     )
   );
 
@@ -153,10 +155,18 @@ create policy fleet_members_actor_select
   on public.fleet_members
   for select to authenticated
   using (
-    user_id = auth.uid()
-    or exists (
-      select 1 from public.profiles p
-      where p.id = auth.uid() and p.shop_id = fleet_members.shop_id
+    exists (
+      select 1
+      from public.fleets f
+      where f.id = fleet_members.fleet_id
+        and f.shop_id = fleet_members.shop_id
+    )
+    and (
+      user_id = auth.uid()
+      or exists (
+        select 1 from public.profiles p
+        where p.id = auth.uid() and p.shop_id = fleet_members.shop_id
+      )
     )
   );
 
@@ -166,6 +176,12 @@ create policy fleet_members_manager_write
   for all to authenticated
   using (
     exists (
+      select 1
+      from public.fleets f
+      where f.id = fleet_members.fleet_id
+        and f.shop_id = fleet_members.shop_id
+    )
+    and exists (
       select 1 from public.profiles p
       where p.id = auth.uid()
         and p.shop_id = fleet_members.shop_id
@@ -174,6 +190,12 @@ create policy fleet_members_manager_write
   )
   with check (
     exists (
+      select 1
+      from public.fleets f
+      where f.id = fleet_members.fleet_id
+        and f.shop_id = fleet_members.shop_id
+    )
+    and exists (
       select 1 from public.profiles p
       where p.id = auth.uid()
         and p.shop_id = fleet_members.shop_id
