@@ -12,6 +12,9 @@ const sectionDisplay = read(
 const autosave = read(
   "features/inspections/hooks/useInspectionAutosave.ts",
 );
+const signingRepair = read(
+  "supabase/migrations/20260722113000_reinstall_inspection_save_and_sign.sql",
+);
 describe("premium inspection layout and signing repair", () => {
   it("renders the hydraulic corner grid without decorative empty cells or sketch copy", () => {
     expect(cornerGrid).toContain("Hydraulic brake measurements");
@@ -28,10 +31,30 @@ describe("premium inspection layout and signing repair", () => {
     expect(sectionDisplay).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
   });
 
+  it("keeps corner-grid findings contextual without duplicate status inputs", () => {
+    expect(sectionDisplay).toContain("hasGridFindingEvidence");
+    expect(sectionDisplay).toContain("Finding details");
+    expect(sectionDisplay).toContain("showStatusControls={!showGridFindings}");
+    expect(sectionDisplay).not.toContain("Findings & evidence");
+  });
+
   it("does not expose raw database conflict details to technicians", () => {
     expect(autosave).toContain(
       "Your work remains safe on this device.",
     );
     expect(autosave).toContain("inspectionSyncErrorMessage");
+  });
+
+  it("reinstalls conflict-safe save and revision-aware signing functions", () => {
+    expect(signingRepair).toContain(
+      "create or replace function public.save_inspection_progress_atomic",
+    );
+    expect(signingRepair).toContain(
+      "create or replace function public.sign_inspection",
+    );
+    expect(signingRepair).toContain("p.user_id = v_actor_user_id");
+    expect(signingRepair.toLowerCase()).not.toContain(
+      "on conflict (work_order_line_id)",
+    );
   });
 });
