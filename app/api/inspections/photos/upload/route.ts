@@ -127,10 +127,40 @@ async function ensureInspectionRow(args: {
 > {
   const { supabase, inspectionId, shopId, workOrderId, workOrderLineId } = args;
 
+  // The work-order line is the canonical inspection identity. Installed PWAs
+  // may replay an older device-local inspection UUID after the canonical row
+  // has advanced, so resolve by line before trusting the client UUID.
+  if (workOrderLineId) {
+    const { data: existingByLine, error: existingByLineErr } = await supabase
+      .from("inspections")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("work_order_line_id", workOrderLineId)
+      .order("updated_at", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (existingByLineErr) {
+      console.error(
+        "[inspections/photos/upload] canonical inspection lookup failed",
+        existingByLineErr,
+      );
+      return { ok: false, error: existingByLineErr.message };
+    }
+
+    if (existingByLine?.id) {
+      return { ok: true, inspectionId: existingByLine.id };
+    }
+  }
+
+  // Legacy standalone inspections do not have a work-order line. Keep their
+  // UUID fallback shop-scoped, but never let it override a supplied line.
   const { data: existingById, error: existingByIdErr } = await supabase
     .from("inspections")
     .select("id")
     .eq("id", inspectionId)
+    .eq("shop_id", shopId)
     .maybeSingle<{ id: string }>();
 
   if (existingByIdErr) {
@@ -143,26 +173,6 @@ async function ensureInspectionRow(args: {
 
   if (existingById?.id) {
     return { ok: true, inspectionId: existingById.id };
-  }
-
-  if (workOrderLineId) {
-    const { data: existingByLine, error: existingByLineErr } = await supabase
-      .from("inspections")
-      .select("id")
-      .eq("work_order_line_id", workOrderLineId)
-      .maybeSingle<{ id: string }>();
-
-    if (existingByLineErr) {
-      console.error(
-        "[inspections/photos/upload] inspection exists check by work_order_line_id failed",
-        existingByLineErr,
-      );
-      return { ok: false, error: existingByLineErr.message };
-    }
-
-    if (existingByLine?.id) {
-      return { ok: true, inspectionId: existingByLine.id };
-    }
   }
 
   let vehicleId: string | null = null;
@@ -264,7 +274,7 @@ export async function POST(req: NextRequest) {
         error: "Unable to resolve shop for inspection photo upload",
         debug: {
           source: resolved.source,
-          inspectionId: requestedInspectionId,
+          inspectionId: resolvedInspectionId,
           workOrderId,
           workOrderLineId,
         },
