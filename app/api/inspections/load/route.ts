@@ -315,11 +315,47 @@ export async function GET(req: NextRequest) {
   }
 
   let canonicalPhotos: InspectionPhotoRow[] = [];
-  if (canonicalInspectionId) {
+  let photoInspectionIds = canonicalInspectionId
+    ? [canonicalInspectionId]
+    : [];
+
+  if (resolvedWorkOrderLineId) {
+    // Evidence is append-only. Recover uploads made by older installed PWAs
+    // against any historical inspection UUID for this same work-order line.
+    const { data: relatedInspections, error: relatedInspectionError } =
+      await supabase
+        .from("inspections")
+        .select("id")
+        .eq("shop_id", shopId)
+        .eq("work_order_line_id", resolvedWorkOrderLineId);
+
+    if (relatedInspectionError) {
+      console.error(
+        "[inspections/load] historical inspection lookup failed",
+        relatedInspectionError,
+      );
+    } else {
+      photoInspectionIds = Array.from(
+        new Set(
+          (relatedInspections ?? [])
+            .map((row) => asString(row.id))
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      if (
+        canonicalInspectionId &&
+        !photoInspectionIds.includes(canonicalInspectionId)
+      ) {
+        photoInspectionIds.unshift(canonicalInspectionId);
+      }
+    }
+  }
+
+  if (photoInspectionIds.length) {
     const { data: photoRows, error: photoError } = await supabase
       .from("inspection_photos")
       .select("item_name, image_url")
-      .eq("inspection_id", canonicalInspectionId)
+      .in("inspection_id", photoInspectionIds)
       .order("created_at", { ascending: true });
 
     if (photoError) {
