@@ -274,90 +274,99 @@ export default function SectionDisplay(props: SectionDisplayProps) {
   return (
     <div>
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-4">
-        {gridSection ? (
-          <div>
-            <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
-              {showGridFindings ? "Findings & evidence" : resolvedTitle}
+      <div className="grid gap-4 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div className="min-w-0">
+          {gridSection ? (
+            <div>
+              <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
+                {showGridFindings ? "Findings & evidence" : resolvedTitle}
+              </div>
+              {showGridFindings ? (
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Status, notes, photos, parts and labor saved on the same inspection items as the measurements above.
+                </p>
+              ) : null}
             </div>
-            {showGridFindings ? (
-              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                Status, notes, photos, parts and labor saved on the same inspection items as the measurements above.
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <button
-            onClick={toggleOpen}
-            className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-xl"
-            aria-expanded={open}
-            type="button"
-          >
-            {resolvedTitle}
-          </button>
-        )}
+          ) : (
+            <button
+              onClick={toggleOpen}
+              className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-xl"
+              aria-expanded={open}
+              type="button"
+            >
+              {resolvedTitle}
+            </button>
+          )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="hidden items-center gap-1.5 md:flex">
+          <div
+            className="mt-3 flex flex-wrap items-center gap-1.5"
+            aria-label="Section item counts"
+          >
             <StatusBadge variant="success">{stats.ok} OK</StatusBadge>
             <StatusBadge variant="danger">{stats.fail} FAIL</StatusBadge>
             <StatusBadge variant="info">{stats.na} NA</StatusBadge>
             <StatusBadge variant="warning">{stats.recommend} REC</StatusBadge>
             <StatusBadge variant="neutral">{stats.unset} Open</StatusBadge>
           </div>
-
-          {showBulkButtons ? (
-            <div className="flex flex-wrap items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 border-emerald-500/35 bg-emerald-50 px-2 text-[11px] text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/25 dark:text-emerald-200"
-                onClick={() => markAll("ok")}
-                type="button"
-              >
-                All OK
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 border-red-500/30 px-2 text-[11px] text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
-                onClick={() => markAll("fail")}
-                type="button"
-              >
-                All FAIL
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 border-sky-500/30 px-2 text-[11px] text-sky-700 hover:bg-sky-50 dark:text-sky-200 dark:hover:bg-sky-950/25"
-                onClick={() => markAll("na")}
-                type="button"
-              >
-                All NA
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 border-amber-500/35 px-2 text-[11px] text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/25"
-                onClick={() => markAll("recommend")}
-                type="button"
-              >
-                All REC
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                className="ml-1 h-7 px-2 text-[11px]"
-                onClick={toggleOpen}
-                aria-expanded={open}
-                type="button"
-              >
-                {open ? "Collapse" : "Expand"}
-              </Button>
-            </div>
-          ) : null}
         </div>
+
+        {showBulkButtons ? (
+          <div
+            className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-1.5 shadow-sm"
+            aria-label="Bulk section actions"
+          >
+            <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+              Set section
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl border-emerald-500/35 bg-emerald-50 px-3 text-[11px] text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/25 dark:text-emerald-200"
+              onClick={() => markAll("ok")}
+              type="button"
+            >
+              All OK
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl border-red-500/30 px-3 text-[11px] text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/25"
+              onClick={() => markAll("fail")}
+              type="button"
+            >
+              All FAIL
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl border-sky-500/30 px-3 text-[11px] text-sky-700 hover:bg-sky-50 dark:text-sky-200 dark:hover:bg-sky-950/25"
+              onClick={() => markAll("na")}
+              type="button"
+            >
+              All NA
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-xl border-amber-500/35 px-3 text-[11px] text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/25"
+              onClick={() => markAll("recommend")}
+              type="button"
+            >
+              All REC
+            </Button>
+            <span className="mx-0.5 hidden h-5 w-px bg-[color:var(--theme-border-soft)] sm:block" />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-xl px-3 text-[11px]"
+              onClick={toggleOpen}
+              aria-expanded={open}
+              type="button"
+            >
+              {open ? "Collapse" : "Expand"}
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {/* Body */}
