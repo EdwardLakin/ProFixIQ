@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { decodeVinLocally } from "@/features/shared/lib/vin/localDecodeVin";
@@ -9,6 +10,10 @@ import {
 } from "@/features/shared/lib/vin/vinCapture";
 
 const VALID_VIN = "1HGCM82633A004352";
+const scannerSource = readFileSync(
+  "features/vehicles/components/VehicleIntakeScanner.tsx",
+  "utf8",
+);
 
 describe("local VIN intake scan", () => {
   it("extracts a VIN from a prefixed barcode value", () => {
@@ -69,5 +74,18 @@ describe("local VIN intake scan", () => {
       manufacturer: "Honda",
       country: "United States",
     });
+  });
+
+  it("keeps an iOS-capable VIN-specific Quagga fallback", () => {
+    expect(scannerSource).toContain('"code_39_vin_reader"');
+    expect(scannerSource).toContain("halfSample: false");
+    expect(scannerSource).toContain("inputSize: 0");
+    expect(scannerSource).toContain("QUAGGA_PASS_TIMEOUT_MS");
+    expect(scannerSource).toContain('mode: "live" | "photo"');
+  });
+
+  it("keeps local scan images out of third-party extraction routes", () => {
+    expect(scannerSource).not.toContain("/api/vin/extract-from-image");
+    expect(scannerSource).not.toContain("FormData");
   });
 });

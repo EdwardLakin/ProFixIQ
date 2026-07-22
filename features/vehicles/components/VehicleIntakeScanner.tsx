@@ -18,6 +18,7 @@ type BarcodeDetectorConstructor = new (options?: {
 type QuaggaResult = {
   codeResult?: {
     code?: string | null;
+    format?: string | null;
   } | null;
 };
 
@@ -43,9 +44,61 @@ type Props = {
   isBusy: boolean;
 };
 
-const OBSERVATION_WINDOW_MS = 2_200;
-const LOCAL_SCAN_INTERVAL_MS = 260;
-const QUAGGA_INTERVAL_MS = 850;
+type QuaggaPass = {
+  locate: boolean;
+  halfSample: boolean;
+  patchSize: "x-small" | "small" | "medium";
+  inputSize: number;
+  readers: string[];
+};
+
+const OBSERVATION_WINDOW_MS = 2_400;
+const LOCAL_SCAN_INTERVAL_MS = 280;
+const QUAGGA_INTERVAL_MS = 900;
+const QUAGGA_PASS_TIMEOUT_MS = 4_000;
+
+const LIVE_QUAGGA_PASSES: readonly QuaggaPass[] = [
+  {
+    locate: false,
+    halfSample: false,
+    patchSize: "small",
+    inputSize: 0,
+    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+  },
+  {
+    locate: true,
+    halfSample: false,
+    patchSize: "small",
+    inputSize: 0,
+    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+  },
+];
+
+const PHOTO_QUAGGA_PASSES: readonly QuaggaPass[] = [
+  {
+    locate: true,
+    halfSample: false,
+    patchSize: "x-small",
+    inputSize: 0,
+    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+  },
+  {
+    locate: true,
+    halfSample: true,
+    patchSize: "small",
+    inputSize: 1600,
+    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+  },
+  {
+    locate: false,
+    halfSample: false,
+    patchSize: "small",
+    inputSize: 0,
+    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+  },
+];
+
+let quaggaPromise: Promise<QuaggaLike> | null = null;
 
 function getBarcodeDetector(): BarcodeDetectorConstructor | null {
   if (typeof window === "undefined") return null;
@@ -57,10 +110,13 @@ function getBarcodeDetector(): BarcodeDetectorConstructor | null {
 }
 
 async function loadQuagga(): Promise<QuaggaLike> {
-  const module = (await import("@ericblade/quagga2")) as unknown as {
-    default?: QuaggaLike;
-  } & QuaggaLike;
-  return module.default ?? module;
+  if (!quaggaPromise) {
+    quaggaPromise = import("@ericblade/quagga2").then((module) => {
+      const loaded = module as unknown as { default?: QuaggaLike } & QuaggaLike;
+      return loaded.default ?? loaded;
+    });
+  }
+  return quaggaPromise;
 }
 
 function drawVideoRegion(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
@@ -68,12 +124,17 @@ function drawVideoRegion(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   const sourceHeight = video.videoHeight;
   if (!sourceWidth || !sourceHeight) return false;
 
-  const cropWidth = Math.round(sourceWidth * 0.88);
-  const cropHeight = Math.round(sourceHeight * 0.42);
+  // Keep the crop aligned with the visible guide, but retain enough vertical area
+  // for labels that are slightly above or below center on a handheld phone.
+  const cropWidth = Math.round(sourceWidth * 0.94);
+  const cropHeight = Math.round(sourceHeight * 0.52);
   const sourceX = Math.round((sourceWidth - cropWidth) / 2);
   const sourceY = Math.round((sourceHeight - cropHeight) / 2);
-  const outputWidth = Math.min(1280, cropWidth);
-  const outputHeight = Math.max(240, Math.round((cropHeight / cropWidth) * outputWidth));
+  const outputWidth = Math.min(1600, cropWidth);
+  const outputHeight = Math.max(
+    320,
+    Math.round((cropHeight / cropWidth) * outputWidth),
+  );
 
   canvas.width = outputWidth;
   canvas.height = outputHeight;
@@ -94,39 +155,77 @@ function drawVideoRegion(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   return true;
 }
 
-function decodeCanvasWithQuagga(canvas: HTMLCanvasElement): Promise<string | null> {
-  return loadQuagga().then(
-    (quagga) =>
-      new Promise((resolve) => {
-        quagga.decodeSingle(
-          {
-            src: canvas.toDataURL("image/jpeg", 0.82),
-            numOfWorkers: 0,
-            locate: true,
-            inputStream: {
-              size: 1280,
-            },
-            locator: {
-              patchSize: "medium",
-              halfSample: true,
-            },
-            decoder: {
-              readers: ["code_39_reader", "code_128_reader"],
-              multiple: false,
-            },
+async function decodeQuaggaPass(
+  quagga: QuaggaLike,
+  source: string,
+  pass: QuaggaPass,
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      resolve(value);
+    };
+
+    const timeoutId = window.setTimeout(
+      () => finish(null),
+      QUAGGA_PASS_TIMEOUT_MS,
+    );
+
+    try {
+      quagga.decodeSingle(
+        {
+          src: source,
+          numOfWorkers: 0,
+          locate: pass.locate,
+          inputStream: {
+            size: pass.inputSize,
+            singleChannel: false,
           },
-          (result) => resolve(result?.codeResult?.code?.trim() || null),
-        );
-      }),
-  );
+          locator: {
+            patchSize: pass.patchSize,
+            halfSample: pass.halfSample,
+          },
+          decoder: {
+            readers: pass.readers,
+            multiple: false,
+          },
+        },
+        (result) => finish(result?.codeResult?.code?.trim() || null),
+      );
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+async function decodeCanvasWithQuagga(
+  canvas: HTMLCanvasElement,
+  mode: "live" | "photo",
+): Promise<string | null> {
+  const quagga = await loadQuagga();
+  const source = canvas.toDataURL("image/jpeg", 0.94);
+  const passes = mode === "live" ? LIVE_QUAGGA_PASSES : PHOTO_QUAGGA_PASSES;
+
+  for (const pass of passes) {
+    const decoded = await decodeQuaggaPass(quagga, source, pass);
+    if (decoded && extractVinCandidates(decoded).length > 0) return decoded;
+  }
+
+  return null;
 }
 
 async function drawImageFile(file: File, canvas: HTMLCanvasElement) {
   if (typeof createImageBitmap === "function") {
     const bitmap = await createImageBitmap(file);
     try {
-      const maxWidth = 1800;
-      const scale = Math.min(1, maxWidth / bitmap.width);
+      const maxDimension = 2400;
+      const scale = Math.min(
+        1,
+        maxDimension / Math.max(bitmap.width, bitmap.height),
+      );
       canvas.width = Math.max(1, Math.round(bitmap.width * scale));
       canvas.height = Math.max(1, Math.round(bitmap.height * scale));
       const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -143,8 +242,11 @@ async function drawImageFile(file: File, canvas: HTMLCanvasElement) {
     const image = new Image();
     image.src = objectUrl;
     await image.decode();
-    const maxWidth = 1800;
-    const scale = Math.min(1, maxWidth / image.naturalWidth);
+    const maxDimension = 2400;
+    const scale = Math.min(
+      1,
+      maxDimension / Math.max(image.naturalWidth, image.naturalHeight),
+    );
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
     const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -220,6 +322,18 @@ export default function VehicleIntakeScanner({
     return true;
   }, []);
 
+  const acceptPhotoObservation = useCallback(
+    (raw: string) => {
+      const now = Date.now();
+      observationsRef.current.push(
+        { raw, capturedAt: now },
+        { raw, capturedAt: now },
+      );
+      return acceptObservation(raw);
+    },
+    [acceptObservation],
+  );
+
   useEffect(() => {
     let cancelled = false;
     let intervalId: number | null = null;
@@ -268,6 +382,10 @@ export default function VehicleIntakeScanner({
           }
         }
 
+        // Warm the local fallback while the user positions the camera. This avoids
+        // making the first iOS scan wait for the dynamic import.
+        void loadQuagga().catch(() => null);
+
         setCameraReady(true);
         setCameraError(null);
         setStatus("Center the VIN barcode in the guide");
@@ -308,7 +426,10 @@ export default function VehicleIntakeScanner({
             if (shouldRunQuagga && canvasRef.current) {
               lastQuaggaAtRef.current = now;
               if (drawVideoRegion(video, canvasRef.current)) {
-                const decoded = await decodeCanvasWithQuagga(canvasRef.current);
+                const decoded = await decodeCanvasWithQuagga(
+                  canvasRef.current,
+                  "live",
+                );
                 if (decoded) acceptObservation(decoded);
               }
             }
@@ -372,15 +493,16 @@ export default function VehicleIntakeScanner({
         const Detector = getBarcodeDetector();
         if (Detector) {
           try {
-            const detector = new Detector();
+            const detector = new Detector({
+              formats: ["code_39", "code_128", "pdf417", "data_matrix"],
+            });
             const results = await detector.detect(canvasRef.current);
             for (const result of results) {
-              if (result.rawValue) {
-                observationsRef.current.push(
-                  { raw: result.rawValue, capturedAt: Date.now() },
-                  { raw: result.rawValue, capturedAt: Date.now() },
-                );
-                if (acceptObservation(result.rawValue)) return;
+              if (
+                result.rawValue &&
+                acceptPhotoObservation(result.rawValue)
+              ) {
+                return;
               }
             }
           } catch {
@@ -388,17 +510,14 @@ export default function VehicleIntakeScanner({
           }
         }
 
-        const decoded = await decodeCanvasWithQuagga(canvasRef.current);
-        if (decoded) {
-          observationsRef.current.push(
-            { raw: decoded, capturedAt: Date.now() },
-            { raw: decoded, capturedAt: Date.now() },
-          );
-          if (acceptObservation(decoded)) return;
-        }
+        const decoded = await decodeCanvasWithQuagga(
+          canvasRef.current,
+          "photo",
+        );
+        if (decoded && acceptPhotoObservation(decoded)) return;
 
         const message =
-          "No VIN barcode was found in that photo. Retake the door-label photo or enter the VIN manually.";
+          "No VIN barcode was found in that photo. Fill the frame with the barcode, keep the label level, or enter the printed VIN manually.";
         setCameraError(message);
         setStatus("VIN barcode not found");
         onErrorRef.current(message);
@@ -412,7 +531,7 @@ export default function VehicleIntakeScanner({
         setPhotoBusy(false);
       }
     },
-    [acceptObservation, isBusy, photoBusy],
+    [acceptPhotoObservation, isBusy, photoBusy],
   );
 
   return (
@@ -427,7 +546,7 @@ export default function VehicleIntakeScanner({
         />
 
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-5">
-          <div className="relative h-[38%] w-[92%] rounded-xl border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.34)]">
+          <div className="relative h-[42%] w-[94%] rounded-xl border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.34)]">
             <span className="absolute -left-0.5 -top-0.5 h-5 w-5 rounded-tl-xl border-l-4 border-t-4 border-[var(--accent-copper-light)]" />
             <span className="absolute -right-0.5 -top-0.5 h-5 w-5 rounded-tr-xl border-r-4 border-t-4 border-[var(--accent-copper-light)]" />
             <span className="absolute -bottom-0.5 -left-0.5 h-5 w-5 rounded-bl-xl border-b-4 border-l-4 border-[var(--accent-copper-light)]" />
@@ -478,7 +597,7 @@ export default function VehicleIntakeScanner({
           Runs on this device using the VIN barcode. No image or scan is sent to a third-party API.
         </p>
         <p>
-          Best target: the barcode on the driver-door label. Dashboard VIN text can still be entered manually.
+          Best target: fill the guide with the long barcode on the driver-door label and hold the phone level.
         </p>
         {!cameraReady && !cameraError ? <p>Requesting camera access…</p> : null}
       </div>
