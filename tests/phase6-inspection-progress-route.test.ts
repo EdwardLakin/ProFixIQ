@@ -41,8 +41,9 @@ describe("Phase 6 inspection progress route", () => {
     expect(client).toContain(
       "syncRevision: serverResponse.current?.sync_revision",
     );
-    expect(route).toContain('lower.includes("newer server version")');
+    expect(route).toContain("isInspectionRevisionConflict(message)");
     expect(route).toContain("? 409");
+    expect(route).toContain("INSPECTION_WRITER_UNAVAILABLE");
+    expect(route).toContain("{ status: 503 }");
   });
 });
-

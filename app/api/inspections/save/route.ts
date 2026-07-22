@@ -7,13 +7,43 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import type { Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 
-type RpcError = { message: string; details?: string | null; hint?: string | null };
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string | null;
+};
 type RpcClient = {
   rpc: (
     name: string,
     args: Record<string, unknown>,
   ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
 };
+
+const SCHEMA_COMPATIBILITY_ERROR =
+  "no unique or exclusion constraint matching the on conflict";
+
+function isInspectionRevisionConflict(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("inspection save conflicts with a newer server version") ||
+    lower.includes("inspection is finalized and locked") ||
+    lower.includes("inspection was finalized while autosave was in progress")
+  );
+}
+
+function isMissingVersionedWriter(error: RpcError | null): boolean {
+  if (!error) return false;
+  const message = [error.message, error.details, error.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return (
+    error.code === "PGRST202" ||
+    (message.includes("save_inspection_progress_v2_atomic") &&
+      (message.includes("not find") || message.includes("does not exist")))
+  );
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -81,27 +111,51 @@ export async function POST(req: NextRequest) {
   }
 
   const rpc = supabase as unknown as RpcClient;
-  const { data, error } = await rpc.rpc("save_inspection_progress_atomic", {
+  const rpcArgs = {
     p_shop_id: profile.shop_id,
     p_work_order_line_id: workOrderLineId,
     p_actor_user_id: user.id,
     p_session: session as unknown as Json,
     p_operation_key: `${profile.shop_id}:inspection-progress:${operationKey}`,
     p_at: new Date().toISOString(),
-  });
+  };
+  let { data, error } = await rpc.rpc(
+    "save_inspection_progress_v2_atomic",
+    rpcArgs,
+  );
+
+  // Keep deploy order safe: application instances may update before the new
+  // migration reaches PostgREST. Once v2 exists, every save uses it and can no
+  // longer resolve to the drifted legacy implementation.
+  if (isMissingVersionedWriter(error)) {
+    ({ data, error } = await rpc.rpc("save_inspection_progress_atomic", rpcArgs));
+  }
 
   if (error) {
     const message = [error.message, error.details, error.hint]
       .filter(Boolean)
       .join(" — ");
     const lower = message.toLowerCase();
-    const status =
-      lower.includes("locked") ||
-      lower.includes("finalized") ||
-      lower.includes("not found") ||
-      lower.includes("newer server version") ||
-      lower.includes("conflict")
-        ? 409
+    // PostgreSQL uses "ON CONFLICT" in schema errors. Never classify that
+    // wording as a user-data revision conflict: doing so permanently strands
+    // an otherwise retryable mobile snapshot in IndexedDB.
+    if (lower.includes(SCHEMA_COMPATIBILITY_ERROR)) {
+      return NextResponse.json(
+        {
+          error:
+            "Inspection sync is temporarily unavailable while the server writer is updated.",
+          code: "INSPECTION_WRITER_UNAVAILABLE",
+          retryable: true,
+          workOrderLineId,
+        },
+        { status: 503 },
+      );
+    }
+
+    const status = isInspectionRevisionConflict(message)
+      ? 409
+      : lower.includes("work-order line not found")
+        ? 404
         : 400;
     if (status === 409) {
       return NextResponse.json(

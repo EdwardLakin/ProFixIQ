@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   hydrateOfflineMutationQueue: vi.fn(),
   listOfflineMutations: vi.fn(),
   resolveOfflineMutationScope: vi.fn(),
+  retryOfflineMutation: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/offline/database", () => ({
@@ -19,6 +20,7 @@ vi.mock("@/features/shared/lib/offline/mutations", () => ({
   hydrateOfflineMutationQueue: mocks.hydrateOfflineMutationQueue,
   listOfflineMutations: mocks.listOfflineMutations,
   resolveOfflineMutationScope: mocks.resolveOfflineMutationScope,
+  retryOfflineMutation: mocks.retryOfflineMutation,
 }));
 
 import { getInspectionOfflineDraft } from "../features/inspections/lib/inspection/offlineDrafts";
@@ -92,5 +94,38 @@ describe("inspection conflict containment", () => {
     expect(recovered?.operationKey).toBe("operation-1");
     expect(recovered?.session).toEqual(rejectedMobile);
     expect(recovered?.session.sections[0].items[0].value).toBe("2");
+  });
+
+  it("retries the legacy writer schema failure without changing its mobile payload", async () => {
+    const rejectedMobile = session("2", "2026-07-22T17:00:00.000Z");
+
+    mocks.getOfflineSnapshot.mockResolvedValue({
+      data: {
+        draftKey: "inspection-draft:line:line-1",
+        session: rejectedMobile,
+        savedAt: "2026-07-22T17:00:00.000Z",
+        state: "conflicted",
+        operationKey: "operation-1",
+      },
+    });
+    mocks.listOfflineMutations.mockReturnValue([
+      {
+        clientMutationId: "operation-1",
+        status: "conflicted",
+        lastError:
+          "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+        payload: { session: rejectedMobile },
+      },
+    ]);
+
+    const recovered = await getInspectionOfflineDraft({
+      draftKey: "inspection-draft:line:line-1",
+      sessionHint: rejectedMobile,
+    });
+
+    expect(mocks.retryOfflineMutation).toHaveBeenCalledWith("operation-1");
+    expect(recovered?.state).toBe("queued");
+    expect(recovered?.operationKey).toBe("operation-1");
+    expect(recovered?.session).toEqual(rejectedMobile);
   });
 });

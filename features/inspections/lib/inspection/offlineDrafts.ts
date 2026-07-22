@@ -10,11 +10,21 @@ import {
   hydrateOfflineMutationQueue,
   listOfflineMutations,
   resolveOfflineMutationScope,
+  retryOfflineMutation,
   type OfflineMutationScope,
 } from "@/features/shared/lib/offline/mutations";
 
 const KIND = "inspection-draft";
 const MAX_AGE_MS = 1000 * 60 * 60 * 24 * 14;
+
+function isLegacyInspectionWriterFailure(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    value
+      .toLowerCase()
+      .includes("no unique or exclusion constraint matching the on conflict")
+  );
+}
 
 export type InspectionDraftRecoveryState = "editing" | "queued" | "conflicted";
 
@@ -111,6 +121,20 @@ export async function getInspectionOfflineDraft(args: {
         ? (queuedSessionCandidate as InspectionSession)
         : null;
     if (queued.status === "conflicted") {
+      if (isLegacyInspectionWriterFailure(queued.lastError)) {
+        // Older clients mistook PostgreSQL's `ON CONFLICT` schema wording for
+        // an inspection revision conflict. Revive only that known-safe failure
+        // with the same payload and idempotency key; real revision conflicts
+        // remain protected and require a canonical reconciliation path.
+        await retryOfflineMutation(draft.operationKey);
+        const retrying = {
+          ...draft,
+          session: queuedSession ?? draft.session,
+          state: "queued" as const,
+        };
+        await saveInspectionOfflineDraft(retrying);
+        return retrying;
+      }
       // The queued payload is the exact device snapshot rejected by the
       // server. It is safer than a later screen/localStorage copy, which may
       // already have been replaced by a canonical load. Never dismiss or
