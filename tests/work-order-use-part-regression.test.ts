@@ -52,6 +52,21 @@ describe("work order Use Part regression", () => {
     expect(canonicalUsePartMigration).toContain("status = v_status");
   });
 
+  it("authorizes the direct request-item attach RPC before delegating", () => {
+    expect(canonicalUsePartMigration).toContain(
+      "parts_attach_request_item_unchecked",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "perform public.parts_lifecycle_assert_line_access(\n    v_shop_id,\n    v_work_order_line_id",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "revoke all on function public.parts_attach_request_item_unchecked(uuid)",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "from public, anon, authenticated",
+    );
+  });
+
   it("recovers only evidenced allocation lineage and prevents new orphans", () => {
     expect(canonicalUsePartMigration).toContain(
       "allocation.stock_move_id = move.id",
@@ -82,6 +97,11 @@ describe("work order Use Part regression", () => {
     );
     expect(canonicalUsePartMigration).toContain(
       "set_config('app.parts_direct_use', '1', true)",
+    );
+    expect(canonicalUsePartMigration).toContain("v_wop_exists := found;");
+    expect(canonicalUsePartMigration).toContain("if v_wop_exists then");
+    expect(canonicalUsePartMigration).toContain(
+      "Canonical work-order part was not materialized.",
     );
     expect(canonicalUsePartMigration).toContain(
       "new.source_parts_request_item_id is not null",

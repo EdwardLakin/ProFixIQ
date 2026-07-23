@@ -469,6 +469,61 @@ begin
 end;
 $$;
 
+-- A later snapshot migration replaced the authorized attach helper with a
+-- SECURITY DEFINER body that no longer checked the caller. Preserve that body
+-- as an owner-only implementation and restore authorization at the public RPC
+-- boundary used by both attach and ensure.
+do $$
+begin
+  if to_regprocedure(
+    'public.parts_attach_request_item_unchecked(uuid)'
+  ) is null then
+    alter function public.parts_attach_request_item(uuid)
+      rename to parts_attach_request_item_unchecked;
+  end if;
+end
+$$;
+
+create or replace function public.parts_attach_request_item(
+  p_request_item_id uuid
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_shop_id uuid;
+  v_work_order_line_id uuid;
+begin
+  select item.shop_id, item.work_order_line_id
+    into v_shop_id, v_work_order_line_id
+  from public.part_request_items item
+  where item.id = p_request_item_id
+  for update;
+
+  if not found then
+    raise exception 'Request item not found.';
+  end if;
+  if v_work_order_line_id is null then
+    raise exception 'Request item must be linked to a work-order line.';
+  end if;
+
+  perform public.parts_lifecycle_assert_line_access(
+    v_shop_id,
+    v_work_order_line_id
+  );
+
+  return public.parts_attach_request_item_unchecked(p_request_item_id);
+end;
+$$;
+
+revoke all on function public.parts_attach_request_item_unchecked(uuid)
+  from public, anon, authenticated;
+revoke all on function public.parts_attach_request_item(uuid)
+  from public, anon;
+grant execute on function public.parts_attach_request_item(uuid)
+  to authenticated, service_role;
+
 create or replace function public.parts_lifecycle_status(
   p_requested numeric,
   p_ordered numeric,
@@ -992,6 +1047,7 @@ declare
   v_allocation_qty numeric;
   v_effective_cost numeric;
   v_sell_price numeric;
+  v_wop_exists boolean;
   v_result jsonb;
   v_existing_operation text;
   v_previous_direct_use_guard text :=
@@ -1164,8 +1220,9 @@ begin
   limit 1
   for update;
 
+  v_wop_exists := found;
   perform set_config('app.parts_direct_use', '1', true);
-  if found then
+  if v_wop_exists then
     update public.work_order_parts
     set quantity = quantity + p_qty,
         quantity_requested = coalesce(quantity_requested, 0) + p_qty,
@@ -1239,6 +1296,9 @@ begin
       now(),
       true
     ) returning * into v_wop;
+  end if;
+  if v_wop.id is null then
+    raise exception 'Canonical work-order part was not materialized.';
   end if;
   perform set_config(
     'app.parts_direct_use',

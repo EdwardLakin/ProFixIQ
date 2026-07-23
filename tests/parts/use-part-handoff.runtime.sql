@@ -667,6 +667,51 @@ insert into public.part_request_items (
   true
 );
 
+create function pg_temp.expect_cross_shop_attach_denied()
+returns void
+language plpgsql
+as $$
+begin
+  begin
+    perform public.parts_attach_request_item(
+      '91000000-0000-4000-8000-000000000001'
+    );
+  exception when insufficient_privilege then
+    return;
+  end;
+  raise exception
+    'Runtime assertion failed: cross-shop request-item attach succeeded.';
+end;
+$$;
+
+select set_config(
+  'request.jwt.claim.sub',
+  '20000000-0000-4000-8000-000000000002',
+  true
+);
+set local role authenticated;
+select pg_temp.expect_cross_shop_attach_denied();
+reset role;
+
+do $$
+begin
+  if exists (
+    select 1
+    from public.work_order_parts
+    where source_parts_request_item_id =
+      '91000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception
+      'Runtime assertion failed: denied attach materialized a WOP.';
+  end if;
+end
+$$;
+
+select set_config(
+  'request.jwt.claim.sub',
+  '10000000-0000-4000-8000-000000000001',
+  true
+);
 set local role authenticated;
 select public.parts_attach_request_item(
   '91000000-0000-4000-8000-000000000001'
