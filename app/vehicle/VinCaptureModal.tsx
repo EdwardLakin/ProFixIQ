@@ -245,8 +245,6 @@ export default function VinCaptureModal({
         manufacturer: local?.manufacturer ?? null,
       };
 
-      // Scanning is local-first: the VIN and known fields land immediately and
-      // the camera modal closes without waiting for network enrichment.
       applyDecodedVehicle(normalized.vin, localDecoded);
       setOpen(false);
 
@@ -299,7 +297,6 @@ export default function VinCaptureModal({
           scanSlot={
             <VehicleIntakeScanner
               onFoundVin={handleScannedVin}
-              onError={setCaptureError}
               isBusy={isDecoding}
             />
           }

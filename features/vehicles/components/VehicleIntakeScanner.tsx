@@ -40,7 +40,6 @@ type CameraCapabilities = MediaTrackCapabilities & {
 
 type Props = {
   onFoundVin: (vin: string) => void;
-  onError: (message: string) => void;
   isBusy: boolean;
 };
 
@@ -52,10 +51,22 @@ type QuaggaPass = {
   readers: string[];
 };
 
+type VinImageResponse = {
+  vin?: string | null;
+  error?: string;
+};
+
 const OBSERVATION_WINDOW_MS = 2_400;
 const LOCAL_SCAN_INTERVAL_MS = 280;
 const QUAGGA_INTERVAL_MS = 900;
 const QUAGGA_PASS_TIMEOUT_MS = 4_000;
+const IMAGE_READ_TIMEOUT_MS = 25_000;
+
+const VIN_READERS = [
+  "code_39_vin_reader",
+  "code_39_reader",
+  "code_128_reader",
+] as const;
 
 const LIVE_QUAGGA_PASSES: readonly QuaggaPass[] = [
   {
@@ -63,14 +74,14 @@ const LIVE_QUAGGA_PASSES: readonly QuaggaPass[] = [
     halfSample: false,
     patchSize: "small",
     inputSize: 0,
-    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+    readers: [...VIN_READERS],
   },
   {
     locate: true,
     halfSample: false,
     patchSize: "small",
     inputSize: 0,
-    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+    readers: [...VIN_READERS],
   },
 ];
 
@@ -80,21 +91,21 @@ const PHOTO_QUAGGA_PASSES: readonly QuaggaPass[] = [
     halfSample: false,
     patchSize: "x-small",
     inputSize: 0,
-    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+    readers: [...VIN_READERS],
   },
   {
     locate: true,
     halfSample: true,
     patchSize: "small",
     inputSize: 1600,
-    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+    readers: [...VIN_READERS],
   },
   {
     locate: false,
     halfSample: false,
     patchSize: "small",
     inputSize: 0,
-    readers: ["code_39_vin_reader", "code_39_reader", "code_128_reader"],
+    readers: [...VIN_READERS],
   },
 ];
 
@@ -124,8 +135,6 @@ function drawVideoRegion(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
   const sourceHeight = video.videoHeight;
   if (!sourceWidth || !sourceHeight) return false;
 
-  // Keep the crop aligned with the visible guide, but retain enough vertical area
-  // for labels that are slightly above or below center on a handheld phone.
   const cropWidth = Math.round(sourceWidth * 0.94);
   const cropHeight = Math.round(sourceHeight * 0.52);
   const sourceX = Math.round((sourceWidth - cropWidth) / 2);
@@ -153,6 +162,84 @@ function drawVideoRegion(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
     outputHeight,
   );
   return true;
+}
+
+function drawFullVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
+  const sourceWidth = video.videoWidth;
+  const sourceHeight = video.videoHeight;
+  if (!sourceWidth || !sourceHeight) return false;
+
+  const maxDimension = 2400;
+  const scale = Math.min(
+    1,
+    maxDimension / Math.max(sourceWidth, sourceHeight),
+  );
+  canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+  canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return false;
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return true;
+}
+
+async function drawImageFile(file: File, canvas: HTMLCanvasElement) {
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(file);
+    try {
+      const maxDimension = 2400;
+      const scale = Math.min(
+        1,
+        maxDimension / Math.max(bitmap.width, bitmap.height),
+      );
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("Canvas unavailable");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      return;
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const maxDimension = 2400;
+    const scale = Math.min(
+      1,
+      maxDimension / Math.max(image.naturalWidth, image.naturalHeight),
+    );
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("Canvas unavailable");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function canvasToJpegFile(
+  canvas: HTMLCanvasElement,
+  fileName: string,
+): Promise<File> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("Could not prepare VIN label image."));
+          return;
+        }
+        resolve(new File([blob], fileName, { type: "image/jpeg" }));
+      },
+      "image/jpeg",
+      0.9,
+    );
+  });
 }
 
 async function decodeQuaggaPass(
@@ -217,49 +304,62 @@ async function decodeCanvasWithQuagga(
   return null;
 }
 
-async function drawImageFile(file: File, canvas: HTMLCanvasElement) {
-  if (typeof createImageBitmap === "function") {
-    const bitmap = await createImageBitmap(file);
-    try {
-      const maxDimension = 2400;
-      const scale = Math.min(
-        1,
-        maxDimension / Math.max(bitmap.width, bitmap.height),
-      );
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) throw new Error("Canvas unavailable");
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      return;
-    } finally {
-      bitmap.close();
-    }
-  }
+async function detectBarcodeOnCanvas(
+  canvas: HTMLCanvasElement,
+): Promise<string | null> {
+  const Detector = getBarcodeDetector();
+  if (!Detector) return null;
 
-  const objectUrl = URL.createObjectURL(file);
   try {
-    const image = new Image();
-    image.src = objectUrl;
-    await image.decode();
-    const maxDimension = 2400;
-    const scale = Math.min(
-      1,
-      maxDimension / Math.max(image.naturalWidth, image.naturalHeight),
+    const detector = new Detector({
+      formats: ["code_39", "code_128", "pdf417", "data_matrix"],
+    });
+    const results = await detector.detect(canvas);
+    return (
+      results.find(
+        (result) =>
+          result.rawValue && extractVinCandidates(result.rawValue).length > 0,
+      )?.rawValue?.trim() ?? null
     );
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    if (!context) throw new Error("Canvas unavailable");
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  } catch {
+    return null;
+  }
+}
+
+async function readPrintedVin(file: File): Promise<string | null> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(
+    () => controller.abort(),
+    IMAGE_READ_TIMEOUT_MS,
+  );
+
+  try {
+    const formData = new FormData();
+    formData.append("image", file, file.name);
+
+    const response = await fetch("/api/vin/extract-from-image", {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
+    const body = (await response.json().catch(() => null)) as
+      | VinImageResponse
+      | null;
+
+    if (!response.ok) {
+      throw new Error(body?.error || "Printed VIN reading failed.");
+    }
+
+    return typeof body?.vin === "string" && body.vin.trim()
+      ? body.vin.trim()
+      : null;
   } finally {
-    URL.revokeObjectURL(objectUrl);
+    window.clearTimeout(timeoutId);
   }
 }
 
 export default function VehicleIntakeScanner({
   onFoundVin,
-  onError,
   isBusy,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -267,11 +367,12 @@ export default function VehicleIntakeScanner({
   const streamRef = useRef<MediaStream | null>(null);
   const observationsRef = useRef<Observation[]>([]);
   const scanInFlightRef = useRef(false);
+  const stillCaptureInFlightRef = useRef(false);
   const lockedRef = useRef(false);
   const lastQuaggaAtRef = useRef(0);
   const lastCandidateAtRef = useRef(0);
   const onFoundVinRef = useRef(onFoundVin);
-  const onErrorRef = useRef(onError);
+  const isBusyRef = useRef(isBusy);
 
   const [status, setStatus] = useState("Starting camera…");
   const [cameraReady, setCameraReady] = useState(false);
@@ -279,14 +380,15 @@ export default function VehicleIntakeScanner({
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [captureBusy, setCaptureBusy] = useState(false);
 
   useEffect(() => {
     onFoundVinRef.current = onFoundVin;
   }, [onFoundVin]);
 
   useEffect(() => {
-    onErrorRef.current = onError;
-  }, [onError]);
+    isBusyRef.current = isBusy;
+  }, [isBusy]);
 
   const acceptObservation = useCallback((raw: string) => {
     if (lockedRef.current) return false;
@@ -322,7 +424,7 @@ export default function VehicleIntakeScanner({
     return true;
   }, []);
 
-  const acceptPhotoObservation = useCallback(
+  const acceptConfirmedObservation = useCallback(
     (raw: string) => {
       const now = Date.now();
       observationsRef.current.push(
@@ -332,6 +434,26 @@ export default function VehicleIntakeScanner({
       return acceptObservation(raw);
     },
     [acceptObservation],
+  );
+
+  const decodeStillCanvas = useCallback(
+    async (canvas: HTMLCanvasElement, fileName: string) => {
+      const nativeDecoded = await detectBarcodeOnCanvas(canvas);
+      if (nativeDecoded && acceptConfirmedObservation(nativeDecoded)) return true;
+
+      const quaggaDecoded = await decodeCanvasWithQuagga(canvas, "photo");
+      if (quaggaDecoded && acceptConfirmedObservation(quaggaDecoded)) return true;
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) return false;
+
+      setStatus("Reading printed VIN…");
+      const jpegFile = await canvasToJpegFile(canvas, fileName);
+      const printedVin = await readPrintedVin(jpegFile);
+      if (printedVin && acceptConfirmedObservation(printedVin)) return true;
+
+      return false;
+    },
+    [acceptConfirmedObservation],
   );
 
   useEffect(() => {
@@ -382,20 +504,19 @@ export default function VehicleIntakeScanner({
           }
         }
 
-        // Warm the local fallback while the user positions the camera. This avoids
-        // making the first iOS scan wait for the dynamic import.
         void loadQuagga().catch(() => null);
 
         setCameraReady(true);
         setCameraError(null);
-        setStatus("Center the VIN barcode in the guide");
+        setStatus("Center the printed VIN and barcode in the guide");
 
         intervalId = window.setInterval(async () => {
           if (
             cancelled ||
             lockedRef.current ||
             scanInFlightRef.current ||
-            isBusy ||
+            stillCaptureInFlightRef.current ||
+            isBusyRef.current ||
             video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
           ) {
             return;
@@ -435,7 +556,7 @@ export default function VehicleIntakeScanner({
             }
 
             if (now - lastCandidateAtRef.current > 1_800) {
-              setStatus("Center the VIN barcode in the guide");
+              setStatus("Center the printed VIN and barcode in the guide");
             }
           } catch {
             // Individual frame failures are expected while the camera moves.
@@ -447,10 +568,9 @@ export default function VehicleIntakeScanner({
         const message =
           error instanceof Error && error.message
             ? error.message
-            : "Camera unavailable. Upload a VIN-label photo or enter the VIN manually.";
+            : "Camera unavailable. Choose a VIN-label photo or enter the VIN manually.";
         setCameraError(message);
         setStatus("Camera unavailable");
-        onErrorRef.current(message);
       }
     };
 
@@ -462,8 +582,9 @@ export default function VehicleIntakeScanner({
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       scanInFlightRef.current = false;
+      stillCaptureInFlightRef.current = false;
     };
-  }, [acceptObservation, isBusy]);
+  }, [acceptObservation]);
 
   const toggleTorch = useCallback(async () => {
     const track = streamRef.current?.getVideoTracks()[0];
@@ -480,59 +601,100 @@ export default function VehicleIntakeScanner({
     }
   }, [torchAvailable, torchOn]);
 
+  const handleLiveCapture = useCallback(async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (
+      !video ||
+      !canvas ||
+      !cameraReady ||
+      stillCaptureInFlightRef.current ||
+      isBusyRef.current
+    ) {
+      return;
+    }
+
+    stillCaptureInFlightRef.current = true;
+    setCaptureBusy(true);
+    setCameraError(null);
+    setStatus("Capturing VIN label…");
+
+    try {
+      if (!drawFullVideoFrame(video, canvas)) {
+        throw new Error("The camera frame is not ready yet.");
+      }
+
+      const found = await decodeStillCanvas(canvas, "vin-label-camera.jpg");
+      if (found) return;
+
+      const message = navigator.onLine
+        ? "No complete VIN was found. Move closer so the printed VIN is sharp and fully visible, then capture again."
+        : "No VIN barcode was found while offline. Connect to the internet for printed-VIN reading or enter it manually.";
+      setCameraError(message);
+      setStatus("VIN not found");
+    } catch (error) {
+      const message =
+        error instanceof Error && error.name === "AbortError"
+          ? "VIN reading timed out. Capture the label again or enter the VIN manually."
+          : error instanceof Error && error.message
+            ? error.message
+            : "The VIN label could not be read. Capture it again or enter the VIN manually.";
+      setCameraError(message);
+      setStatus("VIN label could not be read");
+    } finally {
+      stillCaptureInFlightRef.current = false;
+      setCaptureBusy(false);
+    }
+  }, [cameraReady, decodeStillCanvas]);
+
   const handlePhoto = useCallback(
     async (file: File | null) => {
-      if (!file || !canvasRef.current || photoBusy || isBusy) return;
+      if (
+        !file ||
+        !canvasRef.current ||
+        photoBusy ||
+        stillCaptureInFlightRef.current ||
+        isBusyRef.current
+      ) {
+        return;
+      }
+
+      stillCaptureInFlightRef.current = true;
       setPhotoBusy(true);
       setCameraError(null);
       setStatus("Reading VIN label photo…");
 
       try {
         await drawImageFile(file, canvasRef.current);
-
-        const Detector = getBarcodeDetector();
-        if (Detector) {
-          try {
-            const detector = new Detector({
-              formats: ["code_39", "code_128", "pdf417", "data_matrix"],
-            });
-            const results = await detector.detect(canvasRef.current);
-            for (const result of results) {
-              if (
-                result.rawValue &&
-                acceptPhotoObservation(result.rawValue)
-              ) {
-                return;
-              }
-            }
-          } catch {
-            // Quagga remains available as the local fallback.
-          }
-        }
-
-        const decoded = await decodeCanvasWithQuagga(
+        const found = await decodeStillCanvas(
           canvasRef.current,
-          "photo",
+          "vin-label-photo.jpg",
         );
-        if (decoded && acceptPhotoObservation(decoded)) return;
+        if (found) return;
 
-        const message =
-          "No VIN barcode was found in that photo. Fill the frame with the barcode, keep the label level, or enter the printed VIN manually.";
+        const message = navigator.onLine
+          ? "No complete VIN was found in that photo. Retake it closer and keep the full printed VIN sharp and visible."
+          : "No VIN barcode was found while offline. Connect to the internet for printed-VIN reading or enter it manually.";
         setCameraError(message);
-        setStatus("VIN barcode not found");
-        onErrorRef.current(message);
-      } catch {
+        setStatus("VIN not found");
+      } catch (error) {
         const message =
-          "That photo could not be read locally. Retake the VIN-label photo or enter the VIN manually.";
+          error instanceof Error && error.name === "AbortError"
+            ? "VIN reading timed out. Retake the label photo or enter the VIN manually."
+            : error instanceof Error && error.message
+              ? error.message
+              : "That photo could not be read. Retake the VIN-label photo or enter the VIN manually.";
         setCameraError(message);
         setStatus("Photo could not be read");
-        onErrorRef.current(message);
       } finally {
+        stillCaptureInFlightRef.current = false;
         setPhotoBusy(false);
       }
     },
-    [acceptPhotoObservation, isBusy, photoBusy],
+    [decodeStillCanvas, photoBusy],
   );
+
+  const scannerBusy = isBusy || photoBusy || captureBusy;
 
   return (
     <div className="space-y-3">
@@ -546,7 +708,7 @@ export default function VehicleIntakeScanner({
         />
 
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-5">
-          <div className="relative h-[42%] w-[94%] rounded-xl border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.34)]">
+          <div className="relative h-[52%] w-[94%] rounded-xl border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.34)]">
             <span className="absolute -left-0.5 -top-0.5 h-5 w-5 rounded-tl-xl border-l-4 border-t-4 border-[var(--accent-copper-light)]" />
             <span className="absolute -right-0.5 -top-0.5 h-5 w-5 rounded-tr-xl border-r-4 border-t-4 border-[var(--accent-copper-light)]" />
             <span className="absolute -bottom-0.5 -left-0.5 h-5 w-5 rounded-bl-xl border-b-4 border-l-4 border-[var(--accent-copper-light)]" />
@@ -576,28 +738,39 @@ export default function VehicleIntakeScanner({
         </div>
       ) : null}
 
-      <label className="block cursor-pointer rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-3 text-center text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">
-        {photoBusy ? "Reading photo…" : "Use VIN-label photo"}
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          disabled={photoBusy || isBusy}
-          className="sr-only"
-          onChange={(event) => {
-            const file = event.target.files?.[0] ?? null;
-            void handlePhoto(file);
-            event.target.value = "";
-          }}
-        />
-      </label>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          disabled={!cameraReady || scannerBusy}
+          onClick={() => void handleLiveCapture()}
+          className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-3 text-center text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] disabled:cursor-not-allowed disabled:opacity-55"
+        >
+          {captureBusy ? "Reading label…" : "Capture VIN label"}
+        </button>
+
+        <label className="block cursor-pointer rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-3 text-center text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-55">
+          {photoBusy ? "Reading photo…" : "Choose VIN-label photo"}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            disabled={scannerBusy}
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              void handlePhoto(file);
+              event.target.value = "";
+            }}
+          />
+        </label>
+      </div>
 
       <div className="space-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
         <p>
-          Runs on this device using the VIN barcode. No image or scan is sent to a third-party API.
+          Live barcode scanning stays on this device. Capture or choose the full label to read the printed VIN when the barcode is not supported.
         </p>
         <p>
-          Best target: fill the guide with the long barcode on the driver-door label and hold the phone level.
+          Best target: include both the printed 17-character VIN and the long barcode, keep the phone level, and move close enough for sharp text.
         </p>
         {!cameraReady && !cameraError ? <p>Requesting camera access…</p> : null}
       </div>

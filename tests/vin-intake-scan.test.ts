@@ -7,15 +7,22 @@ import {
   chooseStableVin,
   extractVinCandidates,
   hasValidVinChecksum,
+  pickBestOcrVin,
 } from "@/features/shared/lib/vin/vinCapture";
 
 const VALID_VIN = "1HGCM82633A004352";
+const FORD_LABEL_VIN = "1FD0W5HT4FED33898";
 const scannerSource = readFileSync(
   "features/vehicles/components/VehicleIntakeScanner.tsx",
   "utf8",
 );
+const modalSource = readFileSync("app/vehicle/VinCaptureModal.tsx", "utf8");
+const imageRouteSource = readFileSync(
+  "app/api/vin/extract-from-image/route.ts",
+  "utf8",
+);
 
-describe("local VIN intake scan", () => {
+describe("VIN intake scan", () => {
   it("extracts a VIN from a prefixed barcode value", () => {
     const candidates = extractVinCandidates(`VIN:${VALID_VIN}`);
 
@@ -29,6 +36,21 @@ describe("local VIN intake scan", () => {
     expect(calculateVinCheckDigit(VALID_VIN)).toBe("3");
     expect(hasValidVinChecksum(VALID_VIN)).toBe(true);
     expect(hasValidVinChecksum("1HGCM82643A004352")).toBe(false);
+  });
+
+  it("corrects a printed Ford VIN when OCR reads O instead of zero", () => {
+    expect(pickBestOcrVin("VIN: 1FDOW5HT4FED33898")).toMatchObject({
+      vin: FORD_LABEL_VIN,
+      checksumValid: true,
+      corrections: 1,
+    });
+  });
+
+  it("extracts a spaced printed VIN from label text", () => {
+    expect(pickBestOcrVin("VIN 1FDO W5HT4 FED33898")).toMatchObject({
+      vin: FORD_LABEL_VIN,
+      checksumValid: true,
+    });
   });
 
   it("accepts checksum-confirmed VINs after two matching frames", () => {
@@ -84,8 +106,21 @@ describe("local VIN intake scan", () => {
     expect(scannerSource).toContain('mode: "live" | "photo"');
   });
 
-  it("keeps local scan images out of third-party extraction routes", () => {
-    expect(scannerSource).not.toContain("/api/vin/extract-from-image");
-    expect(scannerSource).not.toContain("FormData");
+  it("reads printed VIN text after local barcode decoding fails", () => {
+    expect(scannerSource).toContain('fetch("/api/vin/extract-from-image"');
+    expect(scannerSource).toContain("canvasToJpegFile");
+    expect(scannerSource).toContain("drawFullVideoFrame");
+    expect(scannerSource).toContain("Capture VIN label");
+    expect(scannerSource).toContain("Reading printed VIN");
+  });
+
+  it("uses shop-scoped access and checksum-aware OCR extraction", () => {
+    expect(imageRouteSource).toContain("requireShopScopedApiAccess");
+    expect(imageRouteSource).toContain("pickBestOcrVin");
+    expect(imageRouteSource).toContain("checksum_confirmed");
+  });
+
+  it("does not duplicate scanner errors in the parent modal", () => {
+    expect(modalSource).not.toContain("onError={setCaptureError}");
   });
 });
