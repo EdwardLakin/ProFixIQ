@@ -7,6 +7,7 @@ vi.mock("@/features/shared/lib/server/openai", () => ({
 
 vi.mock("@/features/shared/lib/server/openai-models", () => ({
   getOpenAIModelForPurpose: vi.fn(() => "gpt-test"),
+  openAITemperatureParam: vi.fn(() => ({})),
 }));
 
 import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";

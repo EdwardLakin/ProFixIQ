@@ -24,6 +24,6 @@ describe("InventoryPickerModal", () => {
       />,
     );
 
-    expect(screen.getByText("On hand: 100")).toBeInTheDocument();
+    expect(screen.getByText("100 on hand")).toBeInTheDocument();
   });
 });

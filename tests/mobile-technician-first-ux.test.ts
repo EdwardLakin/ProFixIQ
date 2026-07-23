@@ -71,7 +71,7 @@ describe("technician-first mobile UX", () => {
     expect(mobileShell).toContain('pathname.startsWith("/mobile/jobs/")');
     expect(mobileShell).toContain("isImmersiveRoute(pathname)");
     expect(mobileShell).toContain("/^\\/mobile\\/inspections\\/[^/]+$/");
-    expect(mobileShell).toContain("Deeper routes such as /[id]/run");
+    expect(mobileShell).toContain("routes such as /[id]/run");
   });
 
   it("makes mobile photo capture direct while preserving the desktop flow", () => {

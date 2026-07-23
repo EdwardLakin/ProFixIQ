@@ -14,7 +14,7 @@ describe("mobile global navigation", () => {
 
     expect(menu).toContain("getMobileTilesForRole(role, [\"all\"])");
     expect(menu).toContain("Ask Assistant");
-    expect(menu).toContain("Open Planner");
+    expect(menu).toContain("Operations planner");
     expect(menu).toContain("Install ProFixIQ");
     expect(menu).toContain("MobileShiftTracker");
   });

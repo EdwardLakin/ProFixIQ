@@ -140,7 +140,11 @@ describe("inspection release-blocker hardening", () => {
       "s.signed_at >= v_inspection_reopened_at",
     );
     expect(reopenRoute).toContain('"reopen_inspection",');
-    expect(reopenRoute).not.toContain('.from("inspections")');
+    expect(reopenRoute).toContain('.from("inspections")');
+    expect(reopenRoute).toContain('.eq("is_canonical", true)');
+    expect(reopenRoute).not.toMatch(
+      /from\("inspections"\)[\s\S]{0,180}\.(insert|update|upsert|delete)\b/,
+    );
     expect(reopenRoute).not.toContain("new Date().toISOString()");
   });
 });

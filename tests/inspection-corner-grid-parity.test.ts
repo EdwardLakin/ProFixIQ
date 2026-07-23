@@ -20,7 +20,8 @@ describe("inspection corner-grid parity", () => {
   it("renders canonical finding fields below compact measurements", () => {
     expect(sectionDisplay).toContain("showGridFindings?: boolean");
     expect(sectionDisplay).toContain("gridSection && !showGridFindings");
-    expect(sectionDisplay).toContain("Findings & evidence");
+    expect(sectionDisplay).toContain("Finding details");
+    expect(sectionDisplay).toContain("Notes, photos, parts and labor");
     expect(sectionDisplay).toContain("showPhotos={showPhotos}");
     expect(sectionDisplay).toContain("onUpdateParts?.");
     expect(sectionDisplay).toContain("onUpdateLaborHours?.");

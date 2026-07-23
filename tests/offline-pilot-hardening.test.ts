@@ -61,8 +61,8 @@ describe("offline shop-pilot hardening", () => {
   it("prevents an app update from activating over pending device work", () => {
     const runtime = read("features/shared/components/pwa/PwaRuntime.tsx");
     const syncCenter = read("app/offline/sync/page.tsx");
-    expect(runtime).toContain("activatingUpdate || pending > 0");
-    expect(runtime).toContain("Sync before update");
+    expect(runtime).toContain("disabled={activatingUpdate || pending > 0}");
+    expect(runtime).toContain('"Sync first"');
     expect(syncCenter).toContain("navigator.serviceWorker?.getRegistration?.()");
     expect(syncCenter).toContain("No version-skew risk is currently detected.");
   });

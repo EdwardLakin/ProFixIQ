@@ -7,7 +7,10 @@ const attendanceApi = readFileSync("app/api/scheduling/shifts/route.ts", "utf8")
 const activity = readFileSync("features/workforce/server/buildWorkforceActivity.ts", "utf8");
 const payrollUi = readFileSync("features/dashboard/app/dashboard/admin/payroll-time/PayrollTimeClient.tsx", "utf8");
 const shiftUi = readFileSync("features/shared/components/AppShell.tsx", "utf8");
-const migration = readFileSync("supabase/migrations/20260717010000_workforce_time_reliability.sql", "utf8");
+const migration = readFileSync(
+  "supabase/migrations/20260717010050_workforce_time_reliability.sql",
+  "utf8",
+);
 
 describe("workforce time reliability", () => {
   it("uses overlap semantics for attendance, activity, and payroll", () => {

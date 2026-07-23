@@ -36,6 +36,7 @@ export default function PwaRuntime() {
   const [showIosInstructions, setShowIosInstructions] = useState(false);
   const [activatingUpdate, setActivatingUpdate] = useState(false);
   const [syncBlocked, setSyncBlocked] = useState<string | null>(null);
+  const [viewportInsets, setViewportInsets] = useState({ bottom: 0, right: 0 });
   const updateReloading = useRef(false);
   const pending = summary.queued + summary.syncing + summary.failed;
 
@@ -56,6 +57,29 @@ export default function PwaRuntime() {
     const iosAvailable = iosDevice && !standalone;
     setIosInstallAvailable(iosAvailable);
     publishInstallAvailability({ available: iosAvailable, ios: iosAvailable });
+
+    const updateViewportInsets = () => {
+      const viewport = window.visualViewport;
+      if (!viewport) return;
+      const next = {
+        bottom: Math.max(
+          0,
+          Math.round(window.innerHeight - viewport.height - viewport.offsetTop),
+        ),
+        right: Math.max(
+          0,
+          Math.round(window.innerWidth - viewport.width - viewport.offsetLeft),
+        ),
+      };
+      setViewportInsets((current) =>
+        current.bottom === next.bottom && current.right === next.right
+          ? current
+          : next,
+      );
+    };
+    updateViewportInsets();
+    window.visualViewport?.addEventListener("resize", updateViewportInsets);
+    window.visualViewport?.addEventListener("scroll", updateViewportInsets);
 
     void hydrateOfflineMutationQueue();
     void navigator.storage?.persist?.().catch(() => false);
@@ -141,6 +165,8 @@ export default function PwaRuntime() {
       window.removeEventListener("offline", sync);
       window.removeEventListener("focus", sync);
       window.removeEventListener("beforeinstallprompt", beforeInstall);
+      window.visualViewport?.removeEventListener("resize", updateViewportInsets);
+      window.visualViewport?.removeEventListener("scroll", updateViewportInsets);
     };
   }, []);
 
@@ -195,7 +221,13 @@ export default function PwaRuntime() {
   return (
     <>
       {showRuntimeStatus && (
-        <div className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] right-4 z-[100] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-xl backdrop-blur">
+        <div
+          className="fixed z-[100] flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-xl backdrop-blur sm:flex-nowrap sm:rounded-full"
+          style={{
+            bottom: `calc(1rem + env(safe-area-inset-bottom, 0px) + ${viewportInsets.bottom}px)`,
+            right: `calc(1rem + env(safe-area-inset-right, 0px) + ${viewportInsets.right}px)`,
+          }}
+        >
           <span className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-amber-400"}`} />
           <span>
             {syncBlocked

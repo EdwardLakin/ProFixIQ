@@ -67,25 +67,27 @@ describe("mobile-native navigation", () => {
       "Service requests",
     );
     expect(read("app/mobile/offline/page.tsx")).toContain("Offline &amp; sync");
-    expect(read("app/mobile/assistant/page.tsx")).toContain("Ask a question");
+    expect(read("app/mobile/assistant/page.tsx")).toContain("Shop conversation");
   });
 
   it("uses the existing shop-scoped operations payload", () => {
     for (const path of [
       "app/mobile/workforce/attendance/page.tsx",
       "app/mobile/dispatch/page.tsx",
-      "app/mobile/parts/page.tsx",
     ]) {
       expect(read(path)).toContain("getOperationsDashboardPayload");
       expect(read(path)).toContain('export const dynamic = "force-dynamic"');
     }
+    const parts = read("app/mobile/parts/page.tsx");
+    expect(parts).toContain("MobilePartsWorkflow");
+    expect(parts).toContain('export const dynamic = "force-dynamic"');
   });
 
   it("keeps mobile inspection entry points from exposing desktop links", () => {
     for (const path of [
       "app/mobile/inspections/page.tsx",
-      "app/mobile/inspections/maintenance-50/page.tsx",
-      "app/mobile/inspections/maintenance-50-air/page.tsx",
+      "app/mobile/inspections/[id]/page.tsx",
+      "app/mobile/inspections/import/page.tsx",
     ]) {
       const source = read(path);
       expect(source).not.toContain(">Desktop<");

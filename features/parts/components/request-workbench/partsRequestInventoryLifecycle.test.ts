@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 
 const inventoryRoute = readFileSync("app/api/parts/requests/items/[itemId]/inventory/route.ts", "utf8");
 const commitRoute = readFileSync("app/api/parts/requests/[requestId]/commit-package/route.ts", "utf8");
+const commitMigration = readFileSync(
+  "supabase/migrations/20260714040000_phase3_parts_atomic_commands.sql",
+  "utf8",
+);
 const page = readFileSync("app/parts/requests/[id]/page.tsx", "utf8");
 const header = readFileSync("features/parts/components/request-workbench/PartsRequestWorkbenchHeader.tsx", "utf8");
 
@@ -17,8 +21,10 @@ describe("parts request inventory lifecycle route separation", () => {
     expect(inventoryRoute).not.toContain("work_order_line_id:");
   });
 
-  it("uses a request-level package commit without allocation or menu learning", () => {
-    expect(commitRoute).toContain("parts_ensure_work_order_part");
+  it("uses an atomic request-level package commit without allocation or menu learning", () => {
+    expect(commitRoute).toContain('"parts_commit_request_package_atomic"');
+    expect(commitMigration).toContain("public.parts_ensure_work_order_part(v_item.id)");
+    expect(commitMigration).toContain("parts_assert_work_order_mutable");
     expect(commitRoute).not.toContain("upsert_part_allocation_from_request_item");
     expect(commitRoute).not.toContain("upsert-from-line");
     expect(page).toContain("/api/parts/requests/${requestId}/commit-package");
