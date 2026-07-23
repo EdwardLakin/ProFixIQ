@@ -339,7 +339,7 @@ export default async function PortalWorkOrderViewerPage({
           }
           lines={lines}
           parts={parts}
-          backHref="/portal/history"
+          backHref="/portal"
           title="Work order"
           subtitle="Read-only view (customer portal)."
           invoicePdfUrl={wo.invoice_pdf_url ?? null}

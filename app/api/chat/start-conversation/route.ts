@@ -27,16 +27,20 @@ export async function POST(req: Request): Promise<NextResponse> {
     title?: string | null;
     is_broadcast?: boolean;
     request_id?: string;
+    actor_kind?: "customer";
   } | null;
 
   const admin = createAdminSupabase();
+  const requestedParticipantIds = body?.participant_ids ?? [];
 
   const createAccess = await authorizeConversationCreate({
     supabase: admin,
     actorUserId: user.id,
-    participantUserIds: body?.participant_ids ?? [],
+    participantUserIds: requestedParticipantIds,
     channel: body?.channel ?? "internal",
     customerId: body?.customer_id ?? null,
+    preferredActorKind:
+      body?.actor_kind === "customer" ? "customer" : undefined,
   });
 
   if (!createAccess.ok) {
@@ -78,7 +82,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (
     createAccess.actor.kind === "customer" &&
     createAccess.customerId &&
-    context.anchors.work_order_id
+    context.anchors.work_order_id &&
+    requestedParticipantIds.length === 0
   ) {
     const { data: workOrder, error: workOrderError } = await admin
       .from("work_orders")

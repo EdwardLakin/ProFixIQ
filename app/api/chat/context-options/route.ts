@@ -14,7 +14,12 @@ type ContextOption = {
   secondary: string | null;
 };
 
-export async function GET(): Promise<NextResponse> {
+type RecipientOption = {
+  id: string;
+  label: string;
+};
+
+export async function GET(req: Request): Promise<NextResponse> {
   const userClient = createServerSupabaseRoute();
   const {
     data: { user },
@@ -22,7 +27,15 @@ export async function GET(): Promise<NextResponse> {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const admin = createAdminSupabase();
-  const actorResult = await resolveMessagingActor({ supabase: admin, actorUserId: user.id });
+  const preferredKind =
+    new URL(req.url).searchParams.get("actor") === "customer"
+      ? "customer"
+      : undefined;
+  const actorResult = await resolveMessagingActor({
+    supabase: admin,
+    actorUserId: user.id,
+    preferredKind,
+  });
   if (!actorResult.ok) {
     return NextResponse.json({ error: actorResult.error }, { status: actorResult.status });
   }
@@ -32,7 +45,12 @@ export async function GET(): Promise<NextResponse> {
 
   const customerId = actorResult.actor.customerId;
   const shopId = actorResult.actor.shopId;
-  const [{ data: workOrders, error: workOrderError }, { data: bookings, error: bookingError }, { data: vehicles, error: vehicleError }] =
+  const [
+    { data: workOrders, error: workOrderError },
+    { data: bookings, error: bookingError },
+    { data: vehicles, error: vehicleError },
+    { data: advisors, error: advisorError },
+  ] =
     await Promise.all([
       admin
         .from("work_orders")
@@ -55,9 +73,17 @@ export async function GET(): Promise<NextResponse> {
         .eq("customer_id", customerId)
         .order("created_at", { ascending: false })
         .limit(25),
+      admin
+        .from("profiles")
+        .select("id, user_id, full_name, email")
+        .eq("shop_id", shopId)
+        .eq("role", "advisor")
+        .order("full_name", { ascending: true })
+        .limit(50),
     ]);
 
-  const queryError = workOrderError ?? bookingError ?? vehicleError;
+  const queryError =
+    workOrderError ?? bookingError ?? vehicleError ?? advisorError;
   if (queryError) {
     return NextResponse.json({ error: queryError.message }, { status: 500 });
   }
@@ -85,5 +111,19 @@ export async function GET(): Promise<NextResponse> {
     })),
   ];
 
-  return NextResponse.json({ options });
+  const recipients: RecipientOption[] = (advisors ?? [])
+    .map((advisor) => ({
+      id: advisor.user_id ?? advisor.id,
+      label:
+        advisor.full_name?.trim() ||
+        advisor.email?.trim() ||
+        "Service advisor",
+    }))
+    .filter(
+      (advisor, index, rows) =>
+        Boolean(advisor.id) &&
+        rows.findIndex((candidate) => candidate.id === advisor.id) === index,
+    );
+
+  return NextResponse.json({ options, recipients });
 }

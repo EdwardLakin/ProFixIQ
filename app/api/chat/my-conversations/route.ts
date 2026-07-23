@@ -54,7 +54,7 @@ function customerName(row: {
   );
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(req: Request): Promise<NextResponse> {
   const userClient = createServerSupabaseRoute();
   const {
     data: { user },
@@ -63,7 +63,15 @@ export async function GET(): Promise<NextResponse> {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const admin = createAdminSupabase();
-  const actorResult = await resolveMessagingActor({ supabase: admin, actorUserId: user.id });
+  const preferredKind =
+    new URL(req.url).searchParams.get("actor") === "customer"
+      ? "customer"
+      : undefined;
+  const actorResult = await resolveMessagingActor({
+    supabase: admin,
+    actorUserId: user.id,
+    preferredKind,
+  });
   if (!actorResult.ok) {
     return NextResponse.json({ error: actorResult.error }, { status: actorResult.status });
   }
