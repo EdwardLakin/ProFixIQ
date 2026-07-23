@@ -20,7 +20,7 @@ describe("customer portal service and quote requests", () => {
   it("formats the technician-facing diagnostic story without empty answers", () => {
     const details = {
       concern: "Steering wheel shakes",
-      timing: "At 90â€“110 km/h",
+      timing: "At 90–110 km/h",
       frequency: "Every time",
       conditions: "Light acceleration",
       warningLights: "None",
@@ -29,7 +29,7 @@ describe("customer portal service and quote requests", () => {
     };
     expect(diagnosticRequestIsComplete(details)).toBe(true);
     expect(buildDiagnosticRequestNotes(details)).toBe([
-      "When it happens: At 90â€“110 km/h",
+      "When it happens: At 90–110 km/h",
       "How often: Every time",
       "Conditions: Light acceleration",
       "Warning lights / codes: None",
@@ -74,4 +74,3 @@ describe("customer portal service and quote requests", () => {
     expect(submit).not.toContain("create_part_request_with_items");
   });
 });
-
