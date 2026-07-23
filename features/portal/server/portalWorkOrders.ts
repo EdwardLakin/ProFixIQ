@@ -87,7 +87,7 @@ function vehiclePresentation(
   );
   const detail = [unit ? `Unit ${unit}` : null, plate ? `Plate ${plate}` : null]
     .filter(Boolean)
-    .join(" â€¢ ");
+    .join(" • ");
   return { label, detail: detail || null };
 }
 
@@ -241,4 +241,3 @@ export async function listPortalWorkOrdersForCustomer({
     };
   });
 }
-
