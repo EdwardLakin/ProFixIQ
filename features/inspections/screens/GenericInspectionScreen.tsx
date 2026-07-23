@@ -329,14 +329,6 @@ function inspectionDraftKey(args: {
   return `inspection-draft:template:${t}:${args.inspectionId}`;
 }
 
-function inspectionDraftTimestamp(
-  session: Partial<InspectionSession> | null,
-): number {
-  const value = session?.lastUpdated;
-  const parsed = value ? new Date(value).getTime() : 0;
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 function buildCauseCorrectionFromSession(s: unknown): {
   cause: string;
   correction: string;
@@ -762,22 +754,8 @@ type SmartMatchRow = {
   const inspectionId = useMemo(() => {
     const fromUrl = sp.get("inspectionId");
     if (fromUrl) return fromUrl;
-
-    if (typeof window === "undefined") return uuidv4();
-
-    const storageKey = workOrderLineId
-      ? `inspection:activeId:line:${workOrderLineId}`
-      : workOrderId
-        ? `inspection:activeId:wo:${workOrderId}:${templateName}`
-        : `inspection:activeId:template:${templateName}`;
-
-    const existing = sessionStorage.getItem(storageKey);
-    if (existing) return existing;
-
-    const created = uuidv4();
-    sessionStorage.setItem(storageKey, created);
-    return created;
-  }, [sp, workOrderLineId, workOrderId, templateName]);
+    return uuidv4();
+  }, [sp]);
 
   const draftKey = useMemo(
     () =>
@@ -790,40 +768,17 @@ type SmartMatchRow = {
     [inspectionId, workOrderLineId, workOrderId, templateName],
   );
 
-  const lockKey = `${draftKey}:locked`;
-
-  const persistedSession = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem(draftKey);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as InspectionSession;
-    } catch {
-      return null;
-    }
-  }, [draftKey]);
-
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
 
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const isLockedRef = useRef(isLocked);
   isLockedRef.current = isLocked;
-  const applyLockedState = (
-    nextLocked: boolean,
-    persistEvidence = true,
-  ): void => {
+  const applyLockedState = (nextLocked: boolean): void => {
     // Update the ref synchronously so in-flight async handlers are blocked even
     // before React commits the state update from a Realtime event.
     isLockedRef.current = nextLocked;
     setIsLocked(nextLocked);
-    if (!persistEvidence) return;
-    try {
-      if (nextLocked) localStorage.setItem(lockKey, "1");
-      else localStorage.removeItem(lockKey);
-    } catch {
-      // Server metadata remains authoritative when storage is unavailable.
-    }
   };
 
   const [newItemLabels, setNewItemLabels] = useState<Record<number, string>>(
@@ -867,7 +822,6 @@ type SmartMatchRow = {
   const queuedSessionRef = useRef<InspectionSession | null>(null);
   const skipNextQueuedEditCheckRef = useRef(false);
   const inspectionCompletedRef = useRef(false);
-  const localDraftUpdatedAtRef = useRef(0);
 
   const triggerVoicePulse = (): void => {
     setVoicePulse(true);
@@ -908,14 +862,13 @@ type SmartMatchRow = {
     updateInspection: updateSessionInspection,
     updateItem: updateSessionItem,
     updateSection: updateSessionSection,
-    startSession: startInspectionSession,
     replaceSession,
     finishSession: finishInspectionSession,
     resumeSession: resumeInspectionSession,
     pauseSession: pauseInspectionSession,
     addQuoteLine: addSessionQuoteLine,
     updateQuoteLine: updateSessionQuoteLine,
-  } = useInspectionSession(persistedSession ?? initialSession);
+  } = useInspectionSession(initialSession);
 
   // Realtime finalization can arrive while this screen is open. Keep every
   // mutation entry point read-only as soon as the canonical row is locked.
@@ -937,11 +890,6 @@ type SmartMatchRow = {
     ...args: Parameters<typeof updateSessionQuoteLine>
   ) => {
     if (!isLockedRef.current) updateSessionQuoteLine(...args);
-  };
-  const startSession = (
-    ...args: Parameters<typeof startInspectionSession>
-  ) => {
-    if (!isLockedRef.current) startInspectionSession(...args);
   };
   const resumeSession = (
     ...args: Parameters<typeof resumeInspectionSession>
@@ -975,19 +923,13 @@ type SmartMatchRow = {
     recoveryOperationKey: recoveryOperationKeyRef.current,
     onRemoteSession: (remote) => {
       replaceSession(remote);
-      localDraftUpdatedAtRef.current = inspectionDraftTimestamp(remote);
-      try {
-        localStorage.setItem(draftKey, JSON.stringify(remote));
-      } catch {
-        // IndexedDB and the server remain authoritative.
-      }
     },
     onRemoteMeta: (meta) => {
       // An unversioned `locked: false` response means the canonical row has not
       // been observed yet; it must not erase durable evidence of an offline
       // signed inspection. Versioned server metadata remains authoritative.
       if (meta.updatedAt === null && !meta.locked) return;
-      applyLockedState(meta.locked, meta.updatedAt !== null);
+      applyLockedState(meta.locked);
     },
     onRecoveryState: (state, operationKey) => {
       setRecoveryState(state);
@@ -1011,25 +953,11 @@ type SmartMatchRow = {
       try {
         const recovered = await getInspectionOfflineDraft({
           draftKey,
-          sessionHint: persistedSession ?? initialSession,
+          sessionHint: initialSession,
         });
         if (cancelled) return;
         if (recovered) {
-          const recoveredAt = inspectionDraftTimestamp(recovered.session);
-          const legacyAt = inspectionDraftTimestamp(persistedSession);
-          // A conflicted IndexedDB draft is the protected device snapshot. Do
-          // not let a later legacy localStorage timestamp replace it with the
-          // already-loaded shop copy.
-          const preferred =
-            recovered.state === "conflicted"
-              ? recovered.session
-              : recoveredAt >= legacyAt
-                ? recovered.session
-                : persistedSession;
-          if (preferred) {
-            replaceSession(preferred);
-            localDraftUpdatedAtRef.current = inspectionDraftTimestamp(preferred);
-          }
+          replaceSession(recovered.session);
           setRecoveryState(recovered.state);
           recoveryOperationKeyRef.current = recovered.operationKey;
           queuedSessionRef.current = null;
@@ -1043,6 +971,8 @@ type SmartMatchRow = {
                 ? "Recovered device copy · sync is paused without changing the shop copy."
                 : `Recovered inspection saved ${new Date(recovered.savedAt).toLocaleString()}.`,
           );
+        } else {
+          replaceSession(initialSession);
         }
       } catch (error) {
         console.warn("[inspection] offline recovery unavailable", error);
@@ -1054,8 +984,8 @@ type SmartMatchRow = {
     return () => {
       cancelled = true;
     };
-    // Recovery is intentionally keyed to the draft identity. Including startSession
-    // would restart this effect on every render because the hook returns a new function.
+    // Recovery is intentionally keyed to the draft identity. The server load that
+    // follows is the cross-device authority; this snapshot only protects unsent work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
@@ -1478,49 +1408,11 @@ type SmartMatchRow = {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(lockKey);
-      applyLockedState(raw === "1");
-    } catch {}
-    // Lock hydration is keyed only to the draft identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lockKey]);
-
   const guardLocked = (): boolean => {
     if (!isLockedRef.current) return false;
     toast.error("This inspection is signed and locked. Editing is disabled.");
     return true;
   };
-
-  /* ------------------------------ session boot ------------------------------ */
-
-    useEffect(() => {
-    if (persistedSession) {
-      const hydratedSession: Partial<InspectionSession> & {
-        workOrderLineId?: string | null;
-      } = {
-        ...persistedSession,
-        workOrderId:
-          persistedSession.workOrderId ??
-          workOrderId ??
-          null,
-        workOrderLineId:
-          (persistedSession as InspectionSession & {
-            workOrderLineId?: string | null;
-          }).workOrderLineId ??
-          workOrderLineId ??
-          null,
-      };
-
-      replaceSession(hydratedSession);
-    } else {
-      startSession(initialSession);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistedSession, initialSession, workOrderId, workOrderLineId]);
-
 
   useEffect(() => {
     if (session && (session.sections?.length ?? 0) === 0) {
@@ -1557,16 +1449,6 @@ type SmartMatchRow = {
       }
     }
 
-    localDraftUpdatedAtRef.current = inspectionDraftTimestamp(session);
-    try {
-      localStorage.setItem(draftKey, JSON.stringify(session));
-      window.dispatchEvent(
-        new CustomEvent("inspection:draft-updated", {
-          detail: { draftKey },
-        }),
-      );
-    } catch {}
-
     if (skipDraftWrite) return;
 
     const timer = window.setTimeout(() => {
@@ -1580,47 +1462,6 @@ type SmartMatchRow = {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [session, draftKey, draftBootLoaded, serverBootLoaded, recoveryState]);
-
-  useEffect(() => {
-    const persistNow = () => {
-      if (inspectionCompletedRef.current || !serverBootLoaded) return;
-      try {
-        const payload = {
-          ...(session ?? initialSession),
-          workOrderId:
-            (session?.workOrderId ?? initialSession.workOrderId ?? workOrderId ?? null),
-          workOrderLineId:
-            (
-              (session as (InspectionSession & { workOrderLineId?: string | null }) | null)
-              ?.workOrderLineId ??
-              (initialSession as Partial<InspectionSession> & { workOrderLineId?: string | null })
-                .workOrderLineId ??
-              workOrderLineId ??
-              null
-            ),
-        };
-        localStorage.setItem(draftKey, JSON.stringify(payload));
-      } catch {}
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") persistNow();
-    };
-    window.addEventListener("beforeunload", persistNow);
-    window.addEventListener("pagehide", persistNow);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("beforeunload", persistNow);
-      window.removeEventListener("pagehide", persistNow);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [
-    session,
-    draftKey,
-    initialSession,
-    workOrderId,
-    workOrderLineId,
-    serverBootLoaded,
-  ]);
 
   useEffect(() => {
     const handler = (evt: Event) => {
@@ -1652,10 +1493,6 @@ type SmartMatchRow = {
         }),
       );
 
-      try {
-        localStorage.removeItem(draftKey);
-        localStorage.removeItem(lockKey);
-      } catch {}
       inspectionCompletedRef.current = true;
       void removeInspectionOfflineDraft({
         draftKey,
@@ -1671,7 +1508,7 @@ type SmartMatchRow = {
         "inspection:completed",
         handler as EventListener,
       );
-  }, [session, draftKey, lockKey, initialSession]);
+  }, [session, draftKey, initialSession]);
 
   // ✅ TS-safe label for ParsedCommand (no ".command" assumption)
   const commandLabel = (c: ParsedCommand): string => {

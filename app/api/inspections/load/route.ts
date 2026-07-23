@@ -5,6 +5,8 @@ import type { InspectionSession } from "@/features/inspections/lib/inspection/ty
 
 type InspectionRow = {
   id: string;
+  is_canonical: boolean;
+  sync_revision: number;
   work_order_id: string | null;
   work_order_line_id: string | null;
   summary: Json | null;
@@ -168,7 +170,7 @@ export async function GET(req: NextRequest) {
   }
 
   const selectColumns =
-    "id, work_order_id, work_order_line_id, summary, locked, completed, is_draft, status, finalized_at, finalized_by, reopened_at, reopened_by, reopen_reason, updated_at";
+    "id, is_canonical, sync_revision, work_order_id, work_order_line_id, summary, locked, completed, is_draft, status, finalized_at, finalized_by, reopened_at, reopened_by, reopen_reason, updated_at";
 
   let inspectionRow: InspectionRow | null = null;
 
@@ -180,9 +182,7 @@ export async function GET(req: NextRequest) {
       .select(selectColumns)
       .eq("shop_id", shopId)
       .eq("work_order_line_id", workOrderLineId)
-      .order("updated_at", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false })
-      .limit(1)
+      .eq("is_canonical", true)
       .maybeSingle<InspectionRow>();
 
     if (error) {
@@ -199,6 +199,7 @@ export async function GET(req: NextRequest) {
       .select(selectColumns)
       .eq("shop_id", shopId)
       .eq("id", inspectionId)
+      .eq("is_canonical", true)
       .limit(1)
       .maybeSingle<InspectionRow>();
 
@@ -211,29 +212,8 @@ export async function GET(req: NextRequest) {
   const resolvedWorkOrderLineId =
     inspectionRow?.work_order_line_id ?? workOrderLineId ?? null;
 
-  let session =
+  const session =
     (inspectionRow?.summary as unknown as InspectionSession | null) ?? null;
-
-  if (!session && resolvedWorkOrderLineId) {
-    const { data: sessionRow, error: sessionError } = await supabase
-      .from("inspection_sessions")
-      .select("state")
-      .eq("work_order_line_id", resolvedWorkOrderLineId)
-      .order("updated_at", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false })
-      .limit(1)
-      .maybeSingle<{ state: Json | null }>();
-
-    if (sessionError) {
-      return NextResponse.json(
-        { error: sessionError.message },
-        { status: 500 },
-      );
-    }
-
-    session =
-      (sessionRow?.state as unknown as InspectionSession | null) ?? null;
-  }
 
   if (!session) {
     return NextResponse.json({
@@ -369,6 +349,8 @@ export async function GET(req: NextRequest) {
     {
       ...session,
       id: canonicalInspectionId,
+      syncRevision: inspectionRow?.sync_revision ?? session.syncRevision ?? 0,
+      serverUpdatedAt: inspectionRow?.updated_at ?? session.serverUpdatedAt ?? null,
       workOrderId: canonicalWorkOrderId,
       workOrderLineId: resolvedWorkOrderLineId ?? session.workOrderLineId ?? null,
       customer: customerContext

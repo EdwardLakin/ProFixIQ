@@ -381,6 +381,7 @@ export default function InvoicePreviewPageClient({
         .from("inspections")
         .select("id, pdf_url, pdf_storage_path, finalized_at, created_at")
         .eq("work_order_id", workOrderId)
+        .eq("is_canonical", true)
         .not("pdf_storage_path", "is", null)
         .order("finalized_at", { ascending: false })
         .order("created_at", { ascending: false })

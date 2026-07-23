@@ -22,10 +22,10 @@ const photoRoute = readFileSync(
 );
 
 describe("inspection cross-device reconciliation and shared modal styling", () => {
-  it("reconciles both canonical persistence tables", () => {
+  it("reconciles only the canonical inspection table", () => {
     expect(autosave).toContain('table: "inspections"');
-    expect(autosave).toContain('table: "inspection_sessions"');
-    expect(autosave).toContain("if (hasDurableSession(row.state))");
+    expect(autosave).not.toContain('table: "inspection_sessions"');
+    expect(autosave).toContain("row.is_canonical !== true");
     expect(autosave).toContain('status === "SUBSCRIBED"');
   });
 
@@ -36,6 +36,9 @@ describe("inspection cross-device reconciliation and shared modal styling", () =
   });
 
   it("never routes a session id as a work-order-line id", () => {
+    expect(mobileList).toContain('.from("inspections")');
+    expect(mobileList).toContain('.eq("is_canonical", true)');
+    expect(mobileList).not.toContain('.from("inspection_sessions")');
     expect(mobileList).toContain("work_order_line_id");
     expect(mobileList).toContain("row.work_order_id && row.work_order_line_id");
     expect(mobileList).toContain("/mobile/work-orders/");

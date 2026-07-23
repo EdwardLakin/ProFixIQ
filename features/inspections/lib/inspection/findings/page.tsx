@@ -25,7 +25,11 @@ import { deriveEventsFromFindings } from "@/features/shared/lib/decisionEvents";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { cn } from "@shared/lib/utils";
 import { getPendingInspectionPhotoCount } from "@inspections/lib/inspection/inspectionPhotoStaging";
-import { removeInspectionOfflineDraft } from "@inspections/lib/inspection/offlineDrafts";
+import {
+  getInspectionOfflineDraft,
+  removeInspectionOfflineDraft,
+  saveInspectionOfflineDraft,
+} from "@inspections/lib/inspection/offlineDrafts";
 import { useInspectionAutosave } from "@inspections/hooks/useInspectionAutosave";
 
 type FindingRow = {
@@ -70,26 +74,6 @@ function inspectionDraftKey(args: {
 function isFindingStatus(status: unknown): status is "fail" | "recommend" {
   const s = norm(String(status ?? ""));
   return s === "fail" || s === "recommend";
-}
-
-function readDraftSession(key: string): InspectionSession | null {
-  try {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as InspectionSession;
-  } catch {
-    return null;
-  }
-}
-
-function writeDraftSession(key: string, session: InspectionSession): void {
-  try {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(key, JSON.stringify(session));
-  } catch {
-    // ignore
-  }
 }
 
 function summarizeFromSections(session: InspectionSession): {
@@ -276,7 +260,7 @@ export default function InspectionFindingsPage(): JSX.Element {
     onRemoteSession: (remote) => {
       latestSessionRef.current = remote;
       setSession(remote);
-      writeDraftSession(draftKey, remote);
+      void saveInspectionOfflineDraft({ draftKey, session: remote });
     },
     onRemoteMeta: (meta) => {
       isLockedRef.current = meta.locked;
@@ -286,56 +270,24 @@ export default function InspectionFindingsPage(): JSX.Element {
 
   const syncFromDraft = useCallback(async () => {
     if (isLockedRef.current || busyRef.current) return;
-    const loaded = readDraftSession(draftKey);
-    if (loaded) {
-      latestSessionRef.current = loaded;
-      setSession(loaded);
+    const recovered = await getInspectionOfflineDraft({
+      draftKey,
+      sessionHint: {
+        id: inspectionId,
+        workOrderId: workOrderId || null,
+        workOrderLineId: workOrderLineId || null,
+        templateitem: templateName,
+      },
+    });
+    if (recovered) {
+      latestSessionRef.current = recovered.session;
+      setSession(recovered.session);
     }
-  }, [draftKey]);
+  }, [draftKey, inspectionId, templateName, workOrderId, workOrderLineId]);
 
   useEffect(() => {
     void syncFromDraft();
   }, [syncFromDraft]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleFocus = () => {
-      void syncFromDraft();
-    };
-    const handlePageShow = () => {
-      void syncFromDraft();
-    };
-
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === draftKey) void syncFromDraft();
-    };
-
-    const handleInspectionDraftUpdated = (e: Event) => {
-      const custom = e as CustomEvent<{ draftKey?: string }>;
-      if (!custom.detail?.draftKey || custom.detail.draftKey === draftKey) {
-        void syncFromDraft();
-      }
-    };
-
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("pageshow", handlePageShow);
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener(
-      "inspection:draft-updated",
-      handleInspectionDraftUpdated as EventListener,
-    );
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("pageshow", handlePageShow);
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener(
-        "inspection:draft-updated",
-        handleInspectionDraftUpdated as EventListener,
-      );
-    };
-  }, [draftKey, syncFromDraft]);
 
   const findings = useMemo(
     () => (session ? collectFindings(session) : []),
@@ -393,16 +345,8 @@ export default function InspectionFindingsPage(): JSX.Element {
         }),
       };
 
-      writeDraftSession(draftKey, next);
+      void saveInspectionOfflineDraft({ draftKey, session: next });
       latestSessionRef.current = next;
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("inspection:draft-updated", {
-            detail: { draftKey },
-          }),
-        );
-      }
 
       return next;
     });
@@ -938,7 +882,7 @@ export default function InspectionFindingsPage(): JSX.Element {
       nextSession = { ...nextSession, lastUpdated: nowIso };
       latestSessionRef.current = nextSession;
       setSession(nextSession);
-      writeDraftSession(draftKey, nextSession);
+      await saveInspectionOfflineDraft({ draftKey, session: nextSession });
       const persistedSession = await flushAutosaveToServer(nextSession);
       if (!persistedSession) {
         throw new Error("Inspection did not finish saving to the server.");
@@ -950,14 +894,6 @@ export default function InspectionFindingsPage(): JSX.Element {
         persistedSession.id ?? submissionInspectionId,
       );
       assertSubmissionCurrent();
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("inspection:draft-updated", {
-            detail: { draftKey },
-          }),
-        );
-      }
 
       const payload = summarizeFromSections(nextSession);
 
@@ -986,12 +922,6 @@ export default function InspectionFindingsPage(): JSX.Element {
         draftKey,
         session: nextSession,
       });
-      try {
-        localStorage.removeItem(draftKey);
-        localStorage.removeItem(`${draftKey}:locked`);
-      } catch {
-        // IndexedDB is authoritative; localStorage cleanup is best effort.
-      }
 
       window.dispatchEvent(
         new CustomEvent("inspection:completed", {
