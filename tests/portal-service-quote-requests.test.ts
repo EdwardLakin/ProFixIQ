@@ -44,6 +44,9 @@ describe("customer portal service and quote requests", () => {
     expect(migration).toContain("create_portal_quote_request_atomic");
     expect(migration).toContain("add_portal_diagnostic_line_atomic");
     expect(migration).toContain("set job_type = 'diagnostic'");
+    expect(migration).toContain("work_orders_portal_quote_external_id_unique");
+    expect(migration).toContain("external_id, notes, created_at");
+    expect(migration).not.toMatch(/source_row_id\s+like\s+'portal_quote:%'/i);
     expect(migration).toContain("auth.uid() is distinct from p_actor_user_id");
     expect(migration).toContain("v.customer_id = p_customer_id");
     expect(migration).toContain("v.shop_id = p_shop_id");
