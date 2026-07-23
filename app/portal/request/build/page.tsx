@@ -70,7 +70,7 @@ async function postJson<TResp>(
 }
 
 function fmtMoney(n: number | null | undefined) {
-  if (typeof n !== "number" || !Number.isFinite(n)) return "â€”";
+  if (typeof n !== "number" || !Number.isFinite(n)) return "—";
   return n.toLocaleString(undefined, { style: "currency", currency: "CAD" });
 }
 
@@ -141,7 +141,7 @@ function fmtBookingRange(b: BookingRow | null) {
   const date = sd.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   const st = sd.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   const et = ed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${date} â€¢ ${st} â€“ ${et}`;
+  return `${date} • ${st} – ${et}`;
 }
 
 export default function PortalRequestBuildPage() {
@@ -259,7 +259,7 @@ export default function PortalRequestBuildPage() {
       }
       setWo(w as WorkOrderRow);
 
-      // Load booking (basic; schema currently doesnâ€™t link customer/wo)
+      // Load booking (basic; schema currently doesn’t link customer/wo)
       const { data: b, error: bErr } = await supabase
         .from("bookings")
         .select("*")
@@ -561,7 +561,7 @@ export default function PortalRequestBuildPage() {
   }
 
   if (loading) {
-    return <div className={cardClass() + " mx-auto max-w-3xl text-sm text-[color:var(--theme-text-primary)]"}>Loadingâ€¦</div>;
+    return <div className={cardClass() + " mx-auto max-w-3xl text-sm text-[color:var(--theme-text-primary)]"}>Loading…</div>;
   }
 
   if (!wo?.id || !customer?.id) {
@@ -603,15 +603,15 @@ export default function PortalRequestBuildPage() {
               Choose service
             </h1>
             <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-              {name} â€¢ {vehicle ? ymm(vehicle) : "Vehicle not set"} â€¢ WO{" "}
-              <span className="font-mono text-[color:var(--theme-text-secondary)]">{wo.id.slice(0, 8)}â€¦</span>
-              {bookingLabel ? <span className="ml-2">â€¢ {bookingLabel}</span> : null}
+              {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"} • WO{" "}
+              <span className="font-mono text-[color:var(--theme-text-secondary)]">{wo.id.slice(0, 8)}…</span>
+              {bookingLabel ? <span className="ml-2">• {bookingLabel}</span> : null}
             </p>
           </div>
 
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => void loadAll()} disabled={refreshing}>
-              {refreshing ? "Refreshingâ€¦" : "Refresh"}
+              {refreshing ? "Refreshing…" : "Refresh"}
             </Button>
             <LinkButton href="/portal/request/when" variant="outline" size="sm">
               Back
@@ -624,7 +624,7 @@ export default function PortalRequestBuildPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Current draft</h2>
           <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
-            Lines: {lines.length} â€¢ Quote requests: {quoteLines.length}
+            Lines: {lines.length} • Quote requests: {quoteLines.length}
           </div>
         </div>
 
@@ -679,7 +679,7 @@ export default function PortalRequestBuildPage() {
                     <div className="min-w-0">
                       <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
                       <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
-                        Stage: <span className="text-[color:var(--theme-text-secondary)]">{stage}</span> â€¢ Qty{" "}
+                        Stage: <span className="text-[color:var(--theme-text-secondary)]">{stage}</span> • Qty{" "}
                         <span className="text-[color:var(--theme-text-secondary)]">{qty}</span>
                         <span className="ml-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
                           quote
@@ -705,7 +705,7 @@ export default function PortalRequestBuildPage() {
             <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Fixed pricing lines your shop already offers.</div>
           </div>
           <div className="w-full max-w-sm">
-            <input className={inputClass()} placeholder="Search menuâ€¦" value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} />
+            <input className={inputClass()} placeholder="Search menu…" value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} />
           </div>
         </div>
 
@@ -732,7 +732,7 @@ export default function PortalRequestBuildPage() {
                       <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
                       <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                         {m.category ? <span>{String(m.category)}</span> : <span>Menu</span>}
-                        {hrs != null ? <span className="ml-2">â€¢ {hrs}h</span> : null}
+                        {hrs != null ? <span className="ml-2">• {hrs}h</span> : null}
                       </div>
                     </div>
                     <div className="text-xs text-[color:var(--theme-text-secondary)]">{fmtMoney(price)}</div>
@@ -765,7 +765,7 @@ export default function PortalRequestBuildPage() {
             <option value="Sometimes">Sometimes</option>
             <option value="Happened once">Happened once</option>
           </select>
-          <input className={inputClass()} placeholder="Speed, temperature, braking, turningâ€¦" value={diagnosticConditions} onChange={(e) => setDiagnosticConditions(e.target.value)} />
+          <input className={inputClass()} placeholder="Speed, temperature, braking, turning…" value={diagnosticConditions} onChange={(e) => setDiagnosticConditions(e.target.value)} />
           <input className={inputClass()} placeholder="Warning lights or fault codes" value={diagnosticWarnings} onChange={(e) => setDiagnosticWarnings(e.target.value)} />
         </div>
         <label className="block space-y-2 text-xs text-[color:var(--theme-text-secondary)]">
@@ -785,7 +785,7 @@ export default function PortalRequestBuildPage() {
 
         <div className="flex gap-2">
           <Button type="button" onClick={() => void addCustomLine()} disabled={addingLine}>
-            {addingLine ? "Addingâ€¦" : "Add diagnostic concern"}
+            {addingLine ? "Adding…" : "Add diagnostic concern"}
           </Button>
         </div>
       </section>
@@ -820,7 +820,7 @@ export default function PortalRequestBuildPage() {
 
         <div className="flex gap-2">
           <Button type="button" onClick={() => void addQuoteOnly()} variant="outline" disabled={addingQuote}>
-            {addingQuote ? "Sendingâ€¦" : quoteKind === "parts_only" ? "Send to Parts" : "Request repair quote"}
+            {addingQuote ? "Sending…" : quoteKind === "parts_only" ? "Send to Parts" : "Request repair quote"}
           </Button>
         </div>
       </section>
@@ -835,7 +835,7 @@ export default function PortalRequestBuildPage() {
           </div>
 
           <Button type="button" onClick={beginSubmit} disabled={submitting}>
-            {submitting ? "Submittingâ€¦" : "Review & Submit"}
+            {submitting ? "Submitting…" : "Review & Submit"}
           </Button>
         </div>
       </section>
@@ -871,11 +871,11 @@ export default function PortalRequestBuildPage() {
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Summary</div>
               <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">
-                {name} â€¢ {vehicle ? ymm(vehicle) : "Vehicle not set"}
+                {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"}
               </div>
               <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                {bookingLabel ? <span>{bookingLabel} â€¢ </span> : null}
-                WO <span className="font-mono text-[color:var(--theme-text-secondary)]">{wo.id}</span> â€¢ Lines {lines.length} â€¢ Quote requests{" "}
+                {bookingLabel ? <span>{bookingLabel} • </span> : null}
+                WO <span className="font-mono text-[color:var(--theme-text-secondary)]">{wo.id}</span> • Lines {lines.length} • Quote requests{" "}
                 {quoteLines.length}
               </div>
 
@@ -910,7 +910,7 @@ export default function PortalRequestBuildPage() {
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button type="button" variant="outline" onClick={() => void captureSignature()} disabled={reviewBusy}>
-                  {reviewBusy ? "Workingâ€¦" : sigUrl ? "Re-sign" : "Add signature"}
+                  {reviewBusy ? "Working…" : sigUrl ? "Re-sign" : "Add signature"}
                 </Button>
 
                 <Button
@@ -918,7 +918,7 @@ export default function PortalRequestBuildPage() {
                   onClick={() => void finalizeSubmit({ requireSignature: false })}
                   disabled={submitting || reviewBusy || !agreed}
                 >
-                  {submitting ? "Submittingâ€¦" : "Agree & Submit request"}
+                  {submitting ? "Submitting…" : "Agree & Submit request"}
                 </Button>
 
                 <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">Staff will review and approve the appointment.</span>
@@ -933,4 +933,3 @@ export default function PortalRequestBuildPage() {
     </div>
   );
 }
-
