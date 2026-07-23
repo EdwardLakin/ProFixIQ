@@ -21,6 +21,7 @@ export type ConsumePartInput = {
 };
 
 function extractStockMoveId(data: unknown): string | null {
+  if (typeof data === "string" && data.length > 0) return data;
   if (!data || typeof data !== "object") return null;
   const maybe = data as Partial<StockMoveRow>;
   const id = maybe.id;
@@ -150,7 +151,7 @@ export async function consumePart(input: ConsumePartInput) {
   const qtyAbs = Math.abs(input.qty);
 
   // 5) Create stock move (consume = negative)
-  // NOTE: apply_stock_move RETURNS stock_moves row, not uuid
+  // NOTE: apply_stock_move returns a stock move UUID in the current schema.
   const { data: moveRow, error: mErr } = await supabase.rpc("apply_stock_move", {
     p_part: input.part_id,
     p_loc: locationId,
