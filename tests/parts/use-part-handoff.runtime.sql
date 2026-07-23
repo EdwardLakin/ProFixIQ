@@ -382,6 +382,9 @@ where work_order_line_id =
   and source_parts_request_item_id is null
   and is_active;
 
+-- Reproduce the deployed direct-use counter update without allowing the
+-- approved-line auto-request trigger to reinterpret it as request lineage.
+select set_config('app.parts_direct_use', '1', true);
 update public.work_order_parts
 set quantity = quantity + 1,
     quantity_requested = quantity_requested + 1,
@@ -394,6 +397,7 @@ where work_order_line_id =
   and part_id = 'e0000000-0000-4000-8000-000000000001'
   and source_parts_request_item_id is null
   and is_active;
+select set_config('app.parts_direct_use', '0', true);
 
 set local role authenticated;
 select public.parts_issue_work_order_part(

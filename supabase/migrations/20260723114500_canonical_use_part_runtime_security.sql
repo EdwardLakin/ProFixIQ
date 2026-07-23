@@ -808,6 +808,165 @@ begin
 end;
 $$;
 
+-- Production has assistant_notifications, but the checked-in clean bootstrap
+-- does not own that optional Agent table. Keep notification delivery when it is
+-- installed without allowing its absence to abort the Parts lifecycle.
+do $$
+begin
+  if to_regprocedure(
+    'public.parts_publish_request_notification_with_table(uuid,text)'
+  ) is null then
+    alter function public.parts_publish_request_notification(uuid, text)
+      rename to parts_publish_request_notification_with_table;
+  end if;
+
+  if to_regprocedure(
+    'public.parts_sync_technician_ready_notification_with_table(uuid)'
+  ) is null then
+    alter function public.parts_sync_technician_ready_notification(uuid)
+      rename to parts_sync_technician_ready_notification_with_table;
+  end if;
+end
+$$;
+
+create or replace function public.parts_publish_request_notification(
+  p_request_id uuid,
+  p_stage text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if to_regclass('public.assistant_notifications') is null then
+    return;
+  end if;
+
+  perform public.parts_publish_request_notification_with_table(
+    p_request_id,
+    p_stage
+  );
+end;
+$$;
+
+create or replace function public.parts_sync_technician_ready_notification(
+  p_request_id uuid
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_stage text;
+begin
+  if to_regclass('public.assistant_notifications') is null then
+    if exists (
+      select 1
+      from public.part_requests
+      where id = p_request_id
+    ) then
+      v_stage := public.parts_request_operational_stage(p_request_id);
+      perform public.parts_sync_work_order_line_fulfillment_status(
+        p_request_id,
+        v_stage
+      );
+    end if;
+    return;
+  end if;
+
+  perform public.parts_sync_technician_ready_notification_with_table(
+    p_request_id
+  );
+end;
+$$;
+
+revoke all on function public.parts_publish_request_notification(uuid, text)
+  from public, anon, authenticated;
+revoke all on function
+  public.parts_publish_request_notification_with_table(uuid, text)
+  from public, anon, authenticated;
+revoke all on function public.parts_sync_technician_ready_notification(uuid)
+  from public, anon, authenticated;
+revoke all on function
+  public.parts_sync_technician_ready_notification_with_table(uuid)
+  from public, anon, authenticated;
+
+-- An approved repair line normally auto-materializes a Parts request when a
+-- WOP is inserted or repriced. Direct Use Part is already an immediate,
+-- authorized inventory issue, so converting that WOP into request lineage
+-- would make a retry create another WOP. Respect a transaction-local guard
+-- owned only by the canonical direct-use command.
+create or replace function public.trg_parts_auto_release_approved_line_part()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_line public.work_order_lines%rowtype;
+  v_previous_guard text :=
+    coalesce(current_setting('app.parts_line_auto_releasing', true), '0');
+  v_signature text;
+begin
+  if coalesce(current_setting('app.parts_direct_use', true), '0') = '1' then
+    return new;
+  end if;
+  if new.shop_id is null or new.work_order_id is null
+     or new.work_order_line_id is null
+     or new.source_parts_request_item_id is not null
+     or not coalesce(new.is_active, true) then
+    return new;
+  end if;
+
+  select *
+    into v_line
+  from public.work_order_lines
+  where id = new.work_order_line_id
+    and shop_id = new.shop_id
+    and work_order_id = new.work_order_id;
+  if not found or not (
+    lower(coalesce(v_line.approval_state::text, '')) = 'approved'
+    or lower(coalesce(v_line.line_status::text, '')) = 'authorized'
+  ) then
+    return new;
+  end if;
+
+  v_signature := md5(concat_ws(
+    '|',
+    new.id::text,
+    coalesce(new.part_id::text, ''),
+    coalesce(new.quantity::text, ''),
+    coalesce(new.quantity_requested::text, ''),
+    coalesce(new.unit_price::text, ''),
+    coalesce(new.unit_sell_price_snapshot::text, ''),
+    coalesce(new.is_active::text, '')
+  ));
+
+  perform set_config('app.parts_line_auto_releasing', '1', true);
+  perform public.parts_request_work_order_line_atomic(
+    new.shop_id,
+    new.work_order_id,
+    new.work_order_line_id,
+    new.shop_id::text || ':line-auto-release:part:'
+      || new.id::text || ':' || v_signature,
+    auth.uid()
+  );
+  perform set_config(
+    'app.parts_line_auto_releasing',
+    v_previous_guard,
+    true
+  );
+  return new;
+exception when others then
+  perform set_config(
+    'app.parts_line_auto_releasing',
+    v_previous_guard,
+    true
+  );
+  raise;
+end;
+$$;
+
 -- Canonical Add Part / Use Part command. PostgreSQL functions are atomic, so a
 -- failure rolls back the WOP, allocation audit, allocation, counters, and issue.
 create or replace function public.parts_attach_and_issue_line_part_atomic(
@@ -835,6 +994,8 @@ declare
   v_sell_price numeric;
   v_result jsonb;
   v_existing_operation text;
+  v_previous_direct_use_guard text :=
+    coalesce(current_setting('app.parts_direct_use', true), '0');
   v_requested_cost_json jsonb :=
     coalesce(to_jsonb(p_unit_cost), 'null'::jsonb);
 begin
@@ -1003,6 +1164,7 @@ begin
   limit 1
   for update;
 
+  perform set_config('app.parts_direct_use', '1', true);
   if found then
     update public.work_order_parts
     set quantity = quantity + p_qty,
@@ -1078,6 +1240,11 @@ begin
       true
     ) returning * into v_wop;
   end if;
+  perform set_config(
+    'app.parts_direct_use',
+    v_previous_direct_use_guard,
+    true
+  );
 
   insert into public.stock_moves (
     part_id,
@@ -1180,6 +1347,13 @@ begin
   where id = (v_result ->> 'stock_move_id')::uuid;
 
   return v_result;
+exception when others then
+  perform set_config(
+    'app.parts_direct_use',
+    v_previous_direct_use_guard,
+    true
+  );
+  raise;
 end;
 $$;
 

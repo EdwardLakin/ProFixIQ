@@ -75,6 +75,27 @@ describe("work order Use Part regression", () => {
       "execute v_trigger_definitions[v_trigger_index]",
     );
     expect(canonicalUsePartMigration).toContain(
+      "create or replace function public.trg_parts_auto_release_approved_line_part()",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "current_setting('app.parts_direct_use', true)",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "set_config('app.parts_direct_use', '1', true)",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "new.source_parts_request_item_id is not null",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "to_regclass('public.assistant_notifications') is null",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "parts_publish_request_notification_with_table",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "parts_sync_technician_ready_notification_with_table",
+    );
+    expect(canonicalUsePartMigration).toContain(
       "foreign key (\n    work_order_part_id,\n    shop_id,\n    work_order_id,\n    work_order_line_id,\n    part_id",
     );
   });
