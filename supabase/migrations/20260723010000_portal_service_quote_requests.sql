@@ -400,4 +400,3 @@ grant execute on function public.add_portal_diagnostic_line_atomic(
 ) to authenticated, service_role;
 
 commit;
-
