@@ -48,33 +48,29 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(dashboard).toEqual(expect.arrayContaining([
       "Shop Overview",
       "Work Order Board",
-      "Attendance & Activity",
       "Shop Health",
       "Performance",
     ]));
   });
 
-  it("keeps Work Order Board out of Operations and Attendance & Activity out of Workforce", () => {
+  it("keeps Work Order Board out of Operations and Time & Attendance in Workforce", () => {
     const ownerTiles = tilesFor("owner");
     const operations = ownerTiles.filter((tile) => tile.section === "Operations");
     const workforce = ownerTiles.filter((tile) => tile.section === "Workforce");
 
     expect(operations.map((tile) => tile.href)).not.toContain("/work-orders/board");
-    expect(workforce.map((tile) => tile.href)).not.toContain("/dashboard/workforce/attendance");
+    expect(workforce.map((tile) => tile.href)).toContain("/dashboard/workforce/attendance");
     expect(duplicateCount(ownerTiles.map((tile) => tile.href), "/work-orders/board")).toBe(1);
     expect(duplicateCount(ownerTiles.map((tile) => tile.href), "/dashboard/workforce/attendance")).toBe(1);
   });
 
   it("keeps Workforce navigation management-only", () => {
     expect(sectionTitles("owner", "Workforce")).toEqual([
-      "Workforce Overview",
-      "People",
+      "Time & Attendance",
+      "Overview",
+      "Team",
       "Scheduling",
-      "Time Off",
       "Payroll Review",
-      "Employee Documents",
-      "Certifications",
-      "Insights",
     ]);
   });
 
@@ -96,7 +92,6 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(sectionTitles("manager", "Dashboard")).toEqual(expect.arrayContaining([
       "Shop Overview",
       "Work Order Board",
-      "Attendance & Activity",
       "Performance",
     ]));
 
@@ -115,8 +110,8 @@ describe("Phase D3 dashboard operational navigation", () => {
       "Work Order Board",
       "Attendance & Activity",
     ]);
-    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/work-orders/board")).toBe(1);
-    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/dashboard/workforce/attendance")).toBe(1);
+    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/mobile/work-orders")).toBe(1);
+    expect(duplicateCount(MOBILE_TILES.map((tile) => tile.href), "/mobile/workforce/attendance")).toBe(1);
   });
 
   it("updates route metadata for the three operational views", () => {

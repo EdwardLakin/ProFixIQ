@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest";
 const route = readFileSync("app/api/inspections/save/route.ts", "utf8");
 
 describe("inspection save error classification", () => {
-  it("prefers the versioned canonical writer with a rolling-deploy fallback", () => {
-    expect(route).toContain('"save_inspection_progress_v2_atomic"');
-    expect(route).toContain("isMissingVersionedWriter(error)");
-    expect(route).toContain('rpc("save_inspection_progress_atomic", rpcArgs)');
+  it("requires the versioned single-source canonical writer", () => {
+    expect(route).toContain('"save_inspection_progress_v3_atomic"');
+    expect(route).toContain("isMissingCanonicalWriter(error)");
+    expect(route).toContain("INSPECTION_CANONICAL_WRITER_UNAVAILABLE");
+    expect(route).not.toContain('rpc("save_inspection_progress_atomic", rpcArgs)');
   });
 
   it("keeps writer schema drift retryable instead of calling it a revision conflict", () => {

@@ -69,7 +69,9 @@ describe("canonical role gating contract", () => {
   it("keeps financial navigation away from floor roles", () => {
     const desktopBilling = TILES.find((tile) => tile.href === "/billing");
     const mobileReports = MOBILE_TILES.find((tile) => tile.href === "/mobile/reports");
-    const mobileBoard = MOBILE_TILES.find((tile) => tile.href === "/work-orders/board");
+    const mobileBoard = MOBILE_TILES.find(
+      (tile) => tile.href === "/mobile/work-orders",
+    );
 
     expect(desktopBilling?.roles).not.toContain("mechanic");
     expect(desktopBilling?.roles).not.toContain("lead_hand");

@@ -11,7 +11,7 @@ describe("signature pad appearance", () => {
     expect(source).toContain('const SIGNATURE_INK_COLOR = "#0f172a"');
     expect(source).toContain('const SIGNATURE_CANVAS_COLOR = "#ffffff"');
     expect(source).toContain("penColor={SIGNATURE_INK_COLOR}");
-    expect(source).toContain("style: { backgroundColor: SIGNATURE_CANVAS_COLOR }");
+    expect(source).toContain("backgroundColor: SIGNATURE_CANVAS_COLOR");
     expect(source).not.toContain('penColor="white"');
   });
 

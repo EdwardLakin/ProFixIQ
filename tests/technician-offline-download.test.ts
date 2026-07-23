@@ -6,7 +6,8 @@ const route = read("app/api/offline/technician-work-orders/route.ts");
 const download = read(
   "features/work-orders/mobile/technicianOfflineDownload.ts",
 );
-const queue = read("app/mobile/tech/queue/page.tsx");
+const queuePage = read("app/mobile/tech/queue/page.tsx");
+const queue = read("features/mobile/technician/MobileTechnicianQueue.tsx");
 
 describe("technician assigned-work offline download", () => {
   it("authenticates the actor and resolves only their shop assignments", () => {
@@ -50,6 +51,7 @@ describe("technician assigned-work offline download", () => {
   });
 
   it("loads the assigned queue from IndexedDB and exposes an explicit download", () => {
+    expect(queuePage).toContain("MobileTechnicianQueue");
     expect(queue).toContain("getCachedTechnicianWork");
     expect(queue).toContain("applyOfflineBundle(cached.data)");
     expect(queue).toContain("Download assigned work");

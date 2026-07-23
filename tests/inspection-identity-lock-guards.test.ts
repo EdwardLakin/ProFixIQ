@@ -37,13 +37,11 @@ describe("inspection identity and lock guards", () => {
   });
 
   it("keeps local lock evidence until versioned server metadata arrives", () => {
-    expect(generic).toContain("if (!persistEvidence) return;");
     expect(generic).toContain(
       "if (meta.updatedAt === null && !meta.locked) return;",
     );
-    expect(generic).toContain(
-      "applyLockedState(meta.locked, meta.updatedAt !== null);",
-    );
+    expect(generic).toContain("applyLockedState(meta.locked);");
+    expect(generic).toContain("isLockedRef.current = nextLocked;");
   });
 
 });

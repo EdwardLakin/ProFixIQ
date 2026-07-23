@@ -4,14 +4,15 @@
 
 **Deployment readiness: NO-GO.**
 
-Current `main` is deployable by Vercel and passes TypeScript, but it is not
-release-verified:
+Current `main` includes the merged mobile route repair from PR #1177. This
+release-gate reconciliation branch restores the automated repository gate, but
+the product is not yet release-verified:
 
-- `main` at `27bd6efe` has a successful Vercel status.
+- `main` at `29981bd0` contains PR #1177's mobile route-integrity repair.
 - TypeScript completed successfully with `tsc --noEmit`.
 - The API route inventory completed successfully and now covers 372 routes.
-- The complete Vitest run reported 48 failed tests, 1,136 passed tests, and 2
-  skipped database integration tests.
+- The complete branch Vitest run reports 1,195 passed tests and 2 skipped
+  database integration tests across 205 files, with no failures.
 - The two skipped tests are the live parts lifecycle database integration
   suite. That means the newest Add Part, Use Part, handoff, consumption,
   authorization, and replay changes are not yet proven against a running
@@ -20,11 +21,20 @@ release-verified:
   Stripe test-mode checkout, customer/fleet portal session, two-device
   inspection session, or offline device pilot was executed during this audit.
 
-The failed test count is not equivalent to 48 confirmed product defects.
-Most failures are source-shape assertions that still expect code which was
-replaced by newer atomic RPCs, renamed migrations, moved mobile components, or
-changed copy. They still make the release gate unusable: genuine regressions
-cannot be distinguished from stale contracts until they are reconciled.
+The 47 failures remaining after PR #1177 were classified before repair:
+
+- 3 failures exposed one real PWA viewport/safe-area regression.
+- 8 failures came from test-harness defects: seven used a broken transformed
+  relative-path helper and one omitted a newly required OpenAI model mock.
+- 36 failures asserted superseded direct-table code, moved components, renamed
+  migrations, or obsolete UI copy.
+- The first green-candidate full run then exposed one additional suite-load
+  error that still referenced a deliberately removed duplicate workforce
+  migration instead of its surviving forward migration.
+
+The contracts now verify current atomic RPC boundaries, shop scope,
+idempotency, locking, replay behavior, and canonical forward migrations. No
+legacy multi-write implementation was restored to make the suite green.
 
 ## Status language
 
@@ -45,12 +55,12 @@ cannot be distinguished from stale contracts until they are reconciled.
 | Evidence | Result | Meaning |
 | --- | --- | --- |
 | Repository | `EdwardLakin/ProFixIQ` | Public repository, default branch `main` |
-| Audited main | `27bd6efe` | Merge of PR #1176, canonical parts transaction repair |
-| Main deployment check | Vercel success | Build/deployment provider accepted current main |
-| TypeScript | Pass | Current main compiles under the installed TypeScript project |
+| Audited main | `29981bd0` | Merge of PR #1177, completion audit and mobile route repair |
+| Main deployment check | Vercel success for PR #1177 | Build/deployment provider accepted the merged repair head |
+| TypeScript | Pass | The reconciliation branch compiles under the installed TypeScript project |
 | API route audit | Pass; 372 routes | Static inventory completed; it is not an authorization proof |
 | API risk heuristic | 62 high, 21 medium, 289 low | Every high/medium result still needs human flow review; false positives are expected |
-| Full Vitest | 48 failed, 1,136 passed, 2 skipped | Repository-wide release gate is red |
+| Full Vitest | 1,195 passed, 2 skipped; 0 failed | Static/unit/contract release gate is green; live parts database integration is still absent |
 | Schema files | 120 migrations, 11 manual SQL files | Migration history is large and manual SQL remains a second delivery surface |
 | Latest migration | `20260723114500_canonical_use_part_runtime_security.sql` | Latest schema work is the direct Use Part runtime/security repair |
 | Generated DB types | Typecheck pass | Types and current code compile; this does not prove deployed schema parity |
@@ -60,22 +70,22 @@ cannot be distinguished from stale contracts until they are reconciled.
 | Workstream | Current classification | Evidence on current main | Missing evidence or blocker | Next completion gate |
 | --- | --- | --- | --- | --- |
 | Authentication | **Code-complete; runtime-unverified** | `tests/user-auth-normalization.test.ts` and `tests/auth-portal-hardening.test.ts` passed; staff creation includes rollback coverage; portal identity has hardened invite/activation routes | No owner/advisor/technician/fleet/customer login matrix was run; reset, invite, username-only, and revoked-session behavior remain production-like smoke items | Create isolated users for every role and run login, reset, invite, logout, revoked-session, and cross-shop denial tests |
-| Guided onboarding | **Partial; duplicated** | Guided onboarding analysis and page-panel suites passed; canonical guided session routes and tables exist | `tests/guided-onboarding-v2-foundation.test.ts` has a stale navigation assertion; PRs #947 and #950 duplicate the same onboarding evidence change; signup-to-first-work-order runtime was not tested | Reconcile the test with current navigation, choose/close the duplicate PRs, then run new-shop signup → import/scratch → settings → first work order |
+| Guided onboarding | **Partial; duplicated** | Guided onboarding analysis, navigation, foundation, and page-panel suites pass; canonical guided session routes and tables exist | PRs #947 and #950 duplicate the same onboarding evidence change; signup-to-first-work-order runtime was not tested | Choose/close the duplicate PRs, then run new-shop signup → import/scratch → settings → first work order |
 | Work-order creation | **Code-complete; runtime-unverified** | `tests/create-work-order-customer-vehicle-save.test.ts` passed; current routes support customer/vehicle save, suggested-line attachment, intake, and canonical line creation | No browser test proved search selection, manual customer/fleet entry, save, refresh, and second-device visibility together | Run owner/advisor desktop and mobile creation with existing and new customers, multiple vehicles, suggested maintenance, and refresh on a second device |
-| Inspections | **Partial; high regression risk** | Canonical identity, cross-device reconciliation, autosave, offline recovery, photo staging, and recent publication-guard suites passed; main includes the versioned writer and canonical-source migrations | Six inspection contract files fail because they expect superseded writer/reopen/UI shapes; no installed-app two-device run was performed; deployment order of the recent inspection migrations was not checked against a live non-production database | Reconcile the six contracts to the canonical writer, replay migrations into a clean Supabase environment, then run phone/desktop simultaneous edit, photo, signature, finalize, reopen, PDF, and conflict recovery |
-| Quoting and approvals | **Code-complete; runtime-unverified** | Phase 5 quote lifecycle, shop decision, quote send, history relevance, and Phase 8 approval consistency coverage is present; decisions route through atomic commands | Inspection-to-quote source contracts include stale failures; no customer and fleet replay test proved one decision and one set of downstream effects | Run failed inspection → quote → send → approve/decline/defer twice for customer and fleet; confirm exactly one line decision, parts release, status transition, and audit record |
-| Parts lifecycle | **Code-complete on latest main; database-runtime-unverified** | PR #1176 is on main; focused part picker, async handoff, SQL authorization/idempotency, Add Part, Use Part, receiving, allocation, return, and invoice-parts suites mostly passed | Two database integration tests were skipped; four workbench tests still assert the pre-RPC implementation; production-like migration/schema parity is unknown | Run the full parts DB integration suite against clean replayed schema, then smoke request → quote → approval → pick/order → receive → allocate → handoff → use → return |
+| Inspections | **Partial; runtime-unverified** | Canonical identity, cross-device reconciliation, autosave, offline recovery, photo staging, publication guards, versioned writer, reopen, and quote handoff contracts pass | No installed-app two-device run was performed; deployment order of recent inspection migrations was not checked against a live non-production database | Replay migrations into a clean Supabase environment, then run phone/desktop simultaneous edit, photo, signature, finalize, reopen, PDF, and conflict recovery |
+| Quoting and approvals | **Code-complete; runtime-unverified** | Phase 5 quote lifecycle, inspection import, shop decision, quote send, history relevance, and Phase 8 approval consistency contracts pass; decisions route through atomic commands | No customer and fleet replay test proved one decision and one set of downstream effects | Run failed inspection → quote → send → approve/decline/defer twice for customer and fleet; confirm exactly one line decision, parts release, status transition, and audit record |
+| Parts lifecycle | **Code-complete on latest main; database-runtime-unverified** | PR #1176 is on main; part picker, async handoff, atomic package commit, SQL authorization/idempotency, Add Part, Use Part, receiving, allocation, return, and invoice-parts suites pass | Two database integration tests remain skipped; production-like migration/schema parity is unknown | Run the full parts DB integration suite against clean replayed schema, then smoke request → quote → approval → pick/order → receive → allocate → handoff → use → return |
 | Technician handoff and consumption | **Code-complete on latest main; database-runtime-unverified** | Latest migrations and routes use the atomic handoff/use transaction, stable operation keys, shop authorization, replay receipts, and net-issued invoice quantities | Same skipped runtime suite as parts; no technician UI double-submit/network-loss test in this audit | Execute handoff and Use Part as parts staff and assigned technician, repeat every request, lose network after commit, and prove one stock move, one consumption result, and one invoice quantity |
-| Invoicing | **Partial; runtime-unverified** | Immutable invoice versions, payment event ledger, manual payment, PDF renderer, closeout gate, and live invoice safety suites exist; premium PDF unit tests passed | The seven Phase 1 source-contract tests are stale after migration/route changes; PR #1119 (font embedding) has a failed Vercel status; no full invoice/payment/receipt/void/reissue run was performed | Reconcile Phase 1 contracts, decide whether #1119 is still needed, then run issue → PDF → partial/full payment → receipt → refund/reversal → void/reissue using test-mode providers |
+| Invoicing | **Partial; runtime-unverified** | Immutable invoice versions, payment event ledger, manual payment, PDF renderer, closeout gate, Phase 1 foundation, and live invoice safety suites pass | PR #1119 (font embedding) has a failed Vercel status; no full invoice/payment/receipt/void/reissue run was performed | Decide whether #1119 is still needed, then run issue → PDF → partial/full payment → receipt → refund/reversal → void/reissue using test-mode providers |
 | Customer and fleet portals | **Partial; runtime-unverified** | Portal invite, booking, request, approval, mobile refactor, service/quote request, navigation, and advisor-message coverage passed; recent portal source markers are on main | No real invite callback, mobile customer session, fleet session, advisor routing, payment, or account-revocation run was performed | Run customer and fleet invite acceptance on phone, list/detail visibility, quote decisions, Message Shop routing, invoice/payment, profile, logout, and cross-customer denial |
-| Workforce | **Partial; runtime-unverified** | Workforce activity, time reliability, corrections, admin actionability, documents, and payroll review implementations exist; canonical shift and labor RPCs are present | Four workforce/job-punch contracts are stale or reference removed paths; one suite reads a renamed migration; no authenticated punch-in/out, break, hold/resume, correction, or payroll close run was performed | Replace stale source assertions with RPC behavior tests and run shift start/break/end, line start/hold/release/finish, correction audit, pay-period refresh, and cross-shop denial |
+| Workforce | **Partial; runtime-unverified** | Workforce activity, time reliability, corrections, admin actionability, documents, payroll review, and atomic job-punch contracts pass; canonical shift and labor RPCs are present | No authenticated punch-in/out, break, hold/resume, correction, or payroll close run was performed | Run shift start/break/end, line start/hold/release/finish, correction audit, pay-period refresh, and cross-shop denial |
 | Messaging | **Code-complete; runtime-unverified** | Conversation authorization, participant scope, offline drafts, portal navigation, and advisor-directed portal messaging tests passed | No two-account realtime test, offline/reconnect draft race, attachment, or revoked-participant test was run | Test staff↔staff and customer↔advisor messages on two devices, including offline draft, reconnect, attachment, notification, and removed membership |
-| Mobile routing | **Broken on main; fixed on this branch** | The shared resolver is used by middleware, the mobile shell, assistant entries, dashboard primitives, and previous-page controls | On main, `/work-orders/<UUID>` could be truncated because `/work-orders/view` was treated as a prefix without verifying the boundary; canonical `/quote-review/<id>` also had no mobile mapping | Merge only after the 27-case route suite, TypeScript, lint, build, and role-based phone smoke pass |
-| Offline synchronization | **Partial; pilot-blocked** | Mutation receipts, session re-verification, technician/advisor/parts caches, photo staging, conflict handling, diagnostics, and resilience tests mostly passed | One update-activation assertion is stale; the two-device/device-quota/update/eviction pilot in `docs/offline-shop-pilot.md` has not been executed | Complete every pilot matrix row on iOS/iPadOS, Android, and desktop PWA; do not expand release until all rows pass |
-| AI features | **Partial; open PR blocked** | Main has provider abstraction, safe display/serialization, usage, action approvals, deterministic closeout, and reliable shop-assistant conversation/action tests | PR #1143 is 86 commits, its Shop Assistant workflow failed TypeScript because `@shared/types/types/supabase-shop-assistant` was missing, and Vercel failed; current main does not contain that complete orchestration layer; one structured-output unit test also falls back unexpectedly in the full suite | Rebase or replace #1143 from current main, restore generated-type ownership, pass action authorization/idempotency/runtime tests, and keep technician diagnosis non-executable |
-| Billing | **Partial; externally blocked** | Canonical Stripe webhook aliasing, signature validation, subscription synchronization, server-derived checkout, payment ledger, and API-version coverage exist | One webhook test expects obsolete error copy; no Stripe test-mode signup, checkout, renewal, failed payment, cancellation, seat limit, or replay was run; provider dashboard configuration was not inspected | Run Stripe test-mode lifecycle with repeated webhooks and verify canonical shop subscription fields, access changes, and no duplicate financial events |
+| Mobile routing | **Code-complete on main; runtime-unverified** | PR #1177 is merged; the shared resolver preserves UUIDs and route boundaries across middleware, the mobile shell, assistant entries, dashboard primitives, and previous-page controls; all 27 route cases pass | Authenticated role/device and installed-PWA routing smoke was not run | Run the documented owner/advisor/manager/technician phone and PWA matrix |
+| Offline synchronization | **Partial; pilot-blocked** | Mutation receipts, session re-verification, technician/advisor/parts caches, photo staging, conflict handling, diagnostics, update gating, and resilience tests pass; the floating runtime status again respects visual viewport and safe-area insets | The two-device/device-quota/update/eviction pilot in `docs/offline-shop-pilot.md` has not been executed | Complete every pilot matrix row on iOS/iPadOS, Android, and desktop PWA; do not expand release until all rows pass |
+| AI features | **Partial; open PR blocked** | Main has provider abstraction, structured-output coverage, safe display/serialization, usage, action approvals, deterministic closeout, and reliable shop-assistant conversation/action tests | PR #1143 is 86 commits, its Shop Assistant workflow failed TypeScript because `@shared/types/types/supabase-shop-assistant` was missing, and Vercel failed; current main does not contain that complete orchestration layer | Rebase or replace #1143 from current main, restore generated-type ownership, pass action authorization/idempotency/runtime tests, and keep technician diagnosis non-executable |
+| Billing | **Partial; externally blocked** | Canonical Stripe webhook aliasing, generic configuration errors, signature validation, subscription synchronization, server-derived checkout, payment ledger, and API-version coverage pass | No Stripe test-mode signup, checkout, renewal, failed payment, cancellation, seat limit, or replay was run; provider dashboard configuration was not inspected | Run Stripe test-mode lifecycle with repeated webhooks and verify canonical shop subscription fields, access changes, and no duplicate financial events |
 | Schema and RLS | **Partial; replay-unverified** | 120 additive migrations, generated types, numerous RLS policies, narrow RPC grants, and the latest direct Use Part authorization repair are present | 11 manual SQL files remain outside the migration chain; three workforce contract tests still treat manual SQL as authority; the static API audit flags 83 high/medium routes for review; no clean replay or direct-RPC cross-shop matrix was run | Establish migrations as the only production authority, map or retire manual SQL, clean-replay locally, then test every privileged RPC both through the API and directly as authorized/unauthorized users |
-| Deployment readiness | **NO-GO** | Current main Vercel status is green and TypeScript/API inventory pass | Full tests are red, database integration is skipped, mobile routing is broken on main, two current PRs fail Vercel, migrations are not replay-verified here, and required role/device/provider smokes are absent | Restore a trustworthy green gate, complete clean-schema/runtime tests, and attach the exact multi-role/mobile/offline/provider smoke evidence before any production deployment |
+| Deployment readiness | **NO-GO** | TypeScript and all 1,195 runnable tests pass; PR #1177 route fix is merged; API inventory covers 372 routes | Two parts database integration tests are skipped, migrations are not replay-verified, two current PRs fail Vercel, and required role/device/provider smokes are absent | Complete clean-schema/runtime tests and attach the exact multi-role/mobile/offline/provider smoke evidence before any production deployment |
 
 ## Open pull-request disposition
 
@@ -108,10 +118,9 @@ No PR was closed, merged, or changed by this audit.
 
 ## Priority order
 
-1. **P0 — Restore a trustworthy release gate.** Classify and reconcile the
-   remaining 47 failures after this branch's mobile fix. Replace source-string
-   assertions with behavior or SQL-contract tests where possible. Do not make
-   tests green by restoring superseded non-atomic code.
+1. **Completed on this branch — Restore a trustworthy release gate.** All 47
+   failures were classified and reconciled without restoring superseded
+   non-atomic code; the branch has 1,195 passing and 2 skipped tests.
 2. **P0 — Prove the canonical shop golden path against a clean database.**
    Work order → inspection → recommendation/quote → approval → parts
    order/pick/receive → handoff/use/return → cause/correction → invoice →
@@ -129,6 +138,52 @@ No PR was closed, merged, or changed by this audit.
    canonical domain commands.
 7. **P2 — Close or supersede stale PRs.** This removes misleading green checks
    and duplicate implementations from the review surface.
+
+## Completed workstream: trustworthy release gate
+
+### Root cause
+
+Newer atomic workflow repairs had outpaced contract maintenance. Several tests
+still searched route components for direct table writes that had correctly
+moved into shop-scoped, idempotent SQL commands. Other failures came from moved
+mobile components, renamed labels and migrations, a transformed relative-path
+helper, and an incomplete OpenAI mock. Those stale failures hid a real PWA
+runtime regression: after install controls moved into the mobile menu, the
+remaining floating sync/update status lost its visual-viewport and safe-area
+positioning.
+
+### Implemented correction
+
+- Restored `visualViewport` resize/scroll tracking, safe-area offsets, listener
+  cleanup, and narrow-screen wrapping for the floating PWA runtime status.
+- Replaced technician job-punch direct-write fixtures with RPC-boundary tests
+  covering stable operation keys, tenant scope, pause metadata,
+  release-to-awaiting, and financial-lock conflicts.
+- Moved inspection, quote-readiness, parts-package, technician-labor, and
+  workforce assertions to the migrations and atomic RPC boundaries that now
+  own those transactions.
+- Reconciled current mobile navigation/component locations and current UI copy
+  without changing product behavior.
+- Fixed the financial test path helper, OpenAI model mock, and the workforce
+  test reference to the surviving forward migration.
+
+### Safety
+
+No business-state writer, database function, RLS policy, migration, or
+production configuration changed. The only runtime change restores responsive
+positioning for a non-mutating PWA status control. Workflow test changes assert
+the existing authorization, idempotency, lock, and transaction boundaries
+instead of reintroducing legacy direct writes.
+
+### Verification
+
+- Full Vitest: 204 files passed, 1 database-integration file skipped; 1,195
+  tests passed and 2 skipped.
+- TypeScript: pass.
+- Focused formerly failing set: 154 tests passed before the full-suite run.
+- Live parts database integration, clean migration replay, and authenticated
+  role/device/provider smokes remain outstanding and keep deployment at
+  **NO-GO**.
 
 ## Completed workstream: mobile route integrity
 
@@ -167,7 +222,7 @@ the client shell continue to use the same resolver; only known path-boundary
 classification and destination integrity change. External, portal, API, and
 shared-auth routes still return no mobile rewrite.
 
-### Branch verification
+### Verification
 
 - The focused mobile route suite passes all 27 cases, including full UUIDs,
   canonical and compatibility quote-review links, query/hash preservation, and
@@ -177,15 +232,14 @@ shared-auth routes still return no mobile rewrite.
 - A production Next.js build completes with local placeholder values for
   required build-time secrets. No external service or production environment
   was contacted.
-- The complete branch suite reports 47 failed, 1,142 passed, and 2 skipped
-  tests across 205 files. The mobile route suite is no longer among the failed
-  files; 28 other files remain red. This is an improvement over the audited
-  main baseline, not a release-ready result.
+- PR #1177 was merged into `main` at `29981bd0`.
+- The follow-up reconciliation branch now reports 1,195 passed and 2 skipped
+  tests with no failures.
 - Authenticated role/device verification remains the required manual gate
   below because this audit environment has no seeded test identities or
   running non-production Supabase instance.
 
-## Required smoke test for this branch
+## Required mobile smoke test
 
 1. On an iPhone/iPad-sized viewport, sign in separately as owner, advisor,
    manager/foreman, and technician.
