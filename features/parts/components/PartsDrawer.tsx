@@ -13,13 +13,11 @@ import PartsRequestModal from "@/features/work-orders/components/workorders/Part
 import { toast } from "sonner";
 import { consumePart } from "@/features/work-orders/lib/parts/consumePart";
 
-type SerializableVehicle =
-  | {
-      year?: number | string | null;
-      make?: string | null;
-      model?: string | null;
-    }
-  | null;
+type SerializableVehicle = {
+  year?: number | string | null;
+  make?: string | null;
+  model?: string | null;
+} | null;
 
 type Props = {
   open: boolean;
@@ -32,6 +30,7 @@ type Props = {
 };
 
 function asFiniteNumberOrUndefined(v: unknown): number | undefined {
+  if (v == null || v === "") return undefined;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
@@ -46,6 +45,7 @@ export default function PartsDrawer({
   closeEventName = "parts-drawer:closed",
 }: Props) {
   const [tab, setTab] = useState<"use" | "request">("use");
+  const [usePartPending, setUsePartPending] = useState(false);
 
   const emitClose = useCallback(() => {
     window.dispatchEvent(new CustomEvent(closeEventName));
@@ -53,41 +53,43 @@ export default function PartsDrawer({
 
   const handleUsePart = useCallback(
     async (picked: PickedPart) => {
-      try {
-        const qty = Number(picked.qty);
-        if (!picked.part_id || !Number.isFinite(qty) || qty <= 0) {
-          toast.error("Pick a part and quantity first.");
-          return;
-        }
-
-        const unitCost = asFiniteNumberOrUndefined(picked.unit_cost);
-
-        await consumePart({
-          work_order_line_id: workOrderLineId,
-          part_id: picked.part_id,
-          qty,
-          location_id: picked.location_id ?? undefined,
-          ...(typeof unitCost === "number" ? { unit_cost: unitCost } : {}),
-          availability: picked.availability ?? null,
-        });
-
-        toast.success("Part used on job (inventory updated).");
-        window.dispatchEvent(new CustomEvent("wo:parts-used"));
-        emitClose();
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Failed to use part.";
-        toast.error(msg);
-        throw e;
+      const qty = Number(picked.qty);
+      if (!picked.part_id || !Number.isFinite(qty) || qty <= 0) {
+        throw new Error("Pick a part and quantity first.");
       }
+      if (!picked.location_id) {
+        throw new Error("Pick an inventory location first.");
+      }
+      if (!picked.idempotency_key) {
+        throw new Error("A stable operation key is required.");
+      }
+
+      const unitCost = asFiniteNumberOrUndefined(picked.unit_cost);
+      const result = await consumePart({
+        work_order_line_id: workOrderLineId,
+        part_id: picked.part_id,
+        qty,
+        location_id: picked.location_id,
+        ...(typeof unitCost === "number" ? { unit_cost: unitCost } : {}),
+        idempotency_key: picked.idempotency_key,
+      });
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+
+      toast.success("Part used on job (inventory updated).");
     },
-    [emitClose, workOrderLineId],
+    [workOrderLineId],
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || tab !== "request") return;
 
-    const onCloseReq = () => emitClose();
+    const onCloseReq = () => {
+      if (!usePartPending) emitClose();
+    };
     const onSubmitted = () => {
+      if (usePartPending) return;
       toast.success("Parts request submitted");
       emitClose();
     };
@@ -98,7 +100,7 @@ export default function PartsDrawer({
       window.removeEventListener("parts-request:close", onCloseReq);
       window.removeEventListener("parts-request:submitted", onSubmitted);
     };
-  }, [open, emitClose]);
+  }, [open, tab, usePartPending, emitClose]);
 
   if (!open) return null;
 
@@ -112,7 +114,9 @@ export default function PartsDrawer({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm"
-        onClick={emitClose}
+        onClick={() => {
+          if (!usePartPending) emitClose();
+        }}
         aria-hidden="true"
       />
 
@@ -143,6 +147,7 @@ export default function PartsDrawer({
 
           <button
             onClick={emitClose}
+            disabled={usePartPending}
             className="rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-sm text-[color:var(--theme-text-primary)] hover:border-[color:var(--accent-copper,#f97316)]/70 hover:bg-[color:var(--theme-surface-overlay)]"
           >
             Close
@@ -153,14 +158,20 @@ export default function PartsDrawer({
         <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--theme-border-soft)] px-4 py-3 md:px-5">
           <button
             className={tabBtn(tab === "use")}
-            onClick={() => setTab("use")}
+            disabled={usePartPending}
+            onClick={() => {
+              if (!usePartPending) setTab("use");
+            }}
             type="button"
           >
             Use from Inventory
           </button>
           <button
             className={tabBtn(tab === "request")}
-            onClick={() => setTab("request")}
+            disabled={usePartPending}
+            onClick={() => {
+              if (!usePartPending) setTab("request");
+            }}
             type="button"
           >
             Request to Purchase
@@ -180,6 +191,8 @@ export default function PartsDrawer({
                 variant="inline"
                 onClose={emitClose}
                 onPick={handleUsePart}
+                onSubmittingChange={setUsePartPending}
+                requireLocation
                 initialSearch=""
                 workOrderId={workOrderId}
                 workOrderLineId={workOrderLineId}

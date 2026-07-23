@@ -339,8 +339,8 @@ export default function MenuItemsPage() {
 
   const handlePickPart = useCallback(
     (rowIdx: number) =>
-      (sel: PickedPart): void => {
-        (async () => {
+      async (sel: PickedPart): Promise<void> => {
+        try {
           const { data } = await supabase
             .from("parts")
             .select("name, unit_cost")
@@ -371,9 +371,9 @@ export default function MenuItemsPage() {
           );
 
           toast.success(`Picked ${label}`);
-        })().catch(() => {
+        } catch {
           setParts((rows) => rows.map((r, i) => (i === rowIdx ? { ...r, part_id: sel.part_id } : r)));
-        });
+        }
       },
     [supabase],
   );
@@ -1097,8 +1097,7 @@ export default function MenuItemsPage() {
           onClose={() => setPickerOpenForRow(null)}
           onPick={(sel) => {
             const idx = pickerOpenForRow;
-            setPickerOpenForRow(null);
-            handlePickPart(idx)(sel);
+            return handlePickPart(idx)(sel);
           }}
         />
       )}

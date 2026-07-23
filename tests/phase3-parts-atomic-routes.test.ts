@@ -8,7 +8,9 @@ function source(path: string) {
 
 describe("phase 3 atomic parts routes", () => {
   it("uses one package command", () => {
-    const route = source("app/api/parts/requests/[requestId]/commit-package/route.ts");
+    const route = source(
+      "app/api/parts/requests/[requestId]/commit-package/route.ts",
+    );
     expect(route).toContain("parts_commit_request_package_atomic");
     expect(route).not.toContain("for (const item");
     expect(route).not.toContain('from("work_order_parts")');
@@ -21,6 +23,20 @@ describe("phase 3 atomic parts routes", () => {
     expect(route).not.toContain("upsert_part_allocation_from_request_item");
   });
 
+  it("routes direct Use Part through the canonical attach-and-issue command", () => {
+    const route = source("app/api/parts/consume/route.ts");
+    expect(route).toContain("parts_attach_and_issue_line_part_atomic");
+    expect(route).not.toContain("parts_issue_by_line_part_atomic");
+    expect(route).toContain(":legacy-consume:");
+  });
+
+  it("keeps quote suggestions out of physical inventory allocations", () => {
+    const route = source("app/api/quotes/apply-ai/route.ts");
+    expect(route).toContain("work_order_quote_ai_suggestions_recorded");
+    expect(route).not.toContain('from("work_order_part_allocations")');
+    expect(route).not.toContain('from("inventory_locations")');
+  });
+
   it("requires explicit operation keys", () => {
     const helper = source("app/api/parts/_lib/lifecycleCommand.ts");
     const receiving = source("app/api/parts/_lib/receivePartRequestItem.ts");
@@ -30,7 +46,9 @@ describe("phase 3 atomic parts routes", () => {
   });
 
   it("uses one line disposition command", () => {
-    const route = source("app/api/work-orders/lines/[id]/delete-or-void/route.ts");
+    const route = source(
+      "app/api/work-orders/lines/[id]/delete-or-void/route.ts",
+    );
     expect(route).toContain("parts_void_work_order_line_atomic");
     expect(route).not.toContain("apply_stock_move");
     expect(route).not.toContain('from("work_order_part_allocations")');
@@ -44,9 +62,7 @@ describe("phase 3 atomic parts routes", () => {
       "features/invoices/server/getIssuableInvoiceSnapshot.ts",
     );
     expect(issuableSnapshot).toContain("const parts = [...base.parts]");
-    expect(issuableSnapshot).not.toContain(
-      'part.source === "work_order_part"',
-    );
+    expect(issuableSnapshot).not.toContain('part.source === "work_order_part"');
     expect(issuableSnapshot).not.toContain("get_invoice_net_issued_parts");
   });
 

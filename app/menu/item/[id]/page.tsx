@@ -906,8 +906,7 @@ export default function MenuItemDetailPage() {
           onClose={() => setPickerOpenForRow(null)}
           onPick={(sel) => {
             const idx = pickerOpenForRow;
-            setPickerOpenForRow(null);
-            void handlePickPart(idx)(sel);
+            return handlePickPart(idx)(sel);
           }}
         />
       )}

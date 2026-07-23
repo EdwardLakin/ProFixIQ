@@ -14,6 +14,7 @@ type MenuItemPartRow = DB["public"]["Tables"]["menu_item_parts"]["Row"];
 export type AllocateMenuItemPartsInput = {
   menu_item_id: string;
   work_order_line_id: string;
+  idempotency_key: string;
 };
 
 function asPositiveNumber(v: unknown): number | null {
@@ -23,12 +24,16 @@ function asPositiveNumber(v: unknown): number | null {
 }
 
 function asFiniteNumberOrUndefined(v: unknown): number | undefined {
+  if (v == null || v === "") return undefined;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
 
 export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
   const supabase = createServerSupabaseRoute();
+  if (!input.idempotency_key.trim()) {
+    throw new Error("A stable menu allocation operation key is required.");
+  }
 
   // 1) Load line (source of truth for shop + work order)
   const { data: woLine, error: wlErr } = await supabase
@@ -78,7 +83,7 @@ export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
   let allocated = 0;
   let skipped = 0;
 
-  // 5) Allocate each part via consumePart() (creates stock move + allocation)
+  // 5) Use every menu part through the same canonical attach-and-issue command.
   for (const p of rows) {
     const partId =
       typeof p.part_id === "string" && p.part_id.length ? p.part_id : null;
@@ -95,13 +100,15 @@ export async function allocateMenuItemParts(input: AllocateMenuItemPartsInput) {
 
     const unitCost = asFiniteNumberOrUndefined(p.unit_cost);
 
-    await consumePart({
+    const result = await consumePart({
       work_order_line_id: input.work_order_line_id,
       part_id: partId,
       qty,
       location_id: locationId, // satisfies NOT NULL + consistent default
       ...(typeof unitCost === "number" ? { unit_cost: unitCost } : {}),
+      idempotency_key: `${input.idempotency_key.trim()}:menu-item-part:${p.id}`,
     });
+    if (!result.ok) throw new Error(result.error);
 
     allocated += 1;
   }

@@ -21090,8 +21090,9 @@ export type Database = {
           source_request_item_id: string | null
           stock_move_id: string | null
           unit_cost: number
-          work_order_id: string | null
+          work_order_id: string
           work_order_line_id: string
+          work_order_part_id: string
         }
         Insert: {
           created_at?: string
@@ -21103,8 +21104,9 @@ export type Database = {
           source_request_item_id?: string | null
           stock_move_id?: string | null
           unit_cost?: number
-          work_order_id?: string | null
+          work_order_id: string
           work_order_line_id: string
+          work_order_part_id: string
         }
         Update: {
           created_at?: string
@@ -21116,8 +21118,9 @@ export type Database = {
           source_request_item_id?: string | null
           stock_move_id?: string | null
           unit_cost?: number
-          work_order_id?: string | null
+          work_order_id?: string
           work_order_line_id?: string
+          work_order_part_id?: string
         }
         Relationships: [
           {
@@ -21224,6 +21227,25 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_work_order_part_id_fkey"
+            columns: [
+              "work_order_part_id",
+              "shop_id",
+              "work_order_id",
+              "work_order_line_id",
+              "part_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "work_order_parts"
+            referencedColumns: [
+              "id",
+              "shop_id",
+              "work_order_id",
+              "work_order_line_id",
+              "part_id",
+            ]
           },
         ]
       }
@@ -23826,6 +23848,17 @@ export type Database = {
           vehicle_model: string
           vehicle_year: number
         }[]
+      }
+      parts_attach_and_issue_line_part_atomic: {
+        Args: {
+          p_idempotency_key: string
+          p_location_id: string
+          p_part_id: string
+          p_qty: number
+          p_unit_cost: number | null
+          p_work_order_line_id: string
+        }
+        Returns: Json
       }
       parts_complete_request_handoff_atomic: {
         Args: {
