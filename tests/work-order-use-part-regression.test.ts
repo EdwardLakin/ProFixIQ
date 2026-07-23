@@ -10,34 +10,40 @@ describe("work order Use Part regression", () => {
     "features/parts/components/PartsDrawer.tsx",
     "utf8",
   );
-  const handoffEnumCastMigration = readFileSync(
-    "supabase/migrations/20260722140500_fix_parts_issue_status_enum_cast.sql",
+  const handoffRuntimeShapeMigration = readFileSync(
+    "supabase/migrations/20260723044000_fix_parts_handoff_runtime_shape.sql",
     "utf8",
   );
 
-  it("accepts the UUID returned by apply_stock_move", () => {
+  it("uses the generic inspection allocation shape when attaching inventory parts", () => {
+    expect(consumePartSource).not.toContain('rpc("apply_stock_move"');
+    expect(consumePartSource).not.toContain("stock_move_id: moveId");
     expect(consumePartSource).toContain(
-      'if (typeof data === "string" && data.length > 0) return data;',
+      'DB["public"]["Tables"]["work_order_part_allocations"]["Insert"]',
     );
-    expect(consumePartSource).toContain(
-      "apply_stock_move returns a stock move UUID",
-    );
+    expect(consumePartSource).toContain("work_order_line_id: input.work_order_line_id");
+    expect(consumePartSource).toContain("location_id: locationId");
   });
 
   it("surfaces inventory attachment failures from the drawer", () => {
     expect(partsDrawerSource).toContain("throw e;");
   });
 
-  it("casts handoff item statuses to the enum type", () => {
-    expect(handoffEnumCastMigration).toContain(
+  it("keeps handoff aligned with the current lifecycle schema and enum type", () => {
+    expect(handoffRuntimeShapeMigration).toContain(
       "v_status public.part_request_item_status;",
     );
-    expect(handoffEnumCastMigration).toContain(
+    expect(handoffRuntimeShapeMigration).toContain("quantity_allocated");
+    expect(handoffRuntimeShapeMigration).not.toContain("quantity_reserved");
+    expect(handoffRuntimeShapeMigration).toContain("qty_change");
+    expect(handoffRuntimeShapeMigration).toContain("reason");
+    expect(handoffRuntimeShapeMigration).not.toContain("move_type");
+    expect(handoffRuntimeShapeMigration).toContain(
       "'partially_consumed'::public.part_request_item_status",
     );
-    expect(handoffEnumCastMigration).toContain(
+    expect(handoffRuntimeShapeMigration).toContain(
       "'consumed'::public.part_request_item_status",
     );
-    expect(handoffEnumCastMigration).toContain("status = v_status");
+    expect(handoffRuntimeShapeMigration).toContain("status = v_status");
   });
 });
