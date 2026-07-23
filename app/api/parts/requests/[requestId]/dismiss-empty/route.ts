@@ -1,10 +1,28 @@
 import { NextResponse } from "next/server";
-import {
-  DISMISSIBLE_EMPTY_PART_REQUEST_STATUSES,
-  isDismissibleEmptyPartRequestStatus,
-} from "@/features/parts/lib/requests/empty-request";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
+
+type RpcError = {
+  message: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
+
+type DismissResult = {
+  ok?: boolean;
+  idempotent?: boolean;
+  request_id?: string;
+  work_order_id?: string | null;
+  previous_status?: string;
+  status?: string;
+};
 
 function isUuid(value: unknown): value is string {
   return (
@@ -13,6 +31,24 @@ function isUuid(value: unknown): value is string {
       value.trim(),
     )
   );
+}
+
+function rpcErrorMessage(error: RpcError): string {
+  return [error.message, error.details, error.hint].filter(Boolean).join(" — ");
+}
+
+function rpcErrorStatus(error: RpcError): number {
+  const message = rpcErrorMessage(error).toUpperCase();
+  if (
+    message.includes("AUTHENTICATION") ||
+    message.includes("ACCESS_DENIED") ||
+    message.includes("ROLE_ACCESS_DENIED") ||
+    message.includes("ACTOR_MISMATCH")
+  ) {
+    return 403;
+  }
+  if (message.includes("NOT_FOUND_FOR_SHOP")) return 404;
+  return 409;
 }
 
 export async function POST(
@@ -32,109 +68,51 @@ export async function POST(
   });
   if (!access.ok) return access.response;
 
-  const { data: partRequest, error: requestError } = await access.supabase
-    .from("part_requests")
-    .select("id,status,work_order_id")
-    .eq("id", requestId)
-    .eq("shop_id", access.profile.shop_id)
-    .maybeSingle();
+  const rpc = access.supabase as unknown as RpcClient;
+  const { data, error } = await rpc.rpc("parts_dismiss_empty_request_atomic", {
+    p_shop_id: access.profile.shop_id,
+    p_request_id: requestId,
+    p_actor_user_id: access.profile.id,
+  });
 
-  if (requestError) {
+  if (error) {
     return NextResponse.json(
-      { ok: false, error: "Unable to load the parts request." },
-      { status: 500 },
+      { ok: false, error: rpcErrorMessage(error) },
+      { status: rpcErrorStatus(error) },
     );
   }
-  if (!partRequest) {
+
+  const result = (data ?? {}) as DismissResult;
+  if (!result.ok || result.status !== "cancelled") {
     return NextResponse.json(
-      { ok: false, error: "Parts request not found." },
-      { status: 404 },
+      {
+        ok: false,
+        error: "The empty parts request was not dismissed.",
+      },
+      { status: 409 },
     );
   }
-  if (partRequest.status === "cancelled") {
-    return NextResponse.json({
-      ok: true,
-      idempotent: true,
-      requestId,
-      status: "cancelled",
+
+  if (!result.idempotent) {
+    await logOperationalEvent({
+      supabase: access.supabase,
+      event: "parts_request_empty_dismissed",
+      actorId: access.profile.id,
+      entityType: "part_requests",
+      entityId: requestId,
+      details: {
+        shop_id: access.profile.shop_id,
+        work_order_id: result.work_order_id ?? null,
+        previous_status: result.previous_status ?? null,
+        status: result.status,
+      },
     });
   }
-  if (!isDismissibleEmptyPartRequestStatus(partRequest.status)) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Only an empty request without physical parts activity can be dismissed.",
-      },
-      { status: 409 },
-    );
-  }
-
-  const { count, error: itemError } = await access.supabase
-    .from("part_request_items")
-    .select("id", { count: "exact", head: true })
-    .eq("request_id", requestId)
-    .eq("shop_id", access.profile.shop_id);
-
-  if (itemError) {
-    return NextResponse.json(
-      { ok: false, error: "Unable to verify that the request is empty." },
-      { status: 500 },
-    );
-  }
-  if ((count ?? 0) > 0) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "This request contains parts and cannot be dismissed as empty.",
-      },
-      { status: 409 },
-    );
-  }
-
-  const { data: updated, error: updateError } = await access.supabase
-    .from("part_requests")
-    .update({ status: "cancelled" })
-    .eq("id", requestId)
-    .eq("shop_id", access.profile.shop_id)
-    .in("status", [...DISMISSIBLE_EMPTY_PART_REQUEST_STATUSES])
-    .select("id,status")
-    .maybeSingle();
-
-  if (updateError) {
-    return NextResponse.json(
-      { ok: false, error: "Unable to dismiss the empty parts request." },
-      { status: 500 },
-    );
-  }
-  if (!updated) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "The request changed before it could be dismissed. Refresh and review it.",
-      },
-      { status: 409 },
-    );
-  }
-
-  await logOperationalEvent({
-    supabase: access.supabase,
-    event: "parts_request_empty_dismissed",
-    actorId: access.profile.id,
-    entityType: "part_requests",
-    entityId: requestId,
-    details: {
-      shop_id: access.profile.shop_id,
-      work_order_id: partRequest.work_order_id,
-      previous_status: partRequest.status,
-      status: updated.status,
-    },
-  });
 
   return NextResponse.json({
     ok: true,
-    idempotent: false,
+    idempotent: result.idempotent === true,
     requestId,
-    status: updated.status,
+    status: result.status,
   });
 }
