@@ -3,173 +3,176 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
-import { ensureMainLocation } from "@parts/lib/locations";
-
-type DB = Database;
-
-type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 
 export type ConsumePartInput = {
   work_order_line_id: string;
   part_id: string;
-  qty: number; // positive number means "attach qty"
-  location_id?: string; // optional; defaults to MAIN for the WO's shop
-  unit_cost?: number; // optional override from UI (NO nulls)
-  availability?: string | null; // accepted but not stored yet
+  location_id: string;
+  qty: number;
+  unit_cost?: number | null;
+  idempotency_key: string;
 };
 
-function asFiniteNumber(v: unknown): number | null {
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * Best-bin selection:
- * - If part_stock exists and has location rows, pick the location with max(available)
- * - Otherwise fall back to MAIN location.
- *
- * This is defensive: any schema mismatch falls back silently.
- */
-async function resolveBestLocationId(args: {
-  supabase: ReturnType<typeof createServerSupabaseRoute>;
-  shopId: string;
-  partId: string;
-}): Promise<string> {
-  const { supabase, shopId, partId } = args;
-
-  // MAIN fallback is always safe
-  const main = await ensureMainLocation(shopId);
-  const mainId = typeof main?.id === "string" && main.id.length ? main.id : null;
-  if (!mainId) throw new Error("Failed to resolve MAIN stock location");
-
-  try {
-    // Try the common schema: part_stock(shop_id, part_id, location_id, qty_on_hand, qty_reserved)
-    const { data, error } = await supabase
-      .from("part_stock")
-      .select("location_id, qty_on_hand, qty_reserved")
-      .eq("shop_id", shopId)
-      .eq("part_id", partId);
-
-    if (error) return mainId;
-    if (!Array.isArray(data) || data.length === 0) return mainId;
-
-    let bestLoc: string | null = null;
-    let bestAvail = -Infinity;
-
-    for (const row of data) {
-      const rec = row as Record<string, unknown>;
-      const loc = typeof rec.location_id === "string" ? rec.location_id : null;
-      if (!loc) continue;
-
-      const onHand = asFiniteNumber(rec.qty_on_hand) ?? 0;
-      const reserved = asFiniteNumber(rec.qty_reserved) ?? 0;
-      const avail = onHand - reserved;
-
-      if (avail > bestAvail) {
-        bestAvail = avail;
-        bestLoc = loc;
-      }
+export type ConsumePartResult =
+  | {
+      ok: true;
+      idempotent: boolean;
+      work_order_part_id: string;
+      stock_move_id: string;
+      issued_qty: number;
+      net_issued_qty: number;
+      on_hand_after: number;
     }
+  | {
+      ok: false;
+      error: string;
+    };
 
-    return bestLoc ?? mainId;
-  } catch {
-    return mainId;
-  }
+type RpcResult = {
+  idempotent?: unknown;
+  issued_qty?: unknown;
+  net_issued_qty?: unknown;
+  on_hand_after?: unknown;
+  stock_move_id?: unknown;
+  work_order_part_id?: unknown;
+};
+
+function asFiniteNumber(value: unknown): number {
+  const numberValue =
+    typeof value === "number" ? value : Number.parseFloat(String(value));
+  return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
-export async function consumePart(input: ConsumePartInput) {
+function errorMessage(error: unknown): string {
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim()
+  ) {
+    return error.message.trim();
+  }
+  return "Failed to use part.";
+}
+
+export async function consumePart(
+  input: ConsumePartInput,
+): Promise<ConsumePartResult> {
   const supabase = createServerSupabaseRoute();
 
-  if (!input.qty || input.qty <= 0) {
-    throw new Error("Quantity must be greater than 0");
-  }
+  try {
+    if (!input.work_order_line_id || !input.part_id) {
+      return { ok: false, error: "Pick a work-order line and part first." };
+    }
+    if (!input.location_id) {
+      return { ok: false, error: "Pick an inventory location first." };
+    }
+    if (!Number.isFinite(input.qty) || input.qty <= 0) {
+      return { ok: false, error: "Quantity must be greater than 0." };
+    }
+    if (!input.idempotency_key.trim()) {
+      return { ok: false, error: "A stable operation key is required." };
+    }
+    if (
+      input.unit_cost != null &&
+      (!Number.isFinite(input.unit_cost) || input.unit_cost < 0)
+    ) {
+      return { ok: false, error: "Unit cost cannot be negative." };
+    }
 
-  // 1) Look up WO + shop_id from the line (single source of truth)
-  const { data: woLine, error: wlErr } = await supabase
-    .from("work_order_lines")
-    .select("id, work_order_id, shop_id")
-    .eq("id", input.work_order_line_id)
-    .single();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      return { ok: false, error: "You must be signed in to use a part." };
+    }
 
-  if (wlErr) throw wlErr;
-
-  const workOrderId =
-    typeof woLine.work_order_id === "string" ? woLine.work_order_id : null;
-  const shopId = typeof woLine.shop_id === "string" ? woLine.shop_id : null;
-
-  if (!workOrderId) throw new Error("Missing work_order_id on line");
-  if (!shopId) throw new Error("Missing shop_id on line");
-
-  // 2) CRITICAL: set current_shop_id() for THIS server session (RLS)
-  const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
-    p_shop_id: shopId,
-  });
-  if (ctxErr) {
-    throw new Error(
-      ctxErr.message || "Failed to set server shop context (current_shop_id)",
-    );
-  }
-
-  // 3) Determine location_id (best-bin -> fallback MAIN)
-  const locationId =
-    typeof input.location_id === "string" && input.location_id.length
-      ? input.location_id
-      : await resolveBestLocationId({ supabase, shopId, partId: input.part_id });
-
-  // 4) Determine effective unit_cost:
-  //    - prefer explicit value from picker
-  //    - otherwise fall back to parts.default_cost
-  //    - NEVER pass null (use undefined to omit)
-  let effectiveUnitCost: number | undefined;
-
-  if (typeof input.unit_cost === "number" && Number.isFinite(input.unit_cost)) {
-    effectiveUnitCost = input.unit_cost;
-  } else {
-    const { data: part, error: partErr } = await supabase
-      .from("parts")
-      .select("default_cost")
-      .eq("id", input.part_id)
+    const { data: workOrderLine, error: lineError } = await supabase
+      .from("work_order_lines")
+      .select("id, work_order_id, shop_id")
+      .eq("id", input.work_order_line_id)
       .single();
 
-    if (partErr) throw partErr;
+    if (lineError || !workOrderLine) {
+      return {
+        ok: false,
+        error: lineError?.message || "Work-order line was not found.",
+      };
+    }
 
-    const dc = (part as PartRow | null)?.default_cost;
-    const n = asFiniteNumber(dc);
-    if (typeof n === "number") effectiveUnitCost = n;
+    const workOrderId =
+      typeof workOrderLine.work_order_id === "string"
+        ? workOrderLine.work_order_id
+        : "";
+    const shopId =
+      typeof workOrderLine.shop_id === "string" ? workOrderLine.shop_id : "";
+    if (!workOrderId || !shopId) {
+      return {
+        ok: false,
+        error: "Work-order line is missing its work order or shop.",
+      };
+    }
+
+    const { data, error } = await supabase.rpc(
+      "parts_attach_and_issue_line_part_atomic",
+      {
+        p_work_order_line_id: input.work_order_line_id,
+        p_part_id: input.part_id,
+        p_location_id: input.location_id,
+        p_qty: input.qty,
+        p_unit_cost: input.unit_cost ?? null,
+        p_idempotency_key: `${shopId}:attach-issue:${input.idempotency_key.trim()}`,
+      },
+    );
+
+    if (error) {
+      console.error("Use Part RPC failed", {
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        message: error.message,
+        workOrderLineId: input.work_order_line_id,
+      });
+      return { ok: false, error: error.message || "Failed to use part." };
+    }
+
+    const result =
+      data && typeof data === "object" && !Array.isArray(data)
+        ? (data as RpcResult)
+        : null;
+    if (
+      !result ||
+      typeof result.work_order_part_id !== "string" ||
+      typeof result.stock_move_id !== "string"
+    ) {
+      console.error("Use Part RPC returned an invalid result", {
+        data,
+        workOrderLineId: input.work_order_line_id,
+      });
+      return {
+        ok: false,
+        error: "Part use completed without a valid inventory receipt.",
+      };
+    }
+
+    revalidatePath(`/work-orders/${workOrderId}`);
+
+    return {
+      ok: true,
+      idempotent: result.idempotent === true,
+      work_order_part_id: result.work_order_part_id,
+      stock_move_id: result.stock_move_id,
+      issued_qty: asFiniteNumber(result.issued_qty),
+      net_issued_qty: asFiniteNumber(result.net_issued_qty),
+      on_hand_after: asFiniteNumber(result.on_hand_after),
+    };
+  } catch (error: unknown) {
+    console.error("Use Part server action failed", {
+      error,
+      workOrderLineId: input.work_order_line_id,
+    });
+    return { ok: false, error: errorMessage(error) };
   }
-
-  const qtyAbs = Math.abs(input.qty);
-
-  // Match the generic inspection / quote attach path: create a pending allocation
-  // record and let lifecycle handoff perform the physical stock issue.
-  const baseInsert: DB["public"]["Tables"]["work_order_part_allocations"]["Insert"] = {
-    shop_id: shopId,
-    work_order_id: workOrderId,
-    work_order_line_id: input.work_order_line_id,
-    part_id: input.part_id,
-    location_id: locationId,
-    qty: qtyAbs,
-  };
-
-  const allocInsert =
-    typeof effectiveUnitCost === "number"
-      ? { ...baseInsert, unit_cost: effectiveUnitCost }
-      : baseInsert;
-
-  const { data: alloc, error: aErr } = await supabase
-    .from("work_order_part_allocations")
-    .insert(allocInsert)
-    .select("id")
-    .single();
-
-  if (aErr) throw aErr;
-
-  // 5) Revalidate the WO page
-  revalidatePath(`/work-orders/${workOrderId}`);
-
-  const allocationId =
-    alloc && typeof alloc.id === "string" ? alloc.id : undefined;
-
-  return { allocationId };
 }

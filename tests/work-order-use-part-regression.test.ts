@@ -10,40 +10,63 @@ describe("work order Use Part regression", () => {
     "features/parts/components/PartsDrawer.tsx",
     "utf8",
   );
-  const handoffRuntimeShapeMigration = readFileSync(
-    "supabase/migrations/20260723044000_fix_parts_handoff_runtime_shape.sql",
+  const canonicalUsePartMigration = readFileSync(
+    "supabase/migrations/20260723114500_canonical_use_part_runtime_security.sql",
     "utf8",
   );
 
-  it("uses the generic inspection allocation shape when attaching inventory parts", () => {
-    expect(consumePartSource).not.toContain('rpc("apply_stock_move"');
-    expect(consumePartSource).not.toContain("stock_move_id: moveId");
+  it("uses one canonical attach-and-issue RPC without direct lifecycle writes", () => {
     expect(consumePartSource).toContain(
-      'DB["public"]["Tables"]["work_order_part_allocations"]["Insert"]',
+      '"parts_attach_and_issue_line_part_atomic"',
     );
-    expect(consumePartSource).toContain("work_order_line_id: input.work_order_line_id");
-    expect(consumePartSource).toContain("location_id: locationId");
+    expect(consumePartSource).toContain("p_idempotency_key:");
+    expect(consumePartSource).not.toContain(
+      '.from("work_order_part_allocations")',
+    );
+    expect(consumePartSource).not.toContain('.from("stock_moves")');
   });
 
-  it("surfaces inventory attachment failures from the drawer", () => {
-    expect(partsDrawerSource).toContain("throw e;");
+  it("awaits picker failures without closing the drawer action itself", () => {
+    expect(partsDrawerSource).toContain("const result = await consumePart");
+    expect(partsDrawerSource).toContain("throw new Error(result.error)");
+    expect(partsDrawerSource).not.toContain("throw e;");
+    expect(partsDrawerSource).not.toContain("toast.error(msg)");
   });
 
-  it("keeps handoff aligned with the current lifecycle schema and enum type", () => {
-    expect(handoffRuntimeShapeMigration).toContain(
+  it("hardens the final handoff function using the current lifecycle schema", () => {
+    expect(canonicalUsePartMigration).toContain(
       "v_status public.part_request_item_status;",
     );
-    expect(handoffRuntimeShapeMigration).toContain("quantity_allocated");
-    expect(handoffRuntimeShapeMigration).not.toContain("quantity_reserved");
-    expect(handoffRuntimeShapeMigration).toContain("qty_change");
-    expect(handoffRuntimeShapeMigration).toContain("reason");
-    expect(handoffRuntimeShapeMigration).not.toContain("move_type");
-    expect(handoffRuntimeShapeMigration).toContain(
+    expect(canonicalUsePartMigration).toContain(
+      "parts_lifecycle_assert_line_access",
+    );
+    expect(canonicalUsePartMigration).toContain("quantity_allocated");
+    expect(canonicalUsePartMigration).toContain("qty_change");
+    expect(canonicalUsePartMigration).not.toContain("move_type");
+    expect(canonicalUsePartMigration).toContain(
       "'partially_consumed'::public.part_request_item_status",
     );
-    expect(handoffRuntimeShapeMigration).toContain(
+    expect(canonicalUsePartMigration).toContain(
       "'consumed'::public.part_request_item_status",
     );
-    expect(handoffRuntimeShapeMigration).toContain("status = v_status");
+    expect(canonicalUsePartMigration).toContain("status = v_status");
+  });
+
+  it("recovers only evidenced allocation lineage and prevents new orphans", () => {
+    expect(canonicalUsePartMigration).toContain(
+      "allocation.stock_move_id = move.id",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "PARTS_ORPHAN_ALLOCATIONS_BLOCK_MIGRATION",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "PARTS_ALLOCATION_SCOPE_MISMATCH_BLOCKS_MIGRATION",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "alter column work_order_part_id set not null",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "foreign key (\n    work_order_part_id,\n    shop_id,\n    work_order_id,\n    work_order_line_id,\n    part_id",
+    );
   });
 });

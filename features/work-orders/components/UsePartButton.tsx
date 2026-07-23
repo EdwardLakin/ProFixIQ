@@ -1,19 +1,12 @@
 // features/work-orders/components/UsePartButton.tsx
 "use client";
 
-import { useState, useTransition } from "react";
-import { consumePart } from "@work-orders/lib/parts/consumePart";
-import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
-
-function errorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "string") return e;
-  try {
-    return JSON.stringify(e);
-  } catch {
-    return "Failed to use part";
-  }
-}
+import { useState } from "react";
+import { consumePart } from "@/features/work-orders/lib/parts/consumePart";
+import {
+  PartPicker,
+  type PickedPart,
+} from "@/features/parts/components/PartPicker";
 
 function asPositiveNumber(v: unknown): number | null {
   const n = typeof v === "number" ? v : Number(v);
@@ -22,6 +15,7 @@ function asPositiveNumber(v: unknown): number | null {
 }
 
 function asFiniteNumber(v: unknown): number | null {
+  if (v == null || v === "") return null;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : null;
 }
@@ -32,54 +26,47 @@ export function UsePartButton({
   label = "Use Part",
 }: {
   workOrderLineId: string;
-  onApplied?: () => void;
+  onApplied?: () => void | Promise<void>;
   label?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
-  const [err, setErr] = useState<string | null>(null);
 
-  const handlePick = (sel: PickedPart) => {
-    setErr(null);
+  const handlePick = async (sel: PickedPart): Promise<void> => {
+    const partId =
+      typeof sel.part_id === "string" && sel.part_id.length
+        ? sel.part_id
+        : null;
+    const qty = asPositiveNumber(sel.qty);
+    const locationId =
+      typeof sel.location_id === "string" && sel.location_id.length
+        ? sel.location_id
+        : null;
+    const unitCostRaw = asFiniteNumber(sel.unit_cost);
+    const unitCost = typeof unitCostRaw === "number" ? unitCostRaw : undefined;
 
-    start(async () => {
-      try {
-        const partId =
-          typeof sel.part_id === "string" && sel.part_id.length ? sel.part_id : null;
+    if (!partId || !qty) {
+      throw new Error("Pick a part and quantity first.");
+    }
+    if (!locationId) {
+      throw new Error("Pick an inventory location first.");
+    }
+    if (!sel.idempotency_key) {
+      throw new Error("A stable operation key is required.");
+    }
 
-        const qty = asPositiveNumber(sel.qty);
-
-        const locationId =
-          typeof sel.location_id === "string" && sel.location_id.length
-            ? sel.location_id
-            : undefined;
-
-        const unitCostRaw = asFiniteNumber(sel.unit_cost);
-        const unitCost = typeof unitCostRaw === "number" ? unitCostRaw : undefined;
-
-        const availability =
-          typeof sel.availability === "string" ? sel.availability : null;
-
-        if (!partId || !qty) {
-          setErr("Pick a part and quantity first.");
-          return;
-        }
-
-        await consumePart({
-          work_order_line_id: workOrderLineId,
-          part_id: partId,
-          qty,
-          location_id: locationId,
-          ...(typeof unitCost === "number" ? { unit_cost: unitCost } : {}),
-          availability,
-        });
-
-        onApplied?.();
-      } catch (e: unknown) {
-        const m = errorMessage(e) || "Failed to use part";
-        setErr(m.replace(/^.*error:\s*/i, ""));
-      }
+    const result = await consumePart({
+      work_order_line_id: workOrderLineId,
+      part_id: partId,
+      qty,
+      location_id: locationId,
+      ...(typeof unitCost === "number" ? { unit_cost: unitCost } : {}),
+      idempotency_key: sel.idempotency_key,
     });
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+
+    await onApplied?.();
   };
 
   return (
@@ -90,16 +77,18 @@ export function UsePartButton({
           setOpen(true);
         }}
         className="rounded-xl bg-[color:var(--theme-surface-panel)] px-3 py-2 text-[color:var(--theme-text-primary)] disabled:opacity-60"
-        disabled={pending}
         title="Use/consume a part on this job line"
         type="button"
       >
-        {pending ? "Applying…" : label}
+        {label}
       </button>
 
-      {err && <span className="ml-2 text-xs text-red-500">{err}</span>}
-
-      <PartPicker open={open} onClose={() => setOpen(false)} onPick={handlePick} />
+      <PartPicker
+        open={open}
+        onClose={() => setOpen(false)}
+        onPick={handlePick}
+        requireLocation
+      />
     </>
   );
 }

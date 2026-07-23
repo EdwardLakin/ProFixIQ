@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  "supabase/migrations/20260720143000_fix_full_allocation_handoff.sql",
+  "supabase/migrations/20260723114500_canonical_use_part_runtime_security.sql",
   "utf8",
 );
 
@@ -18,7 +18,9 @@ describe("full allocation Parts handoff", () => {
   });
 
   it("retains handoff idempotency and canonical quantity updates", () => {
-    expect(migration).toContain("idempotency_key = p_idempotency_key");
+    expect(migration).toContain(
+      "idempotency_key = trim(p_idempotency_key)",
+    );
     expect(migration).toContain("'idempotent', true");
     expect(migration).toContain("quantity_allocated = greatest(");
     expect(migration).toContain(

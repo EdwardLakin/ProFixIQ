@@ -5,11 +5,21 @@ on:
   pull_request:
     paths:
       - "app/api/parts/**"
+      - "app/api/quotes/apply-ai/route.ts"
       - "app/api/work-orders/lines/**"
       - "app/api/invoices/send/route.ts"
       - "features/invoices/server/getIssuableInvoiceSnapshot.ts"
+      - "features/parts/components/PartPicker.tsx"
+      - "features/parts/components/PartsDrawer.tsx"
+      - "features/work-orders/components/UsePartButton.tsx"
+      - "features/work-orders/lib/parts/**"
       - "supabase/migrations/20260714039*.sql"
       - "supabase/migrations/20260714040*.sql"
+      - "supabase/migrations/20260723114500_canonical_use_part_runtime_security.sql"
+      - "tests/part-picker-async-submit.test.tsx"
+      - "tests/parts-async-handoff.test.tsx"
+      - "tests/parts/full-allocation-handoff.test.ts"
+      - "tests/work-order-use-part-regression.test.ts"
       - "tests/phase3-parts-*.test.ts"
       - ".github/workflows/phase3-parts-validation.yml"
 
@@ -28,5 +38,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm exec eslint app/api/parts app/api/work-orders/lines app/api/invoices/send/route.ts features/invoices/server/getIssuableInvoiceSnapshot.ts tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
-      - run: pnpm vitest run tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
+      - run: pnpm exec eslint app/api/parts app/api/quotes/apply-ai/route.ts app/api/work-orders/lines app/api/invoices/send/route.ts features/invoices/server/getIssuableInvoiceSnapshot.ts features/parts/components/PartPicker.tsx features/parts/components/PartsDrawer.tsx features/work-orders/components/UsePartButton.tsx features/work-orders/lib/parts tests/part-picker-async-submit.test.tsx tests/parts-async-handoff.test.tsx tests/parts/full-allocation-handoff.test.ts tests/work-order-use-part-regression.test.ts tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
+      - run: pnpm vitest run tests/part-picker-async-submit.test.tsx tests/parts-async-handoff.test.tsx tests/parts/full-allocation-handoff.test.ts tests/work-order-use-part-regression.test.ts tests/phase3-parts-atomic-routes.test.ts tests/phase3-parts-sql-contract.test.ts
