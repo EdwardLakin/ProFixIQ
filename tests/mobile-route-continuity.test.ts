@@ -15,6 +15,22 @@ describe("mobile route continuity", () => {
     ["/work-orders/board", "/mobile/dispatch"],
     ["/work-orders/create", "/mobile/work-orders/create"],
     ["/work-orders/abc/quote-review", "/mobile/work-orders/abc"],
+    [
+      "/work-orders/9c2a12b0-7708-4d5f-a776-532c25022337",
+      "/mobile/work-orders/9c2a12b0-7708-4d5f-a776-532c25022337",
+    ],
+    [
+      "/work-orders/view/9c2a12b0-7708-4d5f-a776-532c25022337?tab=parts#handoff",
+      "/mobile/work-orders/9c2a12b0-7708-4d5f-a776-532c25022337?tab=parts#handoff",
+    ],
+    [
+      "/quote-review/9c2a12b0-7708-4d5f-a776-532c25022337",
+      "/mobile/work-orders/9c2a12b0-7708-4d5f-a776-532c25022337",
+    ],
+    [
+      "/work-orders/quote-review?woId=9c2a12b0-7708-4d5f-a776-532c25022337",
+      "/mobile/work-orders/9c2a12b0-7708-4d5f-a776-532c25022337",
+    ],
     ["/tech/queue", "/mobile/tech/queue"],
     ["/appointments?day=2026-07-19", "/mobile/appointments?day=2026-07-19"],
     [
@@ -43,6 +59,14 @@ describe("mobile route continuity", () => {
     expect(resolveMobileHref("/portal/fleet")).toBeNull();
     expect(resolveMobileHref("/forgot-password?redirect=%2Fmobile")).toBeNull();
     expect(requireMobileHref("/unknown-internal-route")).toBe("/mobile");
+  });
+
+  it("does not treat similar route names as dynamic record prefixes", () => {
+    expect(resolveMobileHref("/work-orders/viewer")).toBe(
+      "/mobile/work-orders/viewer",
+    );
+    expect(resolveMobileHref("/customers-list/customer-1")).toBeNull();
+    expect(resolveMobileHref("/fleet/pretrips/unit-1")).toBe("/mobile/fleet");
   });
 
   it("installs client and server guards for desktop links opened on mobile", () => {
