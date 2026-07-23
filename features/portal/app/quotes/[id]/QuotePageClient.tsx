@@ -123,7 +123,7 @@ function nullableNumber(v: unknown): number | null {
 }
 
 function formatCurrency(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "â€”";
+  if (value == null || Number.isNaN(value)) return "—";
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "CAD",
@@ -132,9 +132,9 @@ function formatCurrency(value: number | null | undefined): string {
 }
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return "â€”";
+  if (!value) return "—";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "â€”";
+  if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString();
 }
 
@@ -162,7 +162,7 @@ function getPartName(part: Record<string, unknown>): string {
 function getPartMeta(part: Record<string, unknown>): string | null {
   const pn = safeTrim(part.part_number ?? part.partNumber);
   const sku = safeTrim(part.sku);
-  return [pn, sku].filter(Boolean).join(" â€¢ ") || null;
+  return [pn, sku].filter(Boolean).join(" • ") || null;
 }
 
 function getQuoteParts(line: QuoteLineRow): QuotePartView[] {
@@ -380,7 +380,7 @@ export default function QuotePageClient(): JSX.Element {
     );
   }
 
-  const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}â€¦`;
+  const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
 
   const pendingLines = lines.filter((line) => line.approvalState === "pending");
   const approvedLines = lines.filter((line) => line.approvalState === "approved");
@@ -425,7 +425,7 @@ export default function QuotePageClient(): JSX.Element {
               href="/portal"
               className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]"
             >
-              <span aria-hidden className="text-base leading-none">â†</span>
+              <span aria-hidden className="text-base leading-none">←</span>
               Back
             </Link>
 
@@ -505,7 +505,7 @@ export default function QuotePageClient(): JSX.Element {
                     <div>
                       <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Recommendation</div>
                       <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                        {line.lineNo ? `#${line.lineNo} â€¢ ` : ""}{line.title}
+                        {line.lineNo ? `#${line.lineNo} • ` : ""}{line.title}
                       </div>
                       {line.complaint ? (
                         <div className="mt-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1.5 text-xs text-[color:var(--theme-text-secondary)]">
@@ -617,7 +617,7 @@ export default function QuotePageClient(): JSX.Element {
                               <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{part.name}</div>
                               {part.meta ? <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{part.meta}</div> : null}
                               <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                                Qty {part.qty} Ã— {formatCurrency(part.unitCost)}
+                                Qty {part.qty} × {formatCurrency(part.unitCost)}
                               </div>
                             </div>
                             <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(part.total)}</div>
@@ -628,8 +628,8 @@ export default function QuotePageClient(): JSX.Element {
                   ) : null}
 
                   <div className="mt-4 grid gap-2 text-[11px] text-[color:var(--theme-text-muted)] sm:grid-cols-3">
-                    <div>Status: {line.status || "â€”"}</div>
-                    <div>Stage: {line.stage || "â€”"}</div>
+                    <div>Status: {line.status || "—"}</div>
+                    <div>Stage: {line.stage || "—"}</div>
                     <div>Sent: {formatDate(line.sentAt)}</div>
                     {line.approvedAt ? <div>Approved: {formatDate(line.approvedAt)}</div> : null}
                     {line.declinedAt ? <div>Declined: {formatDate(line.declinedAt)}</div> : null}
@@ -689,4 +689,3 @@ export default function QuotePageClient(): JSX.Element {
     </div>
   );
 }
-
