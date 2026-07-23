@@ -275,4 +275,3 @@ export async function POST(req: Request) {
     return bad("Unexpected error", 500);
   }
 }
-
