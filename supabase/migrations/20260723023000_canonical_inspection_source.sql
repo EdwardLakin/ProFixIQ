@@ -75,6 +75,7 @@ insert into public.inspections (
   completed,
   locked,
   status,
+  created_at,
   updated_at
 )
 select
@@ -90,7 +91,7 @@ select
     'workOrderId', l.work_order_id,
     'workOrderLineId', l.work_order_line_id,
     'syncRevision', l.legacy_revision,
-    'serverUpdatedAt', l.updated_at
+    'serverUpdatedAt', coalesce(l.updated_at, now())
   ),
   false,
   l.legacy_revision,
@@ -98,6 +99,7 @@ select
   l.is_completed,
   l.is_completed,
   case when l.is_completed then 'completed' else 'draft' end,
+  coalesce(l.updated_at, now()),
   coalesce(l.updated_at, now())
 from legacy_materialized l;
 

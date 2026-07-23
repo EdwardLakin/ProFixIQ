@@ -46,6 +46,10 @@ describe("versioned canonical inspection writer migration", () => {
     expect(migration).toContain("insert into public.inspections (");
     expect(migration).toContain("from legacy_materialized l");
     expect(migration).toContain("not exists (");
+    expect(migration).toContain("created_at,\n  updated_at");
+    expect(migration).toContain(
+      "coalesce(l.updated_at, now()),\n  coalesce(l.updated_at, now())",
+    );
   });
 
   it("keeps the canonical marker and row behind database-managed workflows", () => {
