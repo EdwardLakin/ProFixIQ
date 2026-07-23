@@ -55,7 +55,7 @@ export async function createPortalQuoteRequest(args: {
   );
 
   if (error) {
-    throw new Error([error.message, error.details, error.hint].filter(Boolean).join(" â€” "));
+    throw new Error([error.message, error.details, error.hint].filter(Boolean).join(" — "));
   }
 
   const result = data as Partial<PortalQuoteRequestResult> | null;
@@ -72,4 +72,3 @@ export async function createPortalQuoteRequest(args: {
     idempotent: result.idempotent === true,
   };
 }
-
