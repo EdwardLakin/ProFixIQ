@@ -8,25 +8,16 @@ import { ensureMainLocation } from "@parts/lib/locations";
 
 type DB = Database;
 
-type StockMoveRow = DB["public"]["Tables"]["stock_moves"]["Row"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 
 export type ConsumePartInput = {
   work_order_line_id: string;
   part_id: string;
-  qty: number; // positive number means "consume qty"
+  qty: number; // positive number means "attach qty"
   location_id?: string; // optional; defaults to MAIN for the WO's shop
   unit_cost?: number; // optional override from UI (NO nulls)
   availability?: string | null; // accepted but not stored yet
 };
-
-function extractStockMoveId(data: unknown): string | null {
-  if (typeof data === "string" && data.length > 0) return data;
-  if (!data || typeof data !== "object") return null;
-  const maybe = data as Partial<StockMoveRow>;
-  const id = maybe.id;
-  return typeof id === "string" && id.length > 0 ? id : null;
-}
 
 function asFiniteNumber(v: unknown): number | null {
   const n = typeof v === "number" ? v : Number(v);
@@ -150,34 +141,15 @@ export async function consumePart(input: ConsumePartInput) {
 
   const qtyAbs = Math.abs(input.qty);
 
-  // 5) Create stock move (consume = negative)
-  // NOTE: apply_stock_move returns a stock move UUID in the current schema.
-  const { data: moveRow, error: mErr } = await supabase.rpc("apply_stock_move", {
-    p_part: input.part_id,
-    p_loc: locationId,
-    p_qty: -qtyAbs,
-    p_reason: "consume",
-    p_ref_kind: "work_order",
-    p_ref_id: workOrderId,
-  });
-
-  if (mErr) throw mErr;
-
-  const moveId = extractStockMoveId(moveRow);
-  if (!moveId) {
-    throw new Error("Inventory move failed: apply_stock_move returned no id");
-  }
-
-  // 6) Create allocation row (link to move)
-  // CRITICAL: include shop_id to satisfy shop-scoped policies (shop_id = current_shop_id())
-  const baseInsert = {
+  // Match the generic inspection / quote attach path: create a pending allocation
+  // record and let lifecycle handoff perform the physical stock issue.
+  const baseInsert: DB["public"]["Tables"]["work_order_part_allocations"]["Insert"] = {
     shop_id: shopId,
     work_order_id: workOrderId,
     work_order_line_id: input.work_order_line_id,
     part_id: input.part_id,
     location_id: locationId,
     qty: qtyAbs,
-    stock_move_id: moveId,
   };
 
   const allocInsert =
@@ -193,11 +165,11 @@ export async function consumePart(input: ConsumePartInput) {
 
   if (aErr) throw aErr;
 
-  // 7) Revalidate the WO page
+  // 5) Revalidate the WO page
   revalidatePath(`/work-orders/${workOrderId}`);
 
   const allocationId =
     alloc && typeof alloc.id === "string" ? alloc.id : undefined;
 
-  return { allocationId, moveId };
+  return { allocationId };
 }
