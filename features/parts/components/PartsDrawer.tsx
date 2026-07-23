@@ -77,6 +77,7 @@ export default function PartsDrawer({
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to use part.";
         toast.error(msg);
+        throw e;
       }
     },
     [emitClose, workOrderLineId],
