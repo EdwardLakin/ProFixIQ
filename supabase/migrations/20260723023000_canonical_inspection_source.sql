@@ -7,6 +7,100 @@ alter table public.inspections
   add column if not exists is_canonical boolean not null default false,
   add column if not exists sync_revision bigint not null default 0;
 
+-- Materialize progress created by the legacy session-only route before all
+-- readers switch to inspections. The work-order line is authoritative for
+-- tenant and work-order identity; one latest session is retained per line.
+with ranked_legacy_sessions as (
+  select
+    gen_random_uuid() as inspection_id,
+    s.state,
+    s.template,
+    s.vehicle_id,
+    s.user_id,
+    s.created_by,
+    s.completed_at,
+    s.status as session_status,
+    s.updated_at,
+    wol.id as work_order_line_id,
+    wol.work_order_id,
+    wol.shop_id,
+    row_number() over (
+      partition by wol.shop_id, wol.id
+      order by s.updated_at desc nulls last, s.id desc
+    ) as session_rank
+  from public.inspection_sessions s
+  join public.work_order_lines wol
+    on wol.id = s.work_order_line_id
+  where s.work_order_line_id is not null
+    and wol.shop_id is not null
+    and not exists (
+      select 1
+      from public.inspections i
+      where i.shop_id = wol.shop_id
+        and i.work_order_line_id = wol.id
+    )
+), legacy_materialized as (
+  select
+    r.*,
+    case
+      when jsonb_typeof(r.state) = 'object' then r.state
+      else '{}'::jsonb
+    end as session_state,
+    (
+      r.completed_at is not null
+      or lower(coalesce(r.session_status, '')) in ('completed', 'finalized', 'signed')
+      or lower(coalesce(r.state->>'status', '')) in ('completed', 'finalized', 'signed')
+      or lower(coalesce(r.state->>'completed', 'false')) = 'true'
+    ) as is_completed,
+    case
+      when coalesce(r.state->>'syncRevision', '') ~ '^[0-9]+$'
+        then (r.state->>'syncRevision')::bigint
+      else 0
+    end as legacy_revision
+  from ranked_legacy_sessions r
+  where r.session_rank = 1
+)
+insert into public.inspections (
+  id,
+  work_order_id,
+  work_order_line_id,
+  shop_id,
+  user_id,
+  vehicle_id,
+  inspection_type,
+  summary,
+  is_canonical,
+  sync_revision,
+  is_draft,
+  completed,
+  locked,
+  status,
+  updated_at
+)
+select
+  l.inspection_id,
+  l.work_order_id,
+  l.work_order_line_id,
+  l.shop_id,
+  coalesce(l.user_id, l.created_by),
+  l.vehicle_id,
+  l.template,
+  l.session_state || jsonb_build_object(
+    'id', l.inspection_id,
+    'workOrderId', l.work_order_id,
+    'workOrderLineId', l.work_order_line_id,
+    'syncRevision', l.legacy_revision,
+    'serverUpdatedAt', l.updated_at
+  ),
+  false,
+  l.legacy_revision,
+  not l.is_completed,
+  l.is_completed,
+  l.is_completed,
+  case when l.is_completed then 'completed' else 'draft' end,
+  coalesce(l.updated_at, now())
+from legacy_materialized l;
+
 -- Select one deterministic canonical row for every anchored inspection. Older
 -- duplicate rows remain available for evidence recovery and audit history.
 with ranked as (
@@ -41,6 +135,68 @@ create unique index if not exists inspections_one_canonical_per_line_idx
 create index if not exists inspections_canonical_work_order_idx
   on public.inspections(shop_id, work_order_id, updated_at desc)
   where is_canonical;
+
+-- Canonical rows are changed only by the SECURITY DEFINER inspection
+-- workflows. Existing broad shop policies remain available for historical
+-- non-canonical rows without allowing direct clients to bypass revision CAS.
+drop policy if exists inspections_shop_insert on public.inspections;
+create policy inspections_shop_insert
+  on public.inspections
+  for insert
+  to authenticated
+  with check (
+    shop_id = public.current_shop_id()
+    and not is_canonical
+    and sync_revision = 0
+  );
+
+drop policy if exists inspections_shop_update on public.inspections;
+create policy inspections_shop_update
+  on public.inspections
+  for update
+  to authenticated
+  using (
+    shop_id = public.current_shop_id()
+    and not is_canonical
+  )
+  with check (
+    shop_id = public.current_shop_id()
+    and not is_canonical
+    and sync_revision = 0
+  );
+
+drop policy if exists inspections_shop_delete on public.inspections;
+create policy inspections_shop_delete
+  on public.inspections
+  for delete
+  to authenticated
+  using (
+    shop_id = public.current_shop_id()
+    and not is_canonical
+  );
+
+create or replace function public.prevent_inspection_canonical_marker_mutation()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $canonical_marker_guard$
+begin
+  if new.is_canonical is distinct from old.is_canonical then
+    raise exception using
+      errcode = 'P0001',
+      message = 'The canonical inspection marker is database-managed.';
+  end if;
+  return new;
+end;
+$canonical_marker_guard$;
+
+drop trigger if exists prevent_inspection_canonical_marker_mutation
+  on public.inspections;
+create trigger prevent_inspection_canonical_marker_mutation
+before update of is_canonical on public.inspections
+for each row
+execute function public.prevent_inspection_canonical_marker_mutation();
 
 create or replace function public.save_inspection_progress_v3_atomic(
   p_shop_id uuid,

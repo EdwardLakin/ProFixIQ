@@ -24,7 +24,8 @@ describe("Phase 6 inspection progress route", () => {
   });
 
   it("uses only the canonical atomic RPC for critical writes", () => {
-    expect(route).toContain('rpc("save_inspection_progress_atomic"');
+    expect(route).toContain("const { data, error } = await rpc.rpc(");
+    expect(route).toContain('"save_inspection_progress_v3_atomic"');
     expect(route).not.toContain('.from("inspection_sessions")');
     expect(route).not.toContain('.from("inspections")');
   });

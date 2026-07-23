@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 const migration = read(
-  "supabase/migrations/20260723010000_canonical_inspection_source.sql",
+  "supabase/migrations/20260723023000_canonical_inspection_source.sql",
 );
 const saveRoute = read("app/api/inspections/save/route.ts");
 const loadRoute = read("app/api/inspections/load/route.ts");
@@ -34,6 +34,20 @@ describe("canonical inspection source contract", () => {
       "alter publication supabase_realtime drop table public.inspection_sessions",
     );
     expect(autosave).not.toContain('table: "inspection_sessions"');
+  });
+
+  it("moves legacy session-only progress into the canonical store first", () => {
+    expect(migration.indexOf("with ranked_legacy_sessions as")).toBeLessThan(
+      migration.indexOf("with ranked as"),
+    );
+    expect(migration).toContain("from public.inspection_sessions s");
+    expect(migration).toContain("from legacy_materialized l");
+  });
+
+  it("prevents ordinary table access from changing canonical state", () => {
+    expect(migration).toContain("and not is_canonical");
+    expect(migration).toContain("prevent_inspection_canonical_marker_mutation");
+    expect(migration).toContain("before update of is_canonical");
   });
 
   it("uses IndexedDB only as device recovery, never browser storage as truth", () => {

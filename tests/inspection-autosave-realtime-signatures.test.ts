@@ -21,7 +21,7 @@ const migration = readFileSync(
   "utf8",
 );
 const canonicalMigration = readFileSync(
-  "supabase/migrations/20260723010000_canonical_inspection_source.sql",
+  "supabase/migrations/20260723023000_canonical_inspection_source.sql",
   "utf8",
 );
 const desktopSettings = readFileSync(
@@ -120,4 +120,3 @@ describe("inspection autosave, realtime, and signatures", () => {
     );
   });
 });
-

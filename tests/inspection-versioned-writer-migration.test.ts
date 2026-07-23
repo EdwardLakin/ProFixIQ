@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  "supabase/migrations/20260723010000_canonical_inspection_source.sql",
+  "supabase/migrations/20260723023000_canonical_inspection_source.sql",
   "utf8",
 );
 
@@ -33,6 +33,29 @@ describe("versioned canonical inspection writer migration", () => {
     expect(migration).toContain("sync_revision = v_next_revision");
     expect(migration).toContain(
       "revoke insert, update, delete on public.inspection_sessions",
+    );
+  });
+
+  it("materializes legacy session-only progress before choosing a canonical row", () => {
+    const materializeAt = migration.indexOf("with ranked_legacy_sessions as");
+    const canonicalizeAt = migration.indexOf("with ranked as");
+
+    expect(materializeAt).toBeGreaterThan(-1);
+    expect(canonicalizeAt).toBeGreaterThan(materializeAt);
+    expect(migration).toContain("from public.inspection_sessions s");
+    expect(migration).toContain("insert into public.inspections (");
+    expect(migration).toContain("from legacy_materialized l");
+    expect(migration).toContain("not exists (");
+  });
+
+  it("keeps the canonical marker and row behind database-managed workflows", () => {
+    expect(migration).toContain("and not is_canonical");
+    expect(migration).toContain(
+      "create or replace function public.prevent_inspection_canonical_marker_mutation()",
+    );
+    expect(migration).toContain("before update of is_canonical");
+    expect(migration).toContain(
+      "The canonical inspection marker is database-managed.",
     );
   });
 });
