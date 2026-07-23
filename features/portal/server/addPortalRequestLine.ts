@@ -58,10 +58,9 @@ export async function addPortalRequestLine(args: {
   if (error) {
     const message = [error.message, error.details, error.hint]
       .filter(Boolean)
-      .join(" â€” ");
+      .join(" — ");
     throw new Error(message);
   }
 
   return (data ?? { ok: true }) as Record<string, unknown>;
 }
-
