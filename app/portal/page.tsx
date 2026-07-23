@@ -87,7 +87,7 @@ export default async function PortalHomePage() {
         <PortalPageHeader
           eyebrow="Customer portal"
           title={`Good to see you, ${customerName}`}
-          subtitle="See whatâ€™s happening with your vehicle and what you need to do next."
+          subtitle="See what’s happening with your vehicle and what you need to do next."
           actions={
             <Link
               href="/portal/request/when"
@@ -252,7 +252,7 @@ export default async function PortalHomePage() {
       console.error("[portal/home] unable to load customer portal", error);
       return (
         <div className="mx-auto max-w-xl rounded-3xl border border-red-500/30 bg-red-500/10 p-5 text-sm text-red-100">
-          <p className="font-semibold">We couldnâ€™t load your portal.</p>
+          <p className="font-semibold">We couldn’t load your portal.</p>
           <p className="mt-1">
             Please refresh the page or contact the shop if this continues.
           </p>
@@ -270,4 +270,3 @@ export default async function PortalHomePage() {
     );
   }
 }
-
