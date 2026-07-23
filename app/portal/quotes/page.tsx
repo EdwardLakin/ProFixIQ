@@ -37,7 +37,7 @@ export default async function PortalQuotesPage() {
       <PortalPageHeader
         eyebrow="Customer portal"
         title="Quotes"
-        subtitle="Request pricing, review the shopâ€™s response, and continue when you are ready."
+        subtitle="Request pricing, review the shop’s response, and continue when you are ready."
         actions={
           <Link href="/portal/quotes/request" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)]">
             <Plus className="h-4 w-4" /> Request a quote
@@ -54,7 +54,7 @@ export default async function PortalQuotesPage() {
             const approved = Boolean(line.approved_at || line.work_order_line_id);
             const Icon = partsOnly ? PackageOpen : Wrench;
             const StatusIcon = approved ? CheckCircle2 : Clock3;
-            const status = approved ? (partsOnly ? "Approved for pickup order" : workOrder.scheduled_at ? "Appointment requested" : "Approved â€” book when ready") : sent ? "Ready for your review" : "Shop is preparing your quote";
+            const status = approved ? (partsOnly ? "Approved for pickup order" : workOrder.scheduled_at ? "Appointment requested" : "Approved — book when ready") : sent ? "Ready for your review" : "Shop is preparing your quote";
             return (
               <article key={line.id} className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 shadow-card">
                 <div className="flex items-start justify-between gap-3">
@@ -62,7 +62,7 @@ export default async function PortalQuotesPage() {
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[11px] text-[color:var(--theme-text-secondary)]"><StatusIcon className="h-3.5 w-3.5" /> {status}</span>
                 </div>
                 <h2 className="mt-4 text-base font-semibold">{clean(line.description) || "Quote request"}</h2>
-                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{partsOnly ? "Parts-only â€¢ Pickup" : "Repair quote â€¢ Appointment after approval"}</p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{partsOnly ? "Parts-only • Pickup" : "Repair quote • Appointment after approval"}</p>
                 {sent ? (
                   <Link href={`/portal/quotes/${workOrder.id}`} className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[var(--accent-copper-light)]">
                     {approved ? "View approved quote" : "Review quote"}
@@ -76,4 +76,3 @@ export default async function PortalQuotesPage() {
     </div>
   );
 }
-
