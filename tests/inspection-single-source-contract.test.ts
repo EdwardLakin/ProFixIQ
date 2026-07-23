@@ -33,6 +33,11 @@ describe("canonical inspection source contract", () => {
     expect(migration).toContain(
       "alter publication supabase_realtime drop table public.inspection_sessions",
     );
+    expect(migration).toContain("from pg_publication p");
+    expect(migration).toContain("join pg_publication_rel pr");
+    expect(migration).toContain(
+      "pr.prrelid = 'public.inspection_sessions'::regclass",
+    );
     expect(autosave).not.toContain('table: "inspection_sessions"');
   });
 
@@ -61,3 +66,4 @@ describe("canonical inspection source contract", () => {
     expect(findings).not.toContain("inspection:draft-updated");
   });
 });
+
