@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Toaster, toast } from "sonner";
 
@@ -176,6 +176,8 @@ function mergeRanges(ranges: Array<[number, number]>): Array<[number, number]> {
 export default function PortalRequestWhenPage() {
   const supabase = createBrowserSupabase();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const quoteLineId = searchParams.get("quote")?.trim() ?? "";
 
   const [loading, setLoading] = useState(true);
 
@@ -269,7 +271,27 @@ export default function PortalRequestWhenPage() {
       } else {
         const vv = (v ?? []) as unknown as VehicleRow[];
         setVehicles(vv);
-        if (!vehicleId && vv[0]?.id) setVehicleId(vv[0].id);
+        if (quoteLineId) {
+          const { data: quote } = await supabase
+            .from("work_order_quote_lines")
+            .select("id,vehicle_id,approved_at,work_order_line_id,metadata")
+            .eq("id", quoteLineId)
+            .eq("shop_id", cust.shop_id)
+            .maybeSingle();
+          const quoteMetadata = quote?.metadata && typeof quote.metadata === "object" && !Array.isArray(quote.metadata)
+            ? quote.metadata as Record<string, unknown>
+            : {};
+          const quoteVehicleId = typeof quote?.vehicle_id === "string" ? quote.vehicle_id : "";
+          const ownedVehicle = vv.some((vehicle) => vehicle.id === quoteVehicleId);
+          if (!quote || quoteMetadata.request_kind !== "repair" || (!quote.approved_at && !quote.work_order_line_id) || !ownedVehicle) {
+            toast.error("This repair quote is not ready to book.");
+            router.replace("/portal/quotes");
+            return;
+          }
+          setVehicleId(quoteVehicleId);
+        } else if (!vehicleId && vv[0]?.id) {
+          setVehicleId(vv[0].id);
+        }
       }
 
       const { data: h, error: hErr } = await supabase.from("shop_hours").select("*").eq("shop_id", s.id);
@@ -375,13 +397,14 @@ export default function PortalRequestWhenPage() {
         startAttemptKeyRef.current = crypto.randomUUID();
       }
 
-      // ✅ Matches /api/portal/request/start expectations
+      // âœ… Matches /api/portal/request/start expectations
       const payload = {
         vehicleId,
         startsAt: selectedSlotIso,
         durationMins: 60,
         visitType,
         idempotencyKey: startAttemptKeyRef.current,
+        quoteLineId: quoteLineId || null,
       };
 
       const r = await postJson<{ workOrderId?: string; bookingId?: string }>(
@@ -404,7 +427,12 @@ export default function PortalRequestWhenPage() {
 
       startAttemptKeyRef.current = "";
 
-      // ✅ Option B: carry bookingId into build page (NOT startsAt)
+      if (quoteLineId) {
+        router.replace(`/portal/booking/confirmation?wo=${encodeURIComponent(wo)}`);
+        return;
+      }
+
+      // âœ… Option B: carry bookingId into build page (NOT startsAt)
       router.push(
         `/portal/request/build?wo=${encodeURIComponent(wo)}&booking=${encodeURIComponent(booking)}`,
       );
@@ -417,7 +445,7 @@ export default function PortalRequestWhenPage() {
   }
 
   if (loading) {
-    return <div className={cardClass() + " mx-auto max-w-xl text-sm text-[color:var(--theme-text-primary)]"}>Loading…</div>;
+    return <div className={cardClass() + " mx-auto max-w-xl text-sm text-[color:var(--theme-text-primary)]"}>Loadingâ€¦</div>;
   }
 
   if (!customer) {
@@ -426,7 +454,7 @@ export default function PortalRequestWhenPage() {
         <Toaster position="top-center" />
         <div className={cardClass()}>
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Request service</h1>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">We couldn’t find your customer profile yet.</p>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">We couldnâ€™t find your customer profile yet.</p>
           <div className="mt-4 flex gap-2">
             <LinkButton href="/portal/profile" variant="outline" size="sm">
               Go to profile
@@ -446,7 +474,7 @@ export default function PortalRequestWhenPage() {
         <Toaster position="top-center" />
         <div className={cardClass()}>
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Request service</h1>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Your portal account isn’t linked to a shop yet.</p>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Your portal account isnâ€™t linked to a shop yet.</p>
           <div className="mt-4 flex gap-2">
             <LinkButton href="/portal/profile" variant="outline" size="sm">
               Go to profile
@@ -474,9 +502,9 @@ export default function PortalRequestWhenPage() {
         >
           Request
         </div>
-        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Pick a time</h1>
+        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">{quoteLineId ? "Book approved quote" : "Pick a time"}</h1>
         <p className="text-xs text-[color:var(--theme-text-secondary)]">
-          {customerName} • Shop: <span className="text-[color:var(--theme-text-secondary)]">{shop.slug}</span>
+          {customerName} â€¢ Shop: <span className="text-[color:var(--theme-text-secondary)]">{shop.slug}</span>
         </p>
       </header>
 
@@ -494,11 +522,11 @@ export default function PortalRequestWhenPage() {
               </div>
             </div>
           ) : (
-            <select className={inputClass()} value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+            <select className={inputClass()} value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} disabled={Boolean(quoteLineId)}>
               {vehicles.map((v) => {
                 const label =
                   [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() || "Vehicle";
-                const vin = v.vin ? ` • VIN ${String(v.vin).slice(-6)}` : "";
+                const vin = v.vin ? ` â€¢ VIN ${String(v.vin).slice(-6)}` : "";
                 return (
                   <option key={v.id} value={v.id}>
                     {label}
@@ -579,7 +607,7 @@ export default function PortalRequestWhenPage() {
             disabled={!canStart || starting || vehicles.length === 0}
             className="min-w-[180px]"
           >
-            {starting ? "Starting…" : "Next: intake & request"}
+            {starting ? "Startingâ€¦" : quoteLineId ? "Book this quote" : "Next: choose service"}
           </Button>
 
           <LinkButton href="/portal/customer-appointments" variant="outline" size="sm">
@@ -588,9 +616,10 @@ export default function PortalRequestWhenPage() {
         </div>
 
         <p className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
-          Next you’ll complete an intake form, then build your request (menu items, custom lines, and quote-only requests).
+          Next youâ€™ll complete an intake form, then build your request (menu items, custom lines, and quote-only requests).
         </p>
       </section>
     </div>
   );
 }
+
