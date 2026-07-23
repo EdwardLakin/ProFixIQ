@@ -17,7 +17,7 @@ type RequestKind = "repair" | "parts_only";
 function vehicleLabel(vehicle: Vehicle): string {
   const name = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Vehicle";
   const detail = vehicle.license_plate?.trim() || (vehicle.vin ? `VIN ${vehicle.vin.slice(-6)}` : "");
-  return [name, detail].filter(Boolean).join(" â€¢ ");
+  return [name, detail].filter(Boolean).join(" • ");
 }
 
 const inputClass =
@@ -112,11 +112,11 @@ export default function QuoteRequestPageClient() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5 text-[color:var(--theme-text-primary)]">
       <header className="space-y-2">
-        <Link href="/portal/quotes" className="text-xs font-semibold text-[var(--accent-copper-light)]">â† My quotes</Link>
+        <Link href="/portal/quotes" className="text-xs font-semibold text-[var(--accent-copper-light)]">← My quotes</Link>
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">Customer quote request</div>
         <h1 className="text-2xl font-semibold">What would you like priced?</h1>
         <p className="text-sm text-[color:var(--theme-text-secondary)]">
-          Ask for a repair estimate or parts for pickup. You can review and approve the shopâ€™s quote here.
+          Ask for a repair estimate or parts for pickup. You can review and approve the shop’s quote here.
         </p>
       </header>
 
@@ -146,7 +146,7 @@ export default function QuoteRequestPageClient() {
         <div className="mt-5 space-y-4">
           <label className="block space-y-2">
             <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"><Car className="h-4 w-4" /> Vehicle</span>
-            {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading vehiclesâ€¦</div> : vehicles.length ? (
+            {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading vehicles…</div> : vehicles.length ? (
               <select className={inputClass} value={vehicleId} onChange={(event) => setVehicleId(event.target.value)}>
                 {vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicleLabel(vehicle)}</option>)}
               </select>
@@ -189,11 +189,10 @@ export default function QuoteRequestPageClient() {
           {error ? <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">{error}</div> : null}
 
           <Button type="button" className="min-h-12 w-full sm:w-auto" onClick={() => void submit()} disabled={loading || submitting || vehicles.length === 0}>
-            {submitting ? "Sending requestâ€¦" : requestKind === "repair" ? "Request repair quote" : "Send to Parts"}
+            {submitting ? "Sending request…" : requestKind === "repair" ? "Request repair quote" : "Send to Parts"}
           </Button>
         </div>
       </section>
     </div>
   );
 }
-
