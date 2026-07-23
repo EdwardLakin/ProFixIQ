@@ -3,10 +3,30 @@ export type EmptyPartRequestCandidate = {
   itemCount: number;
 };
 
+export const DISMISSIBLE_EMPTY_PART_REQUEST_STATUSES = [
+  "requested",
+  "quoted",
+  "approved",
+] as const;
+
+const dismissibleEmptyStatuses = new Set<string>(
+  DISMISSIBLE_EMPTY_PART_REQUEST_STATUSES,
+);
+
+export function isDismissibleEmptyPartRequestStatus(
+  status: unknown,
+): boolean {
+  return dismissibleEmptyStatuses.has(
+    String(status ?? "")
+      .trim()
+      .toLowerCase(),
+  );
+}
+
 /**
- * Empty request cards are safe to dismiss only before pricing or physical
- * parts activity begins. Keeping this rule shared prevents the card UI from
- * offering cancellation for partially built or operational requests.
+ * A request can be dismissed when it has no parts and has not reached a
+ * physical parts state. Requested, quoted, and approved parents are all
+ * pre-operational when they contain no item rows.
  */
 export function isDismissibleEmptyPartRequestBucket(
   requests: readonly EmptyPartRequestCandidate[],
@@ -15,8 +35,8 @@ export function isDismissibleEmptyPartRequestBucket(
     requests.length > 0 &&
     requests.every(
       (request) =>
-        String(request.status ?? "").toLowerCase() === "requested" &&
-        request.itemCount === 0,
+        request.itemCount === 0 &&
+        isDismissibleEmptyPartRequestStatus(request.status),
     )
   );
 }
