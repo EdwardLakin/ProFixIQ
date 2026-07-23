@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import PickOrderTaskModal from "@/features/parts/components/PickOrderTaskModal";
+import { isDismissibleEmptyPartRequestBucket } from "@/features/parts/lib/requests/empty-request";
 import {
   earliestPartsRequestStage,
   isPartsRequestItemHandedOff,
@@ -367,18 +368,30 @@ function ProgressRail({ bucket }: { bucket: WoBucket }) {
 
 function QueueCard({
   bucket,
+  dismissingEmpty,
   handingOff,
+  onDismissEmpty,
   onHandoff,
   onOpenPickOrder,
 }: {
   bucket: WoBucket;
+  dismissingEmpty: boolean;
   handingOff: boolean;
+  onDismissEmpty: (bucket: WoBucket) => Promise<void>;
   onHandoff: (bucket: WoBucket) => Promise<void>;
   onOpenPickOrder: (bucket: WoBucket) => void;
 }) {
   const meta = bucket.stage === "completed" ? null : STAGE_META[bucket.stage];
   const href = requestHref(bucket);
-  const nextAction = meta?.next ?? "Review the completed request history.";
+  const canDismissEmpty = isDismissibleEmptyPartRequestBucket(
+    bucket.models.map((model) => ({
+      status: model.request.status,
+      itemCount: model.items.length,
+    })),
+  );
+  const nextAction = canDismissEmpty
+    ? "No parts were added. Dismiss this abandoned request or open it to review."
+    : (meta?.next ?? "Review the completed request history.");
 
   return (
     <article className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3 shadow-[var(--theme-shadow-soft)]">
@@ -398,7 +411,11 @@ function QueueCard({
             </p>
           ) : null}
         </div>
-        {meta ? (
+        {canDismissEmpty ? (
+          <span className="max-w-[48%] truncate rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
+            Empty request
+          </span>
+        ) : meta ? (
           <span
             className={`max-w-[48%] truncate rounded-md border px-2 py-1 text-[10px] font-semibold ${meta.pill}`}
           >
@@ -455,7 +472,24 @@ function QueueCard({
 
       <ProgressRail bucket={bucket} />
 
-      {bucket.stage === "ready_for_tech" ? (
+      {canDismissEmpty ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => void onDismissEmpty(bucket)}
+            disabled={dismissingEmpty}
+            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-rose-400/45 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-wait disabled:opacity-60"
+          >
+            {dismissingEmpty ? "Dismissing…" : "Dismiss"}
+          </button>
+          <Link
+            href={href}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-overlay)]"
+          >
+            Review <span aria-hidden>→</span>
+          </Link>
+        </div>
+      ) : bucket.stage === "ready_for_tech" ? (
         <button
           type="button"
           onClick={() => void onHandoff(bucket)}
@@ -537,6 +571,9 @@ export default function PartsRequestsPage(): JSX.Element {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<QueueTab>("active");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
+  const [dismissingWorkOrder, setDismissingWorkOrder] = useState<string | null>(
+    null,
+  );
   const [handingOffWorkOrder, setHandingOffWorkOrder] = useState<string | null>(
     null,
   );
@@ -741,6 +778,67 @@ export default function PartsRequestsPage(): JSX.Element {
       total +
       model.items.filter((item) => String(item.status) !== "cancelled").length,
     0,
+  );
+
+  const dismissEmptyRequests = useCallback(
+    async (bucket: WoBucket) => {
+      if (dismissingWorkOrder) return;
+
+      const canDismiss = isDismissibleEmptyPartRequestBucket(
+        bucket.models.map((model) => ({
+          status: model.request.status,
+          itemCount: model.items.length,
+        })),
+      );
+      if (!canDismiss) {
+        toast.error(
+          "Only abandoned requests with no parts or pricing can be dismissed.",
+        );
+        return;
+      }
+
+      const requestCount = bucket.models.length;
+      const confirmed = window.confirm(
+        `Dismiss ${requestCount === 1 ? "this empty parts request" : `these ${requestCount} empty parts requests`}? The records will remain in Completed history.`,
+      );
+      if (!confirmed) return;
+
+      setDismissingWorkOrder(bucket.workOrderId);
+      const toastId = toast.loading("Dismissing empty parts requests…");
+      try {
+        for (const model of bucket.models) {
+          const response = await fetch(
+            `/api/parts/requests/${model.request.id}/dismiss-empty`,
+            { method: "POST" },
+          );
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          if (!response.ok) {
+            throw new Error(
+              payload?.error || "Unable to dismiss the empty parts request.",
+            );
+          }
+        }
+
+        toast.success(
+          `${requestCount === 1 ? "Request" : "Requests"} moved to Completed history.`,
+          { id: toastId },
+        );
+        await reload();
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Unable to dismiss the empty parts requests.",
+          { id: toastId },
+        );
+        await reload();
+      } finally {
+        setDismissingWorkOrder(null);
+      }
+    },
+    [dismissingWorkOrder, reload],
   );
 
   const completeHandoff = useCallback(
@@ -948,7 +1046,11 @@ export default function PartsRequestsPage(): JSX.Element {
                       <QueueCard
                         key={bucket.workOrderId}
                         bucket={bucket}
+                        dismissingEmpty={
+                          dismissingWorkOrder === bucket.workOrderId
+                        }
                         handingOff={handingOffWorkOrder === bucket.workOrderId}
+                        onDismissEmpty={dismissEmptyRequests}
                         onHandoff={completeHandoff}
                         onOpenPickOrder={setPickOrderBucket}
                       />
@@ -969,7 +1071,9 @@ export default function PartsRequestsPage(): JSX.Element {
             <QueueCard
               key={bucket.workOrderId}
               bucket={bucket}
+              dismissingEmpty={false}
               handingOff={false}
+              onDismissEmpty={dismissEmptyRequests}
               onHandoff={completeHandoff}
               onOpenPickOrder={setPickOrderBucket}
             />
