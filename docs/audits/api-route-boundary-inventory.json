@@ -2940,6 +2940,24 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/parts/requests/[requestId]/dismiss-empty/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/parts/requests/[requestId]/handoff/route.ts",
     "methods": [
       "POST"
