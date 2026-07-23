@@ -193,4 +193,3 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
     </div>
   );
 }
-
