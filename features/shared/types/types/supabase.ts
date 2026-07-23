@@ -5849,6 +5849,7 @@ export type Database = {
           finalized_by: string | null
           id: string
           inspection_type: string | null
+          is_canonical: boolean
           is_draft: boolean | null
           location: string | null
           locked: boolean | null
@@ -5861,6 +5862,7 @@ export type Database = {
           started_at: string | null
           status: string
           summary: Json | null
+          sync_revision: number
           template_id: string | null
           updated_at: string | null
           user_id: string | null
@@ -5876,6 +5878,7 @@ export type Database = {
           finalized_by?: string | null
           id?: string
           inspection_type?: string | null
+          is_canonical?: boolean
           is_draft?: boolean | null
           location?: string | null
           locked?: boolean | null
@@ -5888,6 +5891,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           summary?: Json | null
+          sync_revision?: number
           template_id?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -5903,6 +5907,7 @@ export type Database = {
           finalized_by?: string | null
           id?: string
           inspection_type?: string | null
+          is_canonical?: boolean
           is_draft?: boolean | null
           location?: string | null
           locked?: boolean | null
@@ -5915,6 +5920,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           summary?: Json | null
+          sync_revision?: number
           template_id?: string | null
           updated_at?: string | null
           user_id?: string | null

@@ -29,11 +29,12 @@ describe("technician inspection offline recovery", () => {
 
   it("recovers before server hydration and preserves meaningful newer device edits", () => {
     expect(screen).toContain("getInspectionOfflineDraft");
-    expect(screen).toContain("replaceSession(preferred)");
+    expect(screen).toContain("replaceSession(recovered.session)");
     expect(screen).toContain("recoveryOperationKey:");
     expect(screen).toContain("!draftBootLoaded ||");
     expect(screen).toContain("!serverBootLoaded ||");
-    expect(screen).toContain("const localDraftUpdatedAtRef = useRef(0)");
+    expect(screen).not.toContain("localDraftUpdatedAtRef");
+    expect(screen).not.toContain("localStorage");
     expect(autosave).toContain("remoteShouldReplace");
     expect(autosave).toContain("hasMeaningfulLocalChanges");
     expect(autosave).toContain("recoveryOperationKey?.trim()");
@@ -89,11 +90,11 @@ describe("technician inspection offline recovery", () => {
     ).not.toContain("assertSubmissionCurrent()");
   });
 
-  it("clears durable and legacy drafts from the mounted findings flow", () => {
+  it("clears the durable recovery draft from the mounted findings flow", () => {
     expect(screen).toContain('window.addEventListener("inspection:completed"');
     expect(screen).toContain("inspectionCompletedRef.current = true");
     expect(findings).toContain("await removeInspectionOfflineDraft");
-    expect(findings).toContain("localStorage.removeItem(draftKey)");
+    expect(findings).not.toContain("localStorage");
     expect(findings.indexOf("await removeInspectionOfflineDraft")).toBeLessThan(
       findings.indexOf('new CustomEvent("inspection:completed"'),
     );

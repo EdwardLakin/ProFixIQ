@@ -2,22 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-import { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import PageShell from "@/features/shared/components/PageShell";
 import Card from "@/features/shared/components/ui/Card";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
-
 // --- Types ---
 interface InspectionItem {
-  name: string;
+  name?: string;
+  item?: string;
   status?: string;
   notes?: string;
   value?: string;
@@ -30,35 +24,58 @@ interface InspectionResultSection {
   items: InspectionItem[];
 }
 
-interface Inspection {
+interface CanonicalInspection {
   id: string;
-  created_at: string;
-  template_name?: string;
+  updatedAt: string | null;
+  templateName?: string;
   status: string;
-  result: InspectionResultSection[];
+  sections: InspectionResultSection[];
 }
+
+type LoadResponse = {
+  session?: {
+    id?: string | null;
+    templateName?: string | null;
+    templateitem?: string | null;
+    status?: string | null;
+    sections?: InspectionResultSection[];
+  } | null;
+  inspectionMeta?: {
+    status?: string | null;
+    updatedAt?: string | null;
+  } | null;
+};
 
 export default function InspectionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [inspection, setInspection] = useState<Inspection | null>(null);
+  const [inspection, setInspection] = useState<CanonicalInspection | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
     const fetchInspection = async () => {
-      const { data, error } = await supabase
-        .from("inspections")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const response = await fetch(
+        `/api/inspections/load?inspectionId=${encodeURIComponent(id)}`,
+        { credentials: "include", cache: "no-store" },
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | LoadResponse
+        | null;
 
-      if (error || !data) {
-        console.error("Error fetching inspection:", error);
-        router.push("/inspection/saved");
+      if (!response.ok || !payload?.session) {
+        router.push("/inspections/saved");
         return;
       }
 
-      setInspection(data as Inspection);
+      setInspection({
+        id: payload.session.id ?? id,
+        updatedAt: payload.inspectionMeta?.updatedAt ?? null,
+        templateName:
+          payload.session.templateName ?? payload.session.templateitem ?? undefined,
+        status:
+          payload.inspectionMeta?.status ?? payload.session.status ?? "draft",
+        sections: payload.session.sections ?? [],
+      });
       setLoading(false);
     };
 
@@ -98,9 +115,9 @@ export default function InspectionDetailPage() {
   return (
     <PageShell
       eyebrow="Inspection"
-      title={inspection.template_name || "Inspection Details"}
+      title={inspection.templateName || "Inspection Details"}
       description="Evidence-forward review of captured inspection findings."
-      actions={<PreviousPageButton to="/inspection/saved" />}
+      actions={<PreviousPageButton to="/inspections/saved" />}
     >
       <Card className="mb-5 px-4 py-4">
         <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -108,19 +125,21 @@ export default function InspectionDetailPage() {
             {inspection.status}
           </StatusBadge>
           <span className="text-[var(--theme-text-secondary,var(--theme-text-muted))]">
-            Created: {format(new Date(inspection.created_at), "PPpp")}
+            Updated: {inspection.updatedAt ? format(new Date(inspection.updatedAt), "PPpp") : "—"}
           </span>
         </div>
       </Card>
 
       <div className="space-y-4">
-        {inspection.result?.map((section, index) => (
+        {inspection.sections.map((section, index) => (
           <Card key={index} className="px-4 py-4">
             <h2 className="mb-2 text-lg font-semibold">{section.title}</h2>
             <ul className="space-y-2">
               {section.items?.map((item, i) => (
                 <li key={i} className="text-sm text-[var(--theme-text-secondary,var(--theme-text-muted))]">
-                  <span className="font-semibold text-[var(--theme-text-primary,var(--theme-text-primary))]">{item.name}:</span>{" "}
+                  <span className="font-semibold text-[var(--theme-text-primary,var(--theme-text-primary))]">
+                    {item.name ?? item.item ?? "Inspection item"}:
+                  </span>{" "}
                   {item.status || "N/A"}
                   {item.notes && <span className="block">Note: {item.notes}</span>}
                   {item.value && (

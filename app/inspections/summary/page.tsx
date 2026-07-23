@@ -1,8 +1,5 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-import FeaturePage from "@/features/inspections/app/inspection/summary/page";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <FeaturePage />;
+  redirect("/inspections/saved");
 }

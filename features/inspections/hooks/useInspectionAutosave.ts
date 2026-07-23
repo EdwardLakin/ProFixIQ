@@ -57,15 +57,10 @@ type LoadResponse = {
 };
 
 type RealtimeInspectionRow = {
+  is_canonical?: boolean | null;
   summary?: unknown;
   locked?: boolean | null;
   finalized_at?: string | null;
-  updated_at?: string | null;
-  work_order_line_id?: string | null;
-};
-
-type RealtimeSessionRow = {
-  state?: unknown;
   updated_at?: string | null;
   work_order_line_id?: string | null;
 };
@@ -473,7 +468,7 @@ export function useInspectionAutosave({
     return () => {
       cancelled = true;
     };
-  }, [pullLatest]);
+  }, [enabled, pullLatest]);
 
   useEffect(() => {
     if (!enabled || !workOrderLineId) return;
@@ -491,6 +486,7 @@ export function useInspectionAutosave({
         (payload) => {
           if (payload.eventType === "DELETE") return;
           const row = (payload.new ?? {}) as RealtimeInspectionRow;
+          if (row.is_canonical !== true) return;
           const meta: InspectionRemoteMeta = {
             locked: Boolean(row.locked),
             finalizedAt: row.finalized_at ?? null,
@@ -500,25 +496,6 @@ export function useInspectionAutosave({
             applyRemote(row.summary, meta);
           } else {
             applyRemoteMeta(meta);
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "inspection_sessions",
-          filter: `work_order_line_id=eq.${workOrderLineId}`,
-        },
-        (payload) => {
-          if (payload.eventType === "DELETE") return;
-          const row = (payload.new ?? {}) as RealtimeSessionRow;
-          if (hasDurableSession(row.state)) {
-            // Session rows carry progress only. Lock/finalization metadata comes
-            // from the canonical inspections row so a progress event can never
-            // temporarily unlock a signed inspection.
-            applyRemote(row.state);
           }
         },
       )

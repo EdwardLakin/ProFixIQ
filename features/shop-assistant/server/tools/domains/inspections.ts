@@ -43,6 +43,7 @@ export const listInspectionsTool = defineShopAssistantTool({
         "id, work_order_id, work_order_line_id, status, completed, locked, finalized_at, updated_at",
       )
       .eq("shop_id", context.actor.shopId)
+      .eq("is_canonical", true)
       .order("updated_at", { ascending: false, nullsFirst: false })
       .limit(input.limit);
     if (input.workOrderId) query = query.eq("work_order_id", input.workOrderId);

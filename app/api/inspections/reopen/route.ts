@@ -53,6 +53,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const canonical = await supabase
+    .from("inspections")
+    .select("id")
+    .eq("id", inspectionId)
+    .eq("is_canonical", true)
+    .maybeSingle<{ id: string }>();
+  if (canonical.error) {
+    return NextResponse.json({ error: canonical.error.message }, { status: 400 });
+  }
+  if (!canonical.data) {
+    return NextResponse.json(
+      { error: "Canonical inspection was not found." },
+      { status: 404 },
+    );
+  }
+
   const { data, error } = await (supabase as unknown as ReopenRpcClient).rpc(
     "reopen_inspection",
     {

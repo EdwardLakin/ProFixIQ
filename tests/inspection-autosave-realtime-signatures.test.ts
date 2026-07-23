@@ -9,10 +9,6 @@ const genericScreen = readFileSync(
   "features/inspections/screens/GenericInspectionScreen.tsx",
   "utf8",
 );
-const reviewPanel = readFileSync(
-  "features/inspections/components/inspection/InspectionReviewPanel.tsx",
-  "utf8",
-);
 const signaturePanel = readFileSync(
   "features/inspections/components/inspection/InspectionSignaturePanel.tsx",
   "utf8",
@@ -22,6 +18,10 @@ const loadRoute = readFileSync("app/api/inspections/load/route.ts", "utf8");
 const saveRoute = readFileSync("app/api/inspections/save/route.ts", "utf8");
 const migration = readFileSync(
   "supabase/migrations/20260721160000_inspection_live_autosave_signature_hardening.sql",
+  "utf8",
+);
+const canonicalMigration = readFileSync(
+  "supabase/migrations/20260723023000_canonical_inspection_source.sql",
   "utf8",
 );
 const desktopSettings = readFileSync(
@@ -48,7 +48,6 @@ describe("inspection autosave, realtime, and signatures", () => {
     expect(autosaveHook).toContain("maxBarrierPasses");
     expect(genericScreen).toContain("useInspectionAutosave");
     expect(genericScreen).not.toContain("SaveInspectionButton");
-    expect(reviewPanel).not.toContain("SaveInspectionButton");
   });
 
   it("subscribes to cross-device progress and lock changes", () => {
@@ -56,8 +55,10 @@ describe("inspection autosave, realtime, and signatures", () => {
     expect(autosaveHook).toContain('table: "inspections"');
     expect(autosaveHook).toContain("onRemoteSessionRef.current(remote)");
     expect(loadRoute).toContain("locked: Boolean(inspectionRow?.locked)");
-    expect(migration).toContain("'inspection_sessions'");
-    expect(migration).toContain("'inspections'");
+    expect(autosaveHook).not.toContain('table: "inspection_sessions"');
+    expect(canonicalMigration).toContain(
+      "alter publication supabase_realtime drop table public.inspection_sessions",
+    );
     expect(migration).toContain("replica identity full");
   });
 
@@ -119,4 +120,3 @@ describe("inspection autosave, realtime, and signatures", () => {
     );
   });
 });
-

@@ -18,10 +18,7 @@ const desktopSettings = read("app/dashboard/tech/settings/page.tsx");
 const mobileSettings = read(
   "features/mobile/settings/MobileSettingsScreen.tsx",
 );
-const screens = [
-  read("features/inspections/screens/GenericInspectionScreen.tsx"),
-  read("features/inspections/components/inspection/InspectionReviewPanel.tsx"),
-];
+const screen = read("features/inspections/screens/GenericInspectionScreen.tsx");
 
 describe("inspection live autosave and saved signatures", () => {
   it("repairs draft lifecycle fields and saves without line uniqueness", () => {
@@ -58,13 +55,11 @@ describe("inspection live autosave and saved signatures", () => {
   });
 
   it("autosaves the canonical inspection surfaces and removes manual save controls", () => {
-    for (const screen of screens) {
-      expect(screen).toContain("useInspectionAutosave");
-      expect(screen).not.toContain("<SaveInspectionButton");
-      expect(screen).not.toContain("import { SaveInspectionButton }");
-    }
-    expect(screens[0]).toContain("beforeSign={() => flushAutosaveToServer()}");
-    expect(screens[0]).toContain(
+    expect(screen).toContain("useInspectionAutosave");
+    expect(screen).not.toContain("<SaveInspectionButton");
+    expect(screen).not.toContain("import { SaveInspectionButton }");
+    expect(screen).toContain("beforeSign={() => flushAutosaveToServer()}");
+    expect(screen).toContain(
       "beforeNavigate={() => flushAutosaveToServer()}",
     );
     expect(findings).toContain("await flushAutosaveToServer(nextSession)");
@@ -103,9 +98,7 @@ describe("inspection live autosave and saved signatures", () => {
     expect(finalizeRoute).toContain(
       "Inspection has not finished autosaving yet",
     );
-    expect(finalizeRoute).toContain(
-      '.order("updated_at", { ascending: false, nullsFirst: false })',
-    );
+    expect(finalizeRoute).toContain('.eq("is_canonical", true)');
     expect(desktopSettings).toContain("upsert: false");
     expect(mobileSettings).toContain("upsert: false");
     expect(migration).toContain("prevent_technician_signature_mutation");

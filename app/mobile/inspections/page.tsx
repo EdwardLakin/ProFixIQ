@@ -19,6 +19,36 @@ type InspectionRow = {
   vehicle_label: string | null;
 };
 
+type CanonicalInspectionRow = {
+  id: string;
+  work_order_id: string | null;
+  work_order_line_id: string | null;
+  status: string | null;
+  created_at: string | null;
+  summary: {
+    templateName?: string | null;
+    templateitem?: string | null;
+    customer?: { first_name?: string | null; last_name?: string | null } | null;
+    vehicle?: {
+      year?: string | number | null;
+      make?: string | null;
+      model?: string | null;
+    } | null;
+  } | null;
+};
+
+function displayName(row: CanonicalInspectionRow): string | null {
+  const customer = row.summary?.customer;
+  const value = `${customer?.first_name ?? ""} ${customer?.last_name ?? ""}`.trim();
+  return value || null;
+}
+
+function vehicleLabel(row: CanonicalInspectionRow): string | null {
+  const vehicle = row.summary?.vehicle;
+  const value = `${vehicle?.year ?? ""} ${vehicle?.make ?? ""} ${vehicle?.model ?? ""}`.trim();
+  return value || null;
+}
+
 const BADGE_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]";
 
@@ -61,10 +91,11 @@ export default function MobileInspectionsListPage() {
           );
         }
         const { data, error: queryError } = await supabase
-          .from("inspection_sessions")
+          .from("inspections")
           .select(
-            "id, work_order_id, work_order_line_id, custom_id, status, created_at, customer_name, vehicle_label",
+            "id, work_order_id, work_order_line_id, status, created_at, summary",
           )
+          .eq("is_canonical", true)
           .order("created_at", { ascending: false })
           .limit(50);
 
@@ -72,15 +103,16 @@ export default function MobileInspectionsListPage() {
         if (!active) return;
 
         setRows(
-          (data ?? []).map((row) => ({
+          ((data ?? []) as unknown as CanonicalInspectionRow[]).map((row) => ({
             id: row.id,
             work_order_id: row.work_order_id ?? null,
             work_order_line_id: row.work_order_line_id ?? null,
-            custom_id: row.custom_id ?? null,
+            custom_id:
+              row.summary?.templateName ?? row.summary?.templateitem ?? null,
             status: row.status ?? null,
             created_at: row.created_at ?? null,
-            customer_name: row.customer_name ?? null,
-            vehicle_label: row.vehicle_label ?? null,
+            customer_name: displayName(row),
+            vehicle_label: vehicleLabel(row),
           })),
         );
       } catch (caught) {
