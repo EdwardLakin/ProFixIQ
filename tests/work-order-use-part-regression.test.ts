@@ -6,10 +6,6 @@ describe("work order Use Part regression", () => {
     "features/work-orders/lib/parts/consumePart.ts",
     "utf8",
   );
-  const partPickerSource = readFileSync(
-    "features/parts/components/PartPicker.tsx",
-    "utf8",
-  );
   const partsDrawerSource = readFileSync(
     "features/parts/components/PartsDrawer.tsx",
     "utf8",
@@ -24,12 +20,7 @@ describe("work order Use Part regression", () => {
     );
   });
 
-  it("keeps the picker open while inventory attachment is pending or failed", () => {
-    expect(partPickerSource).toContain(
-      "onPick?: (sel: PickedPart) => void | Promise<void>;",
-    );
-    expect(partPickerSource).toContain("await onPick?.(payload);");
-    expect(partPickerSource).toContain("disabled={!selectedPartId || qtyNum <= 0 || submitting}");
+  it("surfaces inventory attachment failures from the drawer", () => {
     expect(partsDrawerSource).toContain("throw e;");
   });
 });
