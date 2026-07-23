@@ -402,14 +402,9 @@ select set_config('app.parts_direct_use', '0', true);
 set local role authenticated;
 select public.parts_issue_work_order_part(
   (
-    select id
-    from public.work_order_parts
-    where work_order_line_id =
-        'd0000000-0000-4000-8000-000000000001'
-      and part_id = 'e0000000-0000-4000-8000-000000000001'
-      and source_parts_request_item_id is null
-      and is_active
-    limit 1
+    select (result ->> 'work_order_part_id')::uuid
+    from direct_runtime_results
+    where attempt = 'first'
   ),
   'f0000000-0000-4000-8000-000000000001',
   1,
@@ -598,12 +593,9 @@ select set_config(
 );
 set local role authenticated;
 select pg_temp.expect_cross_shop_denied((
-  select id
-  from public.work_order_parts
-  where work_order_line_id =
-      'd0000000-0000-4000-8000-000000000001'
-    and source_parts_request_item_id is null
-  limit 1
+  select (result ->> 'work_order_part_id')::uuid
+  from direct_runtime_results
+  where attempt = 'first'
 ));
 select pg_temp.expect_cross_shop_canonical_denied();
 reset role;
