@@ -321,7 +321,7 @@ export default function PortalShell({
               />
               {desktopExpanded
                 ? signingOut
-                  ? "Signing outâ€¦"
+                  ? "Signing out…"
                   : "Sign out"
                 : null}
             </button>
@@ -399,7 +399,7 @@ export default function PortalShell({
                 className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3 text-sm font-semibold text-red-100 disabled:opacity-60"
               >
                 <LogOut className="h-[18px] w-[18px]" aria-hidden="true" />
-                {signingOut ? "Signing outâ€¦" : "Sign out"}
+                {signingOut ? "Signing out…" : "Sign out"}
               </button>
             </div>
           </aside>
@@ -408,4 +408,3 @@ export default function PortalShell({
     </div>
   );
 }
-
