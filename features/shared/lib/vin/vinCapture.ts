@@ -28,10 +28,37 @@ const VIN_TRANSLITERATION: Readonly<Record<string, number>> = {
   Z: 9,
 };
 
+const OCR_CHARACTER_OPTIONS: Readonly<Record<string, readonly string[]>> = {
+  O: ["0"],
+  Q: ["0"],
+  I: ["1"],
+  B: ["B", "8"],
+  "8": ["8", "B"],
+  G: ["G", "6"],
+  "6": ["6", "G"],
+  S: ["S", "5"],
+  "5": ["5", "S"],
+  Z: ["Z", "2"],
+  "2": ["2", "Z"],
+  L: ["L", "1"],
+  "1": ["1", "L"],
+  D: ["D", "0"],
+  "0": ["0", "D"],
+};
+
+const MAX_OCR_CORRECTIONS = 4;
+const MAX_OCR_VARIANTS = 128;
+const MAX_OCR_WINDOWS = 160;
+
 export type VinCaptureCandidate = {
   vin: string;
   checksumValid: boolean;
   score: number;
+};
+
+export type OcrVinCandidate = VinCaptureCandidate & {
+  corrections: number;
+  contextBoost: number;
 };
 
 export type StableVinResult = VinCaptureCandidate & {
@@ -109,6 +136,149 @@ export function extractVinCandidates(input: unknown): VinCaptureCandidate[] {
   return [...candidates.values()].sort(
     (left, right) => right.score - left.score || left.vin.localeCompare(right.vin),
   );
+}
+
+function addOcrWindows(
+  output: Array<{ value: string; contextBoost: number }>,
+  compact: string,
+  contextBoost: number,
+) {
+  if (output.length >= MAX_OCR_WINDOWS) return;
+  if (compact.length < 17) return;
+
+  if (compact.length === 17) {
+    output.push({ value: compact, contextBoost });
+    return;
+  }
+
+  const remaining = MAX_OCR_WINDOWS - output.length;
+  const windowCount = Math.min(compact.length - 16, remaining);
+  for (let index = 0; index < windowCount; index += 1) {
+    output.push({ value: compact.slice(index, index + 17), contextBoost });
+  }
+}
+
+function collectOcrWindows(input: unknown): Array<{ value: string; contextBoost: number }> {
+  const raw = String(input ?? "").trim().toUpperCase().slice(0, 2_048);
+  if (!raw) return [];
+
+  const windows: Array<{ value: string; contextBoost: number }> = [];
+  const chunks = [raw, ...raw.split(/\r?\n/)].filter(Boolean);
+
+  for (const chunk of chunks) {
+    if (windows.length >= MAX_OCR_WINDOWS) break;
+
+    const hasVinContext = /\bVIN\b|VEHICLE\s+IDENTIFICATION/.test(chunk);
+    const contextBoost = hasVinContext ? 35 : 0;
+    const compact = chunk.replace(/[^A-Z0-9]/g, "");
+
+    addOcrWindows(windows, compact, contextBoost);
+
+    const withoutVinLabel = compact.replace(/^VIN/, "");
+    if (withoutVinLabel !== compact) {
+      addOcrWindows(windows, withoutVinLabel, contextBoost + 15);
+    }
+
+    const tokenMatches = chunk.match(/[A-Z0-9][A-Z0-9\s\-_.:/\\|]{15,34}[A-Z0-9]/g) ?? [];
+    for (const token of tokenMatches) {
+      if (windows.length >= MAX_OCR_WINDOWS) break;
+      addOcrWindows(
+        windows,
+        token.replace(/[^A-Z0-9]/g, ""),
+        contextBoost,
+      );
+    }
+  }
+
+  const unique = new Map<string, { value: string; contextBoost: number }>();
+  for (const entry of windows) {
+    const existing = unique.get(entry.value);
+    if (!existing || entry.contextBoost > existing.contextBoost) {
+      unique.set(entry.value, entry);
+    }
+  }
+  return [...unique.values()];
+}
+
+function buildOcrVariants(value: string): Array<{ value: string; corrections: number }> {
+  let states: Array<{ value: string; corrections: number }> = [
+    { value: "", corrections: 0 },
+  ];
+
+  for (const character of value) {
+    const options = OCR_CHARACTER_OPTIONS[character] ?? [character];
+    const next = new Map<string, number>();
+
+    for (const state of states) {
+      for (const option of options) {
+        const corrections = state.corrections + (option === character ? 0 : 1);
+        if (corrections > MAX_OCR_CORRECTIONS) continue;
+
+        const candidate = `${state.value}${option}`;
+        const prior = next.get(candidate);
+        if (prior === undefined || corrections < prior) {
+          next.set(candidate, corrections);
+        }
+      }
+    }
+
+    states = [...next.entries()]
+      .map(([candidate, corrections]) => ({ value: candidate, corrections }))
+      .sort(
+        (left, right) =>
+          left.corrections - right.corrections || left.value.localeCompare(right.value),
+      )
+      .slice(0, MAX_OCR_VARIANTS);
+  }
+
+  return states;
+}
+
+export function extractVinCandidatesFromOcr(input: unknown): OcrVinCandidate[] {
+  const candidates = new Map<string, OcrVinCandidate>();
+
+  for (const window of collectOcrWindows(input)) {
+    for (const variant of buildOcrVariants(window.value)) {
+      const normalized = normalizeVinInput(variant.value);
+      if (!normalized.isValid) continue;
+
+      const checksumValid = hasValidVinChecksum(normalized.vin);
+      const score =
+        (checksumValid ? 250 : 0) +
+        window.contextBoost +
+        40 -
+        variant.corrections * 12;
+      const current = candidates.get(normalized.vin);
+
+      if (!current || score > current.score) {
+        candidates.set(normalized.vin, {
+          vin: normalized.vin,
+          checksumValid,
+          score,
+          corrections: variant.corrections,
+          contextBoost: window.contextBoost,
+        });
+      }
+    }
+  }
+
+  return [...candidates.values()].sort(
+    (left, right) =>
+      Number(right.checksumValid) - Number(left.checksumValid) ||
+      right.score - left.score ||
+      left.corrections - right.corrections ||
+      left.vin.localeCompare(right.vin),
+  );
+}
+
+export function pickBestOcrVin(input: unknown): OcrVinCandidate | null {
+  const candidates = extractVinCandidatesFromOcr(input);
+  const checksumConfirmed = candidates.find((candidate) => candidate.checksumValid);
+  if (checksumConfirmed) return checksumConfirmed;
+
+  // Never invent a non-checksummed VIN through character substitution. Exact OCR
+  // output remains available for markets where position nine is not a check digit.
+  return candidates.find((candidate) => candidate.corrections === 0) ?? null;
 }
 
 export function chooseStableVin(
