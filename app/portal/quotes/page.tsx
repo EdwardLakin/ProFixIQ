@@ -25,7 +25,7 @@ export default async function PortalQuotesPage() {
         .select("id,vehicle_id,created_at,scheduled_at,invoice_sent_at,work_order_quote_lines(id,description,status,stage,approved_at,work_order_line_id,sent_to_customer_at,metadata)")
         .eq("shop_id", shopId)
         .eq("customer_id", actor.customer.id)
-        .like("source_row_id", "portal_quote:%")
+        .like("external_id", "portal_quote:%")
         .order("created_at", { ascending: false })
     : { data: [], error: null };
 
