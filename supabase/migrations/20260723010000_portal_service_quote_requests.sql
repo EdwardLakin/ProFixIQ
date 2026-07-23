@@ -1,9 +1,9 @@
 begin;
 
-create unique index if not exists work_orders_portal_quote_source_row_id_unique
-  on public.work_orders (source_row_id)
-  where source_row_id is not null
-    and source_row_id like 'portal_quote:%';
+create unique index if not exists work_orders_portal_quote_external_id_unique
+  on public.work_orders (external_id)
+  where external_id is not null
+    and external_id like 'portal_quote:%';
 
 create or replace function public.create_portal_quote_request_atomic(
   p_shop_id uuid,
@@ -99,7 +99,7 @@ begin
   else
     insert into public.work_orders (
       shop_id, customer_id, vehicle_id, status, approval_state,
-      source_row_id, notes, created_at
+      external_id, notes, created_at
     ) values (
       p_shop_id, p_customer_id, p_vehicle_id, 'new', null,
       'portal_quote:' || p_customer_id::text || ':' || v_operation_key,
