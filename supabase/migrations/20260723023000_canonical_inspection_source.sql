@@ -508,10 +508,11 @@ do $$
 begin
   if exists (
     select 1
-    from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'public'
-      and tablename = 'inspection_sessions'
+    from pg_publication p
+    join pg_publication_rel pr
+      on pr.prpubid = p.oid
+    where p.pubname = 'supabase_realtime'
+      and pr.prrelid = 'public.inspection_sessions'::regclass
   ) then
     alter publication supabase_realtime drop table public.inspection_sessions;
   end if;
@@ -523,3 +524,4 @@ comment on table public.inspection_sessions is
 
 notify pgrst, 'reload schema';
 commit;
+
