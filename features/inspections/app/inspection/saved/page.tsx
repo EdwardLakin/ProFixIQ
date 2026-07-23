@@ -215,6 +215,7 @@ export default function SavedInspectionsPage(): JSX.Element {
         `,
       )
       .eq("shop_id", shopId)
+      .eq("is_canonical", true)
       .order("created_at", { ascending: false })
       .limit(400);
 
@@ -699,23 +700,4 @@ export default function SavedInspectionsPage(): JSX.Element {
                         href={pdfHref}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_14px_rgba(212,118,49,0.6)] hover:brightness-110"
-                        title="Open finalized PDF (compliance record)"
-                      >
-                        PDF
-                      </a>
-                    ) : (
-                      <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                        No PDF
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+                        className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] shadow-[0_0_14px_rgba(212,118,49,0.6)] hover:brightne

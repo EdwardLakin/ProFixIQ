@@ -25,7 +25,11 @@ import { deriveEventsFromFindings } from "@/features/shared/lib/decisionEvents";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { cn } from "@shared/lib/utils";
 import { getPendingInspectionPhotoCount } from "@inspections/lib/inspection/inspectionPhotoStaging";
-import { removeInspectionOfflineDraft } from "@inspections/lib/inspection/offlineDrafts";
+import {
+  getInspectionOfflineDraft,
+  removeInspectionOfflineDraft,
+  saveInspectionOfflineDraft,
+} from "@inspections/lib/inspection/offlineDrafts";
 import { useInspectionAutosave } from "@inspections/hooks/useInspectionAutosave";
 
 type FindingRow = {
@@ -70,26 +74,6 @@ function inspectionDraftKey(args: {
 function isFindingStatus(status: unknown): status is "fail" | "recommend" {
   const s = norm(String(status ?? ""));
   return s === "fail" || s === "recommend";
-}
-
-function readDraftSession(key: string): InspectionSession | null {
-  try {
-    if (typeof window === "undefined") return null;
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as InspectionSession;
-  } catch {
-    return null;
-  }
-}
-
-function writeDraftSession(key: string, session: InspectionSession): void {
-  try {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(key, JSON.stringify(session));
-  } catch {
-    // ignore
-  }
 }
 
 function summarizeFromSections(session: InspectionSession): {
@@ -276,7 +260,7 @@ export default function InspectionFindingsPage(): JSX.Element {
     onRemoteSession: (remote) => {
       latestSessionRef.current = remote;
       setSession(remote);
-      writeDraftSession(draftKey, remote);
+      void saveInspectionOfflineDraft({ draftKey, session: remote });
     },
     onRemoteMeta: (meta) => {
       isLockedRef.current = meta.locked;
@@ -286,56 +270,24 @@ export default function InspectionFindingsPage(): JSX.Element {
 
   const syncFromDraft = useCallback(async () => {
     if (isLockedRef.current || busyRef.current) return;
-    const loaded = readDraftSession(draftKey);
-    if (loaded) {
-      latestSessionRef.current = loaded;
-      setSession(loaded);
+    const recovered = await getInspectionOfflineDraft({
+      draftKey,
+      sessionHint: {
+        id: inspectionId,
+        workOrderId: workOrderId || null,
+        workOrderLineId: workOrderLineId || null,
+        templateitem: templateName,
+      },
+    });
+    if (recovered) {
+      latestSessionRef.current = recovered.session;
+      setSession(recovered.session);
     }
-  }, [draftKey]);
+  }, [draftKey, inspectionId, templateName, workOrderId, workOrderLineId]);
 
   useEffect(() => {
     void syncFromDraft();
   }, [syncFromDraft]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const handleFocus = () => {
-      void syncFromDraft();
-    };
-    const handlePageShow = () => {
-      void syncFromDraft();
-    };
-
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === draftKey) void syncFromDraft();
-    };
-
-    const handleInspectionDraftUpdated = (e: Event) => {
-      const custom = e as CustomEvent<{ draftKey?: string }>;
-      if (!custom.detail?.draftKey || custom.detail.draftKey === draftKey) {
-        void syncFromDraft();
-      }
-    };
-
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("pageshow", handlePageShow);
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener(
-      "inspection:draft-updated",
-      handleInspectionDraftUpdated as EventListener,
-    );
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("pageshow", handlePageShow);
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener(
-        "inspection:draft-updated",
-        handleInspectionDraftUpdated as EventListener,
-      );
-    };
-  }, [draftKey, syncFromDraft]);
 
   const findings = useMemo(
     () => (session ? collectFindings(session) : []),
@@ -393,16 +345,8 @@ export default function InspectionFindingsPage(): JSX.Element {
         }),
       };
 
-      writeDraftSession(draftKey, next);
+      void saveInspectionOfflineDraft({ draftKey, session: next });
       latestSessionRef.current = next;
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("inspection:draft-updated", {
-            detail: { draftKey },
-          }),
-        );
-      }
 
       return next;
     });
@@ -887,443 +831,4 @@ export default function InspectionFindingsPage(): JSX.Element {
                 ? (nextSession.vehicle as unknown as { id: string }).id
                 : null,
             items: quotePayloadItems,
-          }),
-        });
-
-        const quoteJson = (await quoteRes.json().catch(() => null)) as
-          | {
-              error?: string;
-              items?: Array<{
-                requestedId?: string | null;
-                id: string;
-                created: boolean;
-              }>;
-            }
-          | null;
-        assertSubmissionCurrent();
-
-        if (!quoteRes.ok) {
-          throw new Error(quoteJson?.error || "Failed to send findings to quote review");
-        }
-
-        const canonicalQuoteIds = new Map<string, string>();
-        for (const result of quoteJson?.items ?? []) {
-          if (result.requestedId) canonicalQuoteIds.set(result.requestedId, result.id);
-        }
-
-        nextSession = {
-          ...nextSession,
-          sections: nextSession.sections.map((sec, sIdx) => ({
-            ...sec,
-            items: (sec.items ?? []).map((it, iIdx) => {
-              const localQuoteId = quoteIdByFindingKey.get(findingKey(sIdx, iIdx));
-              if (!localQuoteId) return it;
-              return {
-                ...it,
-                estimateSubmitted: true,
-                estimateSubmittedAt:
-                  (it as InspectionItem & { estimateSubmittedAt?: string | null })
-                    .estimateSubmittedAt ?? nowIso,
-                estimateLastUpdatedAt: nowIso,
-                estimateWorkOrderLineId: null,
-                estimateQuoteLineId:
-                  canonicalQuoteIds.get(localQuoteId) ?? localQuoteId,
-              };
-            }),
-          })),
-        };
-      }
-
-      assertSubmissionCurrent();
-      nextSession = { ...nextSession, lastUpdated: nowIso };
-      latestSessionRef.current = nextSession;
-      setSession(nextSession);
-      writeDraftSession(draftKey, nextSession);
-      const persistedSession = await flushAutosaveToServer(nextSession);
-      if (!persistedSession) {
-        throw new Error("Inspection did not finish saving to the server.");
-      }
-      nextSession = persistedSession;
-      latestSessionRef.current = persistedSession;
-      submissionRevision = sessionSyncRevision(persistedSession);
-      submissionInspectionId = String(
-        persistedSession.id ?? submissionInspectionId,
-      );
-      assertSubmissionCurrent();
-
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("inspection:draft-updated", {
-            detail: { draftKey },
-          }),
-        );
-      }
-
-      const payload = summarizeFromSections(nextSession);
-
-      assertSubmissionCurrent();
-      const pdfRes = await fetch(`/api/inspections/finalize/pdf`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderLineId: resolvedWorkOrderLineId,
-          expectedSyncRevision: nextSession.syncRevision ?? 0,
-        }),
-      });
-
-      const pdfJson = (await pdfRes.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
-
-      if (!pdfRes.ok || !pdfJson?.ok) {
-        throw new Error(
-          pdfJson?.error ||
-            "Inspection could not be finalized. Your draft is still saved.",
-        );
-      }
-
-      await removeInspectionOfflineDraft({
-        draftKey,
-        session: nextSession,
-      });
-      try {
-        localStorage.removeItem(draftKey);
-        localStorage.removeItem(`${draftKey}:locked`);
-      } catch {
-        // IndexedDB is authoritative; localStorage cleanup is best effort.
-      }
-
-      window.dispatchEvent(
-        new CustomEvent("inspection:completed", {
-          detail: {
-            workOrderLineId: resolvedWorkOrderLineId,
-            cause: payload.cause,
-            correction: payload.correction,
-            reviewSubmitted: true,
-          },
-        }),
-      );
-
-      window.dispatchEvent(new CustomEvent("inspection:close"));
-      toast.success("Findings sent to quote review.");
-      router.push(`/quote-review/${resolvedWorkOrderId}`);
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : "Unable to submit findings";
-      toast.error(message);
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  };
-
-  if (!session) {
-    return (
-      <PageShell
-        title="Inspection findings"
-        description="Review findings before submission."
-      >
-        <div className={cn(PANEL_VARIANTS.secondary, "p-4 text-sm text-[color:var(--theme-text-secondary)]")}>
-          Loading findings…
-        </div>
-      </PageShell>
-    );
-  }
-
-  return (
-    <PageShell
-      title="Inspection findings"
-      description="Review failed and recommended findings before sending them to advisor quote review."
-    >
-      <div className="mx-auto max-w-5xl space-y-4">
-        {isLocked && (
-          <div className="rounded-xl border border-amber-500/60 bg-amber-500/10 p-3 text-sm text-amber-100">
-            This inspection is signed and locked. Reopen it before changing findings.
-          </div>
-        )}
-        <DecisionEventFeed events={decisionEvents} compact maxVisible={5} />
-        {findings.length === 0 ? (
-          <div className={cn(PANEL_VARIANTS.passive, "p-4 text-sm text-[color:var(--theme-text-secondary)]")}>
-            No failed or recommended findings to review.
-          </div>
-        ) : (
-          findings.map((row) => {
-            const key = findingKey(row.sectionIndex, row.itemIndex);
-            const itemLabel = String(row.item.item ?? row.item.name ?? "Item");
-            const status = String(
-              row.item.status ?? "",
-            ).toLowerCase() as InspectionItemStatus;
-            const photos = row.item.photoUrls ?? [];
-            const reviewed = row.item.findingReviewed === true;
-            const decisionStatus = formatDecisionStatus({
-              findingStatus: status,
-              hasEvidence: photos.length > 0,
-              isReviewed: reviewed,
-            });
-            const laborHoursText = draftUi[key]?.laborHoursText ?? "";
-            const partsText = draftUi[key]?.partsText ?? "";
-            const isUploading = uploadingKey === key;
-
-            return (
-              <div
-                key={key}
-                className={cn(PANEL_VARIANTS.primary, "p-4")}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                      Decision unit • {row.sectionTitle}
-                    </div>
-                    <div className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
-                      {itemLabel}
-                    </div>
-                  </div>
-                  <StatusBadge
-                    variant={decisionStatus.variant}
-                    className="px-3 py-1 text-[10px]"
-                  >
-                    {decisionStatus.label}
-                  </StatusBadge>
-                </div>
-
-                <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                  <div className={cn(PANEL_VARIANTS.secondary, "space-y-3 p-3")}>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                      Evidence
-                    </div>
-                    <label className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                        Technician notes
-                      </div>
-                      <textarea
-                        className="min-h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
-                        value={String(row.item.notes ?? "")}
-                        disabled={isLocked || busy}
-                        onChange={(e) =>
-                          updateFinding(row.sectionIndex, row.itemIndex, {
-                            notes: e.target.value,
-                          })
-                        }
-                      />
-                    </label>
-                    <div>
-                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
-                        <span className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1">
-                          Visual proof: {photos.length} photo{photos.length === 1 ? "" : "s"}
-                        </span>
-
-                        <input
-                          ref={(el) => {
-                            fileInputRefs.current[key] = el;
-                          }}
-                          type="file"
-                          accept="image/*"
-                          disabled={isLocked || busy}
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            void handleUploadPhoto(row, file);
-                          }}
-                        />
-
-                        <button
-                          type="button"
-                          className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
-                          onClick={() => fileInputRefs.current[key]?.click()}
-                          disabled={isUploading || isLocked || busy}
-                        >
-                          {isUploading ? "Uploading photo..." : "Add photo evidence"}
-                        </button>
-                      </div>
-                      {photos.length > 0 ? (
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {photos.map((url, i) => (
-                            <PhotoThumbnail key={`${url}-${i}`} url={url} />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-muted)]">
-                          Add at least one photo for stronger customer approval confidence.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={cn(PANEL_VARIANTS.passive, "space-y-3 p-3")}>
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                      Recommendation
-                    </div>
-                    <label className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                        Labor hours
-                      </div>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
-                        value={laborHoursText}
-                        disabled={isLocked || busy}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          if (/^\d*\.?\d*$/.test(raw)) {
-                            updateUiDraft(row.sectionIndex, row.itemIndex, {
-                              laborHoursText: raw,
-                            });
-                          }
-                        }}
-                        onBlur={() => {
-                          const raw = laborHoursText.trim();
-
-                          if (raw === "") {
-                            updateUiDraft(row.sectionIndex, row.itemIndex, {
-                              laborHoursText: "",
-                            });
-                            updateFinding(row.sectionIndex, row.itemIndex, {
-                              laborHours: null,
-                            });
-                            return;
-                          }
-
-                          const parsed = Number(raw);
-                          if (!Number.isFinite(parsed)) {
-                            updateUiDraft(row.sectionIndex, row.itemIndex, {
-                              laborHoursText: laborHoursToText(
-                                row.item.laborHours,
-                              ),
-                            });
-                            return;
-                          }
-
-                          updateUiDraft(row.sectionIndex, row.itemIndex, {
-                            laborHoursText: String(parsed),
-                          });
-                          updateFinding(row.sectionIndex, row.itemIndex, {
-                            laborHours: parsed,
-                          });
-                        }}
-                      />
-                    </label>
-
-                    <label className="space-y-1">
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-                        Parts and quantities
-                      </div>
-                      <textarea
-                        className="min-h-[110px] w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-primary)] outline-none"
-                        value={partsText}
-                        disabled={isLocked || busy}
-                        onChange={(e) => {
-                          updateUiDraft(row.sectionIndex, row.itemIndex, {
-                            partsText: e.target.value,
-                          });
-                        }}
-                        onBlur={() => {
-                          updateFinding(row.sectionIndex, row.itemIndex, {
-                            parts: parsePartsText(partsText),
-                          });
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
-                  <button
-                    type="button"
-                    className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200 hover:bg-emerald-500/20"
-                    disabled={isLocked || busy}
-                    onClick={() => markReviewed(row)}
-                  >
-                    {reviewed ? "Reviewed" : "Mark reviewed"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)]"
-                    disabled={isLocked || busy}
-                    onClick={() =>
-                      updateFinding(row.sectionIndex, row.itemIndex, {
-                        photoRequested: true,
-                      })
-                    }
-                  >
-                    Mark photo requested
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1 hover:bg-[color:var(--theme-surface-subtle)]"
-                    disabled={isLocked || busy}
-                    onClick={() =>
-                      updateFinding(row.sectionIndex, row.itemIndex, {
-                        photoReviewed: true,
-                      })
-                    }
-                  >
-                    Mark photo reviewed
-                  </button>
-                </div>
-                <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
-                  Action needed: mark reviewed so this recommendation can move to quote review.
-                </div>
-              </div>
-            );
-          })
-        )}
-
-        <div className={cn(PANEL_VARIANTS.secondary, "flex flex-wrap items-center justify-between gap-3 p-4")}>
-          <div className="text-sm text-[color:var(--theme-text-secondary)]">
-            <div>
-              Reviewed findings:{" "}
-            <span className="font-semibold text-[color:var(--theme-text-primary)]">
-              {
-                findings.filter((row) => row.item.findingReviewed === true)
-                  .length
-              }
-            </span>
-            {" / "}
-            <span className="font-semibold text-[color:var(--theme-text-primary)]">{findings.length}</span>
-            </div>
-            <div className="mt-1 text-xs">
-              {autosaveLabel}
-              {autosaveError && (
-                <span className="ml-2 text-red-400">{autosaveError}</span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={async () => {
-                try {
-                  await flushAutosave();
-                  router.back();
-                } catch (error) {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : "Wait for the inspection to finish saving.",
-                  );
-                }
-              }}
-            >
-              Back
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSubmitReviewed}
-              isLoading={busy}
-              disabled={isLocked || busy}
-            >
-              {busy ? "Sending…" : "Send to Quote Review"}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </PageShell>
-  );
-}
+        

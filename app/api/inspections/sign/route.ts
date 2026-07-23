@@ -139,9 +139,7 @@ async function resolveInspectionForSigning(args: {
       .select("id")
       .eq("shop_id", shopId)
       .eq("work_order_line_id", lineResult.data.id)
-      .order("updated_at", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false })
-      .limit(1)
+      .eq("is_canonical", true)
       .maybeSingle<{ id: string }>();
 
     if (canonical.error) {
@@ -172,6 +170,7 @@ async function resolveInspectionForSigning(args: {
     .select("id")
     .eq("id", requestedInspectionId)
     .eq("shop_id", shopId)
+    .eq("is_canonical", true)
     .limit(1)
     .maybeSingle<{ id: string }>();
 

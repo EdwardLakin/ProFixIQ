@@ -57,15 +57,10 @@ type LoadResponse = {
 };
 
 type RealtimeInspectionRow = {
+  is_canonical?: boolean | null;
   summary?: unknown;
   locked?: boolean | null;
   finalized_at?: string | null;
-  updated_at?: string | null;
-  work_order_line_id?: string | null;
-};
-
-type RealtimeSessionRow = {
-  state?: unknown;
   updated_at?: string | null;
   work_order_line_id?: string | null;
 };
@@ -473,7 +468,7 @@ export function useInspectionAutosave({
     return () => {
       cancelled = true;
     };
-  }, [pullLatest]);
+  }, [enabled, pullLatest]);
 
   useEffect(() => {
     if (!enabled || !workOrderLineId) return;
@@ -491,6 +486,7 @@ export function useInspectionAutosave({
         (payload) => {
           if (payload.eventType === "DELETE") return;
           const row = (payload.new ?? {}) as RealtimeInspectionRow;
+          if (row.is_canonical !== true) return;
           const meta: InspectionRemoteMeta = {
             locked: Boolean(row.locked),
             finalizedAt: row.finalized_at ?? null,
@@ -500,25 +496,6 @@ export function useInspectionAutosave({
             applyRemote(row.summary, meta);
           } else {
             applyRemoteMeta(meta);
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "inspection_sessions",
-          filter: `work_order_line_id=eq.${workOrderLineId}`,
-        },
-        (payload) => {
-          if (payload.eventType === "DELETE") return;
-          const row = (payload.new ?? {}) as RealtimeSessionRow;
-          if (hasDurableSession(row.state)) {
-            // Session rows carry progress only. Lock/finalization metadata comes
-            // from the canonical inspections row so a progress event can never
-            // temporarily unlock a signed inspection.
-            applyRemote(row.state);
           }
         },
       )
@@ -851,97 +828,4 @@ export function useInspectionAutosave({
   );
 
   const flush = useCallback(
-    (override?: InspectionSession | null) =>
-      queueFlush(override, false),
-    [queueFlush],
-  );
-
-  const flushToServer = useCallback(
-    (override?: InspectionSession | null) =>
-      queueFlush(override, true),
-    [queueFlush],
-  );
-
-  useEffect(() => {
-    if (
-      !enabled ||
-      !hydrated ||
-      locked ||
-      !workOrderLineId ||
-      !session
-    ) {
-      return;
-    }
-
-    const nextFingerprint = fingerprint(session);
-    const offline =
-      typeof navigator !== "undefined" && !navigator.onLine;
-    if (
-      nextFingerprint &&
-      (nextFingerprint === lastServerFingerprintRef.current ||
-        (offline && nextFingerprint === lastQueuedFingerprintRef.current))
-    ) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      void flush().catch(() => {
-        // Status and retry UI are handled by the hook.
-      });
-    }, debounceMs);
-
-    return () => window.clearTimeout(timer);
-  }, [
-    debounceMs,
-    enabled,
-    flush,
-    hydrated,
-    locked,
-    session,
-    workOrderLineId,
-  ]);
-
-  useEffect(() => {
-    if (!enabled || !hydrated) return;
-
-    const flushLatest = () => {
-      if (!locked) {
-        void flush().catch(() => {
-          // The durable local draft remains the unload fallback.
-        });
-      }
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") flushLatest();
-    };
-    const onOnline = () => {
-      flushLatest();
-    };
-    const onFocus = () => {
-      void pullLatest().catch(() => {
-        // Realtime remains primary; focus refresh is a fallback.
-      });
-    };
-
-    window.addEventListener("pagehide", flushLatest);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("pagehide", flushLatest);
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [enabled, flush, hydrated, locked, pullLatest]);
-
-  return {
-    state,
-    hydrated,
-    lastError,
-    flush,
-    flushToServer,
-    refresh: pullLatest,
-    label: inspectionSyncLabel(state, locked),
-  };
-}
+    (override?: InspectionSession

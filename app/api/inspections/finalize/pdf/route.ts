@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
-import type { Database, Json } from "@shared/types/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 import { generateInspectionPDF } from "@/features/inspections/lib/inspection/pdf";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
@@ -159,13 +159,11 @@ export async function POST(req: NextRequest) {
   const { data: insp, error: inspErr } = await supabase
     .from("inspections")
     .select(
-      "id, work_order_id, work_order_line_id, summary, pdf_storage_path, updated_at, locked, completed, is_draft",
+      "id, work_order_id, work_order_line_id, summary, sync_revision, pdf_storage_path, updated_at, locked, completed, is_draft",
     )
     .eq("work_order_line_id", workOrderLineId)
     .eq("shop_id", shopId)
-    .order("updated_at", { ascending: false, nullsFirst: false })
-    .order("id", { ascending: false })
-    .limit(1)
+    .eq("is_canonical", true)
     .maybeSingle<
       Pick<
         DB["public"]["Tables"]["inspections"]["Row"],
@@ -179,6 +177,7 @@ export async function POST(req: NextRequest) {
         | "completed"
         | "is_draft"
       >
+      & { sync_revision: number | null }
     >();
 
   if (inspErr) {
@@ -206,32 +205,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let summary = (insp.summary ?? null) as unknown as InspectionSession | null;
-
-  if (!summary) {
-    const { data: sess, error: sessErr } = await supabase
-      .from("inspection_sessions")
-      .select("state")
-      .eq("work_order_line_id", workOrderLineId)
-      .order("updated_at", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false })
-      .limit(1)
-      .maybeSingle<{ state: Json | null }>();
-
-    if (sessErr) {
-      // eslint-disable-next-line no-console
-      console.error(
-        "[inspections/finalize/pdf] session lookup failed",
-        sessErr,
-      );
-      return NextResponse.json(
-        { error: "Inspection session missing" },
-        { status: 404 },
-      );
-    }
-
-    summary = (sess?.state ?? null) as unknown as InspectionSession | null;
-  }
+  const summary = (insp.summary ?? null) as unknown as InspectionSession | null;
 
   if (!summary || typeof summary !== "object") {
     return NextResponse.json(
@@ -240,11 +214,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const summaryRevision =
-    typeof summary.syncRevision === "number" &&
-    Number.isFinite(summary.syncRevision)
-      ? Math.max(0, Math.trunc(summary.syncRevision))
-      : 0;
+  const summaryRevision = Math.max(0, Math.trunc(insp.sync_revision ?? 0));
   if (summaryRevision !== expectedSyncRevision) {
     return NextResponse.json(
       {

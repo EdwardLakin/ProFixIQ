@@ -28,11 +28,12 @@ function isInspectionRevisionConflict(message: string): boolean {
   return (
     lower.includes("inspection save conflicts with a newer server version") ||
     lower.includes("inspection is finalized and locked") ||
-    lower.includes("inspection was finalized while autosave was in progress")
+    lower.includes("inspection was finalized while autosave was in progress") ||
+    lower.includes("inspection changed or was finalized while autosave was in progress")
   );
 }
 
-function isMissingVersionedWriter(error: RpcError | null): boolean {
+function isMissingCanonicalWriter(error: RpcError | null): boolean {
   if (!error) return false;
   const message = [error.message, error.details, error.hint]
     .filter(Boolean)
@@ -40,7 +41,7 @@ function isMissingVersionedWriter(error: RpcError | null): boolean {
     .toLowerCase();
   return (
     error.code === "PGRST202" ||
-    (message.includes("save_inspection_progress_v2_atomic") &&
+    (message.includes("save_inspection_progress_v3_atomic") &&
       (message.includes("not find") || message.includes("does not exist")))
   );
 }
@@ -119,16 +120,24 @@ export async function POST(req: NextRequest) {
     p_operation_key: `${profile.shop_id}:inspection-progress:${operationKey}`,
     p_at: new Date().toISOString(),
   };
-  let { data, error } = await rpc.rpc(
-    "save_inspection_progress_v2_atomic",
+  const { data, error } = await rpc.rpc(
+    "save_inspection_progress_v3_atomic",
     rpcArgs,
   );
 
-  // Keep deploy order safe: application instances may update before the new
-  // migration reaches PostgREST. Once v2 exists, every save uses it and can no
-  // longer resolve to the drifted legacy implementation.
-  if (isMissingVersionedWriter(error)) {
-    ({ data, error } = await rpc.rpc("save_inspection_progress_atomic", rpcArgs));
+  // Do not fall back to a writer that mirrors progress into inspection_sessions.
+  // The canonical migration must be deployed before this application build.
+  if (isMissingCanonicalWriter(error)) {
+    return NextResponse.json(
+      {
+        error:
+          "Inspection sync is waiting for the canonical server migration.",
+        code: "INSPECTION_CANONICAL_WRITER_UNAVAILABLE",
+        retryable: true,
+        workOrderLineId,
+      },
+      { status: 503 },
+    );
   }
 
   if (error) {
@@ -158,14 +167,26 @@ export async function POST(req: NextRequest) {
         ? 404
         : 400;
     if (status === 409) {
+      const { data: canonical } = await supabase
+        .from("inspections")
+        .select("id, sync_revision, updated_at")
+        .eq("shop_id", profile.shop_id)
+        .eq("work_order_line_id", workOrderLineId)
+        .eq("is_canonical", true)
+        .maybeSingle<{
+          id: string;
+          sync_revision: number | null;
+          updated_at: string | null;
+        }>();
       return NextResponse.json(
         {
           error: message,
           code: "INSPECTION_REVISION_CONFLICT",
           recoveryRequired: true,
           workOrderLineId,
-          serverRevision: null,
-          serverUpdatedAt: null,
+          canonicalInspectionId: canonical?.id ?? null,
+          serverRevision: canonical?.sync_revision ?? null,
+          serverUpdatedAt: canonical?.updated_at ?? null,
         },
         { status },
       );

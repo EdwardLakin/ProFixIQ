@@ -4,7 +4,6 @@ export const runtime = "nodejs";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
 import crypto from "crypto";
 import { buildInspectionMediaCapturedEvent } from "@/features/integrations/shopreel/server/buildProFixIQStoryEvents";
 import { postStoryEventToShopReel } from "@/features/integrations/shopreel/server/postStoryEventToShopReel";
@@ -115,17 +114,16 @@ async function resolveShopId(args: {
   return { shopId: null, source: "none" };
 }
 
-async function ensureInspectionRow(args: {
+async function resolveCanonicalInspectionRow(args: {
   supabase: ReturnType<typeof createServerSupabaseRoute>;
   inspectionId: string;
   shopId: string;
-  workOrderId: string | null;
   workOrderLineId: string | null;
 }): Promise<
   | { ok: true; inspectionId: string }
   | { ok: false; error: string }
 > {
-  const { supabase, inspectionId, shopId, workOrderId, workOrderLineId } = args;
+  const { supabase, inspectionId, shopId, workOrderLineId } = args;
 
   // The work-order line is the canonical inspection identity. Installed PWAs
   // may replay an older device-local inspection UUID after the canonical row
@@ -136,9 +134,7 @@ async function ensureInspectionRow(args: {
       .select("id")
       .eq("shop_id", shopId)
       .eq("work_order_line_id", workOrderLineId)
-      .order("updated_at", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false })
-      .limit(1)
+      .eq("is_canonical", true)
       .maybeSingle<{ id: string }>();
 
     if (existingByLineErr) {
@@ -152,6 +148,12 @@ async function ensureInspectionRow(args: {
     if (existingByLine?.id) {
       return { ok: true, inspectionId: existingByLine.id };
     }
+
+    return {
+      ok: false,
+      error:
+        "Inspection progress must reach the canonical server record before photos can upload.",
+    };
   }
 
   // Legacy standalone inspections do not have a work-order line. Keep their
@@ -161,6 +163,7 @@ async function ensureInspectionRow(args: {
     .select("id")
     .eq("id", inspectionId)
     .eq("shop_id", shopId)
+    .eq("is_canonical", true)
     .maybeSingle<{ id: string }>();
 
   if (existingByIdErr) {
@@ -175,41 +178,7 @@ async function ensureInspectionRow(args: {
     return { ok: true, inspectionId: existingById.id };
   }
 
-  let vehicleId: string | null = null;
-
-  if (workOrderId) {
-    const { data: wo, error: woErr } = await supabase
-      .from("work_orders")
-      .select("id, vehicle_id")
-      .eq("id", workOrderId)
-      .maybeSingle<{ id: string; vehicle_id: string | null }>();
-
-    if (woErr) {
-      console.error("[inspections/photos/upload] work order vehicle lookup failed", woErr);
-    }
-
-    vehicleId = wo?.vehicle_id ?? null;
-  }
-
-  const insertPayload: Database["public"]["Tables"]["inspections"]["Insert"] = {
-    id: inspectionId,
-    shop_id: shopId,
-    work_order_id: workOrderId,
-    work_order_line_id: workOrderLineId,
-    vehicle_id: vehicleId,
-    status: "in_progress",
-  };
-
-  const { error: insertErr } = await supabase
-    .from("inspections")
-    .insert(insertPayload);
-
-  if (insertErr) {
-    console.error("[inspections/photos/upload] inspection bootstrap insert failed", insertErr);
-    return { ok: false, error: insertErr.message };
-  }
-
-  return { ok: true, inspectionId };
+  return { ok: false, error: "Inspection was not found for this shop." };
 }
 
 export async function POST(req: NextRequest) {
@@ -295,18 +264,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ensure = await ensureInspectionRow({
+  const ensure = await resolveCanonicalInspectionRow({
     supabase,
     inspectionId: requestedInspectionId,
     shopId,
-    workOrderId,
     workOrderLineId,
   });
 
   if (!ensure.ok) {
     return NextResponse.json(
-      { error: `Failed to bootstrap inspection row: ${ensure.error}` },
-      { status: 500 },
+      { error: ensure.error, retryable: true },
+      { status: 409 },
     );
   }
 

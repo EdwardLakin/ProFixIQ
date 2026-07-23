@@ -75,20 +75,15 @@ describe("inspection release-blocker hardening", () => {
     expect(finalizeRoute).not.toContain("upsert: true");
   });
 
-  it("uses the same deterministic null ordering for canonical finalize reads", () => {
-    expect(
-      finalizeRoute.match(
-        /\.order\("updated_at", \{ ascending: false, nullsFirst: false \}\)/g,
-      ),
-    ).toHaveLength(2);
-    expect(finalizeRoute).toContain('.order("id", { ascending: false })');
+  it("uses the explicitly marked canonical row for finalization", () => {
+    expect(finalizeRoute).toContain('.eq("is_canonical", true)');
+    expect(finalizeRoute).not.toContain('.order("updated_at"');
+    expect(finalizeRoute).not.toContain('.order("id"');
   });
 
-  it("never falls back to a device UUID when a canonical line was supplied", () => {
-    expect(loadRoute).toContain(
-      "if (!inspectionRow && inspectionId && !workOrderLineId)",
-    );
-    expect(loadRoute).not.toContain("if (!inspectionRow && inspectionId) {");
+  it("never falls back to a non-canonical inspection row", () => {
+    expect(loadRoute).toContain('.eq("is_canonical", true)');
+    expect(loadRoute).not.toContain('.from("inspection_sessions")');
   });
 
   it("keeps role and tenant membership server-managed", () => {

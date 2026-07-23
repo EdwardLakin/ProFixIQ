@@ -70,11 +70,6 @@ export default function InspectionMenuClient() {
       title: "Saved Drafts",
       subtitle: "Resume in-progress inspections",
     },
-    {
-      href: "/inspections/summary",
-      title: "Summaries",
-      subtitle: "Review inspection results",
-    },
   ];
 
   const NAV_UTIL: Tile[] = [
