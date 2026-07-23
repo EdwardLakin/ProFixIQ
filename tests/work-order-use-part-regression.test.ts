@@ -104,6 +104,9 @@ describe("work order Use Part regression", () => {
       "Canonical work-order part was not materialized.",
     );
     expect(canonicalUsePartMigration).toContain(
+      "'location_id', p_location_id,\n    'qty_issued', p_qty,\n    'requested_unit_cost'",
+    );
+    expect(canonicalUsePartMigration).toContain(
       "new.source_parts_request_item_id is not null",
     );
     expect(canonicalUsePartMigration).toContain(

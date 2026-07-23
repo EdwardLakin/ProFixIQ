@@ -1396,6 +1396,7 @@ begin
     'work_order_line_id', v_line.id,
     'part_id', p_part_id,
     'location_id', p_location_id,
+    'qty_issued', p_qty,
     'requested_unit_cost', v_requested_cost_json,
     'effective_unit_cost', v_effective_cost,
     'allocation_id', v_allocation_id,
