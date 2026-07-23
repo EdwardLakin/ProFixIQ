@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { answerAssistant } from "@/features/agent/assistant/server/answerAssistant";
-import type {
-  AssistantAnswer,
-  AssistantConversationMessage,
-  AssistantResolvedContext,
-} from "@/features/agent/assistant/types";
-import { routeDirectToolIntent } from "@/features/shop-assistant/server/actions/directToolIntent";
+import type { AssistantConversationMessage } from "@/features/agent/assistant/types";
+import { orchestrateShopAssistantTurn } from "@/features/shop-assistant/server/orchestrator/orchestrateShopAssistantTurn";
+import type { ShopAssistantOrchestratorResult } from "@/features/shop-assistant/server/orchestrator/types";
 import {
   requireShopAssistantActor,
   shopAssistantErrorMessage,
@@ -18,7 +14,6 @@ import {
   insertAssistantMessage,
   insertUserMessageIdempotent,
   loadShopAssistantMessages,
-  mergeThreadContext,
   threadContextFromPage,
   updateShopAssistantThreadContext,
 } from "@/features/shop-assistant/server/threadStore";
@@ -31,43 +26,6 @@ import type {
   ShopAssistantThreadContext,
   ShopAssistantTurn,
 } from "@/features/shop-assistant/types";
-
-function isTechnicianDiagnosticRequest(question: string): boolean {
-  return /\b(?:[PBCU][0-9A-F]{4}|diagnos(?:e|is|tic)|pinout|expected voltage|misfire|no[- ]start|wiring test)\b/i.test(
-    question,
-  );
-}
-
-function technicianRedirectAnswer(): AssistantAnswer {
-  return {
-    intent: "unknown",
-    summary:
-      "Open the work order and use its Technician AI for diagnostic guidance. The shop-wide assistant is reserved for operations, customers, scheduling, parts, billing, reporting, and workforce coordination.",
-    bullets: [],
-    links: [],
-    entities: [],
-    actions: [],
-  };
-}
-
-function uniqueLines(values: string[]): string[] {
-  const seen = new Set<string>();
-  const output: string[] = [];
-
-  for (const value of values) {
-    const clean = value.trim();
-    const key = clean.toLowerCase();
-    if (!clean || seen.has(key)) continue;
-    seen.add(key);
-    output.push(clean);
-  }
-
-  return output;
-}
-
-function answerContent(answer: AssistantAnswer): string {
-  return uniqueLines([answer.summary, ...answer.bullets]).join("\n");
-}
 
 function conversationMessages(
   messages: ShopAssistantMessage[],
@@ -83,17 +41,6 @@ function conversationMessages(
       role: message.role === "user" ? "user" : "assistant",
       content: message.content.trim().slice(0, 4000),
     }));
-}
-
-function contextFromResolved(
-  resolved?: AssistantResolvedContext,
-): ShopAssistantThreadContext {
-  return {
-    activeWorkOrderId: resolved?.workOrderId,
-    activeCustomerId: resolved?.customerId,
-    activeVehicleId: resolved?.vehicleId,
-    activeBookingId: resolved?.bookingId,
-  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -151,7 +98,10 @@ function turnFromMessage(message: ShopAssistantMessage): ShopAssistantTurn {
   }
 
   const actionResult = actionResultFromPayload(message.payload);
-  if ((message.kind === "action_result" || message.kind === "error") && actionResult) {
+  if (
+    (message.kind === "action_result" || message.kind === "error") &&
+    actionResult
+  ) {
     return { kind: "action_result", message, action: actionResult };
   }
 
@@ -174,6 +124,61 @@ function responseFromExisting(params: {
     messages: params.messages,
     turn: turnFromMessage(params.reply),
   };
+}
+
+function resultMessageKind(
+  result: ShopAssistantOrchestratorResult,
+): ShopAssistantMessage["kind"] {
+  if (result.kind === "confirmation_required") return "confirmation";
+  if (result.kind === "action_result") return "action_result";
+  return "text";
+}
+
+function resultPayload(
+  result: ShopAssistantOrchestratorResult,
+  requestClientMessageId: string,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = { requestClientMessageId };
+  if (result.kind === "read_result") {
+    payload.toolName = result.toolName;
+    payload.output = result.output;
+    payload.domain = result.domain;
+  } else if (result.kind === "confirmation_required") {
+    payload.action = result.action;
+  } else if (result.kind === "action_result") {
+    payload.action = result.action;
+  } else if (result.kind === "clarification_required") {
+    payload.fields = result.fields;
+  } else {
+    Object.assign(payload, result.payload, {
+      domain: result.domain,
+      intent: result.kind === "answer" ? result.intent : "unsupported_action",
+    });
+  }
+  return payload;
+}
+
+function resultContext(
+  result: ShopAssistantOrchestratorResult,
+): ShopAssistantThreadContext {
+  if (result.kind === "clarification_required") return {};
+  return result.resolvedContext ?? {};
+}
+
+function resultTurn(
+  result: ShopAssistantOrchestratorResult,
+  message: ShopAssistantMessage,
+): ShopAssistantTurn {
+  if (result.kind === "confirmation_required") {
+    return { kind: "confirmation_required", message, action: result.action };
+  }
+  if (result.kind === "action_result") {
+    return { kind: "action_result", message, action: result.action };
+  }
+  if (result.kind === "clarification_required") {
+    return { kind: "clarification_required", message, fields: result.fields };
+  }
+  return { kind: "answer", message };
 }
 
 export async function POST(request: Request) {
@@ -264,129 +269,43 @@ export async function POST(request: Request) {
     }
 
     const storedMessages = await loadShopAssistantMessages(actor, thread.id);
-    const direct = await routeDirectToolIntent({
+    const result = await orchestrateShopAssistantTurn({
       actor,
       threadId: thread.id,
       clientMessageId,
       question,
       pageContext: body?.context,
       threadContext: thread.context,
+      messages: conversationMessages(storedMessages),
     });
-
-    if (direct) {
-      const kind =
-        direct.kind === "confirmation_required"
-          ? "confirmation"
-          : direct.kind === "action_result"
-            ? "action_result"
-            : "text";
-      const payload: Record<string, unknown> = {
-        requestClientMessageId: clientMessageId,
-      };
-      if (direct.kind === "read_result") {
-        payload.toolName = direct.toolName;
-        payload.output = direct.output;
-      } else if (direct.kind === "confirmation_required") {
-        payload.action = direct.action;
-      } else if (direct.kind === "action_result") {
-        payload.action = direct.action;
-      } else {
-        payload.fields = direct.fields;
-      }
-
-      const reply = await insertAssistantMessage({
-        actor,
-        threadId: thread.id,
-        kind,
-        content: direct.content,
-        payload,
-      });
-
-      const shouldSetTitle = thread.title === "Shop Assistant";
-      thread = await updateShopAssistantThreadContext({
-        actor,
-        thread,
-        context:
-          direct.kind === "clarification_required"
-            ? {}
-            : (direct.resolvedContext ?? {}),
-        title: shouldSetTitle ? question.slice(0, 80) : undefined,
-      });
-      const messages = await loadShopAssistantMessages(actor, thread.id);
-
-      const turn: ShopAssistantTurn =
-        direct.kind === "confirmation_required"
-          ? { kind: "confirmation_required", message: reply, action: direct.action }
-          : direct.kind === "action_result"
-            ? { kind: "action_result", message: reply, action: direct.action }
-            : direct.kind === "clarification_required"
-              ? {
-                  kind: "clarification_required",
-                  message: reply,
-                  fields: direct.fields,
-                }
-              : { kind: "answer", message: reply };
-
-      return NextResponse.json<ShopAssistantChatResponse>({
-        ok: true,
-        thread,
-        messages,
-        turn,
-      });
-    }
-
-    const answer = isTechnicianDiagnosticRequest(question)
-      ? technicianRedirectAnswer()
-      : await answerAssistant({
-          shopId: actor.shopId,
-          userId: actor.userId,
-          role: actor.role,
-          request: {
-            question,
-            context: body?.context,
-            session: {
-              workOrderId: thread.context.activeWorkOrderId,
-              vehicleId: thread.context.activeVehicleId,
-              customerId: thread.context.activeCustomerId,
-              bookingId: thread.context.activeBookingId,
-            },
-            messages: conversationMessages(storedMessages),
-          },
-        });
 
     const reply = await insertAssistantMessage({
       actor,
       threadId: thread.id,
-      content: answerContent(answer),
-      payload: {
-        requestClientMessageId: clientMessageId,
-        answer,
-      },
+      kind: resultMessageKind(result),
+      content: result.content,
+      payload: resultPayload(result, clientMessageId),
     });
 
-    const nextContext = mergeThreadContext(
-      contextFromResolved(answer.resolvedContext),
-      { lastIntent: answer.intent },
-    );
     const shouldSetTitle = thread.title === "Shop Assistant";
     thread = await updateShopAssistantThreadContext({
       actor,
       thread,
-      context: nextContext,
+      context: resultContext(result),
       title: shouldSetTitle ? question.slice(0, 80) : undefined,
     });
-
     const messages = await loadShopAssistantMessages(actor, thread.id);
+
     return NextResponse.json<ShopAssistantChatResponse>({
       ok: true,
       thread,
       messages,
-      turn: {
-        kind: "answer",
-        message: reply,
-      },
+      turn: resultTurn(result, reply),
     });
   } catch (error: unknown) {
+    const status = shopAssistantErrorStatus(error);
+    const retryable = status >= 500;
+
     if (actor && threadId && requestClientMessageId) {
       try {
         await insertAssistantMessage({
@@ -396,7 +315,7 @@ export async function POST(request: Request) {
           content: shopAssistantErrorMessage(error),
           payload: {
             requestClientMessageId,
-            retryable: true,
+            retryable,
           },
         });
       } catch {
@@ -408,9 +327,9 @@ export async function POST(request: Request) {
       {
         ok: false,
         error: shopAssistantErrorMessage(error),
-        retryable: shopAssistantErrorStatus(error) >= 500,
+        retryable,
       },
-      { status: shopAssistantErrorStatus(error) },
+      { status },
     );
   }
 }

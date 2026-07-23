@@ -29,10 +29,22 @@ function mapWorkOrderPath(pathname: string): string {
     return "/mobile/work-orders/create";
   }
 
-  const viewId = firstPathSegmentAfter(pathname, "/work-orders/view");
-  if (viewId) return `/mobile/work-orders/${viewId}`;
+  if (pathname === "/work-orders/view" || pathname === "/work-orders/view/") {
+    return "/mobile/work-orders";
+  }
+  if (pathname.startsWith("/work-orders/view/")) {
+    const viewId = firstPathSegmentAfter(pathname, "/work-orders/view");
+    if (viewId) return `/mobile/work-orders/${viewId}`;
+  }
 
   const workOrderId = firstPathSegmentAfter(pathname, "/work-orders");
+  return workOrderId
+    ? `/mobile/work-orders/${workOrderId}`
+    : "/mobile/work-orders";
+}
+
+function mapQuoteReviewPath(pathname: string): string {
+  const workOrderId = firstPathSegmentAfter(pathname, "/quote-review");
   return workOrderId
     ? `/mobile/work-orders/${workOrderId}`
     : "/mobile/work-orders";
@@ -151,6 +163,10 @@ export function resolveMobileHref(rawHref: string | null | undefined): string | 
     mobilePath = pathname === "/" ? "/mobile" : mapDashboardPath(pathname);
   } else if (pathname.startsWith("/work-orders")) {
     mobilePath = mapWorkOrderPath(pathname);
+  } else if (pathname.startsWith("/quote-review")) {
+    mobilePath = mapQuoteReviewPath(pathname);
+  } else if (pathname.startsWith("/billing")) {
+    mobilePath = "/mobile/billing";
   } else if (pathname.startsWith("/tech/queue")) {
     mobilePath = "/mobile/tech/queue";
   } else if (pathname.startsWith("/tech/performance")) {
@@ -159,6 +175,8 @@ export function resolveMobileHref(rawHref: string | null | undefined): string | 
     mobilePath = "/mobile/appointments";
   } else if (pathname.startsWith("/inspections")) {
     mobilePath = mapInspectionPath(pathname);
+  } else if (pathname.startsWith("/inspection_template_suggestions")) {
+    mobilePath = "/mobile/inspections";
   } else if (pathname.startsWith("/parts")) {
     mobilePath = "/mobile/parts";
   } else if (pathname.startsWith("/messages")) {
@@ -178,7 +196,11 @@ export function resolveMobileHref(rawHref: string | null | undefined): string | 
     mobilePath = "/mobile/planner";
   } else if (pathname.startsWith("/settings")) {
     mobilePath = "/mobile/settings";
-  } else if (pathname.startsWith("/reports")) {
+  } else if (
+    pathname.startsWith("/reports") ||
+    pathname.startsWith("/menu_item_suggestions") ||
+    pathname.startsWith("/menu/item")
+  ) {
     mobilePath = "/mobile/reports";
   } else if (pathname.startsWith("/technicians")) {
     mobilePath = "/mobile/technicians";

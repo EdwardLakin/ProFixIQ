@@ -22,6 +22,33 @@ const ACTIVE_WORK_ORDER_STATUSES = [
 
 const READY_TO_INVOICE_STATUSES = ["completed", "ready_to_invoice"];
 
+const FINANCIAL_ALERT_CODES = new Set([
+  "optimization_pricing_normalization",
+  "optimization_missed_revenue",
+]);
+
+const BILLING_ALERT_CODES = new Set(["invoice_unsent_too_long"]);
+
+const WORK_ORDER_ALERT_CODES = new Set([
+  "quote_waiting",
+  "approval_waiting",
+  "work_order_on_hold_too_long",
+  "work_order_waiting_too_long",
+  "active_job_running_too_long",
+]);
+
+const PARTS_ALERT_CODES = new Set(["parts_waiting_too_long"]);
+
+const WORKFORCE_ALERT_CODES = new Set([
+  "tech_overloaded",
+  "tech_underutilized_capacity",
+]);
+
+const SHOP_AGGREGATE_ALERT_CODES = new Set([
+  "shop_overloaded",
+  "shop_throughput_below_capacity",
+]);
+
 function startOfUtcDay(now: Date): string {
   return new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
@@ -41,6 +68,59 @@ function mapNotificationCode(code: string): string {
   return code;
 }
 
+function notificationVisibleToActor(
+  item: PersistedAssistantNotification,
+  capabilities: ActorCapabilities,
+): boolean {
+  if (FINANCIAL_ALERT_CODES.has(item.code)) {
+    return capabilities.canViewFinancials;
+  }
+  if (BILLING_ALERT_CODES.has(item.code)) {
+    return capabilities.canManageBilling;
+  }
+  if (WORK_ORDER_ALERT_CODES.has(item.code)) {
+    return (
+      capabilities.canManageWorkOrders ||
+      capabilities.canAuthorizeQuotes ||
+      capabilities.canViewShopWideData
+    );
+  }
+  if (PARTS_ALERT_CODES.has(item.code)) {
+    return (
+      capabilities.canManageParts ||
+      capabilities.canManageWorkOrders ||
+      capabilities.canViewShopWideData
+    );
+  }
+  if (WORKFORCE_ALERT_CODES.has(item.code)) {
+    return (
+      capabilities.canManageWorkforce ||
+      capabilities.canAssignWork ||
+      capabilities.canViewShopWideData
+    );
+  }
+  if (SHOP_AGGREGATE_ALERT_CODES.has(item.code)) {
+    return capabilities.canViewShopWideData;
+  }
+  if (item.code === "optimization_inspection_coverage_gap") {
+    return capabilities.canRunInspections && capabilities.canViewShopWideData;
+  }
+  if (item.code === "optimization_review_queued_suggestions") {
+    return (
+      capabilities.canViewFinancials ||
+      (capabilities.canRunInspections && capabilities.canViewShopWideData)
+    );
+  }
+  return capabilities.canViewShopWideData;
+}
+
+function notificationHref(
+  item: PersistedAssistantNotification,
+): string | undefined {
+  if (item.code === "invoice_unsent_too_long") return "/billing";
+  return item.href ?? undefined;
+}
+
 function mapNotification(
   item: PersistedAssistantNotification,
 ): ShopAssistantAlert {
@@ -55,7 +135,7 @@ function mapNotification(
           : "info",
     title: item.title,
     message: item.message,
-    href: item.href ?? undefined,
+    href: notificationHref(item),
     entityType: item.entity_type ?? undefined,
     entityId: item.entity_id ?? undefined,
   };
@@ -113,7 +193,7 @@ function buildHeadline(params: {
     return `${openWorkOrders} open work orders with ${idleTechnicians} technician(s) currently available.`;
   }
   if (role === "fleet_manager" || role === "dispatcher") {
-    return `${openWorkOrders} active shop work orders are visible with ${alertCount} operational signals.`;
+    return `${openWorkOrders} active fleet work orders are visible with ${alertCount} scoped operational signals.`;
   }
   return alertCount > 0
     ? `${alertCount} shop signals need attention across ${openWorkOrders} open work orders.`
@@ -279,24 +359,32 @@ export async function buildShopState(
       row.utilizationPct <= 40,
   );
 
-  const mappedNotifications = persistedNotifications.map(mapNotification);
+  const mappedNotifications = persistedNotifications
+    .filter((item) => notificationVisibleToActor(item, actor.capabilities))
+    .map(mapNotification);
   const syntheticAlerts: ShopAssistantAlert[] = [];
 
-  for (const row of idleTechnicians.slice(0, 4)) {
-    syntheticAlerts.push({
-      id: `technician-idle:${row.techId}`,
-      code: "technician_idle",
-      level: "info",
-      title: `${row.name} has available capacity`,
-      message: `${row.name} is on shift with no active job and ${row.utilizationPct}% utilization.`,
-      href: "/dashboard",
-      entityType: "profile",
-      entityId: row.techId,
-    });
+  if (
+    actor.capabilities.canManageWorkforce ||
+    actor.capabilities.canAssignWork ||
+    actor.capabilities.canViewShopWideData
+  ) {
+    for (const row of idleTechnicians.slice(0, 4)) {
+      syntheticAlerts.push({
+        id: `technician-idle:${row.techId}`,
+        code: "technician_idle",
+        level: "info",
+        title: `${row.name} has available capacity`,
+        message: `${row.name} is on shift with no active job and ${row.utilizationPct}% utilization.`,
+        href: "/dashboard",
+        entityType: "profile",
+        entityId: row.techId,
+      });
+    }
   }
 
   const readyToInvoice = readyResult.error ? 0 : Number(readyResult.count ?? 0);
-  if (readyToInvoice > 0) {
+  if (readyToInvoice > 0 && actor.capabilities.canManageBilling) {
     syntheticAlerts.push({
       id: "invoice-ready:shop",
       code: "invoice_ready",

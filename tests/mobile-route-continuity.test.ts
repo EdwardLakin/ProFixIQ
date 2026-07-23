@@ -15,6 +15,9 @@ describe("mobile route continuity", () => {
     ["/work-orders/board", "/mobile/dispatch"],
     ["/work-orders/create", "/mobile/work-orders/create"],
     ["/work-orders/abc/quote-review", "/mobile/work-orders/abc"],
+    ["/quote-review/abc", "/mobile/work-orders/abc"],
+    ["/quote-review", "/mobile/work-orders"],
+    ["/billing", "/mobile/billing"],
     ["/tech/queue", "/mobile/tech/queue"],
     ["/appointments?day=2026-07-19", "/mobile/appointments?day=2026-07-19"],
     [
@@ -43,6 +46,22 @@ describe("mobile route continuity", () => {
     expect(resolveMobileHref("/portal/fleet")).toBeNull();
     expect(resolveMobileHref("/forgot-password?redirect=%2Fmobile")).toBeNull();
     expect(requireMobileHref("/unknown-internal-route")).toBe("/mobile");
+  });
+
+  it("preserves the ready-to-invoice workflow on mobile", () => {
+    const page = read("app/mobile/billing/page.tsx");
+    const queue = read("features/billing/mobile/MobileReadyToInvoiceQueue.tsx");
+    const route = read("app/api/billing/work-orders/route.ts");
+
+    expect(page).toContain("MobileReadyToInvoiceQueue");
+    expect(queue).toContain("READY_FOR_BILLING_STATUSES");
+    expect(queue).toContain('new Set(["completed", "ready_to_invoice"])');
+    expect(queue).toContain('fetch("/api/billing/work-orders"');
+    expect(queue).toContain('cache: "no-store"');
+    expect(queue).not.toContain("canManageBilling");
+    expect(route).toContain("ROLE_GROUPS.billingOperators");
+    expect(route).toContain('requiredCapability: "canManageWorkOrders"');
+    expect(queue).toContain('href={`/mobile/work-orders/${workOrder.id}`}');
   });
 
   it("installs client and server guards for desktop links opened on mobile", () => {

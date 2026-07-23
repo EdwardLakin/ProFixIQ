@@ -13,6 +13,7 @@ import {
   shopAssistantErrorMessage,
   shopAssistantErrorStatus,
 } from "@/features/shop-assistant/server/requireShopAssistantActor";
+import { invalidateShopState } from "@/features/shop-assistant/server/state/shopStateCache";
 import { executeShopAssistantWriteTool } from "@/features/shop-assistant/server/tools/registry";
 import {
   getShopAssistantThread,
@@ -82,6 +83,10 @@ export async function POST(_request: Request, context: RouteContext) {
           retryable: true,
         });
       }
+    }
+
+    if (finalRow.status === "succeeded") {
+      await invalidateShopState(actor).catch(() => undefined);
     }
 
     const action = mapActionResult(finalRow);

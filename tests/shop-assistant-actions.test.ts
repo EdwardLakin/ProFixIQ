@@ -17,6 +17,14 @@ const chatRoute = readFileSync(
   "app/api/shop-assistant/chat/route.ts",
   "utf8",
 );
+const orchestrator = readFileSync(
+  "features/shop-assistant/server/orchestrator/orchestrateShopAssistantTurn.ts",
+  "utf8",
+);
+const diagnosticBoundary = readFileSync(
+  "features/shop-assistant/server/orchestrator/agents/diagnosticBoundaryAgent.ts",
+  "utf8",
+);
 const confirmRoute = readFileSync(
   "app/api/shop-assistant/actions/[actionId]/confirm/route.ts",
   "utf8",
@@ -76,14 +84,15 @@ describe("shop assistant tool execution contracts", () => {
     expect(registry).toContain("outputSchema.parse");
   });
 
-  it("routes explicit mutations before the legacy informational answer path", () => {
+  it("routes explicit mutations before the informational fallback", () => {
     expect(directIntent).toContain('toolName: "hold_work_order"');
     expect(directIntent).toContain('toolName: "release_work_order_hold"');
     expect(directIntent).toContain('toolName: "assign_work_order"');
     expect(directIntent).toContain('toolName: "reschedule_booking"');
     expect(directIntent).toContain('toolName: "send_conversation_message"');
-    expect(chatRoute.indexOf("routeDirectToolIntent")).toBeLessThan(
-      chatRoute.indexOf("answerAssistant({"),
+    expect(chatRoute).toContain("orchestrateShopAssistantTurn");
+    expect(orchestrator.indexOf("routeDirectToolIntent")).toBeLessThan(
+      orchestrator.indexOf("answerAssistant({"),
     );
   });
 
@@ -135,9 +144,15 @@ describe("shop assistant tool execution contracts", () => {
     expect(cancelRoute).toContain("cancelAction");
   });
 
-  it("returns intentional authorization denials and accepts technician aliases", () => {
+  it("returns and persists intentional non-retryable authorization denials", () => {
     expect(toolTypes).toContain("new ShopAssistantHttpError");
     expect(toolTypes).toContain("403");
+    expect(chatRoute).toContain("const status = shopAssistantErrorStatus(error)");
+    expect(chatRoute).toContain("const retryable = status >= 500");
+    expect(chatRoute).toContain("retryable,");
+  });
+
+  it("accepts canonical technician aliases", () => {
     expect(directIntent).toContain("canonicalizeRole");
     expect(workforceTools).toContain("canonicalizeRole");
   });
@@ -153,6 +168,8 @@ describe("shop assistant tool execution contracts", () => {
   it("leaves technician diagnostics on the existing in-work-order route", () => {
     expect(techHook).toContain('postJSON("/api/assistant/answer"');
     expect(techHook).not.toContain("/api/shop-assistant/actions");
-    expect(chatRoute).toContain("technicianRedirectAnswer");
+    expect(diagnosticBoundary).toContain("Technician AI");
+    expect(diagnosticBoundary).toContain("allowedTools: []");
+    expect(orchestrator).toContain('agent.id === "diagnostic_boundary_agent"');
   });
 });
