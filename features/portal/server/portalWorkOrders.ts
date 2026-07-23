@@ -32,6 +32,7 @@ type WorkOrderSummaryRow = Pick<
   | "vehicle_model"
   | "vehicle_unit_number"
   | "vehicle_license_plate"
+  | "source_row_id"
 >;
 
 type VehicleSummaryRow = Pick<
@@ -86,7 +87,7 @@ function vehiclePresentation(
   );
   const detail = [unit ? `Unit ${unit}` : null, plate ? `Plate ${plate}` : null]
     .filter(Boolean)
-    .join(" • ");
+    .join(" â€¢ ");
   return { label, detail: detail || null };
 }
 
@@ -126,7 +127,7 @@ export async function listPortalWorkOrdersForCustomer({
   const { data: workOrders, error: workOrderError } = await supabase
     .from("work_orders")
     .select(
-      "id,custom_id,shop_id,customer_id,vehicle_id,advisor_id,status,approval_state,created_at,updated_at,scheduled_at,expected_completion_at,invoice_sent_at,invoice_total,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate",
+      "id,custom_id,shop_id,customer_id,vehicle_id,advisor_id,status,approval_state,created_at,updated_at,scheduled_at,expected_completion_at,invoice_sent_at,invoice_total,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate,source_row_id",
     )
     .eq("shop_id", shopId)
     .eq("customer_id", customerId)
@@ -136,7 +137,11 @@ export async function listPortalWorkOrdersForCustomer({
     .returns<WorkOrderSummaryRow[]>();
 
   if (workOrderError) throw new Error(workOrderError.message);
-  const rows = workOrders ?? [];
+  const rows = (workOrders ?? []).filter(
+    (workOrder) =>
+      !workOrder.source_row_id?.startsWith("portal_quote:") ||
+      Boolean(workOrder.scheduled_at),
+  );
   if (rows.length === 0) return [];
 
   const workOrderIds = rows.map((row) => row.id);
@@ -236,3 +241,4 @@ export async function listPortalWorkOrdersForCustomer({
     };
   });
 }
+
