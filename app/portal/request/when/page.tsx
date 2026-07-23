@@ -397,7 +397,7 @@ export default function PortalRequestWhenPage() {
         startAttemptKeyRef.current = crypto.randomUUID();
       }
 
-      // âœ… Matches /api/portal/request/start expectations
+      // ✅ Matches /api/portal/request/start expectations
       const payload = {
         vehicleId,
         startsAt: selectedSlotIso,
@@ -432,7 +432,7 @@ export default function PortalRequestWhenPage() {
         return;
       }
 
-      // âœ… Option B: carry bookingId into build page (NOT startsAt)
+      // ✅ Option B: carry bookingId into build page (NOT startsAt)
       router.push(
         `/portal/request/build?wo=${encodeURIComponent(wo)}&booking=${encodeURIComponent(booking)}`,
       );
@@ -445,7 +445,7 @@ export default function PortalRequestWhenPage() {
   }
 
   if (loading) {
-    return <div className={cardClass() + " mx-auto max-w-xl text-sm text-[color:var(--theme-text-primary)]"}>Loadingâ€¦</div>;
+    return <div className={cardClass() + " mx-auto max-w-xl text-sm text-[color:var(--theme-text-primary)]"}>Loading…</div>;
   }
 
   if (!customer) {
@@ -454,7 +454,7 @@ export default function PortalRequestWhenPage() {
         <Toaster position="top-center" />
         <div className={cardClass()}>
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Request service</h1>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">We couldnâ€™t find your customer profile yet.</p>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">We couldn’t find your customer profile yet.</p>
           <div className="mt-4 flex gap-2">
             <LinkButton href="/portal/profile" variant="outline" size="sm">
               Go to profile
@@ -474,7 +474,7 @@ export default function PortalRequestWhenPage() {
         <Toaster position="top-center" />
         <div className={cardClass()}>
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Request service</h1>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Your portal account isnâ€™t linked to a shop yet.</p>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Your portal account isn’t linked to a shop yet.</p>
           <div className="mt-4 flex gap-2">
             <LinkButton href="/portal/profile" variant="outline" size="sm">
               Go to profile
@@ -504,7 +504,7 @@ export default function PortalRequestWhenPage() {
         </div>
         <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">{quoteLineId ? "Book approved quote" : "Pick a time"}</h1>
         <p className="text-xs text-[color:var(--theme-text-secondary)]">
-          {customerName} â€¢ Shop: <span className="text-[color:var(--theme-text-secondary)]">{shop.slug}</span>
+          {customerName} • Shop: <span className="text-[color:var(--theme-text-secondary)]">{shop.slug}</span>
         </p>
       </header>
 
@@ -526,7 +526,7 @@ export default function PortalRequestWhenPage() {
               {vehicles.map((v) => {
                 const label =
                   [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() || "Vehicle";
-                const vin = v.vin ? ` â€¢ VIN ${String(v.vin).slice(-6)}` : "";
+                const vin = v.vin ? ` • VIN ${String(v.vin).slice(-6)}` : "";
                 return (
                   <option key={v.id} value={v.id}>
                     {label}
@@ -607,7 +607,7 @@ export default function PortalRequestWhenPage() {
             disabled={!canStart || starting || vehicles.length === 0}
             className="min-w-[180px]"
           >
-            {starting ? "Startingâ€¦" : quoteLineId ? "Book this quote" : "Next: choose service"}
+            {starting ? "Starting…" : quoteLineId ? "Book this quote" : "Next: choose service"}
           </Button>
 
           <LinkButton href="/portal/customer-appointments" variant="outline" size="sm">
@@ -616,10 +616,9 @@ export default function PortalRequestWhenPage() {
         </div>
 
         <p className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
-          Next youâ€™ll complete an intake form, then build your request (menu items, custom lines, and quote-only requests).
+          Next you’ll complete an intake form, then build your request (menu items, custom lines, and quote-only requests).
         </p>
       </section>
     </div>
   );
 }
-
