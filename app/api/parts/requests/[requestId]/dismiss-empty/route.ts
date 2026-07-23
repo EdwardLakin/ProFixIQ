@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  DISMISSIBLE_EMPTY_PART_REQUEST_STATUSES,
+  isDismissibleEmptyPartRequestStatus,
+} from "@/features/parts/lib/requests/empty-request";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 
@@ -55,12 +59,12 @@ export async function POST(
       status: "cancelled",
     });
   }
-  if (partRequest.status !== "requested") {
+  if (!isDismissibleEmptyPartRequestStatus(partRequest.status)) {
     return NextResponse.json(
       {
         ok: false,
         error:
-          "Only an unpriced request that has not entered the parts workflow can be dismissed.",
+          "Only an empty request without physical parts activity can be dismissed.",
       },
       { status: 409 },
     );
@@ -93,7 +97,7 @@ export async function POST(
     .update({ status: "cancelled" })
     .eq("id", requestId)
     .eq("shop_id", access.profile.shop_id)
-    .eq("status", "requested")
+    .in("status", [...DISMISSIBLE_EMPTY_PART_REQUEST_STATUSES])
     .select("id,status")
     .maybeSingle();
 
