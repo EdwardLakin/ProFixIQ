@@ -47,6 +47,11 @@ type ContextOption = {
   secondary: string | null;
 };
 
+type RecipientOption = {
+  id: string;
+  label: string;
+};
+
 export default function PortalMessagesWorkspace(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const searchParams = useSearchParams();
@@ -65,6 +70,10 @@ export default function PortalMessagesWorkspace(): JSX.Element {
   const [subject, setSubject] = useState("");
   const [contextKey, setContextKey] = useState("");
   const [contextOptions, setContextOptions] = useState<ContextOption[]>([]);
+  const [recipientUserId, setRecipientUserId] = useState("");
+  const [recipientOptions, setRecipientOptions] = useState<RecipientOption[]>(
+    [],
+  );
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftScope, setDraftScope] = useState<OfflineMutationScope | null>(
@@ -77,7 +86,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
   const draftTargetId = "portal:new-conversation";
 
   const loadConversations = useCallback(async () => {
-    const response = await fetch("/api/chat/my-conversations", {
+    const response = await fetch("/api/chat/my-conversations?actor=customer", {
       credentials: "include",
     });
     if (!response.ok) throw new Error("Could not load messages");
@@ -90,13 +99,21 @@ export default function PortalMessagesWorkspace(): JSX.Element {
     void supabase.auth.getSession().then(({ data }) => {
       setUserId(data.session?.user.id ?? null);
     });
-    void fetch("/api/chat/context-options", { credentials: "include" })
+    void fetch("/api/chat/context-options?actor=customer", {
+      credentials: "include",
+    })
       .then((response) => response.json())
       .then((contextPayload) => {
-        const options = (contextPayload as { options?: ContextOption[] })
-          .options;
+        const payload = contextPayload as {
+          options?: ContextOption[];
+          recipients?: RecipientOption[];
+        };
+        const options = payload.options;
         const safeOptions = Array.isArray(options) ? options : [];
         setContextOptions(safeOptions);
+        setRecipientOptions(
+          Array.isArray(payload.recipients) ? payload.recipients : [],
+        );
         if (
           requestedContextKey &&
           safeOptions.some(
@@ -202,8 +219,9 @@ export default function PortalMessagesWorkspace(): JSX.Element {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           request_id: requestId,
+          actor_kind: "customer",
           channel: "customer",
-          participant_ids: [],
+          participant_ids: recipientUserId ? [recipientUserId] : [],
           context_type: selectedContext?.type ?? null,
           context_id: selectedContext?.id ?? null,
           title:
@@ -236,6 +254,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
       setMessage("");
       setSubject("");
       setContextKey("");
+      setRecipientUserId("");
       setNewThread(false);
       setActiveId(created.id);
       if (draftScope) {
@@ -389,6 +408,19 @@ export default function PortalMessagesWorkspace(): JSX.Element {
                 maxLength={160}
                 className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm"
               />
+              <select
+                value={recipientUserId}
+                onChange={(event) => setRecipientUserId(event.target.value)}
+                aria-label="Message recipient"
+                className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm"
+              >
+                <option value="">Assigned advisor or service team</option>
+                {recipientOptions.map((recipient) => (
+                  <option key={recipient.id} value={recipient.id}>
+                    {recipient.label}
+                  </option>
+                ))}
+              </select>
               <select
                 value={contextKey}
                 onChange={(event) => setContextKey(event.target.value)}
