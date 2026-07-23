@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
+import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import {
@@ -94,6 +95,8 @@ type LineView = {
   updatedAt: string | null;
   parts: QuotePartView[];
   evidencePhotos: string[];
+  requestKind: "repair" | "parts_only" | null;
+  fulfillment: "appointment" | "pickup" | null;
 };
 
 function paramToString(value: string | string[] | undefined): string | null {
@@ -120,7 +123,7 @@ function nullableNumber(v: unknown): number | null {
 }
 
 function formatCurrency(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "—";
+  if (value == null || Number.isNaN(value)) return "â€”";
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "CAD",
@@ -129,9 +132,9 @@ function formatCurrency(value: number | null | undefined): string {
 }
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!value) return "â€”";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "â€”";
   return d.toLocaleString();
 }
 
@@ -159,7 +162,7 @@ function getPartName(part: Record<string, unknown>): string {
 function getPartMeta(part: Record<string, unknown>): string | null {
   const pn = safeTrim(part.part_number ?? part.partNumber);
   const sku = safeTrim(part.sku);
-  return [pn, sku].filter(Boolean).join(" • ") || null;
+  return [pn, sku].filter(Boolean).join(" â€¢ ") || null;
 }
 
 function getQuoteParts(line: QuoteLineRow): QuotePartView[] {
@@ -317,6 +320,8 @@ export default function QuotePageClient(): JSX.Element {
       .map((line, index) => {
         const parts = getQuoteParts(line);
         const metadata = quoteMetadata(line);
+        const requestKind = safeTrim(metadata.request_kind);
+        const fulfillment = safeTrim(metadata.fulfillment);
         const laborHours = nullableNumber(line.labor_hours) ?? nullableNumber(line.est_labor_hours) ?? 0;
         const computedLabor = laborHours * (nullableNumber(metadata.labor_rate) ?? laborRate);
         const partsAmount = nullableNumber(line.parts_total) ?? parts.reduce((sum, part) => sum + part.total, 0);
@@ -350,6 +355,8 @@ export default function QuotePageClient(): JSX.Element {
           updatedAt: line.updated_at ?? null,
           parts,
           evidencePhotos: getEvidencePhotos(line, inspectionPhotos),
+          requestKind: requestKind === "parts_only" ? "parts_only" : requestKind === "repair" ? "repair" : null,
+          fulfillment: fulfillment === "pickup" ? "pickup" : fulfillment === "appointment" ? "appointment" : null,
         };
       });
 
@@ -373,7 +380,7 @@ export default function QuotePageClient(): JSX.Element {
     );
   }
 
-  const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}…`;
+  const titleLabel = workOrder.custom_id || `Work Order ${workOrder.id.slice(0, 8)}â€¦`;
 
   const pendingLines = lines.filter((line) => line.approvalState === "pending");
   const approvedLines = lines.filter((line) => line.approvalState === "approved");
@@ -418,7 +425,7 @@ export default function QuotePageClient(): JSX.Element {
               href="/portal"
               className="inline-flex items-center gap-2 rounded-full border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[11px] uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)] hover:text-[color:var(--theme-text-primary)]"
             >
-              <span aria-hidden className="text-base leading-none">←</span>
+              <span aria-hidden className="text-base leading-none">â†</span>
               Back
             </Link>
 
@@ -498,7 +505,7 @@ export default function QuotePageClient(): JSX.Element {
                     <div>
                       <div className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">Recommendation</div>
                       <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                        {line.lineNo ? `#${line.lineNo} • ` : ""}{line.title}
+                        {line.lineNo ? `#${line.lineNo} â€¢ ` : ""}{line.title}
                       </div>
                       {line.complaint ? (
                         <div className="mt-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1.5 text-xs text-[color:var(--theme-text-secondary)]">
@@ -610,7 +617,7 @@ export default function QuotePageClient(): JSX.Element {
                               <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{part.name}</div>
                               {part.meta ? <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{part.meta}</div> : null}
                               <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                                Qty {part.qty} × {formatCurrency(part.unitCost)}
+                                Qty {part.qty} Ã— {formatCurrency(part.unitCost)}
                               </div>
                             </div>
                             <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{formatCurrency(part.total)}</div>
@@ -621,8 +628,8 @@ export default function QuotePageClient(): JSX.Element {
                   ) : null}
 
                   <div className="mt-4 grid gap-2 text-[11px] text-[color:var(--theme-text-muted)] sm:grid-cols-3">
-                    <div>Status: {line.status || "—"}</div>
-                    <div>Stage: {line.stage || "—"}</div>
+                    <div>Status: {line.status || "â€”"}</div>
+                    <div>Stage: {line.stage || "â€”"}</div>
                     <div>Sent: {formatDate(line.sentAt)}</div>
                     {line.approvedAt ? <div>Approved: {formatDate(line.approvedAt)}</div> : null}
                     {line.declinedAt ? <div>Declined: {formatDate(line.declinedAt)}</div> : null}
@@ -645,8 +652,41 @@ export default function QuotePageClient(): JSX.Element {
               void load();
             }}
           />
+
+          {approvedLines.some((line) => line.requestKind === "repair") ? (
+            <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Ready to schedule the approved repair?</div>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Choose a time without creating another quote or work order.</p>
+              <Link
+                href={`/portal/request/when?quote=${encodeURIComponent(approvedLines.find((line) => line.requestKind === "repair")?.id ?? "")}`}
+                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)]"
+              >
+                Book appointment for this quote
+              </Link>
+            </div>
+          ) : null}
+
+          {approvedLines.some((line) => line.requestKind === "parts_only") ? (
+            <div className="mt-6 space-y-3">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Parts pickup approved</div>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Parts can now order or reserve the approved items. The shop will send the invoice when the pickup order is ready for payment.
+                </p>
+              </div>
+              {workOrder.invoice_sent_at && shop?.id ? (
+                <PortalInvoicePayButton
+                  shopId={shop.id}
+                  workOrderId={workOrder.id}
+                  amountCents={Math.max(0, Math.round(grandTotal * 100))}
+                  currency="cad"
+                />
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
+
