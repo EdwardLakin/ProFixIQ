@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 
@@ -41,6 +41,7 @@ function approvalStateForDecision(decision: Decision): Exclude<ApprovalState, nu
 export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: Props) {
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const operationKeys = useRef(new Map<string, string>());
 
   const pendingLines = useMemo(
     () => lines.filter((line) => (line.approval_state ?? "pending") === "pending"),
@@ -52,14 +53,20 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
     if (ids.length === 0 || loadingKey) return;
 
     const key = ids.length === 1 ? ids[0] : `${decision}-bulk`;
+    const actionIdentity = `${workOrderId}:${decision}:${[...ids].sort().join(",")}:${declineRemaining}`;
+    const operationKey = operationKeys.current.get(actionIdentity) ?? crypto.randomUUID();
+    operationKeys.current.set(actionIdentity, operationKey);
     setLoadingKey(key);
     setError(null);
 
     try {
       const res = await fetch(`/api/work-orders/quotes/${ids[0]}/approval-decision`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision, lineIds: ids, workOrderId, declineRemaining }),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": operationKey,
+        },
+        body: JSON.stringify({ decision, lineIds: ids, workOrderId, declineRemaining, operationKey }),
         cache: "no-store",
       });
 
@@ -72,6 +79,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
         return;
       }
 
+      operationKeys.current.delete(actionIdentity);
       await onChanged?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unexpected error updating decision.");
@@ -185,3 +193,4 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
     </div>
   );
 }
+
