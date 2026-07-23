@@ -66,6 +66,15 @@ describe("work order Use Part regression", () => {
       "alter column work_order_part_id set not null",
     );
     expect(canonicalUsePartMigration).toContain(
+      "pg_get_triggerdef(trigger_row.oid, true)",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "'drop trigger %I on public.work_order_parts'",
+    );
+    expect(canonicalUsePartMigration).toContain(
+      "execute v_trigger_definitions[v_trigger_index]",
+    );
+    expect(canonicalUsePartMigration).toContain(
       "foreign key (\n    work_order_part_id,\n    shop_id,\n    work_order_id,\n    work_order_line_id,\n    part_id",
     );
   });

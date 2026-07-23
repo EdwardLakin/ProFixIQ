@@ -18,6 +18,9 @@ declare
   v_data_type text;
   v_precision integer;
   v_scale integer;
+  v_trigger_definitions text[];
+  v_trigger_names text[];
+  v_trigger_index integer;
 begin
   select data_type, numeric_precision, numeric_scale
     into v_data_type, v_precision, v_scale
@@ -29,11 +32,48 @@ begin
   if v_data_type is distinct from 'numeric'
      or v_precision is distinct from 12
      or v_scale is distinct from 2 then
+    -- PostgreSQL will not alter a column named in an UPDATE OF trigger. Keep
+    -- every matching deployed trigger definition, remove it transactionally,
+    -- and restore the exact definition after the type change. A later failure
+    -- rolls the whole migration (including these drops) back.
+    select
+      coalesce(
+        array_agg(trigger_row.tgname order by trigger_row.tgname),
+        array[]::text[]
+      ),
+      coalesce(
+        array_agg(
+          pg_get_triggerdef(trigger_row.oid, true)
+          order by trigger_row.tgname
+        ),
+        array[]::text[]
+      )
+      into v_trigger_names, v_trigger_definitions
+    from pg_trigger trigger_row
+    where trigger_row.tgrelid = 'public.work_order_parts'::regclass
+      and not trigger_row.tgisinternal
+      and pg_get_triggerdef(trigger_row.oid, true) ~* '\mquantity\M';
+
+    for v_trigger_index in
+      1..coalesce(array_length(v_trigger_names, 1), 0)
+    loop
+      execute format(
+        'drop trigger %I on public.work_order_parts',
+        v_trigger_names[v_trigger_index]
+      );
+    end loop;
+
     execute $ddl$
       alter table public.work_order_parts
       alter column quantity type numeric(12,2)
       using quantity::numeric(12,2)
     $ddl$;
+
+    for v_trigger_index in
+      1..coalesce(array_length(v_trigger_definitions, 1), 0)
+    loop
+      execute v_trigger_definitions[v_trigger_index];
+    end loop;
   end if;
 end
 $$;
