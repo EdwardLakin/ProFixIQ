@@ -42,6 +42,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Request service",
     icon: ClipboardCheck,
   },
+  { href: "/portal/quotes", label: "Quotes", icon: FileText },
   {
     href: "/portal/customer-appointments",
     label: "Appointments",
@@ -129,9 +130,9 @@ export default function PortalShell({
     const exact = NAV.find((item) => item.href === pathname);
     if (exact) return exact.href;
     if (pathname.startsWith("/portal/request/")) return "/portal/request/when";
+    if (pathname.startsWith("/portal/quotes/")) return "/portal/quotes";
     if (
-      pathname.startsWith("/portal/work-orders/") ||
-      pathname.startsWith("/portal/quotes/")
+      pathname.startsWith("/portal/work-orders/")
     ) {
       return "/portal/status";
     }
@@ -320,7 +321,7 @@ export default function PortalShell({
               />
               {desktopExpanded
                 ? signingOut
-                  ? "Signing out…"
+                  ? "Signing outâ€¦"
                   : "Sign out"
                 : null}
             </button>
@@ -398,7 +399,7 @@ export default function PortalShell({
                 className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3 text-sm font-semibold text-red-100 disabled:opacity-60"
               >
                 <LogOut className="h-[18px] w-[18px]" aria-hidden="true" />
-                {signingOut ? "Signing out…" : "Sign out"}
+                {signingOut ? "Signing outâ€¦" : "Sign out"}
               </button>
             </div>
           </aside>
@@ -407,3 +408,4 @@ export default function PortalShell({
     </div>
   );
 }
+
