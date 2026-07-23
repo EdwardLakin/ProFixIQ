@@ -31,4 +31,3 @@ export function buildDiagnosticRequestNotes(input: DiagnosticDetails): string {
 export function diagnosticRequestIsComplete(input: DiagnosticDetails): boolean {
   return clean(input.concern).length >= 3;
 }
-
