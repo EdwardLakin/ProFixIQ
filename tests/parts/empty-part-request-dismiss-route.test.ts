@@ -14,7 +14,12 @@ vi.mock("@/features/work-orders/server/logOperationalEvent", () => ({
 }));
 
 type MockOptions = {
-  status?: "requested" | "quoted" | "approved" | "cancelled";
+  status?:
+    | "requested"
+    | "quoted"
+    | "approved"
+    | "partially_ordered"
+    | "cancelled";
   itemCount?: number;
   requestMissing?: boolean;
   updateMissing?: boolean;
@@ -61,6 +66,7 @@ function buildSupabase(options: MockOptions = {}) {
 
   const updateBuilder = {
     eq: vi.fn(),
+    in: vi.fn(),
     select: vi.fn(),
     maybeSingle: vi.fn(async () => ({
       data: options.updateMissing
@@ -73,6 +79,10 @@ function buildSupabase(options: MockOptions = {}) {
     })),
   };
   updateBuilder.eq.mockImplementation((key: string, value: unknown) => {
+    updateFilters.push([key, value]);
+    return updateBuilder;
+  });
+  updateBuilder.in.mockImplementation((key: string, value: unknown) => {
     updateFilters.push([key, value]);
     return updateBuilder;
   });
@@ -125,35 +135,38 @@ describe("dismiss empty parts request route", () => {
     vi.clearAllMocks();
   });
 
-  it("cancels a requested record only after a shop-scoped empty check", async () => {
-    const db = buildSupabase();
-    const response = await post(db.supabase);
+  it.each(["requested", "quoted", "approved"] as const)(
+    "cancels an empty %s record after a shop-scoped empty check",
+    async (status) => {
+      const db = buildSupabase({ status });
+      const response = await post(db.supabase);
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      ok: true,
-      idempotent: false,
-      status: "cancelled",
-    });
-    expect(db.requestFilters).toEqual([
-      ["id", "11111111-1111-4111-8111-111111111111"],
-      ["shop_id", "shop-1"],
-    ]);
-    expect(db.itemFilters).toEqual([
-      ["request_id", "11111111-1111-4111-8111-111111111111"],
-      ["shop_id", "shop-1"],
-    ]);
-    expect(db.update).toHaveBeenCalledWith({ status: "cancelled" });
-    expect(db.updateFilters).toEqual([
-      ["id", "11111111-1111-4111-8111-111111111111"],
-      ["shop_id", "shop-1"],
-      ["status", "requested"],
-    ]);
-    expect(mocks.logOperationalEvent).toHaveBeenCalledOnce();
-  });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: true,
+        idempotent: false,
+        status: "cancelled",
+      });
+      expect(db.requestFilters).toEqual([
+        ["id", "11111111-1111-4111-8111-111111111111"],
+        ["shop_id", "shop-1"],
+      ]);
+      expect(db.itemFilters).toEqual([
+        ["request_id", "11111111-1111-4111-8111-111111111111"],
+        ["shop_id", "shop-1"],
+      ]);
+      expect(db.update).toHaveBeenCalledWith({ status: "cancelled" });
+      expect(db.updateFilters).toEqual([
+        ["id", "11111111-1111-4111-8111-111111111111"],
+        ["shop_id", "shop-1"],
+        ["status", ["requested", "quoted", "approved"]],
+      ]);
+      expect(mocks.logOperationalEvent).toHaveBeenCalledOnce();
+    },
+  );
 
   it("rejects a request that contains items", async () => {
-    const db = buildSupabase({ itemCount: 1 });
+    const db = buildSupabase({ status: "approved", itemCount: 1 });
     const response = await post(db.supabase);
 
     expect(response.status).toBe(409);
@@ -161,8 +174,8 @@ describe("dismiss empty parts request route", () => {
     expect(mocks.logOperationalEvent).not.toHaveBeenCalled();
   });
 
-  it("rejects requests that already entered quoting or operations", async () => {
-    const db = buildSupabase({ status: "quoted" });
+  it("rejects requests that reached physical parts operations", async () => {
+    const db = buildSupabase({ status: "partially_ordered" });
     const response = await post(db.supabase);
 
     expect(response.status).toBe(409);
