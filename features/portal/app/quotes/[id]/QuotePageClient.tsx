@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import QuoteApprovalActions from "@/features/portal/components/QuoteApprovalActions";
+import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import {
@@ -94,6 +95,8 @@ type LineView = {
   updatedAt: string | null;
   parts: QuotePartView[];
   evidencePhotos: string[];
+  requestKind: "repair" | "parts_only" | null;
+  fulfillment: "appointment" | "pickup" | null;
 };
 
 function paramToString(value: string | string[] | undefined): string | null {
@@ -317,6 +320,8 @@ export default function QuotePageClient(): JSX.Element {
       .map((line, index) => {
         const parts = getQuoteParts(line);
         const metadata = quoteMetadata(line);
+        const requestKind = safeTrim(metadata.request_kind);
+        const fulfillment = safeTrim(metadata.fulfillment);
         const laborHours = nullableNumber(line.labor_hours) ?? nullableNumber(line.est_labor_hours) ?? 0;
         const computedLabor = laborHours * (nullableNumber(metadata.labor_rate) ?? laborRate);
         const partsAmount = nullableNumber(line.parts_total) ?? parts.reduce((sum, part) => sum + part.total, 0);
@@ -350,6 +355,8 @@ export default function QuotePageClient(): JSX.Element {
           updatedAt: line.updated_at ?? null,
           parts,
           evidencePhotos: getEvidencePhotos(line, inspectionPhotos),
+          requestKind: requestKind === "parts_only" ? "parts_only" : requestKind === "repair" ? "repair" : null,
+          fulfillment: fulfillment === "pickup" ? "pickup" : fulfillment === "appointment" ? "appointment" : null,
         };
       });
 
@@ -645,6 +652,38 @@ export default function QuotePageClient(): JSX.Element {
               void load();
             }}
           />
+
+          {approvedLines.some((line) => line.requestKind === "repair") ? (
+            <div className="mt-6 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Ready to schedule the approved repair?</div>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Choose a time without creating another quote or work order.</p>
+              <Link
+                href={`/portal/request/when?quote=${encodeURIComponent(approvedLines.find((line) => line.requestKind === "repair")?.id ?? "")}`}
+                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-on-accent)]"
+              >
+                Book appointment for this quote
+              </Link>
+            </div>
+          ) : null}
+
+          {approvedLines.some((line) => line.requestKind === "parts_only") ? (
+            <div className="mt-6 space-y-3">
+              <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Parts pickup approved</div>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Parts can now order or reserve the approved items. The shop will send the invoice when the pickup order is ready for payment.
+                </p>
+              </div>
+              {workOrder.invoice_sent_at && shop?.id ? (
+                <PortalInvoicePayButton
+                  shopId={shop.id}
+                  workOrderId={workOrder.id}
+                  amountCents={Math.max(0, Math.round(grandTotal * 100))}
+                  currency="cad"
+                />
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

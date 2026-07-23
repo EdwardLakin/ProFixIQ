@@ -42,6 +42,7 @@ const PRIMARY_NAV: NavItem[] = [
     label: "Request service",
     icon: ClipboardCheck,
   },
+  { href: "/portal/quotes", label: "Quotes", icon: FileText },
   {
     href: "/portal/customer-appointments",
     label: "Appointments",
@@ -129,9 +130,9 @@ export default function PortalShell({
     const exact = NAV.find((item) => item.href === pathname);
     if (exact) return exact.href;
     if (pathname.startsWith("/portal/request/")) return "/portal/request/when";
+    if (pathname.startsWith("/portal/quotes/")) return "/portal/quotes";
     if (
-      pathname.startsWith("/portal/work-orders/") ||
-      pathname.startsWith("/portal/quotes/")
+      pathname.startsWith("/portal/work-orders/")
     ) {
       return "/portal/status";
     }

@@ -12,6 +12,7 @@ type Body = {
   notes?: string;
   lineType?: "job" | "info";
   idempotencyKey?: string;
+  diagnostic?: boolean;
 };
 
 function bad(message: string, status = 400) {
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
       notes: body?.notes?.trim() || null,
       lineType: body?.lineType === "info" ? "info" : "job",
       operationKey: `${actor.customer.shop_id}:portal-custom-line:${key}`,
+      diagnostic: body?.diagnostic === true,
     });
 
     return NextResponse.json(result, { status: result.idempotent ? 200 : 201 });

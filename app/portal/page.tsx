@@ -211,13 +211,18 @@ export default async function PortalHomePage() {
 
         <section
           aria-label="Portal shortcuts"
-          className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+          className="grid grid-cols-2 gap-3 sm:grid-cols-5"
         >
           <PortalActionCard
             href="/portal/request/when"
             title="Request service"
             subtitle="Start a new visit."
             prominent
+          />
+          <PortalActionCard
+            href="/portal/quotes"
+            title="Quotes"
+            subtitle="Request or review pricing."
           />
           <PortalActionCard
             href="/portal/messages"

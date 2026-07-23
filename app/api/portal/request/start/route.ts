@@ -13,12 +13,20 @@ type Body = {
   startsAt?: string | null;
   durationMins?: number | null;
   idempotencyKey?: string | null;
+  quoteLineId?: string | null;
 };
 
 type StartRpcRow = {
   work_order_id: string;
   booking_id: string;
   deduped: boolean;
+};
+
+type QuoteBookingRpcResult = {
+  ok?: boolean;
+  workOrderId?: string;
+  bookingId?: string;
+  idempotent?: boolean;
 };
 
 function bad(msg: string, status = 400) {
@@ -118,6 +126,45 @@ export async function POST(req: Request) {
         .maybeSingle();
       if (vehicleErr) return bad(vehicleErr.message, 500);
       if (!vehicle) return bad("Vehicle does not belong to this customer and shop", 403);
+    }
+
+    const quoteLineId =
+      typeof body.quoteLineId === "string" && body.quoteLineId.trim()
+        ? body.quoteLineId.trim()
+        : null;
+    if (quoteLineId) {
+      const quotePayload = {
+        p_quote_line_id: quoteLineId,
+        p_customer_id: customer.id,
+        p_actor_user_id: actor.userId,
+        p_starts_at: startsAt,
+        p_ends_at: endsAt,
+        p_visit_type: visitType,
+        p_operation_key: `${customer.shop_id}:portal-repair-quote-booking:${normalizedKey}`,
+        p_at: new Date().toISOString(),
+      };
+      const { data, error } = await (
+        supabase as never as {
+          rpc: (
+            fn: "book_portal_repair_quote_atomic",
+            args: typeof quotePayload,
+          ) => Promise<{ data: QuoteBookingRpcResult | null; error: { message?: string } | null }>;
+        }
+      ).rpc("book_portal_repair_quote_atomic", quotePayload);
+
+      if (error || !data?.ok || !data.workOrderId || !data.bookingId) {
+        const message = error?.message || "Unable to book this repair quote.";
+        return bad(message, message.toLowerCase().includes("overlap") ? 409 : 400);
+      }
+      return NextResponse.json(
+        {
+          workOrderId: data.workOrderId,
+          bookingId: data.bookingId,
+          replayed: data.idempotent === true,
+          quoteBooking: true,
+        },
+        { status: data.idempotent ? 200 : 201 },
+      );
     }
 
     const sourceRowId = `portal_start:${customer.id}:${normalizedKey}`;

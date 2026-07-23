@@ -13,6 +13,10 @@ import LinkButton from "@shared/components/ui/LinkButton";
 import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
 import LegalTerms from "@/features/shared/components/LegalTerms";
 import { uploadSignatureImage } from "@/features/shared/lib/utils/uploadSignature";
+import {
+  buildDiagnosticRequestNotes,
+  diagnosticRequestIsComplete,
+} from "@/features/portal/lib/request/diagnosticDetails";
 
 type DB = Database;
 
@@ -41,10 +45,14 @@ function sectionTitle(s: string) {
 async function postJson<TResp>(
   url: string,
   body: unknown,
+  idempotencyKey?: string,
 ): Promise<{ ok: true; data: TResp } | { ok: false; error: string; status: number }> {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+    },
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -136,37 +144,6 @@ function fmtBookingRange(b: BookingRow | null) {
   return `${date} • ${st} – ${et}`;
 }
 
-// Intake helpers (stored into work_orders.notes without schema changes)
-function buildIntakeNotesBlock(input: {
-  concern: string;
-  details: string;
-  contactPref: string;
-  mileage: string;
-}) {
-  const lines: string[] = [];
-  lines.push("PORTAL INTAKE");
-  lines.push(`Concern: ${input.concern.trim()}`);
-  if (input.details.trim()) lines.push(`Details: ${input.details.trim()}`);
-  if (input.contactPref.trim()) lines.push(`Contact: ${input.contactPref.trim()}`);
-  if (input.mileage.trim()) lines.push(`Mileage: ${input.mileage.trim()}`);
-  return lines.join("\n");
-}
-
-function mergeNotes(existing: string | null | undefined, intakeBlock: string) {
-  const base = (existing ?? "").trim();
-  // Replace prior PORTAL INTAKE block if present
-  const marker = "PORTAL INTAKE";
-  if (!base) return intakeBlock;
-
-  const idx = base.indexOf(marker);
-  if (idx >= 0) {
-    const before = base.slice(0, idx).trimEnd();
-    return before ? `${before}\n\n${intakeBlock}` : intakeBlock;
-  }
-
-  return `${base}\n\n${intakeBlock}`;
-}
-
 export default function PortalRequestBuildPage() {
   const supabase = createBrowserSupabase();
   const router = useRouter();
@@ -197,13 +174,15 @@ export default function PortalRequestBuildPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // NEW: Intake form flow
-  const [intakeConcern, setIntakeConcern] = useState("");
-  const [intakeDetails, setIntakeDetails] = useState("");
-  const [intakeContactPref, setIntakeContactPref] = useState("Text or call");
-  const [intakeMileage, setIntakeMileage] = useState("");
-  const [intakeSaving, setIntakeSaving] = useState(false);
-  const [intakeSavedAt, setIntakeSavedAt] = useState<string | null>(null);
+  const [diagnosticTiming, setDiagnosticTiming] = useState("");
+  const [diagnosticFrequency, setDiagnosticFrequency] = useState("");
+  const [diagnosticConditions, setDiagnosticConditions] = useState("");
+  const [diagnosticWarnings, setDiagnosticWarnings] = useState("");
+  const [diagnosticDrivable, setDiagnosticDrivable] = useState<"yes" | "no" | "unsure">("unsure");
+  const [addingLine, setAddingLine] = useState(false);
+
+  const [quoteKind, setQuoteKind] = useState<"repair" | "parts_only">("repair");
+  const [addingQuote, setAddingQuote] = useState(false);
 
   // Review & Sign
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -302,32 +281,10 @@ export default function PortalRequestBuildPage() {
       }
       setBooking(b as BookingRow);
 
-      // Hydrate intake fields from notes if already saved
-      const existingNotes = (w as WorkOrderRow).notes ?? null;
-      if (typeof existingNotes === "string" && existingNotes.includes("PORTAL INTAKE")) {
-        // very light parse (best-effort)
-        const lines = existingNotes.split("\n").map((x) => x.trim());
-        const getVal = (prefix: string) => {
-          const hit = lines.find((l) => l.toLowerCase().startsWith(prefix.toLowerCase()));
-          if (!hit) return "";
-          const idx = hit.indexOf(":");
-          return idx >= 0 ? hit.slice(idx + 1).trim() : "";
-        };
-        const c0 = getVal("Concern");
-        const d0 = getVal("Details");
-        const p0 = getVal("Contact");
-        const m0 = getVal("Mileage");
-
-        if (c0) setIntakeConcern(c0);
-        if (d0) setIntakeDetails(d0);
-        if (p0) setIntakeContactPref(p0);
-        if (m0) setIntakeMileage(m0);
-      }
-
       if (w.vehicle_id) {
         const { data: v, error: vErr } = await supabase
           .from("vehicles")
-          .select("id,customer_id,shop_id,year,make,model,vin,,license_plate,mileage,color,created_at")
+          .select("id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at")
           .eq("id", w.vehicle_id)
           .maybeSingle();
 
@@ -404,52 +361,13 @@ export default function PortalRequestBuildPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workOrderId, bookingId]);
 
-  async function saveIntake() {
-    if (!wo?.id || intakeSaving) return;
-
-    const concern = intakeConcern.trim();
-    if (!concern) {
-      toast.error("Please enter your main concern.");
-      return;
-    }
-
-    setIntakeSaving(true);
-    try {
-      const intakeBlock = buildIntakeNotesBlock({
-        concern,
-        details: intakeDetails,
-        contactPref: intakeContactPref,
-        mileage: intakeMileage,
-      });
-
-      const merged = mergeNotes(wo.notes ?? null, intakeBlock);
-
-      const { data: updated, error } = await supabase
-        .from("work_orders")
-        .update({ notes: merged })
-        .eq("id", wo.id)
-        .select("*")
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (updated) setWo(updated as WorkOrderRow);
-      setIntakeSavedAt(new Date().toISOString());
-      toast.success("Intake saved.");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to save intake.");
-    } finally {
-      setIntakeSaving(false);
-    }
-  }
-
   async function addMenuLine(menuItemId: string) {
     if (!wo?.id) return;
 
     const r = await postJson<{ line?: unknown }>("/api/portal/request/add-menu-line", {
       workOrderId: wo.id,
       menuItemId,
-    });
+    }, crypto.randomUUID());
 
     if (!r.ok) {
       toast.error(r.error);
@@ -461,33 +379,56 @@ export default function PortalRequestBuildPage() {
   }
 
   async function addCustomLine() {
-    if (!wo?.id) return;
+    if (!wo?.id || addingLine) return;
 
     const desc = customDesc.trim();
-    if (!desc) {
-      toast.error("Enter a description for the custom line.");
+    const details = {
+      concern: desc,
+      timing: diagnosticTiming,
+      frequency: diagnosticFrequency,
+      conditions: diagnosticConditions,
+      warningLights: diagnosticWarnings,
+      drivable: diagnosticDrivable,
+      additionalNotes: customNotes,
+    };
+    if (!diagnosticRequestIsComplete(details)) {
+      toast.error("Describe the concern that needs diagnosis.");
       return;
     }
 
-    const r = await postJson<{ line?: unknown }>("/api/portal/request/add-custom-line", {
-      workOrderId: wo.id,
-      description: desc,
-      notes: customNotes.trim() || null,
-    });
+    setAddingLine(true);
+    const r = await postJson<{ line?: unknown }>(
+      "/api/portal/request/add-custom-line",
+      {
+        workOrderId: wo.id,
+        description: `Diagnose: ${desc}`,
+        notes: buildDiagnosticRequestNotes(details),
+        lineType: "job",
+        diagnostic: true,
+      },
+      crypto.randomUUID(),
+    );
 
     if (!r.ok) {
       toast.error(r.error);
+      setAddingLine(false);
       return;
     }
 
-    toast.success("Added custom line.");
+    toast.success("Diagnostic concern added.");
     setCustomDesc("");
     setCustomNotes("");
+    setDiagnosticTiming("");
+    setDiagnosticFrequency("");
+    setDiagnosticConditions("");
+    setDiagnosticWarnings("");
+    setDiagnosticDrivable("unsure");
     await loadAll();
+    setAddingLine(false);
   }
 
   async function addQuoteOnly() {
-    if (!wo?.id) return;
+    if (!wo?.id || !wo.vehicle_id || addingQuote) return;
 
     const desc = qoDesc.trim();
     if (!desc) {
@@ -498,15 +439,23 @@ export default function PortalRequestBuildPage() {
     const qtyN = Number(qoQty);
     const qty = Number.isFinite(qtyN) ? Math.max(1, Math.min(99, Math.trunc(qtyN))) : 1;
 
-    const r = await postJson<{ quoteLine?: unknown }>("/api/portal/request/add-quote-only", {
-      workOrderId: wo.id,
-      description: desc,
-      notes: qoNotes.trim() || null,
-      qty,
-    });
+    setAddingQuote(true);
+    const r = await postJson<{ quoteLineId?: string }>(
+      "/api/portal/request/add-quote-only",
+      {
+        workOrderId: wo.id,
+        vehicleId: wo.vehicle_id,
+        requestKind: quoteKind,
+        description: desc,
+        notes: qoNotes.trim() || null,
+        qty,
+      },
+      crypto.randomUUID(),
+    );
 
     if (!r.ok) {
       toast.error(r.error);
+      setAddingQuote(false);
       return;
     }
 
@@ -515,9 +464,10 @@ export default function PortalRequestBuildPage() {
     setQoNotes("");
     setQoQty("1");
     await loadAll();
+    setAddingQuote(false);
   }
 
-  // Open review gate (requires intake)
+  // Known services submit immediately; diagnostic details live only on diagnostic lines.
   function beginSubmit() {
     if (!wo?.id || submitting) return;
 
@@ -527,8 +477,8 @@ export default function PortalRequestBuildPage() {
       return;
     }
 
-    if (!intakeConcern.trim()) {
-      toast.error("Please complete the intake form first.");
+    if (lines.length === 0 && quoteLines.length === 0) {
+      toast.error("Add a service, diagnostic concern, or quote request first.");
       return;
     }
 
@@ -650,7 +600,7 @@ export default function PortalRequestBuildPage() {
               Request
             </div>
             <h1 className="mt-2 text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
-              Intake &amp; request
+              Choose service
             </h1>
             <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"} • WO{" "}
@@ -669,65 +619,6 @@ export default function PortalRequestBuildPage() {
           </div>
         </div>
       </header>
-
-      {/* NEW: Intake form flow */}
-      <section className={cardClass() + " space-y-3"}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            {sectionTitle("Intake form")}
-            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              Tell us what’s going on. This helps the shop triage your request faster.
-            </div>
-          </div>
-          <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
-            {intakeSavedAt ? <span className="text-emerald-200">Saved</span> : <span className="text-[color:var(--theme-text-secondary)]">Not saved yet</span>}
-          </div>
-        </div>
-
-        <input
-          className={inputClass()}
-          placeholder="Main concern (required) — e.g., ‘Brake pedal feels soft’"
-          value={intakeConcern}
-          onChange={(e) => setIntakeConcern(e.target.value)}
-        />
-
-        <textarea
-          className={inputClass() + " min-h-[92px] resize-none"}
-          placeholder="Details (optional) — noises, when it happens, warning lights, etc."
-          value={intakeDetails}
-          onChange={(e) => setIntakeDetails(e.target.value)}
-        />
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <select
-            className={inputClass()}
-            value={intakeContactPref}
-            onChange={(e) => setIntakeContactPref(e.target.value)}
-          >
-            <option value="Text or call">Text or call</option>
-            <option value="Text only">Text only</option>
-            <option value="Call only">Call only</option>
-            <option value="Email">Email</option>
-          </select>
-
-          <input
-            className={inputClass()}
-            inputMode="numeric"
-            placeholder="Mileage (optional)"
-            value={intakeMileage}
-            onChange={(e) => setIntakeMileage(e.target.value)}
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" onClick={() => void saveIntake()} disabled={intakeSaving}>
-            {intakeSaving ? "Saving…" : "Save intake"}
-          </Button>
-          <span className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
-            Saved into the work order notes as <span className="text-[color:var(--theme-text-secondary)]">PORTAL INTAKE</span>.
-          </span>
-        </div>
-      </section>
 
       <section className={cardClass()}>
         <div className="flex items-center justify-between">
@@ -854,45 +745,70 @@ export default function PortalRequestBuildPage() {
       </section>
 
       <section className={cardClass() + " space-y-3"}>
-        {sectionTitle("Add custom line")}
+        {sectionTitle("Something needs diagnosis")}
         <div className="text-xs text-[color:var(--theme-text-muted)]">
-          For concerns you already know. We’ll estimate labor and route parts quoting as needed.
+          These details are added only to this diagnostic line so the technician gets a useful complaint instead of a generic diagnosis request.
         </div>
 
         <input
           className={inputClass()}
-          placeholder="Example: Replace rear differential input u-joint"
+          placeholder="What is the vehicle doing? Example: Steering wheel shakes at highway speed"
           value={customDesc}
           onChange={(e) => setCustomDesc(e.target.value)}
         />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <input className={inputClass()} placeholder="When does it happen?" value={diagnosticTiming} onChange={(e) => setDiagnosticTiming(e.target.value)} />
+          <select className={inputClass()} value={diagnosticFrequency} onChange={(e) => setDiagnosticFrequency(e.target.value)}>
+            <option value="">How often?</option>
+            <option value="Every time">Every time</option>
+            <option value="Often">Often</option>
+            <option value="Sometimes">Sometimes</option>
+            <option value="Happened once">Happened once</option>
+          </select>
+          <input className={inputClass()} placeholder="Speed, temperature, braking, turning…" value={diagnosticConditions} onChange={(e) => setDiagnosticConditions(e.target.value)} />
+          <input className={inputClass()} placeholder="Warning lights or fault codes" value={diagnosticWarnings} onChange={(e) => setDiagnosticWarnings(e.target.value)} />
+        </div>
+        <label className="block space-y-2 text-xs text-[color:var(--theme-text-secondary)]">
+          <span>Does it feel safe to drive?</span>
+          <select className={inputClass()} value={diagnosticDrivable} onChange={(e) => setDiagnosticDrivable(e.target.value as "yes" | "no" | "unsure")}>
+            <option value="unsure">Unsure</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </label>
         <textarea
           className={inputClass() + " min-h-[92px] resize-none"}
-          placeholder="Optional notes (symptoms, urgency, noises, etc.)"
+          placeholder="Anything else the technician should know?"
           value={customNotes}
           onChange={(e) => setCustomNotes(e.target.value)}
         />
 
         <div className="flex gap-2">
-          <Button type="button" onClick={() => void addCustomLine()}>
-            Add custom line
+          <Button type="button" onClick={() => void addCustomLine()} disabled={addingLine}>
+            {addingLine ? "Adding…" : "Add diagnostic concern"}
           </Button>
         </div>
       </section>
 
       <section className={cardClass() + " space-y-3"}>
-        {sectionTitle("Quote-only request")}
+        {sectionTitle("Request pricing instead")}
         <div className="text-xs text-[color:var(--theme-text-muted)]">
-          Request pricing without committing to a work order line yet. Parts will be priced and returned to your portal.
+          Ask for a repair estimate or send a parts-only request directly to Parts for pickup.
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setQuoteKind("repair")} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${quoteKind === "repair" ? "border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)]" : "border-[color:var(--theme-border-soft)]"}`}>Repair quote</button>
+          <button type="button" onClick={() => setQuoteKind("parts_only")} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${quoteKind === "parts_only" ? "border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)]" : "border-[color:var(--theme-border-soft)]"}`}>Parts for pickup</button>
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px]">
           <input
             className={inputClass()}
-            placeholder="Example: Replace tires (quote only)"
+            placeholder={quoteKind === "repair" ? "Example: Front brake pads and rotors" : "Example: Four winter tires, 275/65R18"}
             value={qoDesc}
             onChange={(e) => setQoDesc(e.target.value)}
           />
-          <input className={inputClass()} inputMode="numeric" placeholder="Qty" value={qoQty} onChange={(e) => setQoQty(e.target.value)} />
+          {quoteKind === "parts_only" ? <input className={inputClass()} inputMode="numeric" placeholder="Qty" value={qoQty} onChange={(e) => setQoQty(e.target.value)} /> : null}
         </div>
 
         <textarea
@@ -903,8 +819,8 @@ export default function PortalRequestBuildPage() {
         />
 
         <div className="flex gap-2">
-          <Button type="button" onClick={() => void addQuoteOnly()} variant="outline">
-            Send quote request
+          <Button type="button" onClick={() => void addQuoteOnly()} variant="outline" disabled={addingQuote}>
+            {addingQuote ? "Sending…" : quoteKind === "parts_only" ? "Send to Parts" : "Request repair quote"}
           </Button>
         </div>
       </section>
@@ -914,7 +830,7 @@ export default function PortalRequestBuildPage() {
           <div>
             <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Review &amp; submit</div>
             <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              You’ll review terms and submit your intake + request to the shop.
+              Review the selected services and send the appointment request to the shop.
             </div>
           </div>
 
@@ -925,7 +841,7 @@ export default function PortalRequestBuildPage() {
       </section>
 
       <div className="pb-2 text-[0.75rem] text-[color:var(--theme-text-muted)]">
-        Tip: Menu items are pre-priced. Custom and quote-only lines can trigger parts pricing and AI assistance.
+        Known services stay fast. Diagnostic questions appear only when a concern needs diagnosis.
       </div>
 
       {/* Review & Sign modal */}
@@ -938,7 +854,7 @@ export default function PortalRequestBuildPage() {
                 Review &amp; sign
               </div>
               <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                Confirm your intake + request details and agree to terms before submitting.
+                Confirm your requested services and agree to terms before submitting.
               </div>
             </div>
 
@@ -963,20 +879,6 @@ export default function PortalRequestBuildPage() {
                 {quoteLines.length}
               </div>
 
-              <div className="mt-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Intake</div>
-                <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">{intakeConcern.trim() || "—"}</div>
-                {intakeDetails.trim() ? <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{intakeDetails.trim()}</div> : null}
-                <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-                  Contact: <span className="text-[color:var(--theme-text-secondary)]">{intakeContactPref || "—"}</span>
-                  {intakeMileage.trim() ? (
-                    <>
-                      {" "}
-                      • Mileage: <span className="text-[color:var(--theme-text-secondary)]">{intakeMileage.trim()}</span>
-                    </>
-                  ) : null}
-                </div>
-              </div>
             </div>
 
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">

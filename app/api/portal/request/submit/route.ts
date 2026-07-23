@@ -1,313 +1,120 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
-import { extractPortalIntakeConcern } from "@/features/portal/lib/request/portalIntake";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 
 export const runtime = "nodejs";
 
 type DB = Database;
-
 type Body = {
-  workOrderId: string;
-  bookingId: string;
-
-  // Review gate
+  workOrderId?: string;
+  bookingId?: string;
   customerAgreedAt?: string | null;
   customerSignatureUrl?: string | null;
 };
 
-function bad(msg: string, status = 400) {
-  return NextResponse.json({ error: msg }, { status });
+function clean(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
-type PartsNeededItem = {
-  name?: string | null;
-  qty?: number | null;
-};
-
-function toNonEmptyString(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  return s.length ? s : null;
+function iso(value: unknown): string | null {
+  const text = clean(value);
+  if (!text || !Number.isFinite(Date.parse(text))) return null;
+  return new Date(text).toISOString();
 }
 
-function toPositiveQty(v: unknown, fallback = 1): number {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return fallback;
-  if (n <= 0) return fallback;
-  return n;
-}
-
-function parseIsoDate(v: unknown): string | null {
-  const s = toNonEmptyString(v);
-  if (!s) return null;
-  const t = Date.parse(s);
-  if (!Number.isFinite(t)) return null;
-  return new Date(t).toISOString();
+function bad(message: string, status = 400) {
+  return NextResponse.json({ error: message }, { status });
 }
 
 export async function POST(req: Request) {
+  const supabase = createServerSupabaseRoute();
+
   try {
-    const supabase = createServerSupabaseRoute();
-
     const actor = await requirePortalCustomerActor(supabase);
+    const body = (await req.json().catch(() => null)) as Body | null;
+    const workOrderId = clean(body?.workOrderId);
+    const bookingId = clean(body?.bookingId);
+    const customerAgreedAt = iso(body?.customerAgreedAt);
+    const customerSignatureUrl = clean(body?.customerSignatureUrl) || null;
 
-    let body: Body;
-    try {
-      body = (await req.json()) as Body;
-    } catch {
-      return bad("Invalid JSON body");
-    }
+    if (!workOrderId || !bookingId) return bad("Missing workOrderId or bookingId");
+    if (!customerAgreedAt) return bad("You must agree to the terms before submitting.");
+    if (!actor.customer.shop_id) return bad("Customer is not linked to a shop", 409);
 
-    const workOrderId = (body?.workOrderId ?? "").trim();
-    const bookingId = (body?.bookingId ?? "").trim();
-    if (!workOrderId || !bookingId)
-      return bad("Missing workOrderId or bookingId");
-
-    const customerAgreedAt = parseIsoDate(body?.customerAgreedAt ?? null);
-    if (!customerAgreedAt)
-      return bad("You must agree to the terms before submitting.", 400);
-
-    const customerSignatureUrl = toNonEmptyString(
-      body?.customerSignatureUrl ?? null,
-    );
-
-    // Resolve portal customer
-    const { data: customer, error: custErr } = await supabase
-      .from("customers")
-      .select("id")
-      .eq("id", actor.customer.id)
-      .maybeSingle();
-
-    if (custErr) return bad(custErr.message, 500);
-    if (!customer?.id) return bad("Customer profile not found", 404);
-
-    // Load WO + ensure ownership
-    const { data: wo, error: woErr } = await supabase
+    const { data: workOrder, error: workOrderError } = await supabase
       .from("work_orders")
-      .select("id, shop_id, customer_id, notes, portal_submitted_at")
+      .select("id,shop_id,customer_id,portal_submitted_at")
       .eq("id", workOrderId)
+      .eq("shop_id", actor.customer.shop_id)
+      .eq("customer_id", actor.customer.id)
       .maybeSingle();
+    if (workOrderError) return bad("Failed to load work order", 500);
+    if (!workOrder) return bad("Work order not found", 404);
 
-    if (woErr) return bad("Failed to load work order", 500);
-    if (!wo) return bad("Work order not found", 404);
-    if (wo.customer_id !== customer.id) return bad("Not allowed", 403);
-
-    // Load booking + ensure same shop
-    const { data: booking, error: bErr } = await supabase
+    const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select(
-        "id, shop_id, customer_id, work_order_id, starts_at, ends_at, status",
-      )
+      .select("id,shop_id,customer_id,work_order_id,starts_at,status")
       .eq("id", bookingId)
+      .eq("shop_id", workOrder.shop_id)
+      .eq("customer_id", actor.customer.id)
       .maybeSingle();
-
-    if (bErr) return bad("Failed to load booking", 500);
+    if (bookingError) return bad("Failed to load booking", 500);
     if (!booking) return bad("Booking not found", 404);
-    if (booking.shop_id !== wo.shop_id) return bad("Not allowed", 403);
-    if (booking.customer_id !== customer.id) return bad("Not allowed", 403);
+    if (booking.work_order_id && booking.work_order_id !== workOrder.id) return bad("Booking does not belong to this request", 403);
 
-    const warnings: string[] = [];
-    const alreadySubmitted = Boolean(wo.portal_submitted_at);
-    const alreadyFinalized =
-      booking.status === "pending" && booking.work_order_id === wo.id;
-    if (alreadySubmitted && alreadyFinalized) {
-      return NextResponse.json(
-        {
-          ok: true,
-          workOrderId: wo.id,
-          bookingId: booking.id,
-          partsRequestId: null,
-          replayed: true,
-        },
-        { status: 200 },
-      );
+    if (workOrder.portal_submitted_at && booking.status === "pending" && booking.work_order_id === workOrder.id) {
+      return NextResponse.json({ ok: true, workOrderId, bookingId, replayed: true });
     }
-
-    const startT = Date.parse(String(booking.starts_at ?? ""));
-    if (Number.isFinite(startT) && startT < Date.now() - 60_000) {
+    const startTime = Date.parse(String(booking.starts_at ?? ""));
+    if (Number.isFinite(startTime) && startTime < Date.now() - 60_000) {
       return bad("This booking time is in the past. Please start again.", 409);
     }
 
-    const woUpdate: DB["public"]["Tables"]["work_orders"]["Update"] = {
+    const { count: lineCount, error: lineError } = await supabase
+      .from("work_order_lines")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", workOrder.shop_id)
+      .eq("work_order_id", workOrder.id);
+    const { count: quoteCount, error: quoteError } = await supabase
+      .from("work_order_quote_lines")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", workOrder.shop_id)
+      .eq("work_order_id", workOrder.id);
+    if (lineError || quoteError) return bad("Failed to verify requested services", 500);
+    if ((lineCount ?? 0) + (quoteCount ?? 0) === 0) return bad("Add at least one service or concern before submitting.");
+
+    const submittedAt = new Date().toISOString();
+    const workOrderUpdate: DB["public"]["Tables"]["work_orders"]["Update"] = {
       customer_approval_at: customerAgreedAt,
       customer_approval_signature_url: customerSignatureUrl,
-      portal_submitted_at: wo.portal_submitted_at ?? new Date().toISOString(),
+      portal_submitted_at: workOrder.portal_submitted_at ?? submittedAt,
     };
-
-    const { error: woUpdErr } = await supabase
+    const { error: updateWorkOrderError } = await supabase
       .from("work_orders")
-      .update(woUpdate)
-      .eq("id", wo.id);
-    if (woUpdErr) return bad("Failed to save agreement/signature", 500);
+      .update(workOrderUpdate)
+      .eq("id", workOrder.id)
+      .eq("shop_id", workOrder.shop_id)
+      .eq("customer_id", actor.customer.id);
+    if (updateWorkOrderError) return bad("Failed to save agreement", 500);
 
     const bookingUpdate: DB["public"]["Tables"]["bookings"]["Update"] = {
       status: "pending",
-      work_order_id: wo.id,
+      work_order_id: workOrder.id,
     };
-
-    const { error: updErr } = await supabase
+    const { error: updateBookingError } = await supabase
       .from("bookings")
       .update(bookingUpdate)
-      .eq("id", booking.id);
-    if (updErr) return bad("Failed to finalize booking", 500);
+      .eq("id", booking.id)
+      .eq("shop_id", workOrder.shop_id)
+      .eq("customer_id", actor.customer.id);
+    if (updateBookingError) return bad("Failed to finalize booking", 500);
 
-    const concern = extractPortalIntakeConcern(wo.notes);
-    if (concern) {
-      const prefix = "[Portal Intake] Diagnostic";
-      const desc = `${prefix}: ${concern}`.slice(0, 240);
-
-      // Prevent duplicates: if one already exists on this WO, skip
-      const { data: existing, error: exErr } = await supabase
-        .from("work_order_lines")
-        .select("id")
-        .eq("work_order_id", wo.id)
-        .ilike("description", `${prefix}%`)
-        .limit(1);
-
-      if (!exErr && (!existing || existing.length === 0)) {
-        const insertLine: DB["public"]["Tables"]["work_order_lines"]["Insert"] =
-          {
-            work_order_id: wo.id,
-            shop_id: wo.shop_id,
-
-            // Make the intake visible in the workflow immediately:
-            job_type: "diagnostic",
-            status: "awaiting",
-            description: desc,
-            complaint: concern,
-            notes: "Auto-created from portal intake on submit.",
-          };
-
-        const { error: insertErr } = await supabase
-          .from("work_order_lines")
-          .insert(insertLine);
-        if (insertErr) {
-          warnings.push("portal_intake_line_insert_failed");
-          console.warn("portal submit: failed to insert intake line", {
-            workOrderId: wo.id,
-            bookingId: booking.id,
-            message: insertErr.message,
-          });
-        }
-      } else if (exErr) {
-        warnings.push("portal_intake_line_check_failed");
-        console.warn("portal submit: failed to verify existing intake line", {
-          workOrderId: wo.id,
-          bookingId: booking.id,
-          message: exErr.message,
-        });
-      }
-    }
-
-    const { data: lines, error: linesErr } = await supabase
-      .from("work_order_lines")
-      .select("id, complaint, parts_needed")
-      .eq("work_order_id", wo.id)
-      .order("created_at", { ascending: true });
-
-    if (linesErr) {
-      warnings.push("work_order_lines_load_failed");
-      console.warn("portal submit: failed to load work_order_lines", {
-        workOrderId: wo.id,
-        bookingId: booking.id,
-        message: linesErr.message,
-      });
-
-      return NextResponse.json(
-        {
-          ok: true,
-          workOrderId: wo.id,
-          bookingId: booking.id,
-          partsRequestId: null,
-          warnings,
-        },
-        { status: 200 },
-      );
-    }
-
-    const items: { description: string; qty: number }[] = [];
-
-    for (const line of lines ?? []) {
-      const r = line as unknown as Record<string, unknown>;
-      const complaint = toNonEmptyString(r["complaint"]);
-      const partsNeededRaw = r["parts_needed"];
-
-      if (Array.isArray(partsNeededRaw)) {
-        for (const p of partsNeededRaw) {
-          const pr = p as PartsNeededItem;
-          const name = toNonEmptyString(pr?.name ?? null);
-          if (!name) continue;
-          items.push({ description: name, qty: toPositiveQty(pr?.qty, 1) });
-        }
-        continue;
-      }
-
-      if (complaint) items.push({ description: complaint, qty: 1 });
-    }
-
-    if (items.length === 0) {
-      return NextResponse.json(
-        {
-          ok: true,
-          workOrderId: wo.id,
-          bookingId: booking.id,
-          partsRequestId: null,
-          warnings,
-        },
-        { status: 200 },
-      );
-    }
-
-    type RpcArgs =
-      DB["public"]["Functions"]["create_part_request_with_items"]["Args"];
-
-    const rpcArgs: RpcArgs = {
-      p_work_order_id: wo.id,
-      p_items: items as unknown as RpcArgs["p_items"],
-      p_notes: "Portal request submit: auto parts quote",
-    };
-
-    const { data: partsRequestId, error: prErr } = await supabase.rpc(
-      "create_part_request_with_items",
-      rpcArgs,
-    );
-
-    if (prErr) {
-      warnings.push("parts_request_create_failed");
-      console.warn("portal submit: create_part_request_with_items failed", {
-        workOrderId: wo.id,
-        bookingId: booking.id,
-        message: prErr.message,
-      });
-      return NextResponse.json(
-        {
-          ok: true,
-          workOrderId: wo.id,
-          bookingId: booking.id,
-          partsRequestId: null,
-          warnings,
-        },
-        { status: 200 },
-      );
-    }
-
-    return NextResponse.json(
-      {
-        ok: true,
-        workOrderId: wo.id,
-        bookingId: booking.id,
-        partsRequestId,
-        warnings,
-      },
-      { status: 200 },
-    );
-  } catch (e: unknown) {
-    if (e instanceof PortalAccessError) return bad(e.message, e.status);
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("portal request submit error:", msg);
+    return NextResponse.json({ ok: true, workOrderId, bookingId, replayed: false });
+  } catch (error: unknown) {
+    if (error instanceof PortalAccessError) return bad(error.message, error.status);
+    console.error("portal request submit error", error);
     return bad("Unexpected error", 500);
   }
 }
