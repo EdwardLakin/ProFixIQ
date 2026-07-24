@@ -19,6 +19,8 @@ import {
 type AccessSurface = "shop" | "mobile" | "customer" | "fleet";
 type Body = { identifier?: string; password?: string; surface?: AccessSurface };
 
+type RateLimitResult = ReturnType<typeof enforceAuthRateLimit>;
+
 const GENERIC_ERROR = "We couldn't sign you in with those details.";
 
 function uniqueAuthEmails(values: string[]): string[] {
@@ -36,7 +38,7 @@ async function resolveAuthEmails(identifier: string): Promise<string[]> {
     const { data: profiles } = await admin
       .from("profiles")
       .select("username")
-      .ilike("username", `%${normalizedUsername}%`)
+      .ilike("username", normalizedUsername)
       .not("username", "is", null)
       .limit(2);
 
@@ -63,6 +65,28 @@ async function resolveAuthEmails(identifier: string): Promise<string[]> {
   return uniqueAuthEmails(candidates);
 }
 
+function enforceSignInRateLimits(
+  req: Request,
+  surface: AccessSurface,
+  identifier: string,
+  authEmails: string[],
+): RateLimitResult | null {
+  const keys = Array.from(new Set([
+    identifier.trim().toLowerCase(),
+    ...authEmails.map((email) => email.trim().toLowerCase()),
+  ].filter(Boolean)));
+
+  for (const key of keys) {
+    const rateLimit = enforceAuthRateLimit(req, `sign-in:${surface}`, key, {
+      max: 10,
+      windowMs: 60_000,
+    });
+    if (!rateLimit.allowed) return rateLimit;
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as Body | null;
   const identifier = String(body?.identifier ?? "").trim();
@@ -81,11 +105,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const rateLimit = enforceAuthRateLimit(req, `sign-in:${surface}`, identifier, {
-    max: 10,
-    windowMs: 60_000,
-  });
-  if (!rateLimit.allowed) {
+  const authEmails = await resolveAuthEmails(identifier);
+  const rateLimit = enforceSignInRateLimits(req, surface, identifier, authEmails);
+  if (rateLimit) {
     return NextResponse.json(
       { ok: false, error: "Too many attempts. Wait a moment and try again." },
       {
@@ -96,7 +118,6 @@ export async function POST(req: Request) {
   }
 
   const supabase = createServerSupabaseRoute();
-  const authEmails = await resolveAuthEmails(identifier);
   let signedInUser:
     | Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"]["user"]
     | null = null;

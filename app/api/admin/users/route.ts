@@ -2,7 +2,6 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { buildShopUserAuthEmail } from "@/features/users/lib/username";
 
 const MAX_ROWS = 500;
 
@@ -35,10 +34,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: usersErr.message || "Failed to load users" }, { status: 500 });
   }
 
-  return NextResponse.json({
-    users: (users ?? []).map((user) => ({
-      ...user,
-      auth_email: user.username ? buildShopUserAuthEmail(user.username) : null,
-    })),
-  });
+  const usersWithAuthEmails = await Promise.all(
+    (users ?? []).map(async (user) => {
+      const { data } = await admin.auth.admin.getUserById(user.id);
+      return {
+        ...user,
+        auth_email: data.user?.email ?? null,
+      };
+    }),
+  );
+
+  return NextResponse.json({ users: usersWithAuthEmails });
 }
