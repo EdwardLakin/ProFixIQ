@@ -73,7 +73,7 @@ export async function GET() {
       .select("id, work_order_id")
       .eq("shop_id", profile.shop_id)
       .eq("line_type", "job")
-      .or(`assigned_tech_id.eq.${user.id},assigned_to.eq.${user.id}`),
+      .or(\n        `assigned_tech_id.eq.${user.id},assigned_to.eq.${user.id},user_id.eq.${user.id}`,\n      ),
     admin
       .from("work_order_line_technicians")
       .select("work_order_line_id")
@@ -134,7 +134,7 @@ export async function GET() {
         .select("*")
         .eq("shop_id", profile.shop_id)
         .in("id", ids)
-        .neq("type", "historical_import"),
+        .or("type.neq.historical_import,type.is.null"),
     ),
   );
   const workOrdersError = workOrderResults.find(
