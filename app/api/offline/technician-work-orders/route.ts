@@ -73,7 +73,9 @@ export async function GET() {
       .select("id, work_order_id")
       .eq("shop_id", profile.shop_id)
       .eq("line_type", "job")
-      .or(\n        `assigned_tech_id.eq.${user.id},assigned_to.eq.${user.id},user_id.eq.${user.id}`,\n      ),
+      .or(
+        `assigned_tech_id.eq.${user.id},assigned_to.eq.${user.id},user_id.eq.${user.id}`,
+      ),
     admin
       .from("work_order_line_technicians")
       .select("work_order_line_id")
