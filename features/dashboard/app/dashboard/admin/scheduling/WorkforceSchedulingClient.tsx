@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AdminPageHeader, AdminPageShell, AdminPanel, AdminPanelTitle } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
+import { AdminPageHeader, AdminPanel, AdminPanelTitle } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
 
 type Staff = {
   id: string;
@@ -209,39 +209,39 @@ export default function WorkforceSchedulingClient() {
   }
 
   return (
-    <AdminPageShell>
+    <div className="space-y-4">
       <AdminPageHeader
-        eyebrow="Workforce Operations"
-        title="Scheduling Command"
-        subtitle="Coverage, time away, and shift readiness for today’s workforce."
+        eyebrow="Coverage planning"
+        title="Schedule & Time Away"
+        subtitle="Plan recurring coverage, handle exceptions, and review time-away requests without leaving Workforce."
       />
       {filterLabel ? (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-[color:var(--theme-accent-text)]">
           <span>Filtered from Workforce Overview: {filterLabel}</span>
-          <Link href="/dashboard/workforce/scheduling" className="font-medium text-orange-300 hover:text-orange-200">Clear filter</Link>
+          <Link href="/dashboard/workforce/scheduling" className="font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]">Clear filter</Link>
         </div>
       ) : null}
 
       <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           <p className="text-xs text-[color:var(--theme-text-secondary)]">Available / Working</p>
-          <p className="text-xl font-semibold text-emerald-200">{coverage.availableCount} / {coverage.activeCount}</p>
+          <p className="text-xl font-semibold text-[color:var(--theme-success-text)]">{coverage.availableCount} / {coverage.activeCount}</p>
         </div>
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           <p className="text-xs text-[color:var(--theme-text-secondary)]">Away Today</p>
-          <p className="text-xl font-semibold text-amber-200">{coverage.awayToday}</p>
+          <p className="text-xl font-semibold text-[color:var(--theme-warning-text)]">{coverage.awayToday}</p>
         </div>
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           <p className="text-xs text-[color:var(--theme-text-secondary)]">Pending Time-Off</p>
-          <p className="text-xl font-semibold text-orange-200">{pending.length}</p>
+          <p className="text-xl font-semibold text-[color:var(--theme-accent-text)]">{pending.length}</p>
         </div>
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           <p className="text-xs text-[color:var(--theme-text-secondary)]">Missing Templates</p>
-          <p className="text-xl font-semibold text-rose-200">{coverage.missingTemplates}</p>
+          <p className="text-xl font-semibold text-[color:var(--theme-danger-text)]">{coverage.missingTemplates}</p>
         </div>
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           <p className="text-xs text-[color:var(--theme-text-secondary)]">Overrides (Range)</p>
-          <p className="text-xl font-semibold text-sky-200">{coverage.overrideCount}</p>
+          <p className="text-xl font-semibold text-[color:var(--theme-info-text)]">{coverage.overrideCount}</p>
         </div>
       </section>
 
@@ -253,7 +253,7 @@ export default function WorkforceSchedulingClient() {
             {staff.length === 0 ? <p className="text-[color:var(--theme-text-secondary)]">No staff in current range.</p> : staff.map((s) => (
               <div key={`today-${s.id}`} className="flex items-center justify-between rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
                 <span>{s.full_name ?? "Unnamed"}</span>
-                <span className={s.is_away_today ? "text-amber-300" : "text-emerald-300"}>{s.is_away_today ? "Away today" : "Available"}</span>
+                <span className={s.is_away_today ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-success-text)]"}>{s.is_away_today ? "Away today" : "Available"}</span>
               </div>
             ))}
           </div>
@@ -265,7 +265,7 @@ export default function WorkforceSchedulingClient() {
             {staff.map((s) => (
               <div key={`tomorrow-${s.id}`} className="flex items-center justify-between rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
                 <span>{s.full_name ?? "Unnamed"}</span>
-                <span className={s.is_away_tomorrow ? "text-amber-300" : "text-emerald-300"}>{s.is_away_tomorrow ? "Away tomorrow" : "Available"}</span>
+                <span className={s.is_away_tomorrow ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-success-text)]"}>{s.is_away_tomorrow ? "Away tomorrow" : "Available"}</span>
               </div>
             ))}
           </div>
@@ -277,7 +277,7 @@ export default function WorkforceSchedulingClient() {
         <div className="space-y-2 p-4 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-[color:var(--theme-text-secondary)]">Approvals create schedule availability blocks in the same transaction.</p>
-            <button type="button" onClick={() => setShowCreateRequest((current) => !current)} className="rounded border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs text-orange-200">
+            <button type="button" onClick={() => setShowCreateRequest((current) => !current)} className="rounded border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs text-[color:var(--theme-accent-text)]">
               {showCreateRequest ? "Close" : "Create for employee"}
             </button>
           </div>
@@ -317,12 +317,12 @@ export default function WorkforceSchedulingClient() {
               <p className="text-xs text-[color:var(--theme-text-secondary)]">{r.reason ?? "No note"}</p>
               <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
                 <span>{minsToHours(r.scheduled_minutes_affected)} scheduled hours affected</span>
-                <span className={r.overlapping_approved_absences > 0 ? "text-amber-300" : "text-emerald-300"}>{r.overlapping_approved_absences} other approved absence{r.overlapping_approved_absences === 1 ? "" : "s"}</span>
-                <span className={r.active_assigned_work_count > 0 ? "text-amber-300" : "text-emerald-300"}>{r.active_assigned_work_count} active assigned job{r.active_assigned_work_count === 1 ? "" : "s"}</span>
+                <span className={r.overlapping_approved_absences > 0 ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-success-text)]"}>{r.overlapping_approved_absences} other approved absence{r.overlapping_approved_absences === 1 ? "" : "s"}</span>
+                <span className={r.active_assigned_work_count > 0 ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-success-text)]"}>{r.active_assigned_work_count} active assigned job{r.active_assigned_work_count === 1 ? "" : "s"}</span>
               </div>
               <div className="mt-2 flex gap-2">
-                <button type="button" disabled={busy} onClick={() => void reviewRequest(r.id, "approved")} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200">Approve</button>
-                <button type="button" disabled={busy} onClick={() => void reviewRequest(r.id, "declined")} className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-200">Decline</button>
+                <button type="button" disabled={busy} onClick={() => void reviewRequest(r.id, "approved")} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-[color:var(--theme-success-text)]">Approve</button>
+                <button type="button" disabled={busy} onClick={() => void reviewRequest(r.id, "declined")} className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-[color:var(--theme-danger-text)]">Decline</button>
               </div>
             </div>
           ))}
@@ -342,10 +342,10 @@ export default function WorkforceSchedulingClient() {
                       <td className="py-2">{s.full_name ?? "Unnamed"}</td>
                       <td>{s.role ?? "staff"}</td>
                       <td>{minsToHours(s.weekly_recurring_minutes)}</td>
-                      <td className={s.recurring_template_rows === 0 ? "text-amber-200" : ""}>{s.recurring_template_rows}</td>
+                      <td className={s.recurring_template_rows === 0 ? "text-[color:var(--theme-warning-text)]" : ""}>{s.recurring_template_rows}</td>
                       <td>{s.override_count_in_range}</td>
                       <td>{s.approved_away_blocks_in_range}</td>
-                      <td className={s.is_away_today ? "text-amber-300" : "text-emerald-300"}>{s.is_away_today ? "Away today" : "Available"}</td>
+                      <td className={s.is_away_today ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-success-text)]"}>{s.is_away_today ? "Away today" : "Available"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -393,13 +393,13 @@ export default function WorkforceSchedulingClient() {
                 <label className="text-xs text-[color:var(--theme-text-secondary)]" htmlFor="override-end">End time</label>
                 <input id="override-end" type="time" value={overrideEnd} onChange={(e) => setOverrideEnd(e.target.value)} className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1" />
                 <button type="button" disabled={busy || !selectedStaffId || !overrideDate} onClick={() => void addOverride()} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs">Add override</button>
-                <div className="text-xs text-[color:var(--theme-text-secondary)]">Cross links: <Link className="text-orange-300" href="/dashboard/admin/people">People</Link> · <Link className="text-orange-300" href="/dashboard/admin/payroll-time">Payroll Time</Link></div>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">Related: <Link className="text-[color:var(--theme-accent-text)]" href="/dashboard/workforce/people">People</Link> · <Link className="text-[color:var(--theme-accent-text)]" href="/dashboard/workforce/payroll-review">Payroll</Link></div>
               </div>
             </div>
-            {error ? <p className="px-4 pb-4 text-xs text-red-300">{error}</p> : null}
+            {error ? <p className="px-4 pb-4 text-xs text-[color:var(--theme-danger-text)]">{error}</p> : null}
           </AdminPanel>
         </div>
       </div>
-    </AdminPageShell>
+    </div>
   );
 }

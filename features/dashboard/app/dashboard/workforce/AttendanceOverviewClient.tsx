@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { WorkforceQuickLinks } from "./WorkforceQuickLinks";
 import { OperationalViewSwitcher } from "@/features/dashboard/components/OperationalViewSwitcher";
 import { TechnicianActivityCard } from "@/features/workforce/components/TechnicianActivityCard";
 import { WorkforceActivityFeed } from "@/features/workforce/components/WorkforceActivityFeed";
@@ -308,8 +307,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
               className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
             />
           </label>
-          {personId ? <Link href={`/dashboard/workforce/attendance?date=${selectedDate}`} className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-orange-300">Show all employees</Link> : null}
-          <WorkforceQuickLinks roleScope="manager" className="flex flex-wrap gap-2" />
+          {personId ? <Link href={`/dashboard/workforce/attendance?date=${selectedDate}`} className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-accent-text)]">Show all employees</Link> : null}
         </div>
       </section>
 
@@ -322,10 +320,10 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
       )}
 
       {!loading && error && (
-        <section className="rounded-2xl border border-red-500/30 bg-red-950/20 p-5">
-          <h2 className="text-lg font-semibold text-red-200">Unable to load attendance</h2>
-          <p className="mt-1 text-sm text-red-100/80">{error}</p>
-          <button onClick={() => void fetchAttendance()} className="mt-3 rounded-lg border border-red-300/40 px-3 py-2 text-sm text-red-100 hover:bg-red-900/30">Retry</button>
+        <section className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
+          <h2 className="text-lg font-semibold text-[color:var(--theme-danger-text)]">Unable to load attendance</h2>
+          <p className="mt-1 text-sm text-[color:var(--theme-danger-text)]">{error}</p>
+          <button onClick={() => void fetchAttendance()} className="mt-3 rounded-lg border border-red-300/40 px-3 py-2 text-sm text-[color:var(--theme-danger-text)] hover:bg-red-900/30">Retry</button>
         </section>
       )}
 
@@ -383,7 +381,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                         <h3 className="font-semibold text-[color:var(--theme-text-primary)]">{getEmployeeDisplayName(shift)}</h3>
                         <p className="text-xs text-[color:var(--theme-text-muted)]">{formatShiftRange(shift, timezone)}</p>
                       </div>
-                      <span className={`rounded-full border px-2.5 py-1 text-xs ${shift.end_time ? "border-emerald-400/30 text-emerald-300" : "border-amber-400/40 bg-amber-500/10 text-amber-200"}`}>
+                      <span className={`rounded-full border px-2.5 py-1 text-xs ${shift.end_time ? "border-emerald-400/30 text-[color:var(--theme-success-text)]" : "border-amber-400/40 bg-amber-500/10 text-[color:var(--theme-warning-text)]"}`}>
                         {shift.end_time ? "Closed" : "Open"}
                       </span>
                     </div>
@@ -393,7 +391,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                       <div><p className="text-[10px] uppercase text-[color:var(--theme-text-muted)]">Status</p><p className="font-medium capitalize">{shift.status ?? "unknown"}</p></div>
                     </div>
                     <div className="mt-3 overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)]">
-                      {events.length === 0 ? <p className="p-3 text-xs text-amber-300">No punch events recorded</p> : events.map((event) => {
+                      {events.length === 0 ? <p className="p-3 text-xs text-[color:var(--theme-warning-text)]">No punch events recorded</p> : events.map((event) => {
                         const punchId = typeof event.id === "string" ? event.id : "";
                         const eventType = normalizeEventType(event);
                         return (
@@ -418,7 +416,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                                 setCorrectionReason("");
                                 setCorrectionError(null);
                               }}
-                              className="rounded-lg border border-orange-400/40 px-2.5 py-1.5 text-xs font-medium text-orange-300 disabled:cursor-not-allowed disabled:opacity-40"
+                              className="rounded-lg border border-orange-400/40 px-2.5 py-1.5 text-xs font-medium text-[color:var(--theme-accent-text)] disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               Edit
                             </button>
@@ -428,7 +426,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                     </div>
                     {punchEdit?.shiftId === shiftId ? (
                       <div className="mt-3 rounded-lg border border-orange-400/30 bg-orange-500/5 p-3">
-                        <p className="text-xs font-semibold text-orange-200">Edit {displayEventType(punchEdit.eventType)} punch</p>
+                        <p className="text-xs font-semibold text-[color:var(--theme-accent-text)]">Edit {displayEventType(punchEdit.eventType)} punch</p>
                         <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">The saved time uses the shop timezone and creates an audit record. Approved/exported periods cannot be changed.</p>
                         <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(190px,1fr)_minmax(220px,2fr)_auto] sm:items-end">
                           <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
@@ -456,13 +454,13 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                             <button type="button" disabled={savingPunch} onClick={() => setPunchEdit(null)} className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">Cancel</button>
                           </div>
                         </div>
-                        {correctionError ? <p className="mt-2 text-xs text-red-300">{correctionError}</p> : null}
+                        {correctionError ? <p className="mt-2 text-xs text-[color:var(--theme-danger-text)]">{correctionError}</p> : null}
                       </div>
                     ) : null}
                     <div className="mt-3 flex gap-3 text-xs">
-                      {shift.user_id ? <Link href={`/dashboard/workforce/payroll-review?person_id=${shift.user_id}`} className="font-medium text-orange-300">Payroll detail</Link> : null}
-                      {shift.user_id ? <Link href={`/dashboard/admin/people/${shift.user_id}#payroll-posture`} className="font-medium text-orange-300">Employee record</Link> : null}
-                      {shift.user_id ? <Link href={`/dashboard/admin/scheduling?user_id=${shift.user_id}&shift_id=${shiftId}&date=${selectedDate}`} className="font-medium text-orange-300">Correct time</Link> : null}
+                      {shift.user_id ? <Link href={`/dashboard/workforce/payroll-review?person_id=${shift.user_id}`} className="font-medium text-[color:var(--theme-accent-text)]">Payroll detail</Link> : null}
+                      {shift.user_id ? <Link href={`/dashboard/workforce/people/${shift.user_id}#payroll-posture`} className="font-medium text-[color:var(--theme-accent-text)]">Employee record</Link> : null}
+                      {shift.user_id ? <Link href={`/dashboard/workforce/scheduling?user_id=${shift.user_id}&shift_id=${shiftId}&date=${selectedDate}`} className="font-medium text-[color:var(--theme-accent-text)]">Correct time</Link> : null}
                     </div>
                   </article>
                 );
@@ -476,7 +474,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                 <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Live technician operations</h2>
                 <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Current job state is resolved from canonical labor segments, not line punch timestamps.</p>
               </div>
-              {(data?.activitySummary?.activeExceptionCount ?? 0) > 0 ? <span className="rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-sm text-red-100">{data?.activitySummary?.activeExceptionCount} active exception(s)</span> : null}
+              {(data?.activitySummary?.activeExceptionCount ?? 0) > 0 ? <span className="rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-sm text-[color:var(--theme-danger-text)]">{data?.activitySummary?.activeExceptionCount} active exception(s)</span> : null}
             </div>
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
               {(data?.activities ?? []).length === 0 ? <p className="text-sm text-[color:var(--theme-text-secondary)]">No employees or active labor segments found for today.</p> : (data?.activities ?? []).map((activity) => <TechnicianActivityCard key={activity.userId} activity={activity} timezone={timezone} />)}
@@ -492,7 +490,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
           <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
             <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Payroll bridge</h2>
             <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Attendance posture from shifts and punches feeds payroll review for downstream approvals and handoff. Exception policies are intentionally deferred for a later phase.</p>
-            <Link href="/dashboard/workforce/payroll-review" className="mt-3 inline-flex rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-medium text-orange-300 hover:text-orange-200">Open Payroll Review</Link>
+            <Link href="/dashboard/workforce/payroll-review" className="mt-3 inline-flex rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]">Open Payroll Review</Link>
           </section>
         </>
       )}

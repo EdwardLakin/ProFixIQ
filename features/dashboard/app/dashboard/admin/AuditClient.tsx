@@ -9,7 +9,6 @@ import {
   AdminEmptyState,
   AdminField,
   AdminPageHeader,
-  AdminPageShell,
   AdminPanel,
   AdminPanelTitle,
   AdminStatCard,
@@ -87,11 +86,11 @@ export default function AdminAuditClient() {
   }, [filteredRows.length, rows]);
 
   return (
-    <AdminPageShell>
+    <div className="space-y-4">
       <AdminPageHeader
-        eyebrow="Governance Trail"
-        title="Audit"
-        subtitle="Audit supports daily review of sensitive actions, with enough context to triage and follow up quickly."
+        eyebrow="Workforce trail"
+        title="Activity"
+        subtitle="Review sensitive people, time, payroll, and access changes with enough context to follow up."
       />
 
       <AdminPanel>
@@ -110,7 +109,7 @@ export default function AdminAuditClient() {
           description="Move from suspicious events into the right operational surface without losing context."
         />
         <div className="grid gap-3 p-4 md:grid-cols-3">
-          <Link href="/dashboard/admin/people" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70">
+          <Link href="/dashboard/workforce/people" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-[color:var(--brand-accent)]">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Identity follow-up</p>
             <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use People when actions involve person identity, workforce status, or credential readiness.</p>
           </Link>
@@ -118,7 +117,7 @@ export default function AdminAuditClient() {
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Tenant follow-up</p>
             <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use Shops when actions indicate shop ownership or profile risk.</p>
           </Link>
-          <Link href="/dashboard/admin/payroll-time" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-orange-400/70">
+          <Link href="/dashboard/workforce/payroll-review" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 transition hover:border-[color:var(--brand-accent)]">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Payroll follow-up</p>
             <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Use Payroll Time when edits affect employee time review or approvals.</p>
           </Link>
@@ -160,7 +159,7 @@ export default function AdminAuditClient() {
           </AdminField>
         </AdminToolbar>
 
-        {err ? <p className="px-4 pb-3 text-xs text-red-300">Audit query failed: {err}</p> : null}
+        {err ? <p className="px-4 pb-3 text-xs text-[color:var(--theme-danger-text)]">Audit query failed: {err}</p> : null}
       </AdminPanel>
 
       <AdminPanel>
@@ -214,6 +213,6 @@ export default function AdminAuditClient() {
           </div>
         )}
       </AdminPanel>
-    </AdminPageShell>
+    </div>
   );
 }

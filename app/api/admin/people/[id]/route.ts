@@ -108,7 +108,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       severity: "blocking",
       label: `${blocking} payroll blocking issue${blocking > 1 ? "s" : ""}`,
       action_label: "Review payroll entries",
-      action_href: `/dashboard/admin/payroll-time?person_id=${params.id}`,
+      action_href: `/dashboard/workforce/payroll-review?person_id=${params.id}`,
     });
   }
   if (!profile.payroll_ready) {
@@ -117,7 +117,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       severity: "blocking",
       label: "Payroll profile is not ready",
       action_label: "Fix payroll data",
-      action_href: `/dashboard/admin/people/${params.id}#workforce`,
+      action_href: `/dashboard/workforce/people/${params.id}#workforce`,
     });
   }
   const missingWorkforceData = [
@@ -131,7 +131,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       severity: "blocking",
       label: `Missing required profile fields: ${missingWorkforceData.join(", ")}`,
       action_label: "Complete workforce profile",
-      action_href: `/dashboard/admin/people/${params.id}#workforce`,
+      action_href: `/dashboard/workforce/people/${params.id}#workforce`,
     });
   }
   const expiredCount = certifications.filter((cert) => cert.lifecycle_group === "expired").length;
@@ -141,7 +141,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       severity: "blocking",
       label: `${expiredCount} certification${expiredCount > 1 ? "s are" : " is"} expired`,
       action_label: "Update certification",
-      action_href: `/dashboard/admin/people/${params.id}#certifications`,
+      action_href: `/dashboard/workforce/people/${params.id}#certifications`,
     });
   }
   const expiringSoonCount = certifications.filter((cert) => cert.lifecycle_group === "expiring_soon").length;
@@ -151,7 +151,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       severity: "warning",
       label: `${expiringSoonCount} certification${expiringSoonCount > 1 ? "s" : ""} expiring soon`,
       action_label: "Renew certification",
-      action_href: `/dashboard/admin/people/${params.id}#certifications`,
+      action_href: `/dashboard/workforce/people/${params.id}#certifications`,
     });
   }
   if (warning > 0) {
@@ -160,7 +160,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       severity: "warning",
       label: `${warning} payroll warning${warning > 1 ? "s" : ""}`,
       action_label: "Review payroll entries",
-      action_href: `/dashboard/admin/payroll-time?person_id=${params.id}`,
+      action_href: `/dashboard/workforce/payroll-review?person_id=${params.id}`,
     });
   }
   if (profile.employment_status === "inactive" && (openEntriesCount ?? 0) > 0) {
@@ -169,7 +169,7 @@ export async function GET(_req: NextRequest, context: unknown) {
       severity: "informational",
       label: "Inactive employee still has open payroll entries",
       action_label: "Review payroll entries",
-      action_href: `/dashboard/admin/payroll-time?person_id=${params.id}`,
+      action_href: `/dashboard/workforce/payroll-review?person_id=${params.id}`,
     });
   }
 

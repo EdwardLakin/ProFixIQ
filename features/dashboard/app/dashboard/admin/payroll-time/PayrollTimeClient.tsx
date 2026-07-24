@@ -7,7 +7,6 @@ import {
   AdminBadge,
   AdminEmptyState,
   AdminPageHeader,
-  AdminPageShell,
   AdminPanel,
   AdminPanelTitle,
   AdminStatCard,
@@ -313,16 +312,16 @@ export default function PayrollTimeClient() {
   }
 
   return (
-    <AdminPageShell>
+    <div className="space-y-4">
       <AdminPageHeader
-        eyebrow="Payroll"
-        title="Payroll Time"
-        subtitle="Review employee hours for the current pay period."
+        eyebrow="Pay-period review"
+        title="Payroll Review"
+        subtitle="Review attendance, job time, flat-rate credit, exceptions, approvals, and export readiness."
       />
       {workforceSeverity ? (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-[color:var(--theme-accent-text)]">
           <span>Filtered from Workforce Overview: {workforceSeverity === "blocking" ? "Blocking exceptions" : "Warning exceptions"}</span>
-          <Link href="/dashboard/workforce/payroll-review" className="font-medium text-orange-300 hover:text-orange-200">Clear filter</Link>
+          <Link href="/dashboard/workforce/payroll-review" className="font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]">Clear filter</Link>
         </div>
       ) : null}
 
@@ -400,7 +399,7 @@ export default function PayrollTimeClient() {
             </label>
           ) : null}
           <button
-            className="self-end rounded-lg border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-orange-200 disabled:opacity-50"
+            className="self-end rounded-lg border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-accent-text)] disabled:opacity-50"
             disabled={!canConfigurePeriods || busyAction !== null}
             onClick={() => void handleSavePeriodSettings()}
           >
@@ -436,14 +435,14 @@ export default function PayrollTimeClient() {
             {busyAction === "rebuild" ? "Recalculating…" : "Recalculate"}
           </button>
           <button
-            className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-emerald-200 disabled:opacity-50"
+            className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-success-text)] disabled:opacity-50"
             onClick={() => void handleApprove()}
             disabled={!activePeriodId || busyAction !== null || summary.blocking > 0 || Boolean(refreshState?.refreshError) || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
           >
             {busyAction === "approve" ? "Approving…" : "Approve Payroll"}
           </button>
           <button
-            className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-sky-200 disabled:opacity-50"
+            className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-info-text)] disabled:opacity-50"
             onClick={() => void handleExport()}
             disabled={!activePeriodId || busyAction !== null || activePeriod?.status !== "approved"}
           >
@@ -460,9 +459,9 @@ export default function PayrollTimeClient() {
           </div>
         ) : null}
 
-        {error ? <p className="px-4 pb-4 text-xs text-red-300">{error}</p> : null}
+        {error ? <p className="px-4 pb-4 text-xs text-[color:var(--theme-danger-text)]">{error}</p> : null}
         {refreshState?.refreshError ? (
-          <div className="mx-4 mb-4 rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
+          <div className="mx-4 mb-4 rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-sm text-[color:var(--theme-danger-text)]">
             <p>Time records exist, but payroll totals could not be refreshed.</p>
             <button className="mt-2 rounded-lg border border-red-300/40 px-3 py-1 text-xs" onClick={() => void handleRebuild()}>Retry refresh</button>
           </div>
@@ -475,7 +474,7 @@ export default function PayrollTimeClient() {
           description="Attendance determines payroll hours; productive job time is shown separately from other paid shop time."
         />
         <AdminToolbar>
-          {personIdFilter ? <p className="text-xs text-orange-300">Filtered to person: {personIdFilter.slice(0, 8)}</p> : null}
+          {personIdFilter ? <p className="text-xs text-[color:var(--theme-accent-text)]">Filtered to person: {personIdFilter.slice(0, 8)}</p> : null}
           <input
             className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] outline-none md:w-96"
             placeholder="Filter entries by employee name, email, or id"
@@ -498,7 +497,7 @@ export default function PayrollTimeClient() {
                 <summary className="cursor-pointer list-none p-4">
                   <div className="grid gap-3 md:grid-cols-[minmax(180px,2fr)_repeat(6,minmax(72px,1fr))] md:items-center">
                     <div>
-                      <Link href={`/dashboard/admin/people/${group.userId}`} className="font-semibold text-[color:var(--theme-text-primary)] hover:text-orange-300">
+                      <Link href={`/dashboard/workforce/people/${group.userId}`} className="font-semibold text-[color:var(--theme-text-primary)] hover:text-[color:var(--theme-accent-text)]">
                         {group.name}
                       </Link>
                       <p className="text-xs text-[color:var(--theme-text-muted)]">{group.email || `${group.rows.length} recorded day${group.rows.length === 1 ? "" : "s"}`}</p>
@@ -509,7 +508,7 @@ export default function PayrollTimeClient() {
                     <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Job time</p><p className="font-semibold">{fmtHours(group.job)}h</p></div>
                     <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Flagged</p><p className="font-semibold">{fmtHours(group.flagged)}h</p></div>
                     <div>
-                      {group.blocking > 0 ? <AdminBadge>{group.blocking} blocking</AdminBadge> : group.warnings > 0 ? <AdminBadge>{group.warnings} review</AdminBadge> : <span className="text-xs font-medium text-emerald-300">Ready</span>}
+                      {group.blocking > 0 ? <AdminBadge>{group.blocking} blocking</AdminBadge> : group.warnings > 0 ? <AdminBadge>{group.warnings} review</AdminBadge> : <span className="text-xs font-medium text-[color:var(--theme-success-text)]">Ready</span>}
                     </div>
                   </div>
                 </summary>
@@ -535,8 +534,8 @@ export default function PayrollTimeClient() {
                         <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Flagged: </span>{fmtHours(entry.flagged_minutes)}h</p>
                         <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Other: </span>{fmtHours(Math.max(0, Number(entry.worked_minutes ?? 0) - Number(entry.job_minutes ?? 0)))}h</p>
                         <div>
-                          {entry.blocking_exception_count > 0 ? <AdminBadge>Open shift</AdminBadge> : entry.warning_exception_count > 0 ? <AdminBadge>Review</AdminBadge> : <span className="text-xs text-emerald-300">{entry.payroll_status_label ?? "Ready"}</span>}
-                          <Link className="mt-1 block text-xs font-medium text-orange-300 hover:text-orange-200" href={`/dashboard/workforce/attendance?person_id=${entry.user_id}&date=${entry.work_date}`}>View timecard</Link>
+                          {entry.blocking_exception_count > 0 ? <AdminBadge>Open shift</AdminBadge> : entry.warning_exception_count > 0 ? <AdminBadge>Review</AdminBadge> : <span className="text-xs text-[color:var(--theme-success-text)]">{entry.payroll_status_label ?? "Ready"}</span>}
+                          <Link className="mt-1 block text-xs font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]" href={`/dashboard/workforce/attendance?person_id=${entry.user_id}&date=${entry.work_date}`}>View timecard</Link>
                         </div>
                       </div>
                     ))}
@@ -607,7 +606,7 @@ export default function PayrollTimeClient() {
 
       <AdminPanel>
         <AdminPanelTitle title="Export History" description="Read-only export snapshots for this payroll period with secure download links." />
-        {historyError ? <p className="px-4 pb-4 text-xs text-amber-300">{historyError}</p> : null}
+        {historyError ? <p className="px-4 pb-4 text-xs text-[color:var(--theme-warning-text)]">{historyError}</p> : null}
         {exportHistory.length === 0 ? (
           <AdminEmptyState title="No export batches yet" body="Run an export to create a period snapshot artifact." />
         ) : (
@@ -637,7 +636,7 @@ export default function PayrollTimeClient() {
                     <td className="px-4 py-2.5 font-mono text-xs text-[color:var(--theme-text-secondary)]">{batch.file_sha256 ? `${batch.file_sha256.slice(0, 12)}…` : "—"}</td>
                     <td className="px-4 py-2.5 text-right">
                       <button
-                        className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-sky-200 disabled:opacity-50"
+                        className="rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-info-text)] disabled:opacity-50"
                         onClick={() => void handleDownload(batch.id)}
                         disabled={downloadingBatchId !== null}
                       >
@@ -659,6 +658,6 @@ export default function PayrollTimeClient() {
           <pre className="overflow-x-auto rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-xs text-[color:var(--theme-text-secondary)]">{csvPreview}</pre>
         </AdminPanel>
       ) : null}
-    </AdminPageShell>
+    </div>
   );
 }

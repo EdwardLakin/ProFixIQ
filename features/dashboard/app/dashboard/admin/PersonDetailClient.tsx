@@ -9,7 +9,6 @@ import {
   AdminEmptyState,
   AdminField,
   AdminPageHeader,
-  AdminPageShell,
   AdminPanel,
   AdminPanelTitle,
   AdminStatCard,
@@ -122,9 +121,9 @@ function certPosture(cert: Certification) {
 }
 
 function statusTone(status: "active" | "inactive" | "on_leave") {
-  if (status === "inactive") return "text-red-300";
-  if (status === "on_leave") return "text-amber-300";
-  return "text-emerald-300";
+  if (status === "inactive") return "text-[color:var(--theme-danger-text)]";
+  if (status === "on_leave") return "text-[color:var(--theme-warning-text)]";
+  return "text-[color:var(--theme-success-text)]";
 }
 
 export default function PersonDetailClient({ personId, from }: { personId: string; from?: string | null }) {
@@ -281,14 +280,14 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
 
   if (!detail) {
     return (
-      <AdminPageShell>
+      <div className="space-y-4">
         <AdminEmptyState title="Loading person workspace" body="Pulling identity, workforce, certifications, payroll posture, and audit context." />
-      </AdminPageShell>
+      </div>
     );
   }
 
   return (
-    <AdminPageShell>
+    <div className="space-y-4">
       <AdminPageHeader
         eyebrow="People Record Workspace"
         title={detail.full_name ?? "Person record"}
@@ -296,7 +295,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
       />
       {fromWorkforceOverview ? (
         <AdminPanel>
-          <div className="px-4 py-3 text-xs text-orange-200">Opened from Workforce Overview for workload review.</div>
+          <div className="px-4 py-3 text-xs text-[color:var(--theme-accent-text)]">Opened from Workforce Overview for workload review.</div>
         </AdminPanel>
       ) : null}
 
@@ -332,10 +331,10 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
             {detail.action_reasons.map((reason, idx) => (
               <div key={`${reason.code}-${idx}`} className="flex flex-col gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <p className={`text-xs uppercase tracking-[0.16em] ${reason.severity === "blocking" ? "text-red-300" : reason.severity === "warning" ? "text-amber-300" : "text-sky-300"}`}>{reason.severity}</p>
+                  <p className={`text-xs uppercase tracking-[0.16em] ${reason.severity === "blocking" ? "text-[color:var(--theme-danger-text)]" : reason.severity === "warning" ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-info-text)]"}`}>{reason.severity}</p>
                   <p className="text-sm text-[color:var(--theme-text-primary)]">{reason.label}</p>
                 </div>
-                <Link href={reason.action_href} className="inline-flex rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-medium text-orange-300 hover:text-orange-200">
+                <Link href={reason.action_href} className="inline-flex rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]">
                   {reason.action_label} →
                 </Link>
               </div>
@@ -373,8 +372,8 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         </div>
         <div className="px-4 pb-4 text-xs text-[color:var(--theme-text-secondary)]">
           <p className="mb-2">Next actions:</p>
-          <p>• <Link className="text-orange-300 hover:text-orange-200" href="/dashboard/admin/scheduling">Open scheduling board</Link></p>
-          <p>• <Link className="text-orange-300 hover:text-orange-200" href={`/dashboard/admin/payroll-time?person_id=${personId}`}>Open payroll-time review</Link></p>
+          <p>• <Link className="text-[color:var(--theme-accent-text)]" href="/dashboard/workforce/scheduling">Open scheduling board</Link></p>
+          <p>• <Link className="text-[color:var(--theme-accent-text)]" href={`/dashboard/workforce/payroll-review?person_id=${personId}`}>Open payroll review</Link></p>
           {detail.recent_time_off_requests.slice(0, 3).map((request) => (
             <p key={request.id}>• {request.request_type} ({request.status}) {new Date(request.starts_at).toLocaleDateString()} → {new Date(request.ends_at).toLocaleDateString()}</p>
           ))}
@@ -488,7 +487,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
                     <td className="px-4 py-2.5"><AdminBadge>{certPosture(cert)}</AdminBadge></td>
                     <td className="px-4 py-2.5 text-xs">
                       <button
-                        className="mr-3 text-orange-300 hover:text-orange-200"
+                        className="mr-3 text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]"
                         onClick={() => {
                           setEditingCertId(cert.id);
                           setEditingCert({
@@ -505,7 +504,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
                       >Edit</button>
                       {(cert.lifecycle_group === "expired" || cert.lifecycle_group === "expiring_soon") ? (
                         <button
-                          className="mr-3 text-emerald-300 hover:text-emerald-200"
+                          className="mr-3 text-[color:var(--theme-success-text)] hover:text-[color:var(--theme-success-text)]"
                           onClick={() => {
                             setEditingCertId(cert.id);
                             setEditingCert({
@@ -521,7 +520,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
                           }}
                         >Mark renewed</button>
                       ) : null}
-                      <button className="text-red-300 hover:text-red-200" onClick={() => void deleteCertification(cert.id)}>Delete</button>
+                      <button className="text-[color:var(--theme-danger-text)] hover:text-[color:var(--theme-danger-text)]" onClick={() => void deleteCertification(cert.id)}>Delete</button>
                     </td>
                   </tr>
                 ))}
@@ -556,7 +555,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         <div className="grid gap-3 p-4 text-xs md:grid-cols-2">
           <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
             <p className="font-medium text-[color:var(--theme-text-primary)]">Readiness posture</p>
-            <p className={`mt-1 font-medium ${detail.payroll_posture.is_payroll_ready ? "text-emerald-300" : "text-red-300"}`}>{detail.payroll_posture.is_payroll_ready ? "Ready for payroll processing" : `Not payroll ready — ${Math.max(1, detail.payroll_posture.blocking_exceptions)} blocking issue${Math.max(1, detail.payroll_posture.blocking_exceptions) > 1 ? "s" : ""}`}</p>
+            <p className={`mt-1 font-medium ${detail.payroll_posture.is_payroll_ready ? "text-[color:var(--theme-success-text)]" : "text-[color:var(--theme-danger-text)]"}`}>{detail.payroll_posture.is_payroll_ready ? "Ready for payroll processing" : `Not payroll ready — ${Math.max(1, detail.payroll_posture.blocking_exceptions)} blocking issue${Math.max(1, detail.payroll_posture.blocking_exceptions) > 1 ? "s" : ""}`}</p>
             <p>{detail.payroll_posture.blocking_exceptions} blocking • {detail.payroll_posture.warning_exceptions} warning</p>
             <p>{detail.payroll_posture.in_current_period ? "Included in current open period" : "No open-period entries yet"}</p>
           </div>
@@ -567,14 +566,14 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
             ) : (
               detail.payroll_posture.missing_workforce_data.map((item) => <p key={item}>• {item}</p>)
             )}
-            <Link href={`/dashboard/admin/payroll-time?person_id=${detail.id}`} className="mt-2 inline-block rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 font-medium text-orange-300 hover:text-orange-200">Fix payroll issues →</Link>
+            <Link href={`/dashboard/workforce/payroll-review?person_id=${detail.id}`} className="mt-2 inline-block rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 font-medium text-[color:var(--theme-accent-text)]">Fix payroll issues →</Link>
           </div>
         </div>
       </AdminPanel>
       </div>
 
       <AdminPanel>
-        <AdminPanelTitle title="Activity / Audit" description="Recent governance events linked to this person record." action={<Link href="/dashboard/admin/audit" className="text-xs font-medium text-orange-300 hover:text-orange-200">Open full audit →</Link>} />
+        <AdminPanelTitle title="Activity" description="Recent governance events linked to this person record." action={<Link href="/dashboard/workforce/activity" className="text-xs font-medium text-[color:var(--theme-accent-text)]">Open full activity →</Link>} />
         {detail.audit_preview.length === 0 ? (
           <AdminEmptyState title="No recent activity" body="No audit trail rows matched this person in the latest window." />
         ) : (
@@ -596,8 +595,8 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
 
       <AdminToolbar>
         <Button type="button" variant="default" onClick={() => void saveIdentityAndWorkforce()} disabled={saving}>{saving ? "Saving…" : "Save profile updates"}</Button>
-        {error ? <span className="text-xs text-red-300">{error}</span> : null}
+        {error ? <span className="text-xs text-[color:var(--theme-danger-text)]">{error}</span> : null}
       </AdminToolbar>
-    </AdminPageShell>
+    </div>
   );
 }

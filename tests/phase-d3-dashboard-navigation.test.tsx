@@ -59,18 +59,14 @@ describe("Phase D3 dashboard operational navigation", () => {
     const workforce = ownerTiles.filter((tile) => tile.section === "Workforce");
 
     expect(operations.map((tile) => tile.href)).not.toContain("/work-orders/board");
-    expect(workforce.map((tile) => tile.href)).toContain("/dashboard/workforce/attendance");
+    expect(workforce.map((tile) => tile.href)).toContain("/dashboard/workforce");
     expect(duplicateCount(ownerTiles.map((tile) => tile.href), "/work-orders/board")).toBe(1);
-    expect(duplicateCount(ownerTiles.map((tile) => tile.href), "/dashboard/workforce/attendance")).toBe(1);
+    expect(duplicateCount(ownerTiles.map((tile) => tile.href), "/dashboard/workforce")).toBe(1);
   });
 
   it("keeps Workforce navigation management-only", () => {
     expect(sectionTitles("owner", "Workforce")).toEqual([
-      "Time & Attendance",
-      "Overview",
-      "Team",
-      "Scheduling",
-      "Payroll Review",
+      "Workforce Command",
     ]);
   });
 

@@ -459,7 +459,7 @@ export default function CreateUserPage(): JSX.Element {
                 <button
                   type="button"
                   className="text-[var(--accent-copper-soft)] hover:text-[var(--accent-copper)]"
-                  onClick={() => router.push(`/dashboard/admin/people/${createdUserId}?from=create-user`)}
+                  onClick={() => router.push(`/dashboard/workforce/people/${createdUserId}?from=create-user`)}
                 >
                   Open workspace
                 </button>
@@ -527,4 +527,3 @@ export default function CreateUserPage(): JSX.Element {
     </PageShell>
   );
 }
-
