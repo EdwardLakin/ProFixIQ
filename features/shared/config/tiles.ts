@@ -53,7 +53,7 @@ export const TILES: Tile[] = [
     href: "/dashboard",
     title: "Shop Overview",
     subtitle: "Today at a glance",
-    roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"],
+    roles: ["manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"],
     scopes: ["all"],
     section: "Dashboard",
   },
