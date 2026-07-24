@@ -19,6 +19,9 @@ const scheduling = read(
 const sidebar = read(
   "features/dashboard/components/owner-settings/OwnerSettingsSidebar.tsx",
 );
+const teamAccess = read(
+  "features/dashboard/components/owner-settings/OwnerSettingsUsersSection.tsx",
+);
 
 describe("owner settings experience", () => {
   it("provides a responsive, searchable category navigation", () => {
@@ -26,6 +29,7 @@ describe("owner settings experience", () => {
     expect(navigation).toContain('placeholder="Find a setting"');
     expect(navigation).toContain('aria-current={active ? "page" : undefined}');
     expect(navigation).toContain('id: "communications"');
+    expect(navigation).toContain('id: "team"');
     expect(navigation).toContain('id: "billing"');
   });
 
@@ -34,8 +38,23 @@ describe("owner settings experience", () => {
     expect(page).toContain("#settings-${section}");
     expect(page).toContain("contextualSections");
     expect(page).toContain('activeSection === "communications"');
+    expect(page).toContain('activeSection === "team"');
     expect(page).toContain('activeSection === "billing"');
     expect(page).toContain("#billing-stripe");
+  });
+
+  it("keeps staff account creation available from owner settings", () => {
+    expect(navigation).toContain("Team access");
+    expect(navigation).toContain("create user staff employee people users password invite role profiles workforce");
+    expect(page).toContain('"settings-team": "team"');
+    expect(page).toContain("OwnerSettingsUsersSection");
+    expect(teamAccess).toContain('id="team-access-create-user"');
+    expect(teamAccess).toContain('fetch("/api/admin/create-user"');
+    expect(teamAccess).toContain('fetch("/api/admin/reset-user-password"');
+    expect(teamAccess).toContain("InviteCandidatesList");
+    expect(teamAccess).toContain("UsersList");
+    expect(teamAccess).toContain("profiles.email");
+    expect(teamAccess).toContain("People/workforce profile");
   });
 
   it("shows the actual actor and protects unsaved changes", () => {
