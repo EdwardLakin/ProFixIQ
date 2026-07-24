@@ -268,7 +268,7 @@ export default function UsersList(): JSX.Element {
                         {u.username ? `@${u.username}` : "—"}
                       </div>
                       <div className="text-xs text-[color:var(--theme-text-muted)]">
-                        {u.auth_email ?? "No internal email"}
+                        {u.auth_email ?? "Login email unavailable"}
                       </div>
                     </td>
                     <td className="px-4 py-2.5">{u.email ?? "—"}</td>
