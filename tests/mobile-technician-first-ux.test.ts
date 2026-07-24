@@ -79,6 +79,8 @@ describe("technician-first mobile UX", () => {
     expect(photoModal).toContain("<DesktopPhotoCaptureModal");
     expect(photoModal).toContain("Take photo");
     expect(photoModal).toContain("Choose existing");
+    expect(photoModal).toContain("Open camera");
+    expect(photoModal).toContain("Choose photo");
     expect(photoModal).toContain('capture="environment"');
     expect(photoModal).toContain("void upload(selected);");
     expect(photoModal).toContain("hideFooter");
