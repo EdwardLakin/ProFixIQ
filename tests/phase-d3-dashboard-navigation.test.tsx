@@ -40,6 +40,7 @@ function sectionTitles(role: string, section: string) {
 function duplicateCount<T>(values: T[], value: T) {
   return values.filter((item) => item === value).length;
 }
+const dashboardEntry = read("app/dashboard/page.tsx");
 
 describe("Phase D3 dashboard operational navigation", () => {
   it("groups canonical daily operational views under Dashboard", () => {
