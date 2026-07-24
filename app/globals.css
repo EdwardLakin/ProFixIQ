@@ -246,7 +246,11 @@ html[data-theme-mode="light"] {
 html[data-theme-mode="light"] [class*="rounded"][class~="text-red-100"],
 html[data-theme-mode="light"] [class*="rounded"][class~="text-red-200"],
 html[data-theme-mode="light"] [class*="rounded"][class~="text-red-300"],
-html[data-theme-mode="light"] [class*="rounded"][class~="text-red-400"] {
+html[data-theme-mode="light"] [class*="rounded"][class~="text-red-400"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-rose-100"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-rose-200"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-rose-300"],
+html[data-theme-mode="light"] [class*="rounded"][class~="text-rose-400"] {
   color: #b91c1c;
 }
 
