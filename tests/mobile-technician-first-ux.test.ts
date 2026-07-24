@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 const mobileHome = readFileSync("app/mobile/page.tsx", "utf8");
 const techHome = readFileSync(
@@ -19,6 +19,18 @@ const mobileMenu = readFileSync(
 );
 const photoModal = readFileSync(
   "features/work-orders/components/workorders/extras/PhotoCaptureModal.tsx",
+  "utf8",
+);
+const mediaGallery = readFileSync(
+  "features/work-orders/components/workorders/extras/WorkOrderMediaGallery.tsx",
+  "utf8",
+);
+const focusedJobModal = readFileSync(
+  "features/work-orders/components/workorders/FocusedJobModal.tsx",
+  "utf8",
+);
+const mobileFocusedJob = readFileSync(
+  "features/work-orders/mobile/MobileFocusedJob.tsx",
   "utf8",
 );
 const assistantModal = readFileSync(
