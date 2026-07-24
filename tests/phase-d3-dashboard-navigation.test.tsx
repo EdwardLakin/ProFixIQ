@@ -40,7 +40,6 @@ function sectionTitles(role: string, section: string) {
 function duplicateCount<T>(values: T[], value: T) {
   return values.filter((item) => item === value).length;
 }
-const dashboardEntry = read("app/dashboard/page.tsx");
 
 describe("Phase D3 dashboard operational navigation", () => {
   it("groups canonical daily operational views under Dashboard", () => {
@@ -91,12 +90,12 @@ describe("Phase D3 dashboard operational navigation", () => {
     const mechanicHrefs = mechanicTiles.map((tile) => tile.href);
 
     expect(mechanicTitles).toEqual(expect.arrayContaining([
-      "Shop Overview",
       "Tech Job Queue",
       "Team Chat",
       "Tech Settings",
       "My Performance",
     ]));
+    expect(mechanicTitles).not.toContain("Shop Overview");
     expect(mechanicTitles).not.toContain("My Parts Requests");
     expect(mechanicTitles).not.toContain("History");
     expect(mechanicHrefs).not.toContain("/parts/requests?mine=1");

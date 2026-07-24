@@ -197,6 +197,22 @@ export default function InboxModal({
     );
   }, [seedConversationId]);
 
+  const loadMessages = useCallback(async (conversationId: string) => {
+    const res = await fetch("/api/chat/get-messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId }),
+    });
+    const data = await res.json().catch(() => null);
+    setMessages(Array.isArray(data) ? data : []);
+    await fetch("/api/chat/mark-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId }),
+    }).catch(() => undefined);
+    window.dispatchEvent(new CustomEvent("profixiq:inbox-read"));
+  }, []);
+
   useEffect(() => {
     if (!open) return;
 
@@ -328,21 +344,27 @@ export default function InboxModal({
   useEffect(() => {
     if (!open || !activeConversationId) return;
 
-    void fetch("/api/chat/get-messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId: activeConversationId }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        setMessages(Array.isArray(data) ? data : []);
-        void fetch("/api/chat/mark-read", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conversationId: activeConversationId }),
-        });
-      });
-  }, [open, activeConversationId]);
+    void loadMessages(activeConversationId);
+  }, [open, activeConversationId, loadMessages]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const refresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ conversationId?: string | null }>).detail;
+      const conversationId = detail?.conversationId ?? activeConversationId;
+      void loadConversations();
+      if (conversationId) {
+        setActiveConversationId(conversationId);
+        void loadMessages(conversationId);
+      }
+    };
+
+    window.addEventListener("profixiq:inbox-refresh", refresh);
+    return () => {
+      window.removeEventListener("profixiq:inbox-refresh", refresh);
+    };
+  }, [activeConversationId, loadConversations, loadMessages, open]);
 
   useEffect(() => {
     if (!open || !activeConversationId) return;
@@ -491,6 +513,10 @@ export default function InboxModal({
         conversationId = data.id;
       }
 
+      if (!conversationId) {
+        throw new Error("Could not resolve inbox thread");
+      }
+
       const res = await fetch("/api/chat/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -511,6 +537,14 @@ export default function InboxModal({
         const failure = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(failure?.error ?? "Could not send message");
       }
+      const sentMessage = (await res.json().catch(() => null)) as MessageRow | null;
+      if (sentMessage?.id) {
+        setMessages((prev) =>
+          prev.some((message) => message.id === sentMessage.id)
+            ? prev
+            : [...prev, sentMessage],
+        );
+      }
       if (draftScope) {
         await removeOfflineMessageDraft({ scope: draftScope, targetId: draftTargetId });
       }
@@ -521,6 +555,12 @@ export default function InboxModal({
       }
       setActiveConversationId(conversationId);
       await loadConversations();
+      await loadMessages(conversationId);
+      window.dispatchEvent(
+        new CustomEvent("profixiq:inbox-refresh", {
+          detail: { conversationId },
+        }),
+      );
     } catch (cause) {
       setSendError(cause instanceof Error ? cause.message : "Could not send message");
     } finally {
@@ -537,6 +577,7 @@ export default function InboxModal({
     useContext,
     context,
     loadConversations,
+    loadMessages,
     messageDraft,
     draftScope,
     draftTargetId,
