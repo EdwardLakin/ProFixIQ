@@ -116,3 +116,22 @@ describe("technician-first mobile UX", () => {
     expect(suggestions).toContain("Nothing is added without your action.");
   });
 });
+
+
+test("job media capture supports video and attached media visibility", () => {
+  expect(photoModal).toContain("Record video");
+  expect(photoModal).toContain("accept=\"video/*,.mov,.m4v,.mp4,.webm\"");
+  expect(photoModal).toContain("image/*,video/*,.heic,.heif,.mov,.m4v,.mp4,.webm");
+  expect(photoModal).toContain("<video");
+  expect(photoModal).toContain("Choose media");
+
+  expect(mediaGallery).toContain("work_order_media");
+  expect(mediaGallery).toContain("Photos & videos");
+  expect(mediaGallery).toContain("Technician video");
+  expect(mediaGallery).toContain("createSignedUrl");
+  expect(mediaGallery).toContain("No photos or videos attached yet.");
+
+  expect(focusedJobModal).toContain("WorkOrderMediaGallery");
+  expect(mobileFocusedJob).toContain("WorkOrderMediaGallery");
+  expect(mobileFocusedJob).toContain("isVideo ? \"Video\" : \"Photo\"");
+});
