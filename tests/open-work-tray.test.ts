@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +10,7 @@ import {
   visibleOpenWorkItems,
 } from "@/features/shared/components/tabs/openWork";
 import { metaFor } from "@/features/shared/lib/routeMeta";
+import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
 
 const WORK_ORDER_ID = "4b2ab5f1-2e74-45f1-8c71-2b12fcd32e95";
 
@@ -151,6 +153,28 @@ describe("Open Work persistence and presentation", () => {
     );
     expect(metaFor(`/work-orders/${WORK_ORDER_ID}`).title).toContain(
       WORK_ORDER_ID.slice(0, 8),
+    );
+  });
+});
+
+
+describe("Open Work provider boundaries", () => {
+  it("provides Open Work to authenticated mobile routes without wrapping sign-in", () => {
+    const mobileLayout = readFileSync("app/mobile/layout.tsx", "utf8");
+
+    expect(isStandalonePublicRoute("/mobile/sign-in")).toBe(true);
+    expect(isStandalonePublicRoute("/mobile/sign-in/help")).toBe(true);
+    expect(isStandalonePublicRoute("/mobile")).toBe(false);
+    expect(isStandalonePublicRoute("/mobile/work-orders/EL000001")).toBe(false);
+
+    expect(mobileLayout).toContain(
+      'import TabsBridge from "@/features/shared/components/tabs/TabsBridge";',
+    );
+    expect(mobileLayout).toContain(
+      "if (isStandalonePublicRoute(pathname))",
+    );
+    expect(mobileLayout).toContain(
+      "return <TabsBridge>{shell}</TabsBridge>;",
     );
   });
 });
