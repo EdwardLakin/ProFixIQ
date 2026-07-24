@@ -158,11 +158,10 @@ export const TILES: Tile[] = [
     roles: ["parts", "manager", "owner", "admin"],
     scopes: ["parts", "all"],
   },
-  // Optional: vendor API keys / integrations page
   {
     href: "/parts/vendors",
-    title: "Vendor Integrations",
-    subtitle: "API keys for suppliers",
+    title: "Vendors",
+    subtitle: "Supplier records & activity",
     roles: ["owner", "admin", "manager", "parts"],
     scopes: ["parts", "settings", "all"],
   },

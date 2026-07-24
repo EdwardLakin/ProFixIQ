@@ -244,8 +244,8 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager", "parts"],
   },
   "/parts/vendors": {
-    title: () => "Vendor Integrations",
-    icon: "🔑",
+    title: () => "Vendors",
+    icon: "🏪",
     roles: ["owner", "admin", "manager", "parts"],
   },
   "/parts/returns": {
