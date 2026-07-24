@@ -110,7 +110,6 @@ export const MOBILE_TILES: MobileTile[] = [
     title: "Inspections",
     subtitle: "Run checklists on vehicles",
     roles: [
-      "mechanic",
       "owner",
       "admin",
       "advisor",
