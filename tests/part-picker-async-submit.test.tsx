@@ -157,6 +157,69 @@ describe("PartPicker async submission", () => {
         return `00000000-0000-4000-8000-${String(keySequence).padStart(12, "0")}`;
       }),
     });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          shopId: "00000000-0000-4000-8000-000000000002",
+          parts: [
+            {
+              id: PART_A,
+              shop_id: "00000000-0000-4000-8000-000000000002",
+              name: "Brake Pad",
+              sku: "PAD-1",
+              part_number: "BP-1",
+              category: "Brakes",
+              default_cost: 12,
+              cost: 10,
+              price: 24,
+            },
+            {
+              id: PART_B,
+              shop_id: "00000000-0000-4000-8000-000000000002",
+              name: "Brake Rotor",
+              sku: "ROTOR-1",
+              part_number: "BR-1",
+              category: "Brakes",
+              default_cost: 30,
+              cost: 28,
+              price: 60,
+            },
+          ],
+          locations: [
+            {
+              id: LOCATION_A,
+              shop_id: "00000000-0000-4000-8000-000000000002",
+              code: "A",
+              name: "Shelf A",
+            },
+            {
+              id: LOCATION_B,
+              shop_id: "00000000-0000-4000-8000-000000000002",
+              code: "B",
+              name: "Shelf B",
+            },
+          ],
+          stock: [
+            {
+              part_id: PART_A,
+              location_id: LOCATION_A,
+              qty_available: 5,
+              qty_on_hand: 5,
+              qty_reserved: 0,
+            },
+            {
+              part_id: PART_B,
+              location_id: LOCATION_B,
+              qty_available: 5,
+              qty_on_hand: 5,
+              qty_reserved: 0,
+            },
+          ],
+        }),
+      })),
+    );
   });
 
   afterEach(() => {

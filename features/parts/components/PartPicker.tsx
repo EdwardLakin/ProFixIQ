@@ -13,7 +13,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import {
   useAiPartSuggestions,
@@ -33,6 +32,13 @@ type VStock = {
   qty_available: number;
   qty_on_hand: number;
   qty_reserved: number;
+};
+
+type PartPickerResponse = {
+  parts?: PartRow[];
+  locations?: StockLoc[];
+  stock?: VStock[];
+  error?: string;
 };
 
 export type AvailabilityFlag =
@@ -122,9 +128,6 @@ export function PartPicker({
   requireLocation = false,
   variant = "modal",
 }: Props) {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
-
-  const [shopId, setShopId] = useState<UUID>("");
   const [search, setSearch] = useState(initialSearch);
 
   const [parts, setParts] = useState<PartRow[]>([]);
@@ -178,48 +181,6 @@ export function PartPicker({
   };
 
   useEffect(() => {
-    if (!open) return;
-
-    (async () => {
-      setErr(null);
-
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth.user?.id;
-      if (!userId) return;
-
-      // profiles keyed by id = auth.uid()
-      const { data: prof, error: pe } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (pe) {
-        setErr(pe.message);
-        return;
-      }
-
-      const sid = (prof?.shop_id as UUID | null) ?? "";
-      setShopId(sid);
-
-      if (!sid) return;
-
-      const { data: locsData, error: le } = await supabase
-        .from("stock_locations")
-        .select("id, code, name, shop_id")
-        .eq("shop_id", sid)
-        .order("code");
-
-      if (le) {
-        setErr(le.message);
-        return;
-      }
-
-      setLocs((locsData ?? []) as StockLoc[]);
-    })();
-  }, [open, supabase]);
-
-  useEffect(() => {
     if (!open || !workOrderId) return;
 
     void suggest({
@@ -241,7 +202,7 @@ export function PartPicker({
   ]);
 
   useEffect(() => {
-    if (!open || !shopId) return;
+    if (!open) return;
 
     let cancelled = false;
 
@@ -250,55 +211,48 @@ export function PartPicker({
       setErr(null);
 
       try {
-        let q = supabase
-          .from("parts")
-          .select("*")
-          .eq("shop_id", shopId)
-          .order("name")
-          .limit(50);
-
+        const params = new URLSearchParams();
         const term = search.trim();
-        if (term) {
-          q = q.or(
-            `name.ilike.%${term}%,sku.ilike.%${term}%,part_number.ilike.%${term}%,category.ilike.%${term}%`,
-          );
+        if (term) params.set("q", term);
+        if (workOrderLineId) {
+          params.set("workOrderLineId", workOrderLineId);
         }
 
-        const { data: rows, error } = await q;
-        if (error) throw error;
+        const response = await fetch(`/api/parts/picker?${params.toString()}`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        const body = (await response.json().catch(() => null)) as
+          | PartPickerResponse
+          | null;
+        if (!response.ok) {
+          throw new Error(body?.error || "Unable to load parts inventory.");
+        }
         if (cancelled) return;
 
-        const rowsSafe = (rows ?? []) as PartRow[];
+        const rowsSafe = Array.isArray(body?.parts) ? body.parts : [];
+        const locationsSafe = Array.isArray(body?.locations)
+          ? body.locations
+          : [];
+        const stockSafe = Array.isArray(body?.stock) ? body.stock : [];
+
         setParts(rowsSafe);
+        setLocs(locationsSafe);
 
-        const ids = rowsSafe.map((r) => r.id as UUID);
-        if (ids.length) {
-          const { data: vs, error: ve } = await supabase
-            .from("v_part_stock")
-            .select(
-              "part_id, location_id, qty_available, qty_on_hand, qty_reserved",
-            )
-            .in("part_id", ids);
-
-          if (ve) throw ve;
-
-          const grouped: Record<UUID, VStock[]> = {};
-          (vs ?? []).forEach((s) => {
-            const key = s.part_id as UUID;
-            if (!grouped[key]) grouped[key] = [];
-            grouped[key].push({
-              part_id: s.part_id as UUID,
-              location_id: s.location_id as UUID,
-              qty_available: Number(s.qty_available),
-              qty_on_hand: Number(s.qty_on_hand),
-              qty_reserved: Number(s.qty_reserved),
-            });
+        const grouped: Record<UUID, VStock[]> = {};
+        stockSafe.forEach((entry) => {
+          const key = entry.part_id as UUID;
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push({
+            part_id: key,
+            location_id: entry.location_id as UUID,
+            qty_available: Number(entry.qty_available),
+            qty_on_hand: Number(entry.qty_on_hand),
+            qty_reserved: Number(entry.qty_reserved),
           });
-
-          if (!cancelled) setStock(grouped);
-        } else {
-          setStock({});
-        }
+        });
+        setStock(grouped);
       } catch (e: unknown) {
         if (!cancelled)
           setErr(e instanceof Error ? e.message : "Search failed");
@@ -310,7 +264,7 @@ export function PartPicker({
     return () => {
       cancelled = true;
     };
-  }, [open, shopId, search, supabase]);
+  }, [open, search, workOrderLineId]);
 
   useEffect(() => {
     if (!open) return;
@@ -452,29 +406,13 @@ export function PartPicker({
   async function resolveSuggestionToPartId(
     s: AiPartSuggestion,
   ): Promise<string | null> {
-    if (!shopId) return null;
-
-    if (s.sku) {
-      const { data } = await supabase
-        .from("parts")
-        .select("id")
-        .eq("shop_id", shopId)
-        .eq("sku", s.sku)
-        .maybeSingle();
-      if (data?.id) return data.id as string;
-    }
-
-    if (s.title) {
-      const { data } = await supabase
-        .from("parts")
-        .select("id")
-        .eq("shop_id", shopId)
-        .ilike("name", s.title)
-        .maybeSingle();
-      if (data?.id) return data.id as string;
-    }
-
-    return null;
+    const sku = s.sku?.trim().toLowerCase();
+    const title = s.title?.trim().toLowerCase();
+    const matched = parts.find((part) => {
+      if (sku && part.sku?.trim().toLowerCase() === sku) return true;
+      return Boolean(title && part.name?.trim().toLowerCase() === title);
+    });
+    return matched?.id ?? null;
   }
 
   if (!open) return null;

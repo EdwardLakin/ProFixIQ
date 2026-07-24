@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, test } from "vitest";
+import { getMobileTilesForRole } from "@/features/mobile/config/mobile-tiles";
 
 const mobileHome = readFileSync("app/mobile/page.tsx", "utf8");
 const techHome = readFileSync(
@@ -69,6 +70,14 @@ describe("technician-first mobile UX", () => {
     expect(techHome).not.toContain("next action");
   });
 
+  it("keeps inspections out of the mechanic menu while preserving job access", () => {
+    const mechanicRoutes = getMobileTilesForRole("mechanic", ["all"]).map(
+      (tile) => tile.href,
+    );
+    expect(mechanicRoutes).not.toContain("/mobile/inspections");
+    expect(mechanicRoutes).toContain("/mobile/tech/queue");
+  });
+
   it("uses a factual job queue without AI or prescribed next steps", () => {
     expect(queuePage).toContain("MobileTechnicianQueue");
     expect(queue).toContain('href={`/mobile/jobs/${line.id}`}');
@@ -112,12 +121,12 @@ describe("technician-first mobile UX", () => {
     expect(photoModal).toContain("Take photo");
     expect(photoModal).toContain("Choose existing");
     expect(photoModal).toContain("Open camera");
-    expect(photoModal).toContain("Choose photo");
+    expect(photoModal).toContain("Choose media");
     expect(photoModal).toContain('capture="environment"');
     expect(photoModal).toContain("void upload(selected);");
     expect(photoModal).toContain("hideFooter");
-    expect(photoModal).toContain('title="Attach Photo"');
-    expect(photoModal).toContain('submitText={busy ? "Uploading…" : "Upload"}');
+    expect(photoModal).toContain('title="Attach photo / video"');
+    expect(photoModal).toContain('{busy ? "Uploading..." : "Upload"}');
   });
 
   it("keeps the assistant contextual, question-driven, and non-automatic", () => {
