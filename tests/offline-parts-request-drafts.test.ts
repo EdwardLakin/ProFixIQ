@@ -17,6 +17,9 @@ const migration = read(
 const leadAliasMigration = read(
   "supabase/migrations/20260717110000_offline_parts_request_lead_alias.sql",
 );
+const repairedHashMigration = read(
+  "supabase/migrations/20260724170500_fix_offline_parts_request_hash.sql",
+);
 
 describe("offline parts-request drafts", () => {
   it("stores drafts in tenant-scoped IndexedDB with stable operation identities", () => {
@@ -95,5 +98,8 @@ describe("offline parts-request drafts", () => {
       "create or replace function public.materialize_offline_parts_request_draft_atomic",
     );
     expect(leadAliasMigration).toContain("'leadhand','lead','foreman'");
+    expect(repairedHashMigration).toContain("create extension if not exists pgcrypto");
+    expect(repairedHashMigration).toContain("set search_path = public, extensions");
+    expect(repairedHashMigration).toContain("digest(v_payload::text, 'sha256'::text)");
   });
 });
