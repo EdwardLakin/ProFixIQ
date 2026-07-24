@@ -7,6 +7,7 @@ const scopeRoute = read("app/api/chat/offline-scope/route.ts");
 const staffInbox = read("features/chat/components/InboxModal.tsx");
 const portal = read("features/chat/components/PortalMessagesWorkspace.tsx");
 const chatWindow = read("features/ai/components/chat/ChatWindow.tsx");
+const appShell = read("features/shared/components/AppShell.tsx");
 const serviceWorker = read("app/sw.ts");
 
 describe("offline messaging drafts", () => {
@@ -80,5 +81,21 @@ describe("offline messaging drafts", () => {
     expect(serviceWorker).toContain('url.pathname === "/portal/messages"');
     expect(serviceWorker).toContain('cacheName: "profixiq-messaging-shell-v1"');
     expect(serviceWorker).toContain("new NetworkFirst");
+  });
+
+  it("keeps tablet desktop inbox replies and unread badges in sync", () => {
+    expect(staffInbox).toContain("const loadMessages = useCallback");
+    expect(staffInbox).toContain("setMessages((prev) =>");
+    expect(staffInbox).toContain("await loadMessages(conversationId)");
+    expect(staffInbox).toContain('new CustomEvent("profixiq:inbox-refresh"');
+    expect(staffInbox).toContain("detail: { conversationId }");
+    expect(staffInbox).toContain('new CustomEvent("profixiq:inbox-read")');
+
+    expect(appShell).toContain("inboxUnreadCount");
+    expect(appShell).toContain("loadInboxUnreadCount");
+    expect(appShell).toContain('"/api/chat/my-conversations"');
+    expect(appShell).toContain('window.addEventListener("profixiq:inbox-refresh"');
+    expect(appShell).toContain('window.addEventListener("profixiq:inbox-read"');
+    expect(appShell).toContain('{inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}');
   });
 });
