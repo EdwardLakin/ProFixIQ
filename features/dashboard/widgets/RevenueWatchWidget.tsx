@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
-import { getShopStats } from "@shared/lib/stats/getShopStats";
+import type { OwnerIntelligenceReport } from "@/features/owner/reports/ownerIntelligenceTypes";
 
 function money(n: number | null | undefined): string {
   if (!Number.isFinite(n ?? NaN)) return "$0.00";
@@ -23,8 +23,8 @@ export default function RevenueWatchWidget({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [revenue, setRevenue] = useState(0);
-  const [profit, setProfit] = useState(0);
-  const [jobs, setJobs] = useState(0);
+  const [knownContribution, setKnownContribution] = useState(0);
+  const [issuedInvoices, setIssuedInvoices] = useState(0);
 
   useEffect(() => {
     if (!shopId) return;
@@ -34,11 +34,24 @@ export default function RevenueWatchWidget({
       setLoading(true);
       setError(null);
       try {
-        const stats = await getShopStats(shopId, "monthly");
+        const response = await fetch("/api/reports/owner?range=monthly", {
+          cache: "no-store",
+        });
+        const stats = (await response.json().catch(() => null)) as
+          | OwnerIntelligenceReport
+          | { error?: string }
+          | null;
+        if (!response.ok || !stats || !("metricVersion" in stats)) {
+          throw new Error(
+            stats && "error" in stats && stats.error
+              ? stats.error
+              : "Owner intelligence is unavailable.",
+          );
+        }
         if (!cancelled) {
-          setRevenue(Number(stats.total.revenue ?? 0));
-          setProfit(Number(stats.total.profit ?? 0));
-          setJobs(Number(stats.total.jobs ?? 0));
+          setRevenue(stats.financial.issuedRevenue.current);
+          setKnownContribution(stats.financial.knownContribution.current);
+          setIssuedInvoices(stats.financial.issuedInvoices.current);
         }
       } catch (e) {
         if (!cancelled) {
@@ -67,9 +80,9 @@ export default function RevenueWatchWidget({
       ) : (
         <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Revenue" value={money(revenue)} tone="primary" />
-            <Metric label="Profit" value={money(profit)} tone="accent" />
-            <Metric label="Jobs" value={String(jobs)} />
+            <Metric label="Issued revenue" value={money(revenue)} tone="primary" />
+            <Metric label="Known contribution" value={money(knownContribution)} tone="accent" />
+            <Metric label="Issued invoices" value={String(issuedInvoices)} />
           </div>
 
           <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3">
@@ -98,7 +111,7 @@ export default function RevenueWatchWidget({
     <DashboardWidgetShell
       eyebrow="AI · Revenue Watch"
       title="Current month pace"
-      subtitle="Fast monthly revenue and profit pulse."
+      subtitle="Verified monthly revenue and known contribution pulse."
       rightSlot={
         <Link
           href="/dashboard/owner/reports"
