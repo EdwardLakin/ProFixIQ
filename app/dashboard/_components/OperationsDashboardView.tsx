@@ -85,7 +85,7 @@ export default async function OperationsDashboardView() {
       icon: CheckCircle2,
       href: "/work-orders/board?stage=completed",
     },
-  ];
+  ].filter((item) => !(isTechnicianView && item.href === "/parts/requests"));
   const flow = [
     [
       "Awaiting",
