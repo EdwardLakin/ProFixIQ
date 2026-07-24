@@ -46,6 +46,8 @@ export default function UsersList(): JSX.Element {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [resendBusyId, setResendBusyId] = useState<string | null>(null);
 
   const [editOpen, setEditOpen] = useState<boolean>(false);
   const [editId, setEditId] = useState<string>("");
@@ -121,6 +123,29 @@ export default function UsersList(): JSX.Element {
     setEditOpen(false);
   }
 
+  async function resendInvite(user: UserRow): Promise<void> {
+    setResendBusyId(user.id);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/resend-invite`, {
+        method: "POST",
+      });
+      const payload = (await res.json().catch(() => null)) as { error?: string; email?: string | null } | null;
+
+      if (!res.ok) {
+        throw new Error(payload?.error || `Failed to resend invite (${res.status})`);
+      }
+
+      setNotice(`Invite resent to ${payload?.email ?? user.email}. Share any temporary password separately.`);
+    } catch (e) {
+      setError(safeMsg(e, "Failed to resend invite"));
+    } finally {
+      setResendBusyId(null);
+    }
+  }
+
   async function deleteUser(id: string): Promise<void> {
     const ok = window.confirm("Delete this user?");
     if (!ok) return;
@@ -190,6 +215,9 @@ export default function UsersList(): JSX.Element {
             </select>
           </AdminField>
         </AdminToolbar>
+        {notice ? (
+          <p className="px-4 pb-3 text-xs text-emerald-700 dark:text-emerald-200">{notice}</p>
+        ) : null}
         {error ? <p className="px-4 pb-3 text-xs text-red-300">{error}</p> : null}
       </AdminPanel>
 
@@ -222,49 +250,64 @@ export default function UsersList(): JSX.Element {
               </tr>
             </thead>
             <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
-              {filteredRows.map((u) => (
-                <tr key={u.id} className="text-[color:var(--theme-text-primary)]">
-                  <td className="px-4 py-2.5">
-                    <div className="font-medium text-[color:var(--theme-text-primary)]">{u.full_name ?? "—"}</div>
-                    <div className="text-xs text-[color:var(--theme-text-muted)]">{u.id.slice(0, 8)}</div>
-                  </td>
-                  <td className="px-4 py-2.5">{u.email ?? "—"}</td>
-                  <td className="px-4 py-2.5">{u.phone ?? "—"}</td>
-                  <td className="px-4 py-2.5">
-                    <AdminBadge>{u.role ?? "—"}</AdminBadge>
-                  </td>
-                  <td className="px-4 py-2.5 text-[color:var(--theme-text-secondary)]">
-                    {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <div className="inline-flex gap-2">
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="outline"
-                        onClick={() => {
-                          setEditId(u.id);
-                          setEditFullName(u.full_name ?? "");
-                          setEditPhone(u.phone ?? "");
-                          setEditRole(u.role ?? "");
-                          setEditOpen(true);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        size="xs"
-                        variant="ghost"
-                        className="text-red-300"
-                        onClick={() => void deleteUser(u.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredRows.map((u) => {
+                const canResendInvite = Boolean(u.email);
+                const resendBusy = resendBusyId === u.id;
+
+                return (
+                  <tr key={u.id} className="text-[color:var(--theme-text-primary)]">
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium text-[color:var(--theme-text-primary)]">{u.full_name ?? "—"}</div>
+                      <div className="text-xs text-[color:var(--theme-text-muted)]">{u.id.slice(0, 8)}</div>
+                    </td>
+                    <td className="px-4 py-2.5">{u.email ?? "—"}</td>
+                    <td className="px-4 py-2.5">{u.phone ?? "—"}</td>
+                    <td className="px-4 py-2.5">
+                      <AdminBadge>{u.role ?? "—"}</AdminBadge>
+                    </td>
+                    <td className="px-4 py-2.5 text-[color:var(--theme-text-secondary)]">
+                      {u.created_at ? new Date(u.created_at).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <div className="inline-flex gap-2">
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          disabled={!canResendInvite || resendBusy}
+                          title={canResendInvite ? "Resend invite email" : "Add a contact email before resending an invite"}
+                          onClick={() => void resendInvite(u)}
+                        >
+                          {resendBusy ? "Sending…" : "Resend invite"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={() => {
+                            setEditId(u.id);
+                            setEditFullName(u.full_name ?? "");
+                            setEditPhone(u.phone ?? "");
+                            setEditRole(u.role ?? "");
+                            setEditOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="ghost"
+                          className="text-red-300"
+                          onClick={() => void deleteUser(u.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 

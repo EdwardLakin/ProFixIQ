@@ -22,6 +22,8 @@ const sidebar = read(
 const teamAccess = read(
   "features/dashboard/components/owner-settings/OwnerSettingsUsersSection.tsx",
 );
+const usersList = read("features/admin/components/UsersList.tsx");
+const resendInviteRoute = read("app/api/admin/users/[id]/resend-invite/route.ts");
 
 describe("owner settings experience", () => {
   it("provides a responsive, searchable category navigation", () => {
@@ -55,6 +57,17 @@ describe("owner settings experience", () => {
     expect(teamAccess).toContain("UsersList");
     expect(teamAccess).toContain("profiles.email");
     expect(teamAccess).toContain("People/workforce profile");
+  });
+
+  it("lets owners resend safe user invites from the account directory", () => {
+    expect(usersList).toContain("Resend invite");
+    expect(usersList).toContain("/resend-invite");
+    expect(usersList).toContain("Share any temporary password separately");
+    expect(usersList).toContain("Add a contact email before resending an invite");
+    expect(resendInviteRoute).toContain("requireShopScopedApiAccess");
+    expect(resendInviteRoute).toContain('requiredCapability: "canManageUsers"');
+    expect(resendInviteRoute).toContain("sendUserInviteEmail");
+    expect(resendInviteRoute).toContain("tempPassword: null");
   });
 
   it("shows the actual actor and protects unsaved changes", () => {
