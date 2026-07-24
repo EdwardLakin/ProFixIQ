@@ -12,6 +12,7 @@ import {
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   downloadAssignedTechnicianWork,
+  fetchAssignedTechnicianWork,
   getCachedTechnicianWork,
 } from "@/features/work-orders/mobile/technicianOfflineDownload";
 import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/technicianOfflineTypes";
@@ -19,10 +20,6 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type WorkOrderPick = Pick<
-  DB["public"]["Tables"]["work_orders"]["Row"],
-  "id" | "custom_id" | "vehicle_id" | "type"
->;
 type VehiclePick = Pick<
   DB["public"]["Tables"]["vehicles"]["Row"],
   "id" | "year" | "make" | "model" | "license_plate"
@@ -278,100 +275,10 @@ export default function MobileTechnicianQueue() {
       const cached = await getCachedTechnicianWork({ scope: activeScope });
       setOfflineUpdatedAt(cached?.updatedAt ?? null);
 
-      const { data: assignedData, error: assignedError } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("assigned_tech_id", user.id)
-        .eq("line_type", "job");
-      if (assignedError) throw assignedError;
-
-      const assignedLines = (assignedData ?? []) as Line[];
-      const workOrderIds = Array.from(
-        new Set(
-          assignedLines
-            .map((line) => line.work_order_id)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      );
-
-      if (workOrderIds.length === 0) {
-        setLines([]);
-        setWorkOrderMap({});
-        setLineNumberMap({});
-        return;
-      }
-
-      const [workOrdersResult, allLinesResult] = await Promise.all([
-        supabase
-          .from("work_orders")
-          .select("id, custom_id, vehicle_id, type")
-          .in("id", workOrderIds)
-          .neq("type", "historical_import"),
-        supabase
-          .from("work_order_lines")
-          .select(
-            "id, work_order_id, created_at, job_type, approval_state",
-          )
-          .eq("line_type", "job")
-          .in("work_order_id", workOrderIds),
-      ]);
-      if (workOrdersResult.error) throw workOrdersResult.error;
-      if (allLinesResult.error) throw allLinesResult.error;
-
-      const workOrders = (workOrdersResult.data ?? []) as WorkOrderPick[];
-      const allowedWorkOrderIds = new Set(workOrders.map((workOrder) => workOrder.id));
-      setLines(
-        assignedLines.filter(
-          (line) =>
-            Boolean(line.work_order_id) &&
-            allowedWorkOrderIds.has(String(line.work_order_id)),
-        ),
-      );
-
-      const vehicleIds = Array.from(
-        new Set(
-          workOrders
-            .map((workOrder) => workOrder.vehicle_id)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      );
-      const vehicleMap: Record<string, VehiclePick> = {};
-      if (vehicleIds.length > 0) {
-        const { data: vehicles, error: vehicleError } = await supabase
-          .from("vehicles")
-          .select("id, year, make, model, license_plate")
-          .in("id", vehicleIds);
-        if (vehicleError) throw vehicleError;
-        for (const vehicle of (vehicles ?? []) as VehiclePick[]) {
-          vehicleMap[vehicle.id] = vehicle;
-        }
-      }
-
-      const nextWorkOrderMap: Record<string, WorkOrderMapRow> = {};
-      for (const workOrder of workOrders) {
-        nextWorkOrderMap[workOrder.id] = {
-          id: workOrder.id,
-          customId: workOrder.custom_id,
-          vehicleLabel: workOrder.vehicle_id
-            ? formatVehicle(vehicleMap[workOrder.vehicle_id])
-            : null,
-        };
-      }
-      setWorkOrderMap(nextWorkOrderMap);
-      setLineNumberMap(
-        buildLineNumbers(
-          (allLinesResult.data ?? []) as Array<
-            Pick<
-              Line,
-              | "id"
-              | "work_order_id"
-              | "created_at"
-              | "job_type"
-              | "approval_state"
-            >
-          >,
-        ),
-      );
+      const bundle = await fetchAssignedTechnicianWork({
+        scope: activeScope,
+      });
+      applyOfflineBundle(bundle);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Assigned jobs could not be loaded.");
     } finally {
