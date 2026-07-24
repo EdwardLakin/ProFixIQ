@@ -355,26 +355,7 @@ function DesktopPhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
       onClose={close}
       title="Attach photo / video"
       size="sm"
-      footer={
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={close}
-            disabled={busy}
-            className="rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!file || busy}
-            className="rounded-xl bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[var(--accent-copper-dark)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy ? "Uploading..." : "Upload"}
-          </button>
-        </div>
-      }
+      hideFooter
     >
       <div className="space-y-4">
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
@@ -496,6 +477,25 @@ function DesktopPhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
             {error}
           </div>
         ) : null}
+
+        <div className="flex justify-end gap-2 border-t border-[color:var(--theme-border-soft)] pt-4">
+          <button
+            type="button"
+            onClick={close}
+            disabled={busy}
+            className="rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)] disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!file || busy}
+            className="rounded-xl bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[var(--accent-copper-dark)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Uploading..." : "Upload"}
+          </button>
+        </div>
       </div>
     </ModalShell>
   );
