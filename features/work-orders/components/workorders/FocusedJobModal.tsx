@@ -12,6 +12,7 @@ import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrec
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
+import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
@@ -200,6 +201,7 @@ export default function FocusedJobModal(props: {
   const [openParts, setOpenParts] = useState(false);
   const [openHold, setOpenHold] = useState(false);
   const [openPhoto, setOpenPhoto] = useState(false);
+  const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
   const [openAi, setOpenAi] = useState(false);
@@ -573,13 +575,16 @@ export default function FocusedJobModal(props: {
       return;
     }
 
+    const isVideo = file.type.startsWith("video/") || /\.(mov|m4v|mp4|webm)$/i.test(file.name);
+    const contentType = file.type || (isVideo ? "video/mp4" : "image/jpeg");
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
     const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-      contentType: file.type || "image/jpeg",
+      contentType,
       upsert: true,
     });
-    if (error) return showErr("Photo upload failed", error);
-    toast.success("Photo attached");
+    if (error) return showErr(isVideo ? "Video upload failed" : "Photo upload failed", error);
+    setMediaRefreshKey((key) => key + 1);
+    toast.success(isVideo ? "Video attached" : "Photo attached");
   };
 
   const saveNotes = async () => {
@@ -988,6 +993,16 @@ export default function FocusedJobModal(props: {
                   placeholder="Add notes for this job…"
                 />
               </SectionCard>
+
+              {workOrder?.id ? (
+                <SectionCard>
+                  <WorkOrderMediaGallery
+                    workOrderId={workOrder.id}
+                    workOrderLineId={workOrderLineId}
+                    refreshKey={mediaRefreshKey}
+                  />
+                </SectionCard>
+              ) : null}
 
               <SectionCard title={partsBottleneckDisplay?.heading ?? "Parts used"}>
                 {allocsLoading ? (

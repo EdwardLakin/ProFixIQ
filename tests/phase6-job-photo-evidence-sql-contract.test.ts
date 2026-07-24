@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 const migration = readFileSync(
   "supabase/migrations/20260715070200_phase6_canonical_job_photo_evidence.sql",
@@ -7,6 +7,10 @@ const migration = readFileSync(
 );
 const postcheck = readFileSync(
   "supabase/migrations/20260715070300_phase6_mobile_reliability_postcheck.sql",
+  "utf8",
+);
+const videoSql = readFileSync(
+  "supabase/migrations/20260724182500_support_work_order_video_media.sql",
   "utf8",
 );
 const mobileJob = readFileSync(
@@ -53,4 +57,14 @@ describe("Phase 6 canonical job-photo evidence", () => {
       "Phase 6 technician mobile reliability postcheck passed.",
     );
   });
+});
+
+
+test("job media registration classifies videos by content type", () => {
+  expect(videoSql).toContain("v_kind text");
+  expect(videoSql).toContain("v_source text");
+  expect(videoSql).toContain("v_content_type ilike 'video/%'");
+  expect(videoSql).toContain("technician_job_video");
+  expect(videoSql).toContain("kind = excluded.kind");
+  expect(videoSql).toContain("JOB_MEDIA_WORK_ORDER_LINE_MISMATCH");
 });

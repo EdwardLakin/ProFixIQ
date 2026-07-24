@@ -70,7 +70,7 @@ export const TILES: Tile[] = [
     href: "/work-orders/history",
     title: "History",
     subtitle: "Completed Work Orders & Invoices",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
     scopes: ["work_orders", "all"],
   },
   // NEW: Billing (Ready to invoice)

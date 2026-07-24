@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 const mobileHome = readFileSync("app/mobile/page.tsx", "utf8");
 const techHome = readFileSync(
@@ -19,6 +19,18 @@ const mobileMenu = readFileSync(
 );
 const photoModal = readFileSync(
   "features/work-orders/components/workorders/extras/PhotoCaptureModal.tsx",
+  "utf8",
+);
+const mediaGallery = readFileSync(
+  "features/work-orders/components/workorders/extras/WorkOrderMediaGallery.tsx",
+  "utf8",
+);
+const focusedJobModal = readFileSync(
+  "features/work-orders/components/workorders/FocusedJobModal.tsx",
+  "utf8",
+);
+const mobileFocusedJob = readFileSync(
+  "features/work-orders/mobile/MobileFocusedJob.tsx",
   "utf8",
 );
 const assistantModal = readFileSync(
@@ -79,6 +91,8 @@ describe("technician-first mobile UX", () => {
     expect(photoModal).toContain("<DesktopPhotoCaptureModal");
     expect(photoModal).toContain("Take photo");
     expect(photoModal).toContain("Choose existing");
+    expect(photoModal).toContain("Open camera");
+    expect(photoModal).toContain("Choose photo");
     expect(photoModal).toContain('capture="environment"');
     expect(photoModal).toContain("void upload(selected);");
     expect(photoModal).toContain("hideFooter");
@@ -113,4 +127,23 @@ describe("technician-first mobile UX", () => {
     expect(suggestions).toContain("Automatic repair suggestions are off");
     expect(suggestions).toContain("Nothing is added without your action.");
   });
+});
+
+
+test("job media capture supports video and attached media visibility", () => {
+  expect(photoModal).toContain("Record video");
+  expect(photoModal).toContain("accept=\"video/*,.mov,.m4v,.mp4,.webm\"");
+  expect(photoModal).toContain("image/*,video/*,.heic,.heif,.mov,.m4v,.mp4,.webm");
+  expect(photoModal).toContain("<video");
+  expect(photoModal).toContain("Choose media");
+
+  expect(mediaGallery).toContain("work_order_media");
+  expect(mediaGallery).toContain("Photos & videos");
+  expect(mediaGallery).toContain("Technician video");
+  expect(mediaGallery).toContain("createSignedUrl");
+  expect(mediaGallery).toContain("No photos or videos attached yet.");
+
+  expect(focusedJobModal).toContain("WorkOrderMediaGallery");
+  expect(mobileFocusedJob).toContain("WorkOrderMediaGallery");
+  expect(mobileFocusedJob).toContain("isVideo ? \"Video\" : \"Photo\"");
 });
