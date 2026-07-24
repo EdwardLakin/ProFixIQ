@@ -11,6 +11,14 @@ const queue = readFileSync(
   "features/mobile/technician/MobileTechnicianQueue.tsx",
   "utf8",
 );
+const technicianFeed = readFileSync(
+  "app/api/offline/technician-work-orders/route.ts",
+  "utf8",
+);
+const technicianOfflineDownload = readFileSync(
+  "features/work-orders/mobile/technicianOfflineDownload.ts",
+  "utf8",
+);
 const jobPage = readFileSync("app/mobile/jobs/[lineId]/page.tsx", "utf8");
 const mobileShell = readFileSync("components/layout/MobileShell.tsx", "utf8");
 const mobileMenu = readFileSync(
@@ -68,6 +76,18 @@ describe("technician-first mobile UX", () => {
       "Tap a job to open its timer, photos, parts, notes, history, and assistant.",
     );
     expect(queue).toContain("Download assigned work");
+    expect(queue).toContain("fetchAssignedTechnicianWork");
+    expect(queue).toContain('status === "on_hold"');
+    expect(queue).not.toContain('.eq("assigned_tech_id", user.id)');
+    expect(technicianOfflineDownload).toContain(
+      "export async function fetchAssignedTechnicianWork",
+    );
+    expect(technicianFeed).toContain(
+      "assigned_to.eq.${user.id},user_id.eq.${user.id}",
+    );
+    expect(technicianFeed).toContain(
+      '.or("type.neq.historical_import,type.is.null")',
+    );
     expect(queue).not.toContain("Next action:");
     expect(queue).not.toContain("Start line when bay is free");
   });

@@ -92,7 +92,7 @@ export async function cacheTechnicianOfflineBundle(
   ]);
 }
 
-export async function downloadAssignedTechnicianWork(args: {
+export async function fetchAssignedTechnicianWork(args: {
   scope: { userId: string; shopId: string };
 }): Promise<TechnicianOfflineBundle> {
   const response = await fetch("/api/offline/technician-work-orders", {
@@ -115,6 +115,13 @@ export async function downloadAssignedTechnicianWork(args: {
   ) {
     throw new Error("Downloaded work does not match the active user and shop.");
   }
+  return result;
+}
+
+export async function downloadAssignedTechnicianWork(args: {
+  scope: { userId: string; shopId: string };
+}): Promise<TechnicianOfflineBundle> {
+  const result = await fetchAssignedTechnicianWork(args);
   await cacheTechnicianOfflineBundle(result);
   await cacheTechnicianRouteShells(result);
   return result;
