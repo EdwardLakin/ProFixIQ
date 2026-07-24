@@ -6,7 +6,8 @@ import {
 } from "./vendorWorkspace";
 
 function supplier(
-  overrides: Partial<VendorWorkspaceSupplier> & Pick<VendorWorkspaceSupplier, "id" | "name">,
+  overrides: Partial<VendorWorkspaceSupplier> &
+    Pick<VendorWorkspaceSupplier, "id" | "name">,
 ): VendorWorkspaceSupplier {
   return {
     account_no: "ACCOUNT-1",
@@ -139,6 +140,45 @@ describe("buildVendorWorkspace", () => {
     });
 
     expect(result.summary.duplicateVendorCandidates).toBe(2);
-    expect(result.directory.every((row) => row.legacyMatchedPartCount === 0)).toBe(true);
+    expect(
+      result.directory.every((row) => row.legacyMatchedPartCount === 0),
+    ).toBe(true);
+    expect(result.directory.every((row) => row.setup.possibleDuplicate)).toBe(
+      true,
+    );
+  });
+
+  it("exposes structured profile flags for directory filtering and actions", () => {
+    const result = buildVendorWorkspace({
+      suppliers: [
+        supplier({
+          id: "vendor-1",
+          name: "North Star Parts",
+          account_no: null,
+          email: null,
+          phone: null,
+        }),
+      ],
+      parts: [
+        {
+          id: "part-1",
+          supplier: "North Star Parts",
+          part_number: "A1",
+          sku: null,
+        },
+      ],
+      purchaseOrders: [],
+      purchaseOrderLines: [],
+      requestItems: [],
+      barcodeLinks: [],
+      vendorPartNumberLinks: [],
+    });
+
+    expect(result.directory[0]?.setup).toEqual({
+      missingContact: true,
+      missingAccount: true,
+      possibleDuplicate: false,
+      hasLegacyVendorText: true,
+    });
   });
 });
