@@ -85,6 +85,7 @@ export function UsePartButton({
 
       <PartPicker
         open={open}
+        workOrderLineId={workOrderLineId}
         onClose={() => setOpen(false)}
         onPick={handlePick}
         requireLocation
