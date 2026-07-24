@@ -173,3 +173,16 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(read("app/dashboard/manager/dispatch/page.tsx")).toContain('redirect("/work-orders/board")');
   });
 });
+
+
+test("mechanic dashboard entry redirects to the tech queue instead of shop overview", () => {
+  expect(dashboardEntry).toContain('if (role === "mechanic")');
+  expect(dashboardEntry).toContain('router.replace("/tech/queue")');
+  expect(navTiles).toContain('title: "Shop Overview"');
+  expect(navTiles).toContain('title: "Tech Job Queue"');
+  expect(navTiles).toContain('title: "Team Chat"');
+  expect(navTiles).toContain('title: "My Performance"');
+  expect(navTiles).toContain('roles: ["manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"]');
+  expect(routeMeta).toContain('"/dashboard":');
+  expect(routeMeta).not.toContain('roles: ALL_ROLES },');
+});
