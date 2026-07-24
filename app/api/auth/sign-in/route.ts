@@ -21,11 +21,33 @@ type Body = { identifier?: string; password?: string; surface?: AccessSurface };
 
 const GENERIC_ERROR = "We couldn't sign you in with those details.";
 
-async function resolveAuthEmail(identifier: string): Promise<string> {
+function uniqueAuthEmails(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+async function resolveAuthEmails(identifier: string): Promise<string[]> {
   const strategy = getAuthIdentifierStrategy(identifier);
-  if (strategy.inputKind === "username") return strategy.authEmail;
+  const candidates = [strategy.authEmail];
 
   const admin = createAdminSupabase();
+
+  if (strategy.inputKind === "username") {
+    const normalizedUsername = normalizeLoginUsername(identifier);
+    const { data: profiles } = await admin
+      .from("profiles")
+      .select("username")
+      .ilike("username", `%${normalizedUsername}%`)
+      .not("username", "is", null)
+      .limit(2);
+
+    if ((profiles ?? []).length === 1) {
+      const username = normalizeLoginUsername(profiles?.[0]?.username ?? "");
+      if (username) candidates.push(buildShopUserAuthEmail(username));
+    }
+
+    return uniqueAuthEmails(candidates);
+  }
+
   const { data: profiles } = await admin
     .from("profiles")
     .select("username")
@@ -33,9 +55,12 @@ async function resolveAuthEmail(identifier: string): Promise<string> {
     .not("username", "is", null)
     .limit(2);
 
-  if ((profiles ?? []).length !== 1) return strategy.authEmail;
-  const username = normalizeLoginUsername(profiles?.[0]?.username ?? "");
-  return username ? buildShopUserAuthEmail(username) : strategy.authEmail;
+  if ((profiles ?? []).length === 1) {
+    const username = normalizeLoginUsername(profiles?.[0]?.username ?? "");
+    if (username) candidates.push(buildShopUserAuthEmail(username));
+  }
+
+  return uniqueAuthEmails(candidates);
 }
 
 export async function POST(req: Request) {
@@ -71,13 +96,24 @@ export async function POST(req: Request) {
   }
 
   const supabase = createServerSupabaseRoute();
-  const authEmail = await resolveAuthEmail(identifier);
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: authEmail,
-    password,
-  });
+  const authEmails = await resolveAuthEmails(identifier);
+  let signedInUser:
+    | Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["data"]["user"]
+    | null = null;
 
-  if (error || !data.user) {
+  for (const authEmail of authEmails) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password,
+    });
+
+    if (!error && data.user) {
+      signedInUser = data.user;
+      break;
+    }
+  }
+
+  if (!signedInUser) {
     return NextResponse.json(
       { ok: false, error: GENERIC_ERROR },
       { status: 401 },
@@ -94,7 +130,7 @@ export async function POST(req: Request) {
 
   if (
     (surface === "shop" || surface === "mobile") &&
-    data.user.app_metadata?.profixiq_portal_only === true
+    signedInUser.app_metadata?.profixiq_portal_only === true
   ) {
     return deny();
   }
@@ -103,7 +139,7 @@ export async function POST(req: Request) {
     const { data: customer } = await supabase
       .from("customers")
       .select("id")
-      .eq("user_id", data.user.id)
+      .eq("user_id", signedInUser.id)
       .limit(1)
       .maybeSingle();
     if (!customer?.id) return deny();
@@ -113,7 +149,7 @@ export async function POST(req: Request) {
       .from("customer_portal_invites")
       .select("id")
       .eq("customer_id", customer.id)
-      .eq("accepted_by_user_id", data.user.id)
+      .eq("accepted_by_user_id", signedInUser.id)
       .not("accepted_at", "is", null)
       .is("revoked_at", null)
       .limit(1)
@@ -124,7 +160,7 @@ export async function POST(req: Request) {
 
   if (surface === "fleet") {
     const actor = await resolveFleetActorContext(supabase, {
-      userId: data.user.id,
+      userId: signedInUser.id,
     });
     if (!actor.capabilities.canAccessPortalFleetWrappers) return deny();
     return NextResponse.json({ ok: true, destination: "/portal/fleet" });
@@ -133,7 +169,7 @@ export async function POST(req: Request) {
   const { data: profile } = await supabase
     .from("profiles")
     .select("shop_id, role, completed_onboarding, must_change_password")
-    .eq("id", data.user.id)
+    .eq("id", signedInUser.id)
     .maybeSingle();
 
   if (!profile?.shop_id) return deny();

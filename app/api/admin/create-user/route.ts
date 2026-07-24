@@ -276,7 +276,7 @@ export async function POST(req: Request) {
         error: createErr?.message ?? "No auth user returned",
       });
       const safeMessage = createErr?.message?.toLowerCase().includes("already been registered")
-        ? "Unable to provision this username. Try the suggested shop-prefixed username."
+        ? "Unable to provision this username. Try the suggested alternate username."
         : (createErr?.message ?? "Failed to create user.");
 
       return NextResponse.json({ error: safeMessage, code: "auth_user_create_failed" }, { status: 400 });

@@ -6,11 +6,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import InviteCandidatesList from "@/features/admin/components/InviteCandidatesList";
 import UsersList from "@/features/admin/components/UsersList";
-import {
-  buildShopUsernameNamespace,
-  buildUsernameSuggestions,
-  normalizeProvisioningUsername,
-} from "@/features/users/lib/username";
+import { buildUsernameSuggestions } from "@/features/users/lib/username";
 import { OwnerSettingsPanel } from "./OwnerSettingsPanels";
 
 type UserRole = Database["public"]["Enums"]["user_role_enum"];
@@ -29,6 +25,7 @@ type CreateUserResponse = {
   user_id?: string;
   username?: string;
   email?: string | null;
+  auth_email?: string | null;
   people_record_href?: string;
   invite_email_sent?: boolean;
   invite_email_error?: string | null;
@@ -100,10 +97,7 @@ export default function OwnerSettingsUsersSection({
 
     try {
       const body: CreatePayload = {
-        username: normalizeProvisioningUsername(
-          form.username.trim(),
-          buildShopUsernameNamespace(creatorShopName),
-        ),
+        username: form.username.trim(),
         password: form.password,
         email: (form.email ?? "").trim().toLowerCase() || null,
         full_name: (form.full_name ?? "").trim() || null,
@@ -129,8 +123,12 @@ export default function OwnerSettingsUsersSection({
 
       const createdUsername = payload?.username ?? body.username;
       const createdEmail = payload?.email ?? null;
+      const createdAuthEmail = payload?.auth_email ?? null;
       const inviteEmailSent = payload?.invite_email_sent === true;
       const inviteEmailError = payload?.invite_email_error ?? payload?.warning ?? null;
+      const loginStatus = createdAuthEmail
+        ? ` They can sign in with username "${createdUsername}" or internal login email "${createdAuthEmail}".`
+        : ` They can sign in with username "${createdUsername}".`;
       const inviteStatus = createdEmail
         ? inviteEmailSent
           ? ` Invite email sent to ${createdEmail}. Share the temporary password separately.`
@@ -138,7 +136,7 @@ export default function OwnerSettingsUsersSection({
         : " No contact email was entered, so no invite email was sent.";
 
       setSuccess(
-        `User "${createdUsername}" created. They can sign in with username "${createdUsername}".${inviteStatus}`,
+        `User "${createdUsername}" created.${loginStatus}${inviteStatus}`,
       );
       setCreatedUserId(payload?.user_id ?? null);
       setCreatedPersonHref(payload?.people_record_href ?? null);
@@ -287,7 +285,7 @@ export default function OwnerSettingsUsersSection({
               placeholder="e.g. profixlucas"
             />
             <span className="block text-[11px] text-[color:var(--theme-text-muted)]">
-              Normalized and shop-prefixed before creating Supabase Auth plus `profiles`.
+              This becomes the staff login after lowercasing and removing spaces or punctuation.
             </span>
           </label>
           <label className="space-y-1 text-sm">
