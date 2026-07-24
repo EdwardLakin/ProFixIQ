@@ -24,6 +24,17 @@ type CreatePayload = {
   phone?: string | null;
 };
 
+type CreateUserResponse = {
+  error?: string;
+  user_id?: string;
+  username?: string;
+  email?: string | null;
+  people_record_href?: string;
+  invite_email_sent?: boolean;
+  invite_email_error?: string | null;
+  warning?: string | null;
+};
+
 type CreatedUser = {
   username: string;
   full_name?: string | null;
@@ -112,25 +123,22 @@ export default function OwnerSettingsUsersSection({
         body: JSON.stringify(body),
       });
 
-      const payload = (await res.json().catch(() => null)) as
-        | {
-            error?: string;
-            user_id?: string;
-            username?: string;
-            email?: string | null;
-            people_record_href?: string;
-          }
-        | null;
+      const payload = (await res.json().catch(() => null)) as CreateUserResponse | null;
 
       if (!res.ok) throw new Error(payload?.error || "Failed to create user.");
 
       const createdUsername = payload?.username ?? body.username;
       const createdEmail = payload?.email ?? null;
+      const inviteEmailSent = payload?.invite_email_sent === true;
+      const inviteEmailError = payload?.invite_email_error ?? payload?.warning ?? null;
+      const inviteStatus = createdEmail
+        ? inviteEmailSent
+          ? ` Invite email sent to ${createdEmail}. Share the temporary password separately.`
+          : ` Contact email saved: ${createdEmail}. Invite email was not sent${inviteEmailError ? `: ${inviteEmailError}` : "."}`
+        : " No contact email was entered, so no invite email was sent.";
 
       setSuccess(
-        `User "${createdUsername}" created. They can sign in with username "${createdUsername}" and the temporary password entered here.${
-          createdEmail ? ` Contact email saved: ${createdEmail}.` : ""
-        }`,
+        `User "${createdUsername}" created. They can sign in with username "${createdUsername}".${inviteStatus}`,
       );
       setCreatedUserId(payload?.user_id ?? null);
       setCreatedPersonHref(payload?.people_record_href ?? null);
@@ -262,7 +270,7 @@ export default function OwnerSettingsUsersSection({
               placeholder="technician@example.com"
             />
             <span className="block text-[11px] text-[color:var(--theme-text-muted)]">
-              Saved on `profiles.email`; username remains the staff sign-in identity.
+              Saved on `profiles.email` and used to send the invite email. Temporary passwords are not emailed.
             </span>
           </label>
           <label className="space-y-1 text-sm">
