@@ -9,6 +9,10 @@ const postcheck = readFileSync(
   "supabase/migrations/20260715070300_phase6_mobile_reliability_postcheck.sql",
   "utf8",
 );
+const videoSql = readFileSync(
+  "supabase/migrations/20260724182500_support_work_order_video_media.sql",
+  "utf8",
+);
 const mobileJob = readFileSync(
   "features/work-orders/mobile/MobileFocusedJob.tsx",
   "utf8",
