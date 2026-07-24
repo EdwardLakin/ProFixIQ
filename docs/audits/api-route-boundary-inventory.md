@@ -1,17 +1,17 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-07-24T01:17:51.914Z
+Generated: 2026-07-24T02:48:34.215Z
 
 ## Summary
-- Total route count: **374**
-- Routes exporting GET: **118**
-- Routes exporting POST: **266**
+- Total route count: **376**
+- Routes exporting GET: **119**
+- Routes exporting POST: **267**
 - Routes exporting PUT: **9**
-- Routes exporting PATCH: **21**
+- Routes exporting PATCH: **22**
 - Routes exporting DELETE: **12**
 - Routes with service-role pattern: **24**
-- Routes using requireShopScopedApiAccess: **110**
-- Routes with auth.getUser references: **147**
+- Routes using requireShopScopedApiAccess: **114**
+- Routes with auth.getUser references: **146**
 
 ## High-Risk Routes
 - `app/api/ai/interpret/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -67,7 +67,6 @@ Generated: 2026-07-24T01:17:51.914Z
 - `app/api/shopreel/drafts/[id]/route.ts` | methods: PATCH | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/shopreel/drafts/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/shopreel/opportunities/action/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/stats/summarize/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/stripe/checkout/link-user/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/stripe/link-user/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/work-orders/[id]/invoice/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
@@ -192,7 +191,6 @@ Generated: 2026-07-24T01:17:51.914Z
 - `app/api/shopreel/drafts/[id]/route.ts` | methods: PATCH | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/shopreel/drafts/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/shopreel/opportunities/action/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/stats/summarize/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/stats/tech-leaderboard/route.ts` | methods: none | riskFlags: none
 - `app/api/stripe/checkout/link-user/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/stripe/link-user/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker

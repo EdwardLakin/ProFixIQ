@@ -18,7 +18,7 @@ import { useSuggestedActions } from "@/features/assistant/hooks/useSuggestedActi
 import { useTechnicianLoadMetrics } from "@/features/dashboard/hooks/useTechnicianLoadMetrics";
 import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
 import { useWorkOrderBoard } from "@/features/shared/hooks/useWorkOrderBoard";
-import { getShopStats } from "@/features/shared/lib/stats/getShopStats";
+import type { OwnerIntelligenceReport } from "@/features/owner/reports/ownerIntelligenceTypes";
 import { useEffect, useState } from "react";
 
 function actionBtn() {
@@ -177,7 +177,7 @@ function money(n: number) { return `$${n.toFixed(0)}`; }
 export function RevenueWatchModule({ shopId, mode }: { shopId: string | null; mode: DashboardModuleMode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [totals, setTotals] = useState({ revenue: 0, profit: 0, jobs: 0 });
+  const [totals, setTotals] = useState({ revenue: 0, knownContribution: 0, issuedInvoices: 0 });
 
   useEffect(() => {
     if (!shopId) return;
@@ -185,8 +185,16 @@ export function RevenueWatchModule({ shopId, mode }: { shopId: string | null; mo
     (async () => {
       setLoading(true);
       try {
-        const stats = await getShopStats(shopId, "monthly");
-        if (!cancelled) setTotals({ revenue: stats.total.revenue, profit: stats.total.profit, jobs: stats.total.jobs });
+        const response = await fetch("/api/reports/owner?range=monthly", { cache: "no-store" });
+        const stats = (await response.json().catch(() => null)) as OwnerIntelligenceReport | { error?: string } | null;
+        if (!response.ok || !stats || !("metricVersion" in stats)) {
+          throw new Error(stats && "error" in stats && stats.error ? stats.error : "Owner intelligence is unavailable.");
+        }
+        if (!cancelled) setTotals({
+          revenue: stats.financial.issuedRevenue.current,
+          knownContribution: stats.financial.knownContribution.current,
+          issuedInvoices: stats.financial.issuedInvoices.current,
+        });
       } catch (e) {
         if (!cancelled) setError(toDashboardFallbackMessage(e, "Data unavailable. Try refresh."));
       } finally {
@@ -201,9 +209,9 @@ export function RevenueWatchModule({ shopId, mode }: { shopId: string | null; mo
       <DashboardModuleHeader eyebrow="Finance" title="Revenue Watch" action={<Link href="/dashboard/owner/reports" className={actionBtn()}>Reports</Link>} />
       {loading ? <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading revenue…</div> : error ? <div className="text-sm text-[color:var(--brand-accent)]">{error}</div> : (
         <DashboardMetricRow>
-          <DashboardMetric label="Revenue" value={money(totals.revenue)} tone="primary" />
-          <DashboardMetric label="Profit" value={money(totals.profit)} tone="accent" />
-          <DashboardMetric label="Jobs" value={String(totals.jobs)} />
+          <DashboardMetric label="Issued revenue" value={money(totals.revenue)} tone="primary" />
+          <DashboardMetric label="Known contribution" value={money(totals.knownContribution)} tone="accent" />
+          <DashboardMetric label="Issued invoices" value={String(totals.issuedInvoices)} />
         </DashboardMetricRow>
       )}
     </DashboardModuleShell>
