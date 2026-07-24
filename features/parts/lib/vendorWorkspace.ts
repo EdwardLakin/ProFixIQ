@@ -50,6 +50,12 @@ export type VendorDirectoryItem = {
   lastActivityAt: string | null;
   state: VendorOperationalState;
   issues: string[];
+  setup: {
+    missingContact: boolean;
+    missingAccount: boolean;
+    possibleDuplicate: boolean;
+    hasLegacyVendorText: boolean;
+  };
 };
 
 export type VendorWorkspaceSummary = {
@@ -86,10 +92,15 @@ export function hasVendorValue(value: string | null | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function laterTimestamp(current: string | undefined, candidate: string | null): string | undefined {
+function laterTimestamp(
+  current: string | undefined,
+  candidate: string | null,
+): string | undefined {
   if (!candidate) return current;
   if (!current) return candidate;
-  return new Date(candidate).getTime() > new Date(current).getTime() ? candidate : current;
+  return new Date(candidate).getTime() > new Date(current).getTime()
+    ? candidate
+    : current;
 }
 
 function isOpenPurchaseOrder(status: string | null): boolean {
@@ -110,7 +121,9 @@ export function buildVendorWorkspace(input: {
   directory: VendorDirectoryItem[];
   summary: VendorWorkspaceSummary;
 } {
-  const supplierById = new Map(input.suppliers.map((supplier) => [supplier.id, supplier]));
+  const supplierById = new Map(
+    input.suppliers.map((supplier) => [supplier.id, supplier]),
+  );
   const supplierIdsByNormalizedName = new Map<string, string[]>();
   const duplicateBuckets = new Map<string, VendorWorkspaceSupplier[]>();
 
@@ -131,13 +144,16 @@ export function buildVendorWorkspace(input: {
     const supplierId = String(link.supplier_id ?? "");
     const partId = String(link.part_id ?? "");
     if (!supplierId || !partId || !supplierById.has(supplierId)) continue;
-    const linkedParts = catalogPartsBySupplier.get(supplierId) ?? new Set<string>();
+    const linkedParts =
+      catalogPartsBySupplier.get(supplierId) ?? new Set<string>();
     linkedParts.add(partId);
     catalogPartsBySupplier.set(supplierId, linkedParts);
     catalogLinkedPartIds.add(partId);
   }
 
-  const purchaseOrderById = new Map(input.purchaseOrders.map((po) => [po.id, po]));
+  const purchaseOrderById = new Map(
+    input.purchaseOrders.map((po) => [po.id, po]),
+  );
   const purchasedPartsBySupplier = new Map<string, Set<string>>();
   const openPoCountBySupplier = new Map<string, number>();
   const lastActivityBySupplier = new Map<string, string>();
@@ -146,9 +162,15 @@ export function buildVendorWorkspace(input: {
     const supplierId = po.supplier_id;
     if (!supplierId || !supplierById.has(supplierId)) continue;
     if (isOpenPurchaseOrder(po.status)) {
-      openPoCountBySupplier.set(supplierId, (openPoCountBySupplier.get(supplierId) ?? 0) + 1);
+      openPoCountBySupplier.set(
+        supplierId,
+        (openPoCountBySupplier.get(supplierId) ?? 0) + 1,
+      );
     }
-    const latest = laterTimestamp(lastActivityBySupplier.get(supplierId), po.created_at);
+    const latest = laterTimestamp(
+      lastActivityBySupplier.get(supplierId),
+      po.created_at,
+    );
     if (latest) lastActivityBySupplier.set(supplierId, latest);
   }
 
@@ -156,16 +178,18 @@ export function buildVendorWorkspace(input: {
     const po = purchaseOrderById.get(line.po_id);
     const supplierId = po?.supplier_id ?? null;
     if (!supplierId || !line.part_id || !supplierById.has(supplierId)) continue;
-    const linkedParts = purchasedPartsBySupplier.get(supplierId) ?? new Set<string>();
+    const linkedParts =
+      purchasedPartsBySupplier.get(supplierId) ?? new Set<string>();
     linkedParts.add(line.part_id);
     purchasedPartsBySupplier.set(supplierId, linkedParts);
   }
 
   const pendingReceivingBySupplier = new Map<string, number>();
   for (const item of input.requestItems) {
-    if (Number(item.qty_approved ?? 0) <= Number(item.qty_received ?? 0)) continue;
+    if (Number(item.qty_approved ?? 0) <= Number(item.qty_received ?? 0))
+      continue;
     const poSupplierId = item.po_id
-      ? purchaseOrderById.get(item.po_id)?.supplier_id ?? null
+      ? (purchaseOrderById.get(item.po_id)?.supplier_id ?? null)
       : null;
     const supplierId = item.vendor_id ?? poSupplierId;
     if (!supplierId || !supplierById.has(supplierId)) continue;
@@ -177,29 +201,38 @@ export function buildVendorWorkspace(input: {
 
   const legacyPartsBySupplier = new Map<string, Set<string>>();
   for (const part of input.parts) {
-    if (!hasVendorValue(part.supplier) || catalogLinkedPartIds.has(part.id)) continue;
+    if (!hasVendorValue(part.supplier) || catalogLinkedPartIds.has(part.id))
+      continue;
     const matchingSupplierIds =
       supplierIdsByNormalizedName.get(normalizeVendorName(part.supplier)) ?? [];
     if (matchingSupplierIds.length !== 1) continue;
     const supplierId = matchingSupplierIds[0];
-    const linkedParts = legacyPartsBySupplier.get(supplierId) ?? new Set<string>();
+    const linkedParts =
+      legacyPartsBySupplier.get(supplierId) ?? new Set<string>();
     linkedParts.add(part.id);
     legacyPartsBySupplier.set(supplierId, linkedParts);
   }
 
   const directory = input.suppliers.map((supplier): VendorDirectoryItem => {
     const catalogPartCount = catalogPartsBySupplier.get(supplier.id)?.size ?? 0;
-    const purchasedPartCount = purchasedPartsBySupplier.get(supplier.id)?.size ?? 0;
-    const legacyMatchedPartCount = legacyPartsBySupplier.get(supplier.id)?.size ?? 0;
+    const purchasedPartCount =
+      purchasedPartsBySupplier.get(supplier.id)?.size ?? 0;
+    const legacyMatchedPartCount =
+      legacyPartsBySupplier.get(supplier.id)?.size ?? 0;
     const openPoCount = openPoCountBySupplier.get(supplier.id) ?? 0;
-    const pendingReceivingCount = pendingReceivingBySupplier.get(supplier.id) ?? 0;
-    const missingContact = !hasVendorValue(supplier.email) && !hasVendorValue(supplier.phone);
+    const pendingReceivingCount =
+      pendingReceivingBySupplier.get(supplier.id) ?? 0;
+    const missingContact =
+      !hasVendorValue(supplier.email) && !hasVendorValue(supplier.phone);
     const missingAccount = !hasVendorValue(supplier.account_no);
+    const possibleDuplicate =
+      (duplicateBuckets.get(normalizeVendorName(supplier.name))?.length ?? 0) >
+      1;
     const issues: string[] = [];
 
     if (missingContact) issues.push("Add an email or phone number");
     if (missingAccount) issues.push("Add an account number or vendor code");
-    if ((duplicateBuckets.get(normalizeVendorName(supplier.name))?.length ?? 0) > 1) {
+    if (possibleDuplicate) {
       issues.push("Possible duplicate vendor record");
     }
     if (legacyMatchedPartCount > 0) {
@@ -215,7 +248,11 @@ export function buildVendorWorkspace(input: {
     else if (pendingReceivingCount > 0) state = "Receiving";
     else if (openPoCount > 0) state = "On order";
     else if (missingContact || missingAccount) state = "Needs setup";
-    else if (catalogPartCount > 0 || purchasedPartCount > 0 || legacyMatchedPartCount > 0) {
+    else if (
+      catalogPartCount > 0 ||
+      purchasedPartCount > 0 ||
+      legacyMatchedPartCount > 0
+    ) {
       state = "Active";
     } else state = "No activity";
 
@@ -229,10 +266,18 @@ export function buildVendorWorkspace(input: {
       lastActivityAt: lastActivityBySupplier.get(supplier.id) ?? null,
       state,
       issues,
+      setup: {
+        missingContact,
+        missingAccount,
+        possibleDuplicate,
+        hasLegacyVendorText: legacyMatchedPartCount > 0,
+      },
     };
   });
 
-  const duplicateVendorCandidates = Array.from(duplicateBuckets.values()).reduce(
+  const duplicateVendorCandidates = Array.from(
+    duplicateBuckets.values(),
+  ).reduce(
     (total, bucket) => total + (bucket.length > 1 ? bucket.length : 0),
     0,
   );
@@ -246,19 +291,23 @@ export function buildVendorWorkspace(input: {
       totalVendors: input.suppliers.length,
       vendorsNeedingSetup: input.suppliers.filter(
         (supplier) =>
-          (!hasVendorValue(supplier.email) && !hasVendorValue(supplier.phone)) ||
+          (!hasVendorValue(supplier.email) &&
+            !hasVendorValue(supplier.phone)) ||
           !hasVendorValue(supplier.account_no),
       ).length,
       openPurchaseOrders: openPurchaseOrders.length,
       pendingReceiving: input.requestItems.filter(
-        (item) => Number(item.qty_approved ?? 0) > Number(item.qty_received ?? 0),
+        (item) =>
+          Number(item.qty_approved ?? 0) > Number(item.qty_received ?? 0),
       ).length,
       catalogLinkedParts: catalogLinkedPartIds.size,
       legacyUnlinkedParts: input.parts.filter(
-        (part) => hasVendorValue(part.supplier) && !catalogLinkedPartIds.has(part.id),
+        (part) =>
+          hasVendorValue(part.supplier) && !catalogLinkedPartIds.has(part.id),
       ).length,
       partsWithoutVendorReference: input.parts.filter(
-        (part) => !hasVendorValue(part.supplier) && !catalogLinkedPartIds.has(part.id),
+        (part) =>
+          !hasVendorValue(part.supplier) && !catalogLinkedPartIds.has(part.id),
       ).length,
       duplicateVendorCandidates,
       openPoWithoutVendorRecord: openPurchaseOrders.filter(
@@ -266,7 +315,7 @@ export function buildVendorWorkspace(input: {
       ).length,
       requestRowsWithoutVendorRecord: input.requestItems.filter((item) => {
         const poSupplierId = item.po_id
-          ? purchaseOrderById.get(item.po_id)?.supplier_id ?? null
+          ? (purchaseOrderById.get(item.po_id)?.supplier_id ?? null)
           : null;
         return (
           hasVendorValue(item.vendor) &&
