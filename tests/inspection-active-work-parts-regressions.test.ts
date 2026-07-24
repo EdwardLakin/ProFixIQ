@@ -10,6 +10,10 @@ const boardHook = readFileSync(
   "features/shared/hooks/useWorkOrderBoard.ts",
   "utf8",
 );
+const openPartsObligations = readFileSync(
+  "features/parts/lib/open-parts-obligations.ts",
+  "utf8",
+);
 const sectionDisplay = readFileSync(
   "features/inspections/lib/inspection/SectionDisplay.tsx",
   "utf8",
@@ -36,7 +40,8 @@ describe("active work and inspection parts regressions", () => {
   it("treats an active labor segment as authoritative in-progress work", () => {
     expect(boardHook).toContain('"work_order_line_labor_segments"');
     expect(boardHook).toContain('.is("ended_at", null)');
-    expect(boardHook).toContain('overall_stage: "in_progress"');
+    expect(boardHook).toContain("reconcileBoardPartsState");
+    expect(openPartsObligations).toContain('overall_stage: "in_progress"');
     expect(boardHook).toContain('table: "work_order_line_labor_segments"');
   });
 
@@ -72,4 +77,3 @@ describe("active work and inspection parts regressions", () => {
     );
   });
 });
-

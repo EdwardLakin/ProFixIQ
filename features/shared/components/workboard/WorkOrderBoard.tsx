@@ -225,16 +225,17 @@ export default function WorkOrderBoard(props: {
   const [stageFilter, setStageFilter] = useState<FilterKey>(
     props.initialStage ?? "all",
   );
+  const [riskOnly, setRiskOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [advisor, setAdvisor] = useState("all");
   const [technician, setTechnician] = useState("all");
   const [priority, setPriority] = useState("all");
   const [waiter, setWaiter] = useState("all");
 
-  useEffect(
-    () => setStageFilter(props.initialStage ?? "all"),
-    [props.initialStage],
-  );
+  useEffect(() => {
+    setStageFilter(props.initialStage ?? "all");
+    setRiskOnly(false);
+  }, [props.initialStage]);
 
   const advisorOptions = useMemo(
     () =>
@@ -279,6 +280,9 @@ export default function WorkOrderBoard(props: {
         .toLowerCase();
       return (
         (stageFilter === "all" || row.overall_stage === stageFilter) &&
+        (!riskOnly ||
+          row.risk_level === "warn" ||
+          row.risk_level === "danger") &&
         (!q || searchable.includes(q)) &&
         (advisor === "all" || row.advisor_name === advisor) &&
         (technician === "all" ||
@@ -288,7 +292,7 @@ export default function WorkOrderBoard(props: {
         (waiter === "all" || (waiter === "yes") === Boolean(row.is_waiter))
       );
     });
-  }, [advisor, priority, query, rows, stageFilter, technician, waiter]);
+  }, [advisor, priority, query, riskOnly, rows, stageFilter, technician, waiter]);
 
   const count = (stage: WorkOrderBoardStage) =>
     rows.filter((row) => row.overall_stage === stage).length;
@@ -309,30 +313,35 @@ export default function WorkOrderBoard(props: {
     value: number;
     icon: LucideIcon;
     tone: string;
+    filter: "risk" | Exclude<WorkOrderBoardStage, "empty">;
   }> = [
     {
       label: "At risk",
       value: atRisk,
       icon: AlertTriangle,
       tone: "text-orange-600",
+      filter: "risk",
     },
     {
       label: "Ready to work",
       value: count("awaiting"),
       icon: CheckCircle2,
       tone: "text-blue-600",
+      filter: "awaiting",
     },
     {
       label: "Waiting parts",
       value: count("waiting_parts"),
       icon: Clock3,
       tone: "text-amber-600",
+      filter: "waiting_parts",
     },
     {
       label: "Ready to invoice",
       value: count("completed"),
       icon: ClipboardCheck,
       tone: "text-emerald-600",
+      filter: "completed",
     },
   ];
 
@@ -414,42 +423,37 @@ export default function WorkOrderBoard(props: {
       </header>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {summaryCards.map(({ label, value, icon: Icon, tone }) => (
-          <div
-            key={String(label)}
-            className="flex items-center gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3"
-          >
-            <Icon className={`h-5 w-5 ${tone}`} />
-            <span className="flex-1 text-sm font-semibold">{label}</span>
-            <strong className={`text-xl ${tone}`}>{value}</strong>
-          </div>
-        ))}
-      </div>
-
-      <div
-        className="flex gap-1 overflow-x-auto"
-        aria-label="Board stage views"
-      >
-        {(
-          [
-            ["all", "All"],
-            ["awaiting", "Awaiting"],
-            ["in_progress", "In progress"],
-            ["awaiting_approval", "Awaiting approval"],
-            ["waiting_parts", "Waiting parts"],
-            ["on_hold", "On hold"],
-            ["completed", "Ready to invoice"],
-          ] as Array<[FilterKey, string]>
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setStageFilter(key)}
-            className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-semibold ${stageFilter === key ? "border-[var(--brand-primary,#C1663B)] bg-[var(--brand-primary,#C1663B)]/10 text-[var(--brand-primary,#C1663B)]" : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)]"}`}
-          >
-            {label}
-          </button>
-        ))}
+        {summaryCards.map(({ label, value, icon: Icon, tone, filter }) => {
+          const selected =
+            filter === "risk"
+              ? riskOnly
+              : !riskOnly && stageFilter === filter;
+          return (
+            <button
+              key={String(label)}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => {
+                if (filter === "risk") {
+                  setRiskOnly((current) => !current);
+                  setStageFilter("all");
+                  return;
+                }
+                setRiskOnly(false);
+                setStageFilter(selected ? "all" : filter);
+              }}
+              className={`flex items-center gap-3 rounded-xl border bg-[color:var(--theme-surface-inset)] px-4 py-3 text-left transition hover:border-[var(--brand-primary,#C1663B)]/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary,#C1663B)]/60 ${
+                selected
+                  ? "border-[var(--brand-primary,#C1663B)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--brand-primary,#C1663B)_35%,transparent)]"
+                  : "border-[color:var(--theme-border-soft)]"
+              }`}
+            >
+              <Icon className={`h-5 w-5 ${tone}`} />
+              <span className="flex-1 text-sm font-semibold">{label}</span>
+              <strong className={`text-xl ${tone}`}>{value}</strong>
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (

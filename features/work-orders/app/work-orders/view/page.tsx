@@ -745,21 +745,15 @@ export default function WorkOrdersView(): JSX.Element {
       const prev = rows;
       setRows((r) => r.filter((x) => x.id !== id));
 
-      const { error: lineErr } = await supabase
-        .from("work_order_lines")
-        .delete()
-        .eq("work_order_id", id);
+      const response = await fetch(`/api/work-orders/${id}/delete-draft`, {
+        method: "DELETE",
+      });
+      const result = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
 
-      if (lineErr) {
-        alert(`Failed to delete job lines: ${lineErr.message}`);
-        setRows(prev);
-        return;
-      }
-
-      const { error } = await supabase.from("work_orders").delete().eq("id", id);
-
-      if (error) {
-        alert(`Failed to delete: ${error.message}`);
+      if (!response.ok) {
+        alert(result?.error ?? "Failed to delete the work order.");
         setRows(prev);
       } else {
         setTechRollupByWo((m) => {
@@ -769,7 +763,7 @@ export default function WorkOrdersView(): JSX.Element {
         });
       }
     },
-    [rows, supabase],
+    [rows],
   );
 
   const handleAssignAll = useCallback(
