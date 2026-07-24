@@ -12,6 +12,7 @@ import type { Database } from "@shared/types/types/supabase";
 import SignaturePad, {
   openSignaturePad,
 } from "@/features/shared/signaturePad/controller";
+import { MyWorkforceCard } from "@/features/workforce/components/MyWorkforceCard";
 
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
@@ -289,6 +290,8 @@ export default function MobileTechSettingsPage(): JSX.Element {
 
       <main className="mobile-body-gradient flex-1 px-4 py-4">
         <div className="mx-auto max-w-xl space-y-5">
+          <MyWorkforceCard mobile />
+
           {/* profile card */}
           <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-4">
             <div className="flex items-center justify-between gap-3">
@@ -377,16 +380,11 @@ export default function MobileTechSettingsPage(): JSX.Element {
               <SigPill />
             </div>
 
-            {sigPath ? (
-              <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[11px] text-[color:var(--theme-text-secondary)]">
-                <div className="text-[color:var(--theme-text-muted)]">Path</div>
-                <div className="font-mono">{sigPath}</div>
-              </div>
-            ) : (
+            {!sigPath ? (
               <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
                 No signature on file yet.
               </div>
-            )}
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -397,10 +395,6 @@ export default function MobileTechSettingsPage(): JSX.Element {
               >
                 {sigBusy ? "Opening…" : sigPath ? "Update signature" : "Capture signature"}
               </button>
-
-              <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                Stored in <span className="font-mono text-[color:var(--theme-text-secondary)]">signatures</span> bucket
-              </span>
             </div>
 
             <p className="text-[11px] text-[color:var(--theme-text-muted)]">
@@ -605,4 +599,3 @@ function CheckboxRow({
     </label>
   );
 }
-

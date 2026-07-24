@@ -14,6 +14,7 @@ import {
   AdminStatGrid,
   AdminToolbar,
 } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
+import { FlatRateCreditReview } from "@/features/workforce/components/FlatRateCreditReview";
 
 type Period = {
   id: string;
@@ -41,6 +42,7 @@ type Entry = {
   paid_break_minutes: number;
   attendance_minutes: number;
   job_minutes: number;
+  flagged_minutes: number;
   source_snapshot?: { shifts?: Array<{ start_time?: string | null; end_time?: string | null }> } | null;
   roster_only?: boolean;
   payroll_status_label?: string;
@@ -170,6 +172,7 @@ export default function PayrollTimeClient() {
         regular: group.rows.reduce((sum, row) => sum + Number(row.regular_minutes ?? 0), 0),
         overtime: group.rows.reduce((sum, row) => sum + Number(row.overtime_minutes ?? 0), 0),
         job: group.rows.reduce((sum, row) => sum + Number(row.job_minutes ?? 0), 0),
+        flagged: group.rows.reduce((sum, row) => sum + Number(row.flagged_minutes ?? 0), 0),
         blocking: group.rows.reduce((sum, row) => sum + Number(row.blocking_exception_count ?? 0), 0),
         warnings: group.rows.reduce((sum, row) => sum + Number(row.warning_exception_count ?? 0), 0),
       }))
@@ -493,7 +496,7 @@ export default function PayrollTimeClient() {
                 open={group.blocking > 0}
               >
                 <summary className="cursor-pointer list-none p-4">
-                  <div className="grid gap-3 md:grid-cols-[minmax(180px,2fr)_repeat(5,minmax(72px,1fr))] md:items-center">
+                  <div className="grid gap-3 md:grid-cols-[minmax(180px,2fr)_repeat(6,minmax(72px,1fr))] md:items-center">
                     <div>
                       <Link href={`/dashboard/admin/people/${group.userId}`} className="font-semibold text-[color:var(--theme-text-primary)] hover:text-orange-300">
                         {group.name}
@@ -504,18 +507,19 @@ export default function PayrollTimeClient() {
                     <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Regular</p><p className="font-semibold">{fmtHours(group.regular)}h</p></div>
                     <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Overtime</p><p className="font-semibold">{fmtHours(group.overtime)}h</p></div>
                     <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Job time</p><p className="font-semibold">{fmtHours(group.job)}h</p></div>
+                    <div><p className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Flagged</p><p className="font-semibold">{fmtHours(group.flagged)}h</p></div>
                     <div>
                       {group.blocking > 0 ? <AdminBadge>{group.blocking} blocking</AdminBadge> : group.warnings > 0 ? <AdminBadge>{group.warnings} review</AdminBadge> : <span className="text-xs font-medium text-emerald-300">Ready</span>}
                     </div>
                   </div>
                 </summary>
                 <div className="border-t border-[color:var(--theme-border-soft)] p-3">
-                  <div className="hidden grid-cols-[minmax(120px,1.5fr)_repeat(5,minmax(64px,1fr))_minmax(92px,1fr)] gap-2 px-3 pb-2 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)] md:grid">
-                    <span>Date / clock</span><span>Payroll</span><span>Regular</span><span>OT</span><span>Job</span><span>Other paid</span><span>Status</span>
+                  <div className="hidden grid-cols-[minmax(120px,1.5fr)_repeat(6,minmax(64px,1fr))_minmax(92px,1fr)] gap-2 px-3 pb-2 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)] md:grid">
+                    <span>Date / clock</span><span>Payroll</span><span>Regular</span><span>OT</span><span>Job</span><span>Flagged</span><span>Other paid</span><span>Status</span>
                   </div>
                   <div className="space-y-2">
                     {group.rows.map((entry) => (
-                      <div key={entry.id} className="grid gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 text-sm md:grid-cols-[minmax(120px,1.5fr)_repeat(5,minmax(64px,1fr))_minmax(92px,1fr)] md:items-center">
+                      <div key={entry.id} className="grid gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 text-sm md:grid-cols-[minmax(120px,1.5fr)_repeat(6,minmax(64px,1fr))_minmax(92px,1fr)] md:items-center">
                         <div>
                           <p className="font-medium">{entry.work_date}</p>
                           <p className="text-xs text-[color:var(--theme-text-muted)]">
@@ -528,6 +532,7 @@ export default function PayrollTimeClient() {
                         <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Regular: </span>{fmtHours(entry.regular_minutes)}h</p>
                         <p><span className="md:hidden text-[color:var(--theme-text-muted)]">OT: </span>{fmtHours(entry.overtime_minutes)}h</p>
                         <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Job: </span>{fmtHours(entry.job_minutes)}h</p>
+                        <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Flagged: </span>{fmtHours(entry.flagged_minutes)}h</p>
                         <p><span className="md:hidden text-[color:var(--theme-text-muted)]">Other: </span>{fmtHours(Math.max(0, Number(entry.worked_minutes ?? 0) - Number(entry.job_minutes ?? 0)))}h</p>
                         <div>
                           {entry.blocking_exception_count > 0 ? <AdminBadge>Open shift</AdminBadge> : entry.warning_exception_count > 0 ? <AdminBadge>Review</AdminBadge> : <span className="text-xs text-emerald-300">{entry.payroll_status_label ?? "Ready"}</span>}
@@ -542,6 +547,15 @@ export default function PayrollTimeClient() {
           </div>
         )}
       </AdminPanel>
+
+      {activePeriod ? (
+        <FlatRateCreditReview
+          periodStart={activePeriod.period_start}
+          periodEnd={activePeriod.period_end}
+          locked={["approved", "exported"].includes(activePeriod.status)}
+          onSaved={() => void load(activePeriod.id)}
+        />
+      ) : null}
 
       <details className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
         <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">Advanced: exceptions, exports, source details</summary>

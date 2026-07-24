@@ -209,20 +209,6 @@ type SchedulingContext = {
   users: UserLite[];
 };
 
-type AssignedWorkOrder = {
-  id: string;
-  custom_id: string | null;
-  status: string | null;
-  vehicle_id?: string | null;
-};
-
-type AssignedLine = {
-  id: string;
-  description: string | null;
-  complaint: string | null;
-  job_type: string | null;
-};
-
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const res = await fetch(input, init);
 
@@ -301,28 +287,6 @@ export default function SchedulingClient(): JSX.Element {
     format(new Date(), "yyyy-MM-dd'T'17:00"),
   );
   const [creatingShift, setCreatingShift] = useState<boolean>(false);
-
-  // Create Session form
-  const [newSessionUserId, setNewSessionUserId] = useState<string>("");
-  const [newSessionWorkOrderId, setNewSessionWorkOrderId] =
-    useState<string>("");
-  const [newSessionLineId, setNewSessionLineId] = useState<string>("");
-  const [newSessionStart, setNewSessionStart] = useState<string>(() =>
-    format(new Date(), "yyyy-MM-dd'T'09:00"),
-  );
-  const [newSessionEnd, setNewSessionEnd] = useState<string>(() =>
-    format(new Date(), "yyyy-MM-dd'T'10:00"),
-  );
-  const [creatingSession, setCreatingSession] = useState<boolean>(false);
-
-  // Assigned WO/lines (for create session)
-  const [assignedWorkOrders, setAssignedWorkOrders] = useState<
-    AssignedWorkOrder[]
-  >([]);
-  const [assignedLines, setAssignedLines] = useState<AssignedLine[]>([]);
-  const [loadingAssignedWos, setLoadingAssignedWos] = useState<boolean>(false);
-  const [loadingAssignedLines, setLoadingAssignedLines] =
-    useState<boolean>(false);
 
   const isAdmin = useMemo(() => {
     return getActorCapabilities({ role: me?.role }).canManageScheduling;
@@ -482,83 +446,6 @@ export default function SchedulingClient(): JSX.Element {
     const u = users.find((x) => x.id === id);
     return u?.full_name ?? (id ? id.slice(0, 8) : "—");
   }
-
-  // -----------------------------------
-  // Assigned WOs/Lines helpers (create session UX)
-  // -----------------------------------
-  const loadAssignedWorkOrders = useCallback(
-    async (uid: string) => {
-      if (!currentShopId) return;
-      setLoadingAssignedWos(true);
-      try {
-        const qs = new URLSearchParams();
-        qs.set("shop_id", currentShopId);
-        qs.set("user_id", uid);
-        qs.set("status", "open"); // change to "all" if you want everything
-
-        const data = await fetchJson<{ workOrders: AssignedWorkOrder[] }>(
-          `/api/scheduling/assigned-work-orders?${qs.toString()}`,
-        );
-        setAssignedWorkOrders(data.workOrders ?? []);
-      } catch {
-        setAssignedWorkOrders([]);
-      } finally {
-        setLoadingAssignedWos(false);
-      }
-    },
-    [currentShopId],
-  );
-
-  const loadAssignedLines = useCallback(
-    async (uid: string, workOrderId: string) => {
-      if (!currentShopId || !workOrderId) return;
-      setLoadingAssignedLines(true);
-      try {
-        const qs = new URLSearchParams();
-        qs.set("shop_id", currentShopId);
-        qs.set("user_id", uid);
-        qs.set("work_order_id", workOrderId);
-
-        const data = await fetchJson<{ lines: AssignedLine[] }>(
-          `/api/scheduling/assigned-work-order-lines?${qs.toString()}`,
-        );
-        setAssignedLines(data.lines ?? []);
-      } catch {
-        setAssignedLines([]);
-      } finally {
-        setLoadingAssignedLines(false);
-      }
-    },
-    [currentShopId],
-  );
-
-  // When session employee changes: refresh WO list, clear selections
-  useEffect(() => {
-    const uid = (newSessionUserId || userId).trim();
-    if (!uid || !canEditAll) return;
-
-    setNewSessionWorkOrderId("");
-    setNewSessionLineId("");
-    setAssignedLines([]);
-
-    void loadAssignedWorkOrders(uid);
-  }, [newSessionUserId, userId, canEditAll, loadAssignedWorkOrders]);
-
-  // When WO changes: refresh line list, clear line selection
-  useEffect(() => {
-    const uid = (newSessionUserId || userId).trim();
-    const wo = newSessionWorkOrderId.trim();
-    if (!uid || !wo || !canEditAll) return;
-
-    setNewSessionLineId("");
-    void loadAssignedLines(uid, wo);
-  }, [
-    newSessionUserId,
-    userId,
-    newSessionWorkOrderId,
-    canEditAll,
-    loadAssignedLines,
-  ]);
 
   // -----------------------------------
   // Load: Shifts + Punches + Billable
@@ -1056,54 +943,6 @@ export default function SchedulingClient(): JSX.Element {
     }
   }
 
-  // -----------------------------------
-  // Mutations: sessions (job time)
-  // -----------------------------------
-  async function createSession(): Promise<void> {
-    if (!currentShopId) return;
-
-    const uid = newSessionUserId || userId;
-    if (!uid) {
-      setErr("Select an employee for the session.");
-      return;
-    }
-    if (!newSessionWorkOrderId) {
-      setErr("Select a Work Order for the session.");
-      return;
-    }
-
-    const startIso = localInputToIsoSafe(newSessionStart);
-    const endIso = localInputToIsoSafe(newSessionEnd);
-    if (!startIso || !endIso) {
-      setErr("Invalid session start/end time.");
-      return;
-    }
-
-    setCreatingSession(true);
-    setErr(null);
-
-    try {
-      await fetchJson<{ ok: true }>("/api/scheduling/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          shop_id: currentShopId,
-          user_id: uid,
-          work_order_id: newSessionWorkOrderId,
-          work_order_line_id: newSessionLineId || null,
-          started_at: startIso,
-          ended_at: endIso,
-        } satisfies Partial<SessionRow>),
-      });
-
-      await loadSessions();
-    } catch (e) {
-      setErr(safeMsg(e, "Failed to create session."));
-    } finally {
-      setCreatingSession(false);
-    }
-  }
-
   async function updateSessionTime(
     sessionId: string,
     field: "started_at" | "ended_at",
@@ -1395,127 +1234,13 @@ export default function SchedulingClient(): JSX.Element {
           </div>
         )}
 
-        {/* Sessions create form unchanged (your version) */}
         {tab === "sessions" && (
           <div className={[T.panel, T.border, T.glassStrong, T.shadow, "p-4"].join(" ")}>
-            <div>
-              <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                Job time
-              </div>
-              <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                Create a job session
-              </div>
-              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                Use this to correct time on a work order (and optionally a work order line).
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-end gap-3">
-              <div>
-                <label className={T.label}>Employee</label>
-                <select
-                  value={newSessionUserId}
-                  onChange={(e) => setNewSessionUserId(e.target.value)}
-                  className={[T.select, T.border, "min-w-[240px]"].join(" ")}
-                  disabled={!canEditAll}
-                >
-                  <option value="">
-                    {userId ? "Use selected employee" : "Select employee"}
-                  </option>
-                  {filteredUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name ?? u.id.slice(0, 8)} {u.role ? `(${u.role})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="min-w-[260px]">
-                <label className={T.label}>Work order</label>
-                <select
-                  value={newSessionWorkOrderId}
-                  onChange={(e) => setNewSessionWorkOrderId(e.target.value)}
-                  className={[T.select, T.border, "w-full"].join(" ")}
-                  disabled={!canEditAll || loadingAssignedWos}
-                >
-                  <option value="">
-                    {loadingAssignedWos ? "Loading work orders…" : "Select work order"}
-                  </option>
-                  {assignedWorkOrders.map((wo) => (
-                    <option key={wo.id} value={wo.id}>
-                      {(wo.custom_id ? `WO ${wo.custom_id}` : wo.id.slice(0, 8)) +
-                        (wo.status ? ` (${wo.status})` : "")}
-                    </option>
-                  ))}
-                </select>
-                <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">
-                  Shows only work orders assigned to the selected employee.
-                </div>
-              </div>
-
-              <div className="min-w-[320px]">
-                <label className={T.label}>Line (optional)</label>
-                <select
-                  value={newSessionLineId}
-                  onChange={(e) => setNewSessionLineId(e.target.value)}
-                  className={[T.select, T.border, "w-full"].join(" ")}
-                  disabled={!canEditAll || !newSessionWorkOrderId || loadingAssignedLines}
-                >
-                  <option value="">
-                    {loadingAssignedLines ? "Loading lines…" : "— None —"}
-                  </option>
-                  {assignedLines.map((l) => {
-                    const label =
-                      l.description ||
-                      l.complaint ||
-                      (l.job_type ? String(l.job_type) : l.id.slice(0, 8));
-                    return (
-                      <option key={l.id} value={l.id}>
-                        {label}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-
-              <div>
-                <label className={T.label}>Start</label>
-                <input
-                  type="datetime-local"
-                  value={newSessionStart}
-                  onChange={(e) => setNewSessionStart(e.target.value)}
-                  className={[T.input, T.border].join(" ")}
-                  disabled={!canEditAll}
-                />
-              </div>
-
-              <div>
-                <label className={T.label}>End</label>
-                <input
-                  type="datetime-local"
-                  value={newSessionEnd}
-                  onChange={(e) => setNewSessionEnd(e.target.value)}
-                  className={[T.input, T.border].join(" ")}
-                  disabled={!canEditAll}
-                />
-              </div>
-
-              <Button
-                type="button"
-                variant="default"
-                className="font-semibold"
-                disabled={!canEditAll || creatingSession}
-                onClick={() => void createSession()}
-              >
-                {creatingSession ? "Creating…" : "Create session"}
-              </Button>
-            </div>
-
-            {!canEditAll && (
-              <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
-                Only managers/admins can create or edit sessions.
-              </div>
-            )}
+            <div className="text-[0.65rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Historical job time</div>
+            <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">Legacy sessions are read-only</div>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+              New job punches and corrections use canonical work-order labor segments. This history remains visible for comparison and audit evidence.
+            </p>
           </div>
         )}
 
@@ -1525,7 +1250,7 @@ export default function SchedulingClient(): JSX.Element {
             loading={loading}
             shifts={shifts}
             punchesByShift={punchesByShift}
-            canEditAll={canEditAll}
+            canEditAll={false}
             userName={userName}
             onCorrectShiftTime={correctShiftTime}
             onVoidShift={voidShift}

@@ -3,7 +3,7 @@ import { createAdminSupabase, createServerSupabaseRoute } from "@/features/share
 import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 import { requirePayrollReviewer } from "../_lib/auth";
 
-const CADENCES = new Set(["weekly", "biweekly", "semimonthly"]);
+const CADENCES = new Set(["weekly", "biweekly", "semimonthly", "monthly"]);
 
 function intIn(value: unknown, fallback: number, min: number, max: number) {
   const n = Number(value ?? fallback);
@@ -41,6 +41,10 @@ export async function PUT(req: NextRequest) {
       cadence,
       week_starts_on: intIn(body.week_starts_on, 1, 0, 6),
       daily_overtime_after_minutes: intIn(body.daily_overtime_after_minutes, 480, 0, 1440),
+      weekly_overtime_after_minutes: intIn(body.weekly_overtime_after_minutes, 2400, 0, 10080),
+      period_anchor_date: typeof body.period_anchor_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.period_anchor_date)
+        ? body.period_anchor_date
+        : null,
       suspicious_shift_minutes: intIn(body.suspicious_shift_minutes, 960, 60, 2880),
       paid_breaks_per_day: intIn(body.paid_breaks_per_day, 2, 0, 2),
       paid_break_duration_minutes: intIn(body.paid_break_duration_minutes, 15, 0, 120),
@@ -53,7 +57,12 @@ export async function PUT(req: NextRequest) {
     const admin = createAdminSupabase() as any;
     const { data, error } = await admin.from("shop_payroll_settings").upsert(payload, { onConflict: "shop_id" }).select("*").single();
     if (error) throw new Error(error.message);
-    void admin.from("audit_logs").insert({ shop_id: auth.me.shop_id, actor_id: auth.me.id, action: "payroll.settings.updated", target_table: "shop_payroll_settings", target_id: data.id, metadata: payload });
+    void admin.from("audit_logs").insert({
+      actor_id: auth.me.id,
+      action: "payroll.settings.updated",
+      target: data.id,
+      metadata: { ...payload, shop_id: auth.me.shop_id },
+    });
     return NextResponse.json({ ok: true, settings: data });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid payroll settings" }, { status: 400 });

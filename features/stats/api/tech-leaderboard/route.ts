@@ -139,8 +139,13 @@ export async function POST(req: Request) {
         profit: 0,
         billedHours: 0,
         clockedHours: 0,
+        flaggedHours: 0,
+        actualJobHours: 0,
+        attendanceHours: 0,
         revenuePerHour: 0,
         efficiencyPct: 0,
+        productivityPct: 0,
+        overallPerformancePct: 0,
       });
     }
 

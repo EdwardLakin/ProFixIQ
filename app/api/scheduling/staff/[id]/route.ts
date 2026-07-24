@@ -61,8 +61,6 @@ export async function PUT(req: NextRequest, context: Ctx) {
   const check = await checkStaffInShop(admin, access.profile.shop_id!, id);
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 404 });
 
-  await admin.from("staff_schedule_templates").delete().eq("shop_id", access.profile.shop_id).eq("user_id", id);
-
   const normalized = body.templates
     .filter((row) => Number.isInteger(row.day_of_week) && row.day_of_week >= 0 && row.day_of_week <= 6)
     .map((row) => ({
@@ -77,20 +75,13 @@ export async function PUT(req: NextRequest, context: Ctx) {
       effective_to: row.effective_to ?? null,
     }));
 
-  if (normalized.length > 0) {
-    const { error } = await admin.from("staff_schedule_templates").insert(normalized);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  await admin.from("audit_logs").insert({
-    actor_id: access.profile.id,
-    action: "staff.schedule.template.updated",
-    target: id,
-    metadata: {
-      shop_id: access.profile.shop_id,
-      template_rows: normalized.length,
-    },
+  const { error } = await (admin as any).rpc("replace_staff_schedule_template", {
+    p_shop_id: access.profile.shop_id,
+    p_actor_profile_id: access.profile.id,
+    p_target_user_id: id,
+    p_templates: normalized,
   });
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
   return NextResponse.json({ ok: true, templates: normalized });
 }

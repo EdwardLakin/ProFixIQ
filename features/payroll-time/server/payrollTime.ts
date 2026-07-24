@@ -2,6 +2,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { createHash } from "crypto";
 import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
 import { calculatePayPeriodBounds, type PayrollCadence } from "@/features/payroll-time/lib/payPeriodBounds";
+import { applyWeeklyOvertime } from "@/features/payroll-time/lib/overtime";
 
 export type PayrollPeriodStatus = "draft" | "open" | "approved" | "exported";
 
@@ -273,9 +274,10 @@ export async function getOrCreateCurrentPeriod(shopId: string, actorId: string) 
 async function getPeriodSourceState(admin: any, shopId: string, period: any, timezone: string) {
   const rangeStart = localDateToUtcBoundary(period.period_start, timezone);
   const rangeEnd = localDateToUtcBoundary(toIsoDate(addDays(startOfUtcDay(`${period.period_end}T00:00:00.000Z`), 1)), timezone);
-  const [{ data: shifts }, { data: jobs }, { data: settings }, { count: entriesCount }] = await Promise.all([
+  const [{ data: shifts }, { data: jobs }, { data: credits }, { data: settings }, { count: entriesCount }] = await Promise.all([
     admin.from("tech_shifts").select("id, start_time, end_time, created_at").eq("shop_id", shopId).neq("excluded_from_payroll", true).lt("start_time", rangeEnd).or(`end_time.is.null,end_time.gt.${rangeStart}`),
     admin.from("work_order_line_labor_segments").select("id, started_at, ended_at, updated_at, created_at").eq("shop_id", shopId).lt("started_at", rangeEnd).or(`ended_at.is.null,ended_at.gt.${rangeStart}`),
+    admin.from("work_order_line_flat_rate_credits").select("id, credited_at, updated_at, created_at").eq("shop_id", shopId).gte("credited_at", rangeStart).lt("credited_at", rangeEnd),
     admin.from("shop_payroll_settings").select("updated_at").eq("shop_id", shopId).maybeSingle(),
     admin.from("payroll_time_entries").select("id", { count: "exact", head: true }).eq("shop_id", shopId).eq("period_id", period.id),
   ]);
@@ -288,11 +290,12 @@ async function getPeriodSourceState(admin: any, shopId: string, period: any, tim
     settings?.updated_at,
     ...(shifts ?? []).flatMap((s: any) => [s.created_at, s.start_time, s.end_time]),
     ...(jobs ?? []).flatMap((j: any) => [j.created_at, j.updated_at, j.started_at, j.ended_at]),
+    ...(credits ?? []).flatMap((credit: any) => [credit.created_at, credit.updated_at, credit.credited_at]),
     ...(punches ?? []).flatMap((p: any) => [p.created_at, p.timestamp]),
   ].filter(Boolean).map((v) => new Date(v).getTime()).filter(Number.isFinite);
   return {
     entriesCount: entriesCount ?? 0,
-    sourceCount: (shifts?.length ?? 0) + (jobs?.length ?? 0),
+    sourceCount: (shifts?.length ?? 0) + (jobs?.length ?? 0) + (credits?.length ?? 0),
     sourceFreshAt: candidates.length ? new Date(Math.max(...candidates)).toISOString() : null,
     hasOpenTime: (shifts ?? []).some((shift: any) => !shift.end_time) || (jobs ?? []).some((job: any) => !job.ended_at),
     rangeStart,
@@ -347,6 +350,8 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
 
   const policy = resolvePayrollPolicy(settings);
   const dailyOvertimeAfter = policy.daily_overtime_after_minutes;
+  const weeklyOvertimeAfter = Math.max(0, Number(settings?.weekly_overtime_after_minutes ?? 2400));
+  const weekStartsOn = Math.min(6, Math.max(0, Number(settings?.week_starts_on ?? 1)));
   const suspiciousShiftMinutes = policy.suspicious_shift_minutes;
 
   const { data: shop } = await admin.from("shops").select("timezone").eq("id", shopId).maybeSingle();
@@ -354,7 +359,11 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
   const rangeStart = localDateToUtcBoundary(period.period_start, timezone);
   const rangeEnd = localDateToUtcBoundary(toIsoDate(addDays(startOfUtcDay(`${period.period_end}T00:00:00.000Z`), 1)), timezone);
 
-  const [{ data: shifts, error: shiftsErr }, { data: jobSegments, error: jobsErr }] = await Promise.all([
+  const [
+    { data: shifts, error: shiftsErr },
+    { data: jobSegments, error: jobsErr },
+    { data: flatRateCredits, error: creditsErr },
+  ] = await Promise.all([
     admin
       .from("tech_shifts")
       .select("id, user_id, type, status, start_time, end_time, excluded_from_payroll")
@@ -368,10 +377,17 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       .eq("shop_id", shopId)
       .lt("started_at", rangeEnd)
       .or(`ended_at.is.null,ended_at.gt.${rangeStart}`),
+    admin
+      .from("work_order_line_flat_rate_credits")
+      .select("id, technician_id, credit_hours, credited_at")
+      .eq("shop_id", shopId)
+      .gte("credited_at", rangeStart)
+      .lt("credited_at", rangeEnd),
   ]);
 
   if (shiftsErr) throw new Error(shiftsErr.message);
   if (jobsErr) throw new Error(jobsErr.message);
+  if (creditsErr) throw new Error(creditsErr.message);
 
   const shiftIds = (shifts ?? []).map((s: { id: string }) => s.id).filter(Boolean);
   const { data: punchEvents, error: punchEventsErr } = shiftIds.length
@@ -407,6 +423,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     unpaid_break_minutes: number;
     paid_break_minutes: number;
     job_minutes: number;
+    flagged_minutes: number;
     warnings: number;
     blocking: number;
     source_snapshot: Record<string, unknown>;
@@ -421,6 +438,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     unpaid_break_minutes: 0,
     paid_break_minutes: 0,
     job_minutes: 0,
+    flagged_minutes: 0,
     warnings: 0,
     blocking: 0,
     source_snapshot: { shift_ids: [], open_shift_ids: [], shifts: [], job_segment_ids: [] } as Record<string, unknown>,
@@ -619,11 +637,24 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     }
   }
 
+  for (const credit of flatRateCredits ?? []) {
+    if (!credit.technician_id || !credit.credited_at) continue;
+    const workDate = toShopDate(credit.credited_at, timezone);
+    if (workDate < period.period_start || workDate > period.period_end) continue;
+    const row = getRow(credit.technician_id, workDate);
+    row.flagged_minutes += Math.max(0, Math.round(Number(credit.credit_hours ?? 0) * MINUTES_IN_HOUR));
+    const creditIds = Array.isArray(row.source_snapshot.flat_rate_credit_ids)
+      ? row.source_snapshot.flat_rate_credit_ids as string[]
+      : [];
+    if (credit.id && !creditIds.includes(credit.id)) creditIds.push(credit.id);
+    row.source_snapshot.flat_rate_credit_ids = creditIds;
+  }
+
   const { data: existingEntries } = await admin.from("payroll_time_entries").select("user_id, work_date, adjustment_minutes, approval_state").eq("shop_id", shopId).eq("period_id", periodId);
   const adjustmentByKey = new Map((existingEntries ?? []).map((e: any) => [`${e.user_id}:${e.work_date}`, Number(e.adjustment_minutes ?? 0)]));
   for (const row of rowsByKey.values()) { (row.source_snapshot as any).preserved_adjustment_minutes = adjustmentByKey.get(`${row.user_id}:${row.work_date}`) ?? 0; }
 
-  const upserts = Array.from(rowsByKey.values()).map((row) => {
+  const dailyRows = Array.from(rowsByKey.values()).map((row) => {
     if (row.job_minutes > row.attendance_minutes - row.unpaid_break_minutes) {
       row.warnings += 1;
       exceptions.push({ user_id: row.user_id, work_date: row.work_date, severity: "warning", code: "job_time_exceeds_worked_time", message: "Productive job time exceeds payroll worked time.", source_type: "job_time", source_ref: { job_minutes: row.job_minutes, worked_minutes: row.attendance_minutes - row.unpaid_break_minutes } });
@@ -649,6 +680,7 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
       regular_minutes: regular,
       overtime_minutes: overtime,
       job_minutes: row.job_minutes,
+      flagged_minutes: row.flagged_minutes,
       adjustment_minutes: adjustment,
       has_exceptions: row.warnings + row.blocking > 0,
       warning_exception_count: row.warnings,
@@ -658,28 +690,20 @@ export async function rebuildPeriod(params: { shopId: string; actorId: string; p
     };
   });
 
-  await admin.from("payroll_time_entries").delete().eq("shop_id", shopId).eq("period_id", periodId);
-  await admin.from("payroll_time_exceptions").delete().eq("shop_id", shopId).eq("period_id", periodId);
+  const upserts = applyWeeklyOvertime(dailyRows, weeklyOvertimeAfter, weekStartsOn);
+  const { data: replaced, error: replaceErr } = await admin.rpc("replace_payroll_period_snapshot", {
+    p_shop_id: shopId,
+    p_actor_profile_id: params.actorId,
+    p_period_id: periodId,
+    p_entries: upserts,
+    p_exceptions: exceptions,
+  });
+  if (replaceErr) throw new Error(replaceErr.message);
 
-  if (upserts.length > 0) {
-    const { error } = await admin.from("payroll_time_entries").insert(upserts);
-    if (error) throw new Error(error.message);
-  }
-
-  if (exceptions.length > 0) {
-    const { error } = await admin.from("payroll_time_exceptions").insert(
-      exceptions.map((item) => ({ ...item, shop_id: shopId, period_id: periodId })),
-    );
-    if (error) throw new Error(error.message);
-  }
-
-  await admin
-    .from("payroll_pay_periods")
-    .update({ status: "open", updated_at: new Date().toISOString() })
-    .eq("id", periodId)
-    .eq("shop_id", shopId);
-
-  return { rows: upserts.length, exceptions: exceptions.length };
+  return {
+    rows: Number(replaced?.rows ?? upserts.length),
+    exceptions: Number(replaced?.exceptions ?? exceptions.length),
+  };
 }
 
 export async function approvePeriod(params: { shopId: string; periodId: string; actorId: string }) {

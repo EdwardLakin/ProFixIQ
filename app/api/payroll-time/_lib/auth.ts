@@ -8,7 +8,7 @@ type Caller = {
   shop_id: string | null;
 };
 
-export async function requirePayrollReviewer() {
+export async function requirePayrollReviewer(options?: { finalize?: boolean }) {
   const supabase = createServerSupabaseRoute();
   const {
     data: { user },
@@ -36,7 +36,10 @@ export async function requirePayrollReviewer() {
   }
 
   const caps = getActorCapabilities({ role: me.role });
-  if (!caps.isKnownRole || !caps.canManageScheduling) {
+  const allowed = options?.finalize
+    ? caps.canFinalizeWorkforceTime
+    : caps.canReviewWorkforceTime;
+  if (!caps.isKnownRole || !allowed) {
     return {
       ok: false as const,
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),

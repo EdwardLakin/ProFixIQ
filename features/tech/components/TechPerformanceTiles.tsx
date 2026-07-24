@@ -81,7 +81,7 @@ export default function TechPerformanceTiles({
         }
 
         // ✅ Pull hours/billed/efficiency from the same source as /tech/performance
-        const result = await getTechLeaderboard(shopId, range);
+        const result = await getTechLeaderboard(shopId, range, user.id);
         const rows = result.rows ?? [];
         const my = rows.find((r) => r.techId === user.id) ?? null;
 
@@ -96,8 +96,13 @@ export default function TechPerformanceTiles({
             profit: 0,
             billedHours: 0,
             clockedHours: 0,
+            flaggedHours: 0,
+            actualJobHours: 0,
+            attendanceHours: 0,
             revenuePerHour: 0,
             efficiencyPct: 0,
+            productivityPct: 0,
+            overallPerformancePct: 0,
           },
         );
 

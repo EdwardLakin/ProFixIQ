@@ -11,7 +11,6 @@ import {
   getTechLeaderboard,
   type TechLeaderboardRow,
 } from "@shared/lib/stats/getTechLeaderboard";
-import { formatCurrency } from "@shared/lib/formatters";
 import { Button } from "@shared/components/ui/Button";
 
 type DB = Database;
@@ -93,7 +92,7 @@ export default function MobileTechPerformancePage() {
       setAiSummary(null);
 
       try {
-        const result = await getTechLeaderboard(shopId, range);
+        const result = await getTechLeaderboard(shopId, range, userId ?? undefined);
         setRows(result.rows);
         setStart(result.start);
         setEnd(result.end);
@@ -128,25 +127,14 @@ export default function MobileTechPerformancePage() {
             tech: {
               name: myRow.name,
               jobs: myRow.jobs,
-              revenue: myRow.revenue,
-              laborCost: myRow.laborCost,
-              profit: myRow.profit,
-              billedHours: myRow.billedHours,
-              clockedHours: myRow.clockedHours,
-              revenuePerHour: myRow.revenuePerHour,
+              flaggedHours: myRow.flaggedHours,
+              actualJobHours: myRow.actualJobHours,
+              attendanceHours: myRow.attendanceHours,
               efficiencyPct: myRow.efficiencyPct,
+              productivityPct: myRow.productivityPct,
+              overallPerformancePct: myRow.overallPerformancePct,
             },
-            peers: rows.map((r) => ({
-              name: r.name,
-              jobs: r.jobs,
-              revenue: r.revenue,
-              laborCost: r.laborCost,
-              profit: r.profit,
-              billedHours: r.billedHours,
-              clockedHours: r.clockedHours,
-              revenuePerHour: r.revenuePerHour,
-              efficiencyPct: r.efficiencyPct,
-            })),
+            peers: [],
           }),
         });
 
@@ -178,7 +166,7 @@ export default function MobileTechPerformancePage() {
           <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-sky-300">My Performance</h1>
           <p className="text-[0.8rem] text-[color:var(--theme-text-secondary)]">Jobs, hours and efficiency for your chosen time range.</p>
           <p className="text-[0.68rem] text-[color:var(--theme-text-muted)]">
-            Productivity view: clocked hours are from labor segments (with timecard fallback), not attendance shift punches.
+            Actual job time, attendance, and durable flagged-hour credits.
           </p>
         </header>
 
@@ -217,11 +205,12 @@ export default function MobileTechPerformancePage() {
         {!loading && !error && myRow && (
           <section className="grid grid-cols-2 gap-2.5">
             <StatTile label="Jobs" value={String(myRow.jobs)} accent="text-sky-300" />
-            <StatTile label="Revenue" value={formatCurrency(myRow.revenue)} accent="text-emerald-300" />
-            <StatTile label="Clocked hours" value={`${myRow.clockedHours.toFixed(1)} h`} />
-            <StatTile label="Billed hours" value={`${myRow.billedHours.toFixed(1)} h`} />
-            <StatTile label="Rev / hour" value={formatCurrency(myRow.revenuePerHour)} />
+            <StatTile label="Attendance" value={`${myRow.attendanceHours.toFixed(1)} h`} />
+            <StatTile label="Actual job" value={`${myRow.actualJobHours.toFixed(1)} h`} />
+            <StatTile label="Flagged hours" value={`${myRow.flaggedHours.toFixed(1)} h`} />
             <StatTile label="Efficiency" value={`${myRow.efficiencyPct.toFixed(1)}%`} accent="text-sky-300" />
+            <StatTile label="Productivity" value={`${myRow.productivityPct.toFixed(1)}%`} />
+            <StatTile label="Overall" value={`${myRow.overallPerformancePct.toFixed(1)}%`} />
           </section>
         )}
 
