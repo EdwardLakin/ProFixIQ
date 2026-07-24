@@ -44,7 +44,7 @@ export default function DashboardMarketingPage() {
             href="/dashboard/owner/marketing"
             className="rounded-md bg-[color:var(--theme-surface-panel-strong)] px-4 py-2 text-sm font-medium text-[color:var(--theme-text-on-accent)]"
           >
-            Owner settings
+            Shop settings
           </Link>
         </div>
       </section>
