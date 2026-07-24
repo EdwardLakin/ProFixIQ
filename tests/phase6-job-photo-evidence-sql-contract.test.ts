@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 const migration = readFileSync(
   "supabase/migrations/20260715070200_phase6_canonical_job_photo_evidence.sql",
