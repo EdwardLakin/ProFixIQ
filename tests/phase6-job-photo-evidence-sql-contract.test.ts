@@ -54,3 +54,13 @@ describe("Phase 6 canonical job-photo evidence", () => {
     );
   });
 });
+
+
+test("job media registration classifies videos by content type", () => {
+  expect(videoSql).toContain("v_kind text");
+  expect(videoSql).toContain("v_source text");
+  expect(videoSql).toContain("v_content_type ilike 'video/%'");
+  expect(videoSql).toContain("technician_job_video");
+  expect(videoSql).toContain("kind = excluded.kind");
+  expect(videoSql).toContain("JOB_MEDIA_WORK_ORDER_LINE_MISMATCH");
+});
