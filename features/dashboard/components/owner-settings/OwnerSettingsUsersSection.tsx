@@ -285,7 +285,7 @@ export default function OwnerSettingsUsersSection({
               placeholder="e.g. profixlucas"
             />
             <span className="block text-[11px] text-[color:var(--theme-text-muted)]">
-              This becomes the staff login after lowercasing and removing spaces or punctuation.
+              The server normalizes this and adds your shop prefix when needed. The final login is shown after create.
             </span>
           </label>
           <label className="space-y-1 text-sm">
