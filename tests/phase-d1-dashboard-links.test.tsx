@@ -113,7 +113,7 @@ describe("WorkOrderBoard stage query initialization", () => {
     expect(parseWorkOrderBoardStageFilter(undefined)).toBe("all");
   });
 
-  it("initializes the visible board from a valid stage and still allows manual filter changes", async () => {
+  it("initializes the visible board from a valid stage and lets its summary card clear the filter", async () => {
     const user = userEvent.setup();
     const { rerender } = render(
       <WorkOrderBoard variant="shop" title="Board" initialStage="waiting_parts" />,
@@ -122,12 +122,22 @@ describe("WorkOrderBoard stage query initialization", () => {
     expect(screen.getByText("WO-WAITING")).toBeInTheDocument();
     expect(screen.queryByText("WO-HOLD")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /on hold/i }));
+    await user.click(screen.getByRole("button", { name: /waiting parts/i }));
+    expect(screen.getByText("WO-WAITING")).toBeInTheDocument();
     expect(screen.getByText("WO-HOLD")).toBeInTheDocument();
-    expect(screen.queryByText("WO-WAITING")).not.toBeInTheDocument();
 
     rerender(<WorkOrderBoard variant="shop" title="Board" initialStage="awaiting_approval" />);
     expect(screen.getByText("WO-APPROVAL")).toBeInTheDocument();
     expect(screen.queryByText("WO-HOLD")).not.toBeInTheDocument();
+  });
+
+  it("uses the four summary cards as filters and removes the duplicate pill row", () => {
+    render(<WorkOrderBoard variant="shop" title="Board" />);
+
+    expect(screen.getByRole("button", { name: /at risk/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /ready to work/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /waiting parts/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /ready to invoice/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Board stage views")).not.toBeInTheDocument();
   });
 });

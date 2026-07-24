@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { WorkOrderBoardRow, WorkOrderBoardVariant } from "../lib/workboard/types";
+import {
+  countOpenPartsObligationsByWorkOrder,
+  reconcileBoardPartsState,
+  type OpenPartsItem,
+  type OpenPartsRequest,
+} from "@/features/parts/lib/open-parts-obligations";
 
 type ViewName =
   | "v_work_order_board_cards_shop"
@@ -61,24 +67,55 @@ export function useWorkOrderBoard(
     }
 
     const workOrderIds = boardRows.map((row) => row.work_order_id);
-    const { data: activeSegments } = await supabase
-      .from("work_order_line_labor_segments")
-      .select("work_order_id")
-      .in("work_order_id", workOrderIds)
-      .is("ended_at", null);
+    const [activeSegmentsResult, requestResults] = await Promise.all([
+      supabase
+        .from("work_order_line_labor_segments")
+        .select("work_order_id")
+        .in("work_order_id", workOrderIds)
+        .is("ended_at", null),
+      Promise.all(
+        Array.from(
+          { length: Math.ceil(workOrderIds.length / 200) },
+          (_, index) =>
+            supabase
+              .from("part_requests")
+              .select("id,work_order_id,status")
+              .in("work_order_id", workOrderIds.slice(index * 200, index * 200 + 200)),
+        ),
+      ),
+    ]);
 
     const activeWorkOrderIds = new Set(
-      (activeSegments ?? [])
+      (activeSegmentsResult.data ?? [])
         .map((segment) => segment.work_order_id)
         .filter((id): id is string => typeof id === "string" && id.length > 0),
     );
 
+    const requests = requestResults.flatMap((result) =>
+      result.error ? [] : ((result.data ?? []) as OpenPartsRequest[]),
+    );
+    const requestIds = requests.map((request) => request.id);
+    const itemResults = await Promise.all(
+      Array.from(
+        { length: Math.ceil(requestIds.length / 200) },
+        (_, index) =>
+          supabase
+            .from("part_request_items")
+            .select(
+              "request_id,status,po_id,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned",
+            )
+            .in("request_id", requestIds.slice(index * 200, index * 200 + 200)),
+      ),
+    );
+    const items = itemResults.flatMap((result) =>
+      result.error ? [] : ((result.data ?? []) as OpenPartsItem[]),
+    );
+
     setRows(
-      boardRows.map((row) =>
-        activeWorkOrderIds.has(row.work_order_id) &&
-        row.overall_stage !== "completed"
-          ? { ...row, overall_stage: "in_progress" }
-          : row,
+      reconcileBoardPartsState(
+        boardRows,
+        countOpenPartsObligationsByWorkOrder(requests, items),
+        activeWorkOrderIds,
       ),
     );
     setLoading(false);

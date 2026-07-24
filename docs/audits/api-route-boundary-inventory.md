@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-07-23T19:22:41.647Z
+Generated: 2026-07-24T01:17:51.914Z
 
 ## Summary
-- Total route count: **373**
+- Total route count: **374**
 - Routes exporting GET: **118**
 - Routes exporting POST: **266**
 - Routes exporting PUT: **9**
 - Routes exporting PATCH: **21**
-- Routes exporting DELETE: **11**
+- Routes exporting DELETE: **12**
 - Routes with service-role pattern: **24**
-- Routes using requireShopScopedApiAccess: **109**
+- Routes using requireShopScopedApiAccess: **110**
 - Routes with auth.getUser references: **147**
 
 ## High-Risk Routes

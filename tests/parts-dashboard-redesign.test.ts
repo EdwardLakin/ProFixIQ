@@ -23,7 +23,8 @@ describe("Parts dashboard redesign", () => {
   });
 
   it("uses the shared lifecycle derivation and paged totals", () => {
-    expect(source).toContain("function approvedReceivingQty");
+    expect(source).toContain("isPartRequestItemAwaitingReceiving");
+    expect(source).toContain("po_id");
     expect(source).toContain("toPartsRequestStage");
     expect(source).toContain("earliestPartsRequestStage");
     expect(source).toContain("stagesByWorkOrder");

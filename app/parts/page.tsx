@@ -27,6 +27,7 @@ import {
   type PartsRequestStage,
   type PartsRequestStageItem,
 } from "@/features/parts/lib/status-display";
+import { isPartRequestItemAwaitingReceiving } from "@/features/parts/lib/open-parts-obligations";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -50,6 +51,7 @@ type DashboardRequestItem = Pick<
   | "qty_reserved"
   | "qty_consumed"
   | "qty_returned"
+  | "po_id"
 >;
 
 type RecentMove = Pick<
@@ -96,12 +98,6 @@ const PARTS_REQUEST_STATUSES: RequestRow["status"][] = [
 
 function panelClass(extra = "") {
   return `rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] ${extra}`;
-}
-
-function approvedReceivingQty(
-  item: Pick<RequestItemRow, "qty_approved">,
-) {
-  return Math.max(0, Number(item.qty_approved ?? 0));
 }
 
 function requestStageItem(item: DashboardRequestItem): PartsRequestStageItem {
@@ -343,7 +339,7 @@ export default function PartsDashboardPage(): JSX.Element {
           const page = await supabase
             .from("part_request_items")
             .select(
-              "request_id,status,description,part_id,quoted_price,unit_price,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned",
+              "request_id,status,description,part_id,quoted_price,unit_price,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,po_id",
             )
             .in("request_id", requestIdChunk)
             .order("id", { ascending: true })
@@ -389,16 +385,11 @@ export default function PartsDashboardPage(): JSX.Element {
       );
       setOpenPoCount(openPoRes.count ?? 0);
       setReceiveQueueCount(
-        items.filter((item) => {
-          const target = approvedReceivingQty(item);
-          return (
+        items.filter(
+          (item) =>
             activeIds.has(item.request_id) &&
-            String(item.status).toLowerCase() !== "cancelled" &&
-            target > 0 &&
-            Number(item.qty_received ?? 0) < target &&
-            Number(item.qty_consumed ?? 0) < target
-          );
-        }).length,
+            isPartRequestItemAwaitingReceiving(item),
+        ).length,
       );
 
       const nextFlow: FlowCounts = {
