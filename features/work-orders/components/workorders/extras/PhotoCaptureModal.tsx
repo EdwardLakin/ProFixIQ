@@ -293,6 +293,9 @@ function DesktopPhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
     setErr(null);
   }, [isOpen]);
 
+  const pickButtonLabel = source === "camera" ? "Open camera" : "Choose photo";
+  const replaceButtonLabel = source === "camera" ? "Retake" : "Replace";
+
   const handlePick = () => {
     setErr(null);
     if (source === "camera") {
@@ -383,7 +386,7 @@ function DesktopPhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
             onClick={handlePick}
             className="inline-flex items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
           >
-            Choose
+            {pickButtonLabel}
           </button>
         </div>
 
@@ -447,15 +450,15 @@ function DesktopPhotoCaptureModal({ isOpen, onClose, onCapture }: Props) {
                     disabled={busy}
                     className="rounded-full border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent-copper-soft)] hover:bg-[var(--accent-copper-faint)] disabled:opacity-60"
                   >
-                    Replace
+                    {replaceButtonLabel}
                   </button>
                 </div>
               </div>
             </div>
           ) : (
             <div className="text-xs text-[color:var(--theme-text-secondary)]">
-              Pick a job photo. On mobile, “Camera” opens the camera. “Photos /
-              Files” opens your library or file picker.
+              Pick a job photo. Use Open camera for a new picture, or Choose
+              photo for an existing image.
             </div>
           )}
         </div>
