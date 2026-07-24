@@ -38,15 +38,11 @@ export function buildShopUsernameNamespace(shopName: string | null | undefined):
 
 export function normalizeProvisioningUsername(input: string, shopNamespace: string): string {
   const normalized = toAlphaNumericLower(input);
-  const namespace = toAlphaNumericLower(shopNamespace) || "shop";
+  const fallback = toAlphaNumericLower(shopNamespace) || "shop";
 
-  if (!normalized) return namespace;
+  if (!normalized) return fallback.slice(0, MAX_USERNAME_LENGTH);
 
-  const withNamespace = normalized.startsWith(namespace)
-    ? normalized
-    : `${namespace}${normalized}`;
-
-  return withNamespace.slice(0, MAX_USERNAME_LENGTH);
+  return normalized.slice(0, MAX_USERNAME_LENGTH);
 }
 
 function splitName(fullName: string | null | undefined): { first: string; last: string } {
