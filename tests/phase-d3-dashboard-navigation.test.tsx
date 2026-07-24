@@ -102,6 +102,10 @@ describe("Phase D3 dashboard operational navigation", () => {
     expect(mechanicHrefs).not.toContain("/work-orders/history");
     expect(ROUTE_META["/work-orders/history"].roles).not.toContain("mechanic");
     expect(ROUTE_META["/parts/requests"].roles).not.toContain("mechanic");
+    expect(read("app/work-orders/history/page.tsx")).toContain("requireShopPageAccess");
+    expect(read("app/work-orders/history/page.tsx")).toContain("HISTORY_ACCESS_ROLES");
+    expect(read("app/parts/requests/layout.tsx")).toContain("requireShopPageAccess");
+    expect(read("app/parts/requests/layout.tsx")).toContain("PARTS_REQUEST_ACCESS_ROLES");
   });
 
   it("preserves role visibility for Dashboard links", () => {
