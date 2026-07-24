@@ -6,13 +6,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useMemo } from "react";
 
 export default function DashboardTabs() {
-  const { tabs, activeHref, activateTab, closeTab, closeOthers, closeAll } =
+  const { tabs, activeKey, activateTab, closeTab, closeOthers, closeAll } =
     useTabs();
 
   const hasTabs = tabs.length > 0;
   const canCloseOthers = useMemo(
-    () => hasTabs && tabs.some((t) => t.href !== activeHref),
-    [hasTabs, tabs, activeHref],
+    () => hasTabs && tabs.some((t) => t.key !== activeKey && !t.pinned),
+    [hasTabs, tabs, activeKey],
   );
 
   return (
@@ -27,7 +27,7 @@ export default function DashboardTabs() {
                   key={t.href}
                   className={[
                     "flex items-center gap-2 rounded px-3 py-1 whitespace-nowrap",
-                    t.href === activeHref
+                    t.key === activeKey
                       ? "bg-orange-700 text-[color:var(--theme-text-primary)] border border-orange-400"
                       : "bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] hover:border-orange-400/60",
                   ].join(" ")}
@@ -38,22 +38,17 @@ export default function DashboardTabs() {
                 >
                   <button
                     type="button"
-                    onClick={() => activateTab(t.href)}
+                    onClick={() => activateTab(t.key)}
                     className="flex items-center gap-2"
                     title={t.title}
-                    aria-current={t.href === activeHref ? "page" : undefined}
+                    aria-current={t.key === activeKey ? "page" : undefined}
                   >
-                    {t.icon ? (
-                      <span aria-hidden className="text-lg leading-none">
-                        {t.icon}
-                      </span>
-                    ) : null}
                     <span className="truncate max-w-[160px]">{t.title}</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => closeTab(t.href)}
+                    onClick={() => closeTab(t.key)}
                     className="ml-1 rounded px-1 text-xs leading-none text-red-300 hover:bg-red-900/30"
                     aria-label={`Close ${t.title}`}
                     title="Close"
@@ -72,7 +67,7 @@ export default function DashboardTabs() {
             {canCloseOthers && (
               <button
                 type="button"
-                onClick={() => closeOthers(activeHref)}
+                onClick={() => closeOthers(activeKey)}
                 className="rounded border border-orange-400 px-2 py-1 text-xs font-medium text-orange-300 hover:bg-orange-500/10"
               >
                 Close Others

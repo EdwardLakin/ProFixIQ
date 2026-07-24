@@ -44,6 +44,7 @@ import {
   loadProjectedWorkOrderSnapshot,
   type MobileWorkOrderSnapshot,
 } from "@/features/work-orders/mobile/technicianOfflineExecution";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -175,6 +176,7 @@ export default function MobileWorkOrderClient({
 }): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { updateActiveTab } = useTabs();
 
   // ✅ handle ?focus=<workOrderLineId>
   const focusParam = searchParams?.get("focus") ?? null;
@@ -693,6 +695,40 @@ export default function MobileWorkOrderClient({
     () => deriveMobileDetailOperationalState(wo, lines),
     [wo, lines],
   );
+
+  useEffect(() => {
+    if (!wo) return;
+    const customerName =
+      customer?.business_name?.trim() ||
+      customer?.name?.trim() ||
+      [customer?.first_name ?? "", customer?.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      wo.customer_name?.trim() ||
+      "";
+    const vehicleLabel = vehicle
+      ? [vehicle.year, vehicle.make, vehicle.model]
+          .filter((value) => value != null && String(value).trim())
+          .join(" ")
+      : "";
+    const workOrderLabel = wo.custom_id?.trim() || `WO-${wo.id.slice(0, 8)}`;
+    const pendingOfflineChanges =
+      offlineSummary.queued +
+        offlineSummary.syncing +
+        offlineSummary.failed +
+        offlineSummary.conflicted >
+      0;
+
+    updateActiveTab({
+      title: customerName
+        ? `${workOrderLabel} · ${customerName}`
+        : workOrderLabel,
+      subtitle: vehicleLabel || undefined,
+      status: String(wo.status ?? "awaiting").replaceAll("_", " "),
+      offline: !navigator.onLine || pendingOfflineChanges,
+    });
+  }, [customer, offlineSummary, updateActiveTab, vehicle, wo]);
 
   const visibleLineState = useCallback(
     (line: WorkOrderLine) => mobileOperationalState.lineStates.get(line) ?? "awaiting",

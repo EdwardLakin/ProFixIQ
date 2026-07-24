@@ -17,6 +17,7 @@ import {
   shopSuppliesSummaryText,
 } from "@/features/work-orders/lib/shopSupplies";
 import { quoteLineTotalResolved, resolveQuoteLineParts, type CatalogPart, type PartRequest, type PartRequestItem, type ResolvedQuotePart } from "./partsModel";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 const COPPER = "#C57A4A";
 const SEND_READY_STAGES = new Set(["advisor_pending", "ready_to_send"]);
@@ -361,6 +362,7 @@ export default function QuoteReviewView(props: {
   const woId = String(props.workOrderId ?? "").trim();
   const embedded = Boolean(props.embedded);
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const { updateActiveTab } = useTabs();
 
   const [loading, setLoading] = useState(true);
   const [loadedOnce, setLoadedOnce] = useState(false);
@@ -390,6 +392,22 @@ export default function QuoteReviewView(props: {
   const [suppliesEnabledDraft, setSuppliesEnabledDraft] = useState<boolean | null>(null);
   const [suppliesAmountDraft, setSuppliesAmountDraft] = useState("");
   const [savingSuppliesOverride, setSavingSuppliesOverride] = useState(false);
+
+  useEffect(() => {
+    if (embedded || !wo) return;
+    const customerName = customerDisplayName(customer);
+    const workOrderLabel =
+      safeTrim(wo.custom_id) || `WO-${wo.id.slice(0, 8)}`;
+    updateActiveTab({
+      title:
+        customerName && customerName !== "—"
+          ? `${workOrderLabel} · ${customerName}`
+          : workOrderLabel,
+      subtitle: "Quote review",
+      status: "Quote review",
+      dirty: quoteLines.some((line) => line._dirty),
+    });
+  }, [customer, embedded, quoteLines, updateActiveTab, wo]);
 
   const laborRate = useMemo(() => asNumber((shop as unknown as { labor_rate?: unknown } | null)?.labor_rate) ?? 120, [shop]);
 
