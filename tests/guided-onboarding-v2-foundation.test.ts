@@ -69,7 +69,7 @@ describe("guided onboarding v2 foundation", () => {
       title: "Guided Setup",
       href: "/dashboard/onboarding-v2",
       roles: ["owner", "admin"],
-      section: "Admin & Oversight",
+      section: "Settings",
     });
     expect(guidedTile?.title).not.toBe("Onboarding Agent");
   });

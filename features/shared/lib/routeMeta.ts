@@ -317,12 +317,12 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin", "manager"],
   },
   "/dashboard/workforce": {
-    title: () => "Workforce",
+    title: () => "Workforce Command",
     icon: "👥",
     roles: ["owner", "admin", "manager"],
   },
   "/dashboard/workforce/overview": {
-    title: () => "Workforce Overview",
+    title: () => "Workforce Command",
     icon: "🧭",
     roles: ["owner", "admin", "manager"],
   },
@@ -339,7 +339,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     roles: ["owner", "admin"],
   },
   "/dashboard/workforce/scheduling": {
-    title: () => "Scheduling",
+    title: () => "Schedule & Time Away",
     icon: "🗓️",
     roles: ["owner", "admin", "manager"],
   },
@@ -373,6 +373,11 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     title: () => "Insights",
     icon: "📊",
     roles: ["owner", "admin", "manager"],
+  },
+  "/dashboard/workforce/activity": {
+    title: () => "Workforce Activity",
+    icon: "📜",
+    roles: ["owner", "admin"],
   },
   "/dashboard/admin": {
     title: () => "Admin",

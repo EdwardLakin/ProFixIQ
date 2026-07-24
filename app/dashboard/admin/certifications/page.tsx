@@ -3,5 +3,5 @@ import { requireAdminPageAccess } from "@/features/shared/lib/server/admin-acces
 
 export default async function Page() {
   await requireAdminPageAccess({ allow: ["owner", "admin"] });
-  redirect("/dashboard/admin");
+  redirect("/dashboard/workforce/certifications");
 }

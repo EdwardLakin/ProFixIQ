@@ -347,7 +347,7 @@ export default function AdminQuickPanel() {
       <div key="activity" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Recent Activity</h3>
-          <Link href="/dashboard/admin/audit" className="text-xs text-orange-400 underline">
+          <Link href="/dashboard/workforce/activity" className="text-xs text-[color:var(--theme-accent-text)] underline">
             View all
           </Link>
         </div>
@@ -374,7 +374,7 @@ export default function AdminQuickPanel() {
           <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">
             Certifications Expiring (30 days)
           </h3>
-          <Link href="/dashboard/admin/employee-docs" className="text-xs text-orange-400 underline">
+          <Link href="/dashboard/workforce/documents" className="text-xs text-[color:var(--theme-accent-text)] underline">
             Manage
           </Link>
         </div>
@@ -528,7 +528,7 @@ export default function AdminQuickPanel() {
       <div key="email" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Email Delivery Issues</h3>
-          <Link href="/dashboard/admin/audit" className="text-xs text-orange-400 underline">
+          <Link href="/dashboard/workforce/activity" className="text-xs text-[color:var(--theme-accent-text)] underline">
             Logs
           </Link>
         </div>

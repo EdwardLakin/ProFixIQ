@@ -141,7 +141,7 @@ export default function UsersList(): JSX.Element {
           title="Workflow Purpose"
           description="Users covers account governance. Use Employees for workforce posture and activity review."
           action={
-            <Link href="/dashboard/admin/employees" className="text-xs font-medium text-[var(--accent-copper-soft)] hover:text-[var(--accent-copper)]">
+            <Link href="/dashboard/workforce/people" className="text-xs font-medium text-[color:var(--theme-accent-text)]">
               Open Employees →
             </Link>
           }
@@ -199,10 +199,10 @@ export default function UsersList(): JSX.Element {
           description="Edit or remove account records. Review role and identity context before changes."
           action={
             <div className="flex items-center gap-3 text-xs">
-              <Link href="/dashboard/admin/employees" className="font-medium text-[var(--accent-copper-soft)] hover:text-[var(--accent-copper)]">
+              <Link href="/dashboard/workforce/people" className="font-medium text-[color:var(--theme-accent-text)]">
                 Workforce posture →
               </Link>
-              <Link href="/dashboard/admin/payroll-time" className="font-medium text-[var(--accent-copper-soft)] hover:text-[var(--accent-copper)]">
+              <Link href="/dashboard/workforce/payroll-review" className="font-medium text-[color:var(--theme-accent-text)]">
                 Payroll review →
               </Link>
             </div>

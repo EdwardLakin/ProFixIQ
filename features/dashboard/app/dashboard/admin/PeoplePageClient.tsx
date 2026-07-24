@@ -8,7 +8,6 @@ import {
   AdminEmptyState,
   AdminField,
   AdminPageHeader,
-  AdminPageShell,
   AdminPanel,
   AdminPanelTitle,
   AdminStatCard,
@@ -51,10 +50,10 @@ type PersonRow = {
 };
 
 function certificationPosture(row: PersonRow) {
-  if (row.expired_certifications > 0) return { label: "Expired", tone: "text-red-300" };
-  if (row.expiring_certifications > 0) return { label: "Expiring ≤30d", tone: "text-amber-300" };
-  if (row.cert_expiring_60 > 0) return { label: "Expiring 31-60d", tone: "text-yellow-200" };
-  if (row.open_certifications > 0) return { label: "Active", tone: "text-emerald-300" };
+  if (row.expired_certifications > 0) return { label: "Expired", tone: "text-[color:var(--theme-danger-text)]" };
+  if (row.expiring_certifications > 0) return { label: "Expiring ≤30d", tone: "text-[color:var(--theme-warning-text)]" };
+  if (row.cert_expiring_60 > 0) return { label: "Expiring 31-60d", tone: "text-[color:var(--theme-warning-text)]" };
+  if (row.open_certifications > 0) return { label: "Active", tone: "text-[color:var(--theme-success-text)]" };
   return { label: "No certs", tone: "text-[color:var(--theme-text-secondary)]" };
 }
 
@@ -133,21 +132,21 @@ export default function PeoplePageClient() {
   }, [rows]);
 
   return (
-    <AdminPageShell>
+    <div className="space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <AdminPageHeader
-          eyebrow="Canonical Staff System"
-          title="People & Staff"
-          subtitle="People is the canonical admin directory for identity governance, workforce posture, certifications/licensing readiness, and payroll-time follow-up."
+          eyebrow="Team directory"
+          title="People"
+          subtitle="Manage each employee’s access, workforce profile, schedule readiness, documents, certifications, and payroll follow-up."
         />
-        <Link href="/dashboard/owner/create-user" className="inline-flex items-center justify-center rounded-lg border border-orange-300/40 bg-orange-500/15 px-4 py-2 text-sm font-medium text-orange-100 hover:border-orange-300/70 hover:bg-orange-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
+        <Link href="/dashboard/owner/create-user" className="inline-flex items-center justify-center rounded-lg border border-orange-300/40 bg-orange-500/15 px-4 py-2 text-sm font-medium text-[color:var(--theme-accent-text)] hover:border-orange-300/70 hover:bg-orange-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70">
           Add person
         </Link>
       </div>
       {workforceAction ? (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-orange-200">
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-[color:var(--theme-accent-text)]">
           <span>Filtered from Workforce Overview: {workforceAction === "cert_expired" ? "Expired certifications" : workforceAction === "cert_expiring" ? "Expiring certifications" : "Missing schedule templates"}</span>
-          <Link href="/dashboard/workforce/people" className="font-medium text-orange-300 hover:text-orange-200">Clear filter</Link>
+          <Link href="/dashboard/workforce/people" className="font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]">Clear filter</Link>
         </div>
       ) : null}
 
@@ -173,8 +172,8 @@ export default function PeoplePageClient() {
           description="Search by person identity, role, workforce category, or contact details."
           action={
             <div className="flex items-center gap-3 text-xs">
-              <Link href="/dashboard/workforce/payroll-review" className="font-medium text-orange-300 hover:text-orange-200">Payroll Time →</Link>
-              <Link href="/dashboard/admin/audit" className="font-medium text-orange-300 hover:text-orange-200">Audit →</Link>
+              <Link href="/dashboard/workforce/payroll-review" className="font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]">Payroll Time →</Link>
+              <Link href="/dashboard/workforce/activity" className="font-medium text-[color:var(--theme-accent-text)]">Activity →</Link>
             </div>
           }
         />
@@ -212,7 +211,7 @@ export default function PeoplePageClient() {
             </select>
           </AdminField>
         </AdminToolbar>
-        {error ? <p className="px-4 pb-4 text-xs text-red-300">{error}</p> : null}
+        {error ? <p className="px-4 pb-4 text-xs text-[color:var(--theme-danger-text)]">{error}</p> : null}
       </AdminPanel>
 
       <AdminPanel>
@@ -240,17 +239,17 @@ export default function PeoplePageClient() {
                   const cert = certificationPosture(row);
                   const topReason = row.action_reasons[0];
                   const severityTone = row.highest_action_severity === "blocking"
-                    ? "text-red-300"
+                    ? "text-[color:var(--theme-danger-text)]"
                     : row.highest_action_severity === "warning"
-                      ? "text-amber-300"
-                      : "text-sky-300";
+                      ? "text-[color:var(--theme-warning-text)]"
+                      : "text-[color:var(--theme-info-text)]";
 
                   return (
                     <tr
                       key={row.id}
                       className="cursor-pointer text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
                       onClick={() => {
-                        window.location.href = `/dashboard/admin/people/${row.id}`;
+                        window.location.href = `/dashboard/workforce/people/${row.id}`;
                       }}
                     >
                       <td className="px-4 py-2.5">
@@ -272,7 +271,7 @@ export default function PeoplePageClient() {
                         <p className="text-[color:var(--theme-text-secondary)]">{row.payroll_open_period_entries} open entries</p>
                       </td>
                       <td className="px-4 py-2.5 text-xs">
-                        <p className={row.has_schedule_template ? "text-emerald-300" : "text-amber-300"}>
+                        <p className={row.has_schedule_template ? "text-[color:var(--theme-success-text)]" : "text-[color:var(--theme-warning-text)]"}>
                           {row.has_schedule_template ? "Template set" : "No template"}
                         </p>
                         <p className="text-[color:var(--theme-text-secondary)]">
@@ -293,6 +292,6 @@ export default function PeoplePageClient() {
           </div>
         )}
       </AdminPanel>
-    </AdminPageShell>
+    </div>
   );
 }

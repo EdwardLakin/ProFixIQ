@@ -196,9 +196,9 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
   },
   {
-    href: "/dashboard/admin",
-    title: "Admin Dashboard",
-    subtitle: "Governance and workforce command hub",
+    href: "/dashboard/workforce",
+    title: "Workforce Command",
+    subtitle: "People, coverage, time, payroll, and readiness",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
   },
@@ -210,8 +210,8 @@ export const TILES: Tile[] = [
     scopes: ["management", "all"],
   },
   {
-    href: "/dashboard/admin/audit",
-    title: "Audit",
+    href: "/dashboard/workforce/activity",
+    title: "Workforce Activity",
     subtitle: "Sensitive action timeline and investigation",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { WorkforceQuickLinks } from "./WorkforceQuickLinks";
 
 type InboxSeverity = "blocking" | "warning" | "info";
 
@@ -27,19 +26,19 @@ type OverviewPayload = {
 };
 const severityStyles: Record<InboxSeverity, { chip: string; border: string; dot: string; label: string }> = {
   blocking: {
-    chip: "bg-red-500/15 text-red-200 border-red-400/40",
+    chip: "bg-red-500/15 text-[color:var(--theme-danger-text)] border-red-400/40",
     border: "border-red-500/30 hover:border-red-400/60",
     dot: "bg-red-400",
     label: "Blocking",
   },
   warning: {
-    chip: "bg-amber-500/15 text-amber-200 border-amber-400/40",
+    chip: "bg-amber-500/15 text-[color:var(--theme-warning-text)] border-amber-400/40",
     border: "border-amber-500/30 hover:border-amber-400/60",
     dot: "bg-amber-300",
     label: "Warning",
   },
   info: {
-    chip: "bg-sky-500/15 text-sky-100 border-sky-300/40",
+    chip: "bg-sky-500/15 text-[color:var(--theme-info-text)] border-sky-300/40",
     border: "border-sky-500/30 hover:border-sky-300/60",
     dot: "bg-sky-300",
     label: "Info",
@@ -222,12 +221,12 @@ export default function WorkforceOverviewClient() {
 
   if (error || !data) {
     return (
-      <div className="rounded-2xl border border-red-500/40 bg-red-950/30 p-5 text-red-100">
+      <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-[color:var(--theme-danger-text)]">
         <h2 className="text-lg font-semibold">Workforce command unavailable</h2>
-        <p className="mt-2 text-sm text-red-100/85">{error ?? "Failed to load workforce overview."}</p>
+        <p className="mt-2 text-sm text-[color:var(--theme-danger-text)]">{error ?? "Failed to load workforce overview."}</p>
         <button
           type="button"
-          className="mt-3 rounded-md border border-red-300/40 px-3 py-1.5 text-sm text-red-100 underline-offset-2 hover:bg-red-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-3 rounded-md border border-red-300/40 px-3 py-1.5 text-sm text-[color:var(--theme-danger-text)] underline-offset-2 hover:bg-red-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => void load()}
           disabled={loading}
         >
@@ -240,7 +239,7 @@ export default function WorkforceOverviewClient() {
   const kpiGroups = [
     {
       title: "Needs action",
-      accent: "text-red-200",
+      accent: "text-[color:var(--theme-danger-text)]",
       items: [
         { label: "Pending time off", value: data.summary.pendingTimeOff, tone: "border-red-500/35" },
         { label: "Payroll blocking", value: data.summary.payrollBlocking, tone: "border-red-500/45" },
@@ -251,7 +250,7 @@ export default function WorkforceOverviewClient() {
     },
     {
       title: "Coverage",
-      accent: "text-sky-100",
+      accent: "text-[color:var(--theme-info-text)]",
       items: [
         { label: "Working today", value: data.summary.workingToday, tone: "border-sky-400/30" },
         { label: "Working on jobs", value: data.summary.workingOnJobs ?? 0, tone: "border-emerald-400/30" },
@@ -262,7 +261,7 @@ export default function WorkforceOverviewClient() {
     },
     {
       title: "Compliance",
-      accent: "text-amber-200",
+      accent: "text-[color:var(--theme-warning-text)]",
       items: [
         { label: "Expired certs", value: data.summary.expiredCertifications, tone: "border-amber-400/35" },
         { label: "Expiring certs", value: data.summary.expiringCertifications, tone: "border-amber-300/30" },
@@ -279,26 +278,22 @@ export default function WorkforceOverviewClient() {
 
   return (
     <div className="space-y-6">
-      <header className="var(--theme-gradient-panel)">
+      <header className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-soft)]">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-orange-300/90">Workforce</p>
-            <h1 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)] md:text-3xl">Workforce Command</h1>
+            <p className="text-xs uppercase tracking-[0.22em] text-[color:var(--theme-accent-text)]">Today</p>
+            <h1 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)] md:text-3xl">Command Overview</h1>
             <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
               Coverage, exceptions, and people signals for today’s shop flow.
             </p>
           </div>
-          <p className="inline-flex items-center rounded-full border border-cyan-300/35 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100">
+          <p className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-xs text-[color:var(--theme-info-text)]">
             Last updated {formatGeneratedAt(data.generatedAt)}
           </p>
         </div>
-        <WorkforceQuickLinks
-          roleScope={data.permissions.canAccessPeople ? "owner_admin" : "manager"}
-          className="mt-4 flex flex-wrap gap-2"
-        />
       </header>
 
-      {loadWarning ? <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">{loadWarning}</div> : null}
+      {loadWarning ? <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm text-[color:var(--theme-warning-text)]">{loadWarning}</div> : null}
 
       <section className="overflow-x-auto pb-1" aria-label="Workforce key metrics">
         <div className="grid min-w-[680px] gap-3 md:grid-cols-2 lg:min-w-0 lg:grid-cols-3">
@@ -321,11 +316,11 @@ export default function WorkforceOverviewClient() {
       <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 md:p-6">
         <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Workforce Inbox</h2>
         {data.inbox.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+          <div className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-[color:var(--theme-success-text)]">
             <p className="font-medium">Workforce is clear right now.</p>
-            <p className="mt-1 text-emerald-100/90">No immediate staffing or compliance issues are waiting in queue.</p>
-            <p className="mt-2 text-emerald-100/90">
-              Stay ahead from <Link href="/dashboard/workforce/scheduling" className="underline hover:text-[color:var(--theme-text-primary)]">Scheduling</Link> and <Link href="/dashboard/workforce/time-off" className="underline hover:text-[color:var(--theme-text-primary)]">Time Off</Link>.
+            <p className="mt-1 text-[color:var(--theme-success-text)]">No immediate staffing or compliance issues are waiting in queue.</p>
+            <p className="mt-2 text-[color:var(--theme-success-text)]">
+              Stay ahead from <Link href="/dashboard/workforce/scheduling" className="underline hover:text-[color:var(--theme-text-primary)]">Schedule &amp; Time Away</Link>.
             </p>
           </div>
         ) : (
@@ -359,7 +354,7 @@ export default function WorkforceOverviewClient() {
                           </div>
                           <p className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">{item.title}</p>
                           <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{item.description}</p>
-                          <p className="mt-2 text-xs text-orange-200">Open action →</p>
+                          <p className="mt-2 text-xs text-[color:var(--theme-accent-text)]">Open action →</p>
                         </Link>
                       );
                     })}

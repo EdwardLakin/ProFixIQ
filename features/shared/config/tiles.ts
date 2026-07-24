@@ -66,14 +66,6 @@ export const TILES: Tile[] = [
     section: "Dashboard",
   },
   {
-    href: "/dashboard/workforce/attendance",
-    title: "Time & Attendance",
-    subtitle: "Live status, daily punches, and job time",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Workforce",
-  },
-  {
     href: "/tech/queue",
     title: "Tech Job Queue",
     subtitle: "My assigned work",
@@ -420,33 +412,9 @@ export const TILES: Tile[] = [
   /* WORKFORCE                                                               */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/dashboard/workforce/overview",
-    title: "Overview",
-    subtitle: "Live team, coverage, and exceptions",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Workforce",
-  },
-  {
-    href: "/dashboard/workforce/people",
-    title: "Team",
-    subtitle: "Employees, access, documents, and certifications",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Workforce",
-  },
-  {
-    href: "/dashboard/workforce/scheduling",
-    title: "Scheduling",
-    subtitle: "Shift planning and time-off workflow",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "all"],
-    section: "Workforce",
-  },
-  {
-    href: "/dashboard/workforce/payroll-review",
-    title: "Payroll Review",
-    subtitle: "Time, exceptions, and export readiness",
+    href: "/dashboard/workforce",
+    title: "Workforce Command",
+    subtitle: "People, coverage, time, payroll, and readiness",
     roles: ["owner", "admin", "manager"],
     scopes: ["management", "all"],
     section: "Workforce",
@@ -455,20 +423,12 @@ export const TILES: Tile[] = [
   /* ADMIN                                                                   */
   /* ---------------------------------------------------------------------- */
   {
-    href: "/dashboard/admin",
-    title: "Admin Dashboard",
-    subtitle: "Governance command surface",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Admin",
-  },
-  {
     href: "/dashboard/onboarding-v2",
     title: "Guided Setup",
     subtitle: "Step-by-step shop configuration",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Admin",
+    section: "Settings",
   },
   {
     href: "/dashboard/admin/shops",
@@ -476,15 +436,7 @@ export const TILES: Tile[] = [
     subtitle: "Tenant records and shop-level readiness",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Admin",
-  },
-  {
-    href: "/dashboard/admin/audit",
-    title: "Audit",
-    subtitle: "Administrative action trails",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Admin",
+    section: "Settings",
   },
   {
     href: "/dashboard/owner/settings",
@@ -492,7 +444,7 @@ export const TILES: Tile[] = [
     subtitle: "Adjust shop settings",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Admin",
+    section: "Settings",
   },
   {
     href: "/dashboard/marketing",
@@ -500,7 +452,7 @@ export const TILES: Tile[] = [
     subtitle: "ShopReel sync & activity",
     roles: ["owner", "admin"],
     scopes: ["management", "all"],
-    section: "Admin",
+    section: "Growth",
   },
   /* ---------------------------------------------------------------------- */
   /* BILLING                                                                 */

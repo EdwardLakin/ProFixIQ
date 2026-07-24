@@ -396,7 +396,7 @@ export async function POST(req: Request) {
       auth_email: syntheticEmail,
       must_change_password: true,
       shop_id: effectiveShopId,
-      people_record_href: `/dashboard/admin/people/${newUserId}?from=create-user`,
+      people_record_href: `/dashboard/workforce/people/${newUserId}?from=create-user`,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error.";
@@ -404,4 +404,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg, code: "unexpected_error" }, { status: 500 });
   }
 }
-

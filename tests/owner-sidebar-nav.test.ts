@@ -58,7 +58,7 @@ describe("owner sidebar IA", () => {
   it("does not remove expected primary routes for tech/admin/parts roles", () => {
     const roleToHrefs: Record<Role, string[]> = {
       mechanic: ["/dashboard", "/tech/queue"],
-      admin: ["/dashboard/admin", "/compare-plans"],
+      admin: ["/dashboard/workforce", "/compare-plans"],
       parts: ["/parts", "/parts/requests"],
       advisor: [],
       dispatcher: [],

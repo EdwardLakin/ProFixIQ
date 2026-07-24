@@ -39,6 +39,11 @@
   --theme-text-primary: #ffffff;
   --theme-text-secondary: #94a3b8;
   --theme-text-muted: #64748b;
+  --theme-accent-text: color-mix(in srgb, var(--brand-primary) 72%, var(--theme-text-primary));
+  --theme-danger-text: color-mix(in srgb, #ef4444 72%, var(--theme-text-primary));
+  --theme-warning-text: color-mix(in srgb, #f59e0b 68%, var(--theme-text-primary));
+  --theme-info-text: color-mix(in srgb, #0ea5e9 68%, var(--theme-text-primary));
+  --theme-success-text: color-mix(in srgb, #10b981 68%, var(--theme-text-primary));
 
   --theme-button-primary-bg: var(--brand-primary);
   --theme-button-primary-text: #000000;
