@@ -75,7 +75,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/work-orders/history": {
     title: () => "History",
     icon: "📜",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "lead_hand", "foreman"],
+    roles: ["owner", "admin", "manager", "advisor", "lead_hand", "foreman"],
   },
   "/billing": {
     title: () => "Billing",
