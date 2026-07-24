@@ -61,6 +61,11 @@ describe("mobile route continuity", () => {
     expect(requireMobileHref("/unknown-internal-route")).toBe("/mobile");
   });
 
+  it("keeps owner and admin settings on their desktop routes on mobile devices", () => {
+    expect(resolveMobileHref("/dashboard/owner/settings#settings-team")).toBeNull();
+    expect(resolveMobileHref("/dashboard/admin/settings#settings-team")).toBeNull();
+  });
+
   it("does not treat similar route names as dynamic record prefixes", () => {
     expect(resolveMobileHref("/work-orders/viewer")).toBe(
       "/mobile/work-orders/viewer",
