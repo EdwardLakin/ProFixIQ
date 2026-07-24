@@ -38,6 +38,7 @@ function getRequirementsForPerson(person: WorkforcePerson, requirements: Require
   const category = normalize(person.workforce_category);
 
   const matched = requirements.filter((requirement) => {
+    if (!requirement.required) return false;
     const reqRole = normalize(requirement.workforceRole);
     const reqCategory = normalize(requirement.workforceCategory);
 

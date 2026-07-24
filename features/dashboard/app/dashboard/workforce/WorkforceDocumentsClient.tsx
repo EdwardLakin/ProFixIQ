@@ -57,7 +57,7 @@ type RequirementsPayload = {
 };
 
 type MatrixPayload = {
-  requirements: Array<{ key: string; workforceRole: string | null; workforceCategory: string | null; docType: string; label: string; required: true; expiresRequired: boolean; warningDays: number }>;
+  requirements: Array<{ key: string; workforceRole: string | null; workforceCategory: string | null; docType: string; label: string; required: boolean; expiresRequired: boolean; warningDays: number }>;
   readinessItems: Array<{ personId: string; personName: string; personEmail: string | null; workforceRole: string | null; workforceCategory: string | null; readiness: string; missingDocTypes: string[]; expiredDocTypes: string[]; expiringDocTypes: string[]; needsReviewDocTypes: string[]; href: string }>;
   missingByPerson: Array<{ personId: string; personName: string; missingDocTypes: string[]; href: string }>;
   missingByDocType: Array<{ docType: string; label: string; count: number }>;
@@ -153,7 +153,7 @@ const normalizeMatrixPayload = (value: unknown): { matrix: MatrixPayload | null;
         workforceCategory: safeString(row.workforceCategory) || null,
         docType: safeString(row.docType),
         label: safeString(row.label) || safeString(row.docType) || "Document",
-        required: true,
+        required: row.required === false ? false : true,
         expiresRequired: Boolean(row.expiresRequired),
         warningDays: num(row.warningDays),
       };

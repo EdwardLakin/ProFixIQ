@@ -3,6 +3,11 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
+import { buildWorkforceActivity } from "@/features/workforce/server/buildWorkforceActivity";
+import {
+  getShopScheduleDateContext,
+  resolveWorkforceSchedulePosture,
+} from "@/features/workforce/lib/schedulePosture";
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 export async function GET(req: NextRequest) {
@@ -12,18 +17,30 @@ export async function GET(req: NextRequest) {
   if (!actor.canManageScheduling) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const admin: AdminClient = createAdminSupabase();
+  const now = new Date();
   const url = new URL(req.url);
-  const from = url.searchParams.get("from") ?? new Date().toISOString();
-  const to = url.searchParams.get("to") ?? new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString();
+  const from = url.searchParams.get("from") ?? now.toISOString();
+  const to = url.searchParams.get("to") ?? new Date(now.getTime() + 1000 * 60 * 60 * 24 * 7).toISOString();
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  if (
+    !Number.isFinite(fromDate.getTime()) ||
+    !Number.isFinite(toDate.getTime()) ||
+    toDate <= fromDate
+  ) {
+    return NextResponse.json({ error: "Invalid scheduling date range" }, { status: 400 });
+  }
   const shopRes = await admin.from("shops").select("timezone").eq("id", access.profile.shop_id).maybeSingle();
   if (shopRes.error) return NextResponse.json({ error: shopRes.error.message }, { status: 500 });
-  const todayBounds = getShopDayRange(shopRes.data?.timezone, new Date());
+  const todayBounds = getShopDayRange(shopRes.data?.timezone, now);
+  const fromDateKey = getShopScheduleDateContext(fromDate, shopRes.data?.timezone).dateKey;
+  const toDateKey = getShopScheduleDateContext(toDate, shopRes.data?.timezone).dateKey;
 
   const [profilesRes, workforceRes, templatesRes, overridesRes, blocksRes, requestsRes, activeLinesRes] = await Promise.all([
     admin.from("profiles").select("id, full_name, email, role").eq("shop_id", access.profile.shop_id).order("full_name", { ascending: true }),
     admin.from("people_workforce_profiles").select("user_id, employment_status").eq("shop_id", access.profile.shop_id),
     admin.from("staff_schedule_templates").select("*").eq("shop_id", access.profile.shop_id),
-    admin.from("staff_schedule_overrides").select("*").eq("shop_id", access.profile.shop_id).gte("schedule_date", from.slice(0, 10)).lte("schedule_date", to.slice(0, 10)),
+    admin.from("staff_schedule_overrides").select("*").eq("shop_id", access.profile.shop_id).gte("schedule_date", fromDateKey).lte("schedule_date", toDateKey),
     admin.from("staff_availability_blocks").select("*").eq("shop_id", access.profile.shop_id).lte("starts_at", to).gte("ends_at", from),
     admin.from("staff_time_off_requests").select("*").eq("shop_id", access.profile.shop_id).eq("status", "pending").order("created_at", { ascending: true }).limit(50),
     admin.from("work_order_lines").select("id, assigned_tech_id, status").eq("shop_id", access.profile.shop_id).not("assigned_tech_id", "is", null).not("status", "in", '("completed","invoiced","cancelled","declined")'),
@@ -35,6 +52,14 @@ export async function GET(req: NextRequest) {
   if (overridesRes.error) return NextResponse.json({ error: overridesRes.error.message }, { status: 500 });
   if (blocksRes.error) return NextResponse.json({ error: blocksRes.error.message }, { status: 500 });
   if (requestsRes.error) return NextResponse.json({ error: requestsRes.error.message }, { status: 500 });
+  if (activeLinesRes.error) return NextResponse.json({ error: activeLinesRes.error.message }, { status: 500 });
+
+  const activity = await buildWorkforceActivity({
+    shopId: access.profile.shop_id!,
+    timezone: shopRes.data?.timezone ?? null,
+    now,
+  });
+  const activityByUser = new Map(activity.activities.map((row) => [row.userId, row]));
 
   const templates = templatesRes.data ?? [];
   const overrides = overridesRes.data ?? [];
@@ -68,6 +93,21 @@ export async function GET(req: NextRequest) {
     const tomorrowStart = new Date(todayBounds.end);
     const tomorrowEnd = new Date(tomorrowStart.getTime() + 24 * 60 * 60 * 1000);
     const isAwayTomorrow = personBlocks.some((b) => new Date(b.starts_at) < tomorrowEnd && new Date(b.ends_at) > tomorrowStart);
+    const todaySchedule = resolveWorkforceSchedulePosture({
+      userId: p.id,
+      at: now,
+      timezone: shopRes.data?.timezone,
+      templates,
+      overrides,
+    });
+    const tomorrowSchedule = resolveWorkforceSchedulePosture({
+      userId: p.id,
+      at: new Date(new Date(todayBounds.end).getTime() + 12 * 60 * 60 * 1000),
+      timezone: shopRes.data?.timezone,
+      templates,
+      overrides,
+    });
+    const liveActivity = activityByUser.get(p.id);
 
     return {
       ...p,
@@ -77,6 +117,21 @@ export async function GET(req: NextRequest) {
       approved_away_blocks_in_range: personBlocks.length,
       is_away_today: isAwayToday,
       is_away_tomorrow: isAwayTomorrow,
+      is_scheduled_today: todaySchedule.scheduled,
+      is_scheduled_tomorrow: tomorrowSchedule.scheduled,
+      schedule_source_today: todaySchedule.source,
+      live_state: liveActivity?.operationalState ?? "off_shift",
+      is_clocked_in: Boolean(
+        liveActivity &&
+          liveActivity.operationalState !== "off_shift" &&
+          liveActivity.operationalState !== "shift_ended",
+      ),
+      current_job: liveActivity?.currentJob
+        ? {
+            work_order_number: liveActivity.currentJob.workOrderNumber,
+            line_description: liveActivity.currentJob.lineDescription,
+          }
+        : null,
       active_assigned_work_count: activeWorkByUser.get(p.id) ?? 0,
       next_override: personOverrides
         .slice()

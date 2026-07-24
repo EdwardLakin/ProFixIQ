@@ -73,6 +73,21 @@ describe("workforce command shell", () => {
     expect(layout).toContain('allow: ["owner", "admin", "manager"]');
     expect(shell).toContain('aria-label="Workforce sections"');
     expect(shell).toContain("Workforce Command");
+    expect(shell).toContain("xl:grid-cols-8");
+    expect(shell).not.toContain("overflow-x-auto");
+  });
+
+  it("does not advertise an unwired Insights placeholder", () => {
+    expect(
+      WORKFORCE_NAVIGATION.some(
+        (item) => item.href === "/dashboard/workforce/insights",
+      ),
+    ).toBe(false);
+    const legacyPage = readFileSync(
+      "app/dashboard/workforce/insights/page.tsx",
+      "utf8",
+    );
+    expect(legacyPage).toContain('redirect("/dashboard/workforce/overview")');
   });
 
   it("removes duplicate in-page quick-link navigation", () => {

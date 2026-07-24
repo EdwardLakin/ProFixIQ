@@ -6,7 +6,7 @@ export type RequirementRule = {
   workforceCategory: string | null;
   docType: RequiredDocType;
   label: string;
-  required: true;
+  required: boolean;
   expiresRequired: boolean;
   warningDays: number;
 };
@@ -97,16 +97,6 @@ export const DEFAULT_DOCUMENT_REQUIREMENTS: RequirementRule[] = [
     expiresRequired: false,
     warningDays: DEFAULT_WARNING_DAYS,
   },
-  {
-    key: "default:active:tax_form",
-    workforceRole: null,
-    workforceCategory: null,
-    docType: "tax_form",
-    label: "Tax Form",
-    required: true,
-    expiresRequired: false,
-    warningDays: DEFAULT_WARNING_DAYS,
-  },
 ];
 
 const REQUIRED_DOC_TYPES = new Set<RequiredDocType>(["drivers_license", "certification", "tax_form", "other"]);
@@ -148,7 +138,7 @@ export function buildEffectiveDocumentRequirements(
           workforceCategory,
           docType,
           label,
-          required: true as const,
+          required: row.is_required,
           expiresRequired: row.expires_required,
           warningDays: row.expires_warning_days ?? DEFAULT_WARNING_DAYS,
         },

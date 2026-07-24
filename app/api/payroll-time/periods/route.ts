@@ -5,6 +5,23 @@ import { requirePayrollReviewer } from "../_lib/auth";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 type AdminClient = ReturnType<typeof createAdminSupabase>;
+type PayrollProfile = {
+  id?: string;
+  full_name: string | null;
+  email: string | null;
+};
+type PayrollRosterRow = {
+  user_id: string;
+  payroll_ready: boolean | null;
+  employment_status: string | null;
+  profiles: PayrollProfile | null;
+};
+type PayrollEntryRow = {
+  user_id: string;
+  work_date: string;
+  profiles: PayrollProfile | null;
+  [key: string]: unknown;
+};
 
 export async function GET(req: NextRequest) {
   const auth = await requirePayrollReviewer();
@@ -47,9 +64,7 @@ export async function GET(req: NextRequest) {
     admin
       .from("people_workforce_profiles")
       .select("user_id, payroll_ready, employment_status, profiles:user_id(full_name, email)")
-      .eq("shop_id", me.shop_id)
-      .eq("payroll_ready", true)
-      .eq("employment_status", "active"),
+      .eq("shop_id", me.shop_id),
   ]);
 
   if (entriesErr) return NextResponse.json({ error: entriesErr.message }, { status: 500 });
@@ -86,9 +101,15 @@ export async function GET(req: NextRequest) {
     awayMap.set(row.user_id, (awayMap.get(row.user_id) ?? 0) + minutes);
   }
 
-  const entryRows = (entries ?? []) as any[];
+  const activeRoster = ((roster ?? []) as unknown as PayrollRosterRow[]).filter(
+    (person) => person.employment_status === "active",
+  );
+  const eligibleRoster = activeRoster.filter(
+    (person) => person.payroll_ready === true,
+  );
+  const entryRows = (entries ?? []) as unknown as PayrollEntryRow[];
   const entryUsers = new Set(entryRows.map((entry) => entry.user_id));
-  const rosterEntries = ((roster ?? []) as any[])
+  const rosterEntries = eligibleRoster
     .filter((person) => person.user_id && !entryUsers.has(person.user_id))
     .map((person) => ({
       id: `roster-${activePeriodId}-${person.user_id}`,
@@ -121,7 +142,11 @@ export async function GET(req: NextRequest) {
   const { data: fallbackProfiles } = missingProfileUserIds.length
     ? await admin.from("profiles").select("id, full_name, email").eq("shop_id", me.shop_id).in("id", missingProfileUserIds)
     : { data: [] };
-  const fallbackProfileById = new Map((fallbackProfiles ?? []).map((profile: any) => [profile.id, profile]));
+  const fallbackProfileById = new Map(
+    ((fallbackProfiles ?? []) as PayrollProfile[])
+      .filter((profile): profile is PayrollProfile & { id: string } => Boolean(profile.id))
+      .map((profile) => [profile.id, profile]),
+  );
 
   const enrichedEntries = [...entryRows, ...rosterEntries].map((entry) => ({
     ...entry,
@@ -139,10 +164,17 @@ export async function GET(req: NextRequest) {
     entries: enrichedEntries,
     exceptions: exceptions ?? [],
     refresh: refreshState,
+    rosterSummary: {
+      activeWorkforce: activeRoster.length,
+      payrollEligible: eligibleRoster.length,
+      excludedFromPayroll: Math.max(activeRoster.length - eligibleRoster.length, 0),
+    },
     zeroState: {
       trueZero,
       message: trueZero
-        ? "No employee time has been recorded for this pay period."
+        ? eligibleRoster.length === 0
+          ? "No active people are marked payroll-ready."
+          : "No employee time has been recorded for this pay period."
         : refreshState.refreshError
           ? "Time records exist, but payroll totals could not be refreshed."
           : null,
