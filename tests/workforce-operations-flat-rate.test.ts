@@ -6,6 +6,10 @@ const migration = readFileSync(
   "supabase/migrations/20260724020000_workforce_operations_flat_rate.sql",
   "utf8",
 );
+const policyHardeningMigration = readFileSync(
+  "supabase/migrations/20260724021500_harden_workforce_policy_replay.sql",
+  "utf8",
+);
 const legacyCollectionRoute = readFileSync(
   "app/api/scheduling/sessions/route.ts",
   "utf8",
@@ -59,6 +63,39 @@ describe("workforce operations security and integrity contract", () => {
     );
     expect(migration).toContain(
       "create or replace function public.replace_payroll_period_snapshot",
+    );
+  });
+
+  it("makes policy recovery replay-safe and keeps atomic tables RPC-only", () => {
+    expect(policyHardeningMigration).toContain(
+      "drop policy if exists shop_payroll_settings_manager_select",
+    );
+    expect(policyHardeningMigration).toContain(
+      "drop policy if exists flat_rate_credits_scoped_select",
+    );
+    expect(policyHardeningMigration).toContain(
+      "drop policy if exists labor_segment_corrections_scoped_select",
+    );
+    expect(policyHardeningMigration).toContain(
+      "drop policy if exists staff_schedule_templates_shop_write",
+    );
+    expect(policyHardeningMigration).toContain(
+      "drop policy if exists staff_time_off_requests_manager_update",
+    );
+    expect(policyHardeningMigration).toContain(
+      "drop policy if exists staff_availability_blocks_shop_write",
+    );
+  });
+
+  it("restricts the internal flat-rate sync helper to service role", () => {
+    expect(policyHardeningMigration).toContain(
+      "revoke all on function public.sync_work_order_line_flat_rate_credits(uuid)\n  from public",
+    );
+    expect(policyHardeningMigration).toContain(
+      "revoke all on function public.sync_work_order_line_flat_rate_credits(uuid)\n  from authenticated",
+    );
+    expect(policyHardeningMigration).toContain(
+      "grant execute on function public.sync_work_order_line_flat_rate_credits(uuid)\n  to service_role",
     );
   });
 
