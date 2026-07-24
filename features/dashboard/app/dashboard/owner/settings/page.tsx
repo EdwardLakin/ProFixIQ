@@ -25,6 +25,7 @@ import OwnerSettingsOperationsSection from "@/features/dashboard/components/owne
 import OwnerAiAutomationSection from "@/features/dashboard/components/owner-settings/OwnerAiAutomationSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
+import OwnerSettingsUsersSection from "@/features/dashboard/components/owner-settings/OwnerSettingsUsersSection";
 import OwnerSettingsNavigation, {
   ownerSettingsSectionLabel,
   type OwnerSettingsSectionId,
@@ -200,6 +201,7 @@ const SETTINGS_HASH_MAP: Record<string, OwnerSettingsSectionId> = {
   "settings-business": "business",
   "settings-operations": "operations",
   "settings-automation": "automation",
+  "settings-team": "team",
   "settings-scheduling": "scheduling",
   "settings-communications": "communications",
   "settings-integrations": "integrations",
@@ -212,6 +214,9 @@ const SETTINGS_HASH_MAP: Record<string, OwnerSettingsSectionId> = {
   "appearance-mode": "operations",
   "pricing-validity": "operations",
   "ai-automation-controls": "automation",
+  "team-access": "team",
+  "team-access-create-user": "team",
+  "team-access-users": "team",
   "hours-settings": "scheduling",
   "timeoff-settings": "scheduling",
   "payroll-timekeeping": "scheduling",
@@ -1936,6 +1941,13 @@ export default function OwnerSettingsPage() {
           ) : null}
           {activeSection === "automation" ? (
             <OwnerAiAutomationSection isUnlocked={isUnlocked} />
+          ) : null}
+          {activeSection === "team" ? (
+            <OwnerSettingsUsersSection
+              creatorShopName={shopName}
+              creatorRole={ownerRole}
+              onUserCreated={() => setSeatsUsed((used) => used + 1)}
+            />
           ) : null}
           {activeSection === "integrations" ? (
             <OwnerSettingsPanel
