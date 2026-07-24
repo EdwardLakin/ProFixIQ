@@ -17,6 +17,7 @@ import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageS
 import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
 import { ImportedHistoryRecordCard } from "@/features/work-orders/components/ImportedHistoryRecordCard";
 import { usePersistentGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/persistence";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 type DB = Database;
 
@@ -647,6 +648,29 @@ export default function CustomerProfilePage(): JSX.Element {
   ] = useState(false);
   const [newCustomer, setNewCustomer] =
     useState<NewCustomerDraft>(EMPTY_NEW_CUSTOMER);
+  const { updateActiveTab } = useTabs();
+
+  useEffect(() => {
+    if (!effectiveCustomerId || !customer) return;
+    const name = bestCustomerDisplayName(customer);
+    updateActiveTab({
+      title: `Customer · ${name}`,
+      subtitle:
+        vehicles.length > 0
+          ? `${vehicles.length} vehicle${vehicles.length === 1 ? "" : "s"}`
+          : undefined,
+      status:
+        workOrders.length > 0
+          ? `${workOrders.length} work order${workOrders.length === 1 ? "" : "s"}`
+          : "Customer file",
+    });
+  }, [
+    customer,
+    effectiveCustomerId,
+    updateActiveTab,
+    vehicles.length,
+    workOrders.length,
+  ]);
 
   const selectedVehicle = useMemo(() => {
     if (!selectedVehicleId) return null;

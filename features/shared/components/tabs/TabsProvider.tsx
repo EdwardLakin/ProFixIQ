@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -9,18 +10,27 @@ import {
   useState,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { metaFor } from "@/features/shared/lib/routeMeta";
-
-type Tab = { href: string; title: string; icon?: string; pinned?: boolean };
+import {
+  DASHBOARD_OPEN_WORK_ITEM,
+  migrateLegacyTabs,
+  resolveOpenWork,
+  sanitizePersistedOpenWork,
+  updateOpenWorkItem,
+  upsertOpenWork,
+  type OpenWorkItem,
+  type OpenWorkUpdate,
+} from "./openWork";
 
 type TabsContextValue = {
-  tabs: Tab[];
+  tabs: OpenWorkItem[];
+  activeKey: string;
   activeHref: string;
   openTab: (href: string) => void;
-  activateTab: (href: string) => void;
-  closeTab: (href: string) => void;
-  closeOthers: (href: string) => void;
+  activateTab: (key: string, navigationHref?: string) => void;
+  closeTab: (key: string) => void;
+  closeOthers: (key: string) => void;
   closeAll: () => void;
+  updateActiveTab: (update: OpenWorkUpdate) => void;
 };
 
 const TabsCtx = createContext<TabsContextValue | null>(null);
@@ -32,19 +42,23 @@ export const useTabs = (): TabsContextValue => {
 };
 
 function storageKey(userId?: string) {
+  return `open-work:v2:${userId ?? "anon"}`;
+}
+
+function legacyStorageKey(userId?: string) {
   return `dash-tabs:${userId ?? "anon"}`;
 }
 
-type PersistShape = { tabs: Tab[]; activeHref: string };
+type PersistShape = {
+  version: 2;
+  tabs: OpenWorkItem[];
+  activeKey: string;
+};
 
-const DASH_TAB: Tab = { href: "/dashboard", title: "Dashboard", pinned: true };
-
-function ensurePinnedDashboard(list: Tab[]): Tab[] {
-  const withoutDash = (Array.isArray(list) ? list : []).filter(
-    (t) => t?.href && t.href !== "/dashboard",
-  );
-  return [DASH_TAB, ...withoutDash];
-}
+type LegacyPersistShape = {
+  tabs?: Array<{ href?: unknown; title?: unknown }>;
+  activeHref?: unknown;
+};
 
 export function TabsProvider({
   children,
@@ -55,143 +69,224 @@ export function TabsProvider({
 }) {
   const router = useRouter();
   const pathname = usePathname() || "/";
+  const [tabs, setTabs] = useState<OpenWorkItem[]>([
+    DASHBOARD_OPEN_WORK_ITEM,
+  ]);
+  const [activeKey, setActiveKey] = useState("dashboard");
+  const [hydrated, setHydrated] = useState(false);
+  const lastPath = useRef<string>("");
+  const initialPath = useRef(pathname);
+  const hydratedStorageKey = useRef<string | null>(null);
+  const dashboardHref =
+    pathname === "/mobile" || pathname.startsWith("/mobile/")
+      ? "/mobile"
+      : "/dashboard";
 
-  // ✅ Synchronous initial state: dashboard tab exists immediately
-  const [tabs, setTabs] = useState<Tab[]>(() => [DASH_TAB]);
-  const [activeHref, setActiveHref] = useState<string>(() => "/dashboard");
-
-  // Load persisted (but always ensure dashboard pinned)
   useEffect(() => {
+    hydratedStorageKey.current = null;
     try {
       const raw = localStorage.getItem(storageKey(userId));
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<PersistShape>;
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<PersistShape>;
+        const loaded = sanitizePersistedOpenWork(parsed.tabs);
+        const currentRouteKey =
+          resolveOpenWork(initialPath.current)?.key ?? "";
+        setTabs(loaded);
+        setActiveKey(
+          loaded.some((item) => item.key === currentRouteKey)
+            ? currentRouteKey
+            : "",
+        );
+        setHydrated(true);
+        return;
+      }
 
-      const loaded = Array.isArray(parsed.tabs) ? parsed.tabs : [];
-      setTabs(ensurePinnedDashboard(loaded));
-
-      if (typeof parsed.activeHref === "string" && parsed.activeHref.trim()) {
-        setActiveHref(parsed.activeHref);
-      } else {
-        setActiveHref("/dashboard");
+      const legacyRaw = localStorage.getItem(legacyStorageKey(userId));
+      if (legacyRaw) {
+        const legacy = JSON.parse(legacyRaw) as LegacyPersistShape;
+        const migrated = migrateLegacyTabs(
+          Array.isArray(legacy.tabs) ? legacy.tabs : [],
+        );
+        const legacyActive =
+          typeof legacy.activeHref === "string"
+            ? resolveOpenWork(legacy.activeHref)
+            : null;
+        const currentRouteKey =
+          resolveOpenWork(initialPath.current)?.key ?? "";
+        setTabs(migrated);
+        setActiveKey(
+          migrated.some((item) => item.key === currentRouteKey)
+            ? currentRouteKey
+            : legacyActive &&
+                migrated.some((item) => item.key === legacyActive.key) &&
+                initialPath.current === legacyActive.href
+              ? legacyActive.key
+              : "",
+        );
       }
     } catch {
-      // noop
+      setTabs([DASHBOARD_OPEN_WORK_ITEM]);
+      setActiveKey("dashboard");
+    } finally {
+      hydratedStorageKey.current = storageKey(userId);
+      setHydrated(true);
     }
   }, [userId]);
 
-  // Persist
   useEffect(() => {
-    try {
-      localStorage.setItem(
-        storageKey(userId),
-        JSON.stringify({ tabs, activeHref }),
-      );
-    } catch {
-      // noop
+    if (
+      !hydrated ||
+      hydratedStorageKey.current !== storageKey(userId)
+    ) {
+      return;
     }
-  }, [tabs, activeHref, userId]);
+    try {
+      const payload: PersistShape = { version: 2, tabs, activeKey };
+      localStorage.setItem(storageKey(userId), JSON.stringify(payload));
+    } catch {
+      // Local storage can be unavailable in private browsing or managed devices.
+    }
+  }, [tabs, activeKey, hydrated, userId]);
 
-  // Sync across browser tabs/windows
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== storageKey(userId) || !e.newValue) return;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== storageKey(userId) || !event.newValue) return;
       try {
-        const parsed = JSON.parse(e.newValue) as PersistShape;
-        const loaded = Array.isArray(parsed.tabs) ? parsed.tabs : [];
-        setTabs(ensurePinnedDashboard(loaded));
-        setActiveHref(parsed.activeHref || "/dashboard");
+        const parsed = JSON.parse(event.newValue) as Partial<PersistShape>;
+        const loaded = sanitizePersistedOpenWork(parsed.tabs);
+        const currentRouteKey = resolveOpenWork(pathname)?.key ?? "";
+        setTabs(loaded);
+        setActiveKey(
+          loaded.some((item) => item.key === currentRouteKey)
+            ? currentRouteKey
+            : "",
+        );
       } catch {
-        // noop
+        // Ignore malformed writes from stale browser sessions.
       }
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [userId]);
+  }, [pathname, userId]);
 
-  // Auto-open a tab if route wants to appear
-  const lastPath = useRef<string>("");
   useEffect(() => {
     if (!pathname || pathname === lastPath.current) return;
     lastPath.current = pathname;
 
-    const { title, icon, show } = metaFor(pathname);
+    const next = resolveOpenWork(pathname);
+    if (!next) {
+      setActiveKey("");
+      return;
+    }
 
-    // Always keep activeHref in sync with navigation
-    setActiveHref(pathname);
-
-    if (!show) return;
-
-    setTabs((prev) => {
-      const next = ensurePinnedDashboard(prev);
-      if (next.some((t) => t.href === pathname)) return next;
-      return [...next, { href: pathname, title, icon }];
-    });
+    setActiveKey(next.key);
+    if (next.key !== DASHBOARD_OPEN_WORK_ITEM.key) {
+      setTabs((current) => upsertOpenWork(current, next));
+    }
   }, [pathname]);
+
+  const openTab = useCallback(
+    (href: string) => {
+      const next = resolveOpenWork(href);
+      if (next) {
+        setActiveKey(next.key);
+        if (next.key !== DASHBOARD_OPEN_WORK_ITEM.key) {
+          setTabs((current) => upsertOpenWork(current, next));
+        }
+      }
+      router.push(href);
+    },
+    [router],
+  );
+
+  const activateTab = useCallback(
+    (key: string, navigationHref?: string) => {
+      const item = tabs.find((candidate) => candidate.key === key);
+      if (!item) return;
+      setActiveKey(key);
+      setTabs((current) =>
+        current.map((candidate) =>
+          candidate.key === key && !candidate.pinned
+            ? { ...candidate, lastOpenedAt: Date.now() }
+            : candidate,
+        ),
+      );
+      router.push(navigationHref ?? item.href);
+    },
+    [router, tabs],
+  );
+
+  const closeTab = useCallback(
+    (key: string) => {
+      if (key === DASHBOARD_OPEN_WORK_ITEM.key) return;
+      const closingActive = activeKey === key;
+      setTabs((current) =>
+        current.filter((item) => item.key !== key || item.pinned),
+      );
+      if (closingActive) {
+        setActiveKey("dashboard");
+        router.push(dashboardHref);
+      }
+    },
+    [activeKey, dashboardHref, router],
+  );
+
+  const closeOthers = useCallback(
+    (key: string) => {
+      const item = tabs.find((candidate) => candidate.key === key);
+      if (!item || key === DASHBOARD_OPEN_WORK_ITEM.key) {
+        setTabs([DASHBOARD_OPEN_WORK_ITEM]);
+        setActiveKey("dashboard");
+        router.push(dashboardHref);
+        return;
+      }
+      setTabs([DASHBOARD_OPEN_WORK_ITEM, item]);
+      setActiveKey(key);
+      router.push(item.href);
+    },
+    [dashboardHref, router, tabs],
+  );
+
+  const closeAll = useCallback(() => {
+    setTabs([DASHBOARD_OPEN_WORK_ITEM]);
+    setActiveKey("dashboard");
+    router.push(dashboardHref);
+  }, [dashboardHref, router]);
+
+  const updateActiveTab = useCallback(
+    (update: OpenWorkUpdate) => {
+      if (!activeKey || activeKey === DASHBOARD_OPEN_WORK_ITEM.key) return;
+      setTabs((current) => updateOpenWorkItem(current, activeKey, update));
+    },
+    [activeKey],
+  );
+
+  const activeHref =
+    tabs.find((item) => item.key === activeKey)?.href ?? pathname;
 
   const api = useMemo<TabsContextValue>(
     () => ({
       tabs,
+      activeKey,
       activeHref,
-
-      openTab: (href) => {
-        const { title, icon, show } = metaFor(href);
-
-        setActiveHref(href);
-        router.push(href);
-
-        if (!show) return;
-
-        setTabs((prev) => {
-          const next = ensurePinnedDashboard(prev);
-          if (next.some((t) => t.href === href)) return next;
-          return [...next, { href, title, icon }];
-        });
-      },
-
-      activateTab: (href) => {
-        setActiveHref(href);
-        router.push(href);
-      },
-
-      closeTab: (href) => {
-        if (href === "/dashboard") return; // pinned
-
-        setTabs((prev) => {
-          const nextTabs = ensurePinnedDashboard(
-            prev.filter((t) => t.href !== href),
-          );
-
-          // If closing active tab, pick a new active tab based on nextTabs
-          if (activeHref === href) {
-            const last = nextTabs[nextTabs.length - 1]?.href ?? "/dashboard";
-            setActiveHref(last);
-            router.push(last);
-          }
-
-          return nextTabs;
-        });
-      },
-
-      closeOthers: (href) => {
-        setTabs((prev) => {
-          const keep =
-            href === "/dashboard"
-              ? [DASH_TAB]
-              : [DASH_TAB, ...prev.filter((t) => t.href === href)];
-          return ensurePinnedDashboard(keep);
-        });
-        setActiveHref(href);
-        router.push(href);
-      },
-
-      closeAll: () => {
-        setTabs([DASH_TAB]);
-        setActiveHref("/dashboard");
-        router.push("/dashboard");
-      },
+      openTab,
+      activateTab,
+      closeTab,
+      closeOthers,
+      closeAll,
+      updateActiveTab,
     }),
-    [tabs, activeHref, router],
+    [
+      tabs,
+      activeKey,
+      activeHref,
+      openTab,
+      activateTab,
+      closeTab,
+      closeOthers,
+      closeAll,
+      updateActiveTab,
+    ],
   );
 
   return <TabsCtx.Provider value={api}>{children}</TabsCtx.Provider>;

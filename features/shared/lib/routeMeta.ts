@@ -512,6 +512,20 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   },
 };
 
+function routeMetaMatches(pattern: string, href: string): boolean {
+  const path = href.split(/[?#]/, 1)[0] || "/";
+  const patternSegments = pattern.split("/").filter(Boolean);
+  const pathSegments = path.split("/").filter(Boolean);
+  if (patternSegments.length !== pathSegments.length) return false;
+
+  return patternSegments.every((segment, index) => {
+    if (segment.startsWith("[") && segment.endsWith("]")) {
+      return pathSegments[index].length > 0;
+    }
+    return segment === pathSegments[index];
+  });
+}
+
 export function metaFor(
   href: string,
   _params?: Record<string, string>,
@@ -520,9 +534,7 @@ export function metaFor(
   const keys = Object.keys(ROUTE_META).sort((a, b) => b.length - a.length);
 
   for (const key of keys) {
-    const isDyn = key.includes("[");
-    const keyPrefix = key.replace(/\[.*?\]/g, "");
-    if ((isDyn && href.startsWith(keyPrefix)) || (!isDyn && href === key)) {
+    if (routeMetaMatches(key, href)) {
       const m = ROUTE_META[key];
 
       const allowed =

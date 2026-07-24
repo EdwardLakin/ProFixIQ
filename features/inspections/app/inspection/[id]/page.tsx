@@ -7,6 +7,7 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import PageShell from "@/features/shared/components/PageShell";
 import Card from "@/features/shared/components/ui/Card";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 // --- Types ---
 interface InspectionItem {
@@ -51,6 +52,7 @@ export default function InspectionDetailPage() {
   const [inspection, setInspection] = useState<CanonicalInspection | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { updateActiveTab } = useTabs();
 
   useEffect(() => {
     const fetchInspection = async () => {
@@ -83,6 +85,17 @@ export default function InspectionDetailPage() {
       fetchInspection();
     }
   }, [id, router]);
+
+  useEffect(() => {
+    if (!inspection) return;
+    updateActiveTab({
+      title: `Inspection · ${inspection.templateName || inspection.id.slice(0, 8)}`,
+      status: inspection.status.replaceAll("_", " "),
+      subtitle: inspection.updatedAt
+        ? `Updated ${format(new Date(inspection.updatedAt), "PP")}`
+        : undefined,
+    });
+  }, [inspection, updateActiveTab]);
 
   const statusVariant = (status: string) => {
     const s = status.toLowerCase();

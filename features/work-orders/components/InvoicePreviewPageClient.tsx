@@ -13,6 +13,7 @@ import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentB
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 import SyncInvoiceToQuickBooksButton from "@/features/integrations/quickbooks/components/SyncInvoiceToQuickBooksButton";
 import RecordManualPayment from "@/features/invoices/components/RecordManualPayment";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 type DB = Database;
 
@@ -270,6 +271,7 @@ export default function InvoicePreviewPageClient({
 }: Props) {
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const { updateActiveTab } = useTabs();
 
   const [loading, setLoading] = useState(false);
   const [shopId, setShopId] = useState<string | null>(null);
@@ -278,6 +280,7 @@ export default function InvoicePreviewPageClient({
 
   const [shopInfo, setShopInfo] = useState<ShopInfo | undefined>(undefined);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [workOrderLabel, setWorkOrderLabel] = useState<string | null>(null);
   const [canonicalSnapshot, setCanonicalSnapshot] =
     useState<InvoiceSnapshotView | null>(null);
   const [activeInvoiceVersion, setActiveInvoiceVersion] =
@@ -311,6 +314,29 @@ export default function InvoicePreviewPageClient({
 
   const effectiveVehicleInfo = vehicleInfo ?? fVehicleInfo;
   const effectiveCustomerInfo = customerInfo ?? fCustomerInfo;
+
+  useEffect(() => {
+    const label = workOrderLabel || workOrderId.slice(0, 8);
+    updateActiveTab({
+      title: `Invoice · ${label}`,
+      subtitle:
+        effectiveCustomerInfo?.name?.trim() ||
+        effectiveCustomerInfo?.business_name?.trim() ||
+        undefined,
+      status:
+        activeInvoiceVersion?.lifecycle_status?.replaceAll("_", " ") ||
+        (reviewLoading ? "Reviewing" : reviewOk ? "Ready" : "Draft"),
+    });
+  }, [
+    activeInvoiceVersion?.lifecycle_status,
+    effectiveCustomerInfo?.business_name,
+    effectiveCustomerInfo?.name,
+    reviewLoading,
+    reviewOk,
+    updateActiveTab,
+    workOrderId,
+    workOrderLabel,
+  ]);
 
   const effectiveLines = useMemo(() => {
     const provided = Array.isArray(lines) ? lines : undefined;
@@ -424,13 +450,14 @@ export default function InvoicePreviewPageClient({
       const { data: woRow, error: woErr } = await supabase
         .from("work_orders")
         .select(
-          "id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name",
+          "id, custom_id, shop_id, customer_id, vehicle_id, labor_total, parts_total, invoice_total, customer_name",
         )
         .eq("id", workOrderId)
         .maybeSingle<
           Pick<
             WorkOrderRow,
             | "id"
+            | "custom_id"
             | "shop_id"
             | "customer_id"
             | "vehicle_id"
@@ -453,6 +480,7 @@ export default function InvoicePreviewPageClient({
       }
 
       setShopId(woRow.shop_id);
+      setWorkOrderLabel(woRow.custom_id?.trim() || null);
 
       const { data: invoiceRow } = await supabase
         .from("invoices")

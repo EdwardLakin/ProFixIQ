@@ -36,6 +36,7 @@ import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 
@@ -218,6 +219,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { updateActiveTab } = useTabs();
 
   const routeId = (params?.id as string) || "";
 
@@ -294,6 +296,33 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // ✅ read job from query (desktop panel)
   const jobFromQuery = searchParams?.get("job") || null;
+
+  useEffect(() => {
+    if (!wo) return;
+    const customerName =
+      customer?.business_name?.trim() ||
+      customer?.name?.trim() ||
+      [customer?.first_name ?? "", customer?.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      wo.customer_name?.trim() ||
+      "";
+    const vehicleLabel = vehicle
+      ? [vehicle.year, vehicle.make, vehicle.model]
+          .filter((value) => value != null && String(value).trim())
+          .join(" ")
+      : "";
+    const workOrderLabel = wo.custom_id?.trim() || `WO-${wo.id.slice(0, 8)}`;
+
+    updateActiveTab({
+      title: customerName
+        ? `${workOrderLabel} · ${customerName}`
+        : workOrderLabel,
+      subtitle: vehicleLabel || undefined,
+      status: formatDecisionStatus({ workStatus: wo.status }).label,
+    });
+  }, [customer, updateActiveTab, vehicle, wo]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
