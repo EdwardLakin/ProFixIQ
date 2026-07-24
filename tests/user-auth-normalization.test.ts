@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
   createAdminSupabase: vi.fn(),
   assertShopHasAvailableSeat: vi.fn(),
+  sendUserInviteEmail: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -24,6 +25,10 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 
 vi.mock("@/features/shared/lib/server/shop-seat-limit", () => ({
   assertShopHasAvailableSeat: mocks.assertShopHasAvailableSeat,
+}));
+
+vi.mock("@/features/email/server", () => ({
+  sendUserInviteEmail: mocks.sendUserInviteEmail,
 }));
 
 type CreateUserPayload = {
@@ -98,6 +103,15 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
         return {
           select: () => ({
             eq: () => ({
+              maybeSingle: async () => ({
+                data: {
+                  id: adminId,
+                  full_name: "Owner Admin",
+                  first_name: "Owner",
+                  last_name: "Admin",
+                },
+                error: null,
+              }),
               ilike: () => ({
                 limit: async () => ({ data: options.sameShopProfiles ?? [], error: null }),
               }),
@@ -119,9 +133,11 @@ function buildCreateUserRouteMocks(options: MockAdminOptions = {}) {
     ok: true,
     profile: { id: adminId, shop_id: shopId },
     canonicalRole: options.canonicalRole ?? "owner",
+    supabase: adminClient,
   });
   mocks.createAdminSupabase.mockReturnValue(adminClient);
   mocks.assertShopHasAvailableSeat.mockResolvedValue(undefined);
+  mocks.sendUserInviteEmail.mockResolvedValue(undefined);
 
   return { createUser, deleteUser, profileUpsert, workforceUpsert, shopId, adminId, createdUserId };
 }
@@ -135,10 +151,10 @@ describe("shop user auth normalization", () => {
     const namespace = buildShopUsernameNamespace("Downtown Diesel");
     const username = normalizeProvisioningUsername(" Sam Tech ", namespace);
 
-    expect(username).toBe("downtowndiessamtech");
-    expect(buildShopUserAuthEmail(username)).toBe("downtowndiessamtech@local.profix-internal");
+    expect(username).toBe("samtech");
+    expect(buildShopUserAuthEmail(username)).toBe("samtech@local.profix-internal");
     expect(normalizeAuthIdentifier(username)).toBe(
-      "downtowndiessamtech@local.profix-internal",
+      "samtech@local.profix-internal",
     );
   });
 
@@ -181,7 +197,7 @@ describe("shop user auth normalization", () => {
 
     expect(response.status).toBe(200);
     expect(createUser).toHaveBeenCalledWith(expect.objectContaining({
-      email: "downtowndiessamtech@local.profix-internal",
+      email: "samtech@local.profix-internal",
       password,
       email_confirm: true,
     }));
@@ -189,15 +205,15 @@ describe("shop user auth normalization", () => {
       expect.objectContaining({
         id: createdUserId,
         email: null,
-        username: "downtowndiessamtech",
+        username: "samtech",
         shop_id: shopId,
       }),
       { onConflict: "id" },
     );
     expect(payload).toEqual(expect.objectContaining({
-      username: "downtowndiessamtech",
+      username: "samtech",
       email: null,
-      auth_email: "downtowndiessamtech@local.profix-internal",
+      auth_email: "samtech@local.profix-internal",
       shop_id: shopId,
     }));
   });
@@ -217,31 +233,31 @@ describe("shop user auth normalization", () => {
 
     expect(response.status).toBe(200);
     expect(createUser).toHaveBeenCalledWith(expect.objectContaining({
-      email: "downtowndiessamtech@local.profix-internal",
+      email: "samtech@local.profix-internal",
       email_confirm: true,
       user_metadata: expect.objectContaining({
-        username: "downtowndiessamtech",
+        username: "samtech",
         contact_email: "sam.tech@example.com",
       }),
     }));
     expect(profileUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         email: "sam.tech@example.com",
-        username: "downtowndiessamtech",
+        username: "samtech",
       }),
       { onConflict: "id" },
     );
     expect(payload).toEqual(expect.objectContaining({
-      username: "downtowndiessamtech",
+      username: "samtech",
       email: "sam.tech@example.com",
-      auth_email: "downtowndiessamtech@local.profix-internal",
+      auth_email: "samtech@local.profix-internal",
     }));
   });
 
   it("blocks duplicate usernames within the same shop before creating auth users", async () => {
     const { POST } = await import("../app/api/admin/create-user/route");
     const { createUser } = buildCreateUserRouteMocks({
-      sameShopProfiles: [{ id: "existing-user", username: "downtowndiessamtech" }],
+      sameShopProfiles: [{ id: "existing-user", username: "samtech" }],
     });
 
     const response = await POST(jsonRequest({
@@ -324,7 +340,7 @@ describe("shop user auth normalization", () => {
     expect(createUser).not.toHaveBeenCalled();
   });
 
-  it("uses the server-side shop namespace, so different shop namespaces produce different usernames and auth emails", () => {
+  it("keeps owner-entered usernames independent of shop namespace", () => {
     const firstShopUsername = normalizeProvisioningUsername(
       "Sam Tech",
       buildShopUsernameNamespace("Downtown Diesel"),
@@ -334,9 +350,9 @@ describe("shop user auth normalization", () => {
       buildShopUsernameNamespace("Uptown Fleet"),
     );
 
-    expect(firstShopUsername).toBe("downtowndiessamtech");
-    expect(secondShopUsername).toBe("uptownfleetsamtech");
-    expect(buildShopUserAuthEmail(firstShopUsername)).not.toBe(
+    expect(firstShopUsername).toBe("samtech");
+    expect(secondShopUsername).toBe("samtech");
+    expect(buildShopUserAuthEmail(firstShopUsername)).toBe(
       buildShopUserAuthEmail(secondShopUsername),
     );
   });
@@ -352,4 +368,3 @@ describe("shop user auth normalization", () => {
   });
 
 });
-
