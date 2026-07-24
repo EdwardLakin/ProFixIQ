@@ -41,21 +41,21 @@ type TimecardSlim = {
   created_at: string | null;
 };
 
-type WorkOrderLineSlim = {
-  id: string;
-  shop_id: string | null;
-  work_order_id: string | null;
-  labor_time: number | null;
-  assigned_tech_id: string | null;
-  punchable: boolean | null;
-  status: string | null;
-  punched_out_at: string | null;
-};
-
 type LaborSegmentSlim = {
   technician_id: string | null;
   started_at: string;
   ended_at: string | null;
+};
+
+type FlatRateCreditSlim = {
+  technician_id: string;
+  work_order_line_id: string;
+  credit_hours: number | null;
+};
+
+type AttendanceEntrySlim = {
+  user_id: string;
+  attendance_minutes: number | null;
 };
 
 export type TechLeaderboardRow = {
@@ -70,8 +70,13 @@ export type TechLeaderboardRow = {
 
   billedHours: number;
   clockedHours: number;
+  flaggedHours: number;
+  actualJobHours: number;
+  attendanceHours: number;
   revenuePerHour: number;
   efficiencyPct: number;
+  productivityPct: number;
+  overallPerformancePct: number;
 };
 
 export type TechLeaderboardResult = {
@@ -125,8 +130,10 @@ function getOverlapHours(
 export async function getTechLeaderboard(
   shopId: string,
   timeRange: TimeRange,
+  technicianId?: string,
 ): Promise<TechLeaderboardResult> {
   const supabase = createBrowserSupabase();
+  const workforceDb = supabase as any;
 
   const now = new Date();
   let start: Date;
@@ -160,10 +167,12 @@ export async function getTechLeaderboard(
   const endExclusiveIso = toIso(endExclusive);
 
   // 1) Pull ALL profiles in shop, then filter in JS
-  const { data: profiles, error: profErr } = await supabase
+  let profilesQuery = supabase
     .from("profiles")
     .select("id, full_name, role, shop_id")
     .eq("shop_id", shopId);
+  if (technicianId) profilesQuery = profilesQuery.eq("id", technicianId);
+  const { data: profiles, error: profErr } = await profilesQuery;
 
   if (profErr) throw profErr;
 
@@ -183,7 +192,7 @@ export async function getTechLeaderboard(
   }
 
   // 2) Pull accounting + live labor/completion sources for this range
-  const [invoicesRes, timecardsRes, segmentsRes, completedLinesRes] = await Promise.all([
+  const [invoicesRes, timecardsRes, segmentsRes, creditsRes, attendanceRes] = await Promise.all([
     supabase
       .from("invoices")
       .select("id, tech_id, shop_id, work_order_id, total, labor_cost, created_at")
@@ -208,25 +217,36 @@ export async function getTechLeaderboard(
       .lt("started_at", endExclusiveIso)
       .or(`ended_at.gte.${startIso},ended_at.is.null`),
 
-    supabase
-      .from("work_order_lines")
-      .select("id, shop_id, work_order_id, labor_time, assigned_tech_id, punchable, status, punched_out_at")
+    workforceDb
+      .from("work_order_line_flat_rate_credits")
+      .select("technician_id, work_order_line_id, credit_hours")
       .eq("shop_id", shopId)
-      .in("assigned_tech_id", techIds)
-      .in("status", ["completed", "ready_to_invoice", "invoiced"])
-      .gte("punched_out_at", startIso)
-      .lt("punched_out_at", endExclusiveIso),
+      .in("technician_id", techIds)
+      .gte("credited_at", startIso)
+      .lt("credited_at", endExclusiveIso),
+
+    workforceDb
+      .from("payroll_time_entries")
+      .select("user_id, attendance_minutes")
+      .eq("shop_id", shopId)
+      .in("user_id", techIds)
+      .gte("work_date", startIso.slice(0, 10))
+      .lte("work_date", endIso.slice(0, 10)),
   ]);
 
   if (invoicesRes.error) throw invoicesRes.error;
   if (timecardsRes.error) throw timecardsRes.error;
   if (segmentsRes.error) throw segmentsRes.error;
-  if (completedLinesRes.error) throw completedLinesRes.error;
+  if (creditsRes.error) throw creditsRes.error;
+  if (attendanceRes.error) throw attendanceRes.error;
 
   const invoices: InvoiceSlim[] = (invoicesRes.data as InvoiceSlim[]) ?? [];
   const timecards: TimecardSlim[] = (timecardsRes.data as TimecardSlim[]) ?? [];
   const segments: LaborSegmentSlim[] = (segmentsRes.data as LaborSegmentSlim[]) ?? [];
-  const completedLines: WorkOrderLineSlim[] = (completedLinesRes.data as WorkOrderLineSlim[]) ?? [];
+  const credits: FlatRateCreditSlim[] =
+    (creditsRes.data as FlatRateCreditSlim[]) ?? [];
+  const attendance: AttendanceEntrySlim[] =
+    (attendanceRes.data as AttendanceEntrySlim[]) ?? [];
 
   // 3) Seed rows so techs show even with 0 activity
   const byTech = new Map<string, TechLeaderboardRow>();
@@ -243,8 +263,13 @@ export async function getTechLeaderboard(
       profit: 0,
       billedHours: 0,
       clockedHours: 0,
+      flaggedHours: 0,
+      actualJobHours: 0,
+      attendanceHours: 0,
       revenuePerHour: 0,
       efficiencyPct: 0,
+      productivityPct: 0,
+      overallPerformancePct: 0,
     });
   }
 
@@ -260,16 +285,21 @@ export async function getTechLeaderboard(
     row.laborCost += safeNum(inv.labor_cost);
   }
 
-  // 4b) Aggregate LIVE completed jobs + billed hours from completed lines in range
-  for (const line of completedLines) {
-    const techId = line.assigned_tech_id;
-    if (!techId) continue;
-
-    const row = byTech.get(techId);
+  // 4b) Durable technician credits are the source for flagged hours.
+  const creditedLines = new Map<string, Set<string>>();
+  for (const credit of credits) {
+    const row = byTech.get(credit.technician_id);
     if (!row) continue;
-
-    row.jobs += 1;
-    row.billedHours += safeNum(line.labor_time);
+    const hours = safeNum(credit.credit_hours);
+    row.flaggedHours += hours;
+    row.billedHours += hours;
+    const lines = creditedLines.get(credit.technician_id) ?? new Set<string>();
+    lines.add(credit.work_order_line_id);
+    creditedLines.set(credit.technician_id, lines);
+  }
+  for (const [techId, lines] of creditedLines) {
+    const row = byTech.get(techId);
+    if (row) row.jobs = lines.size;
   }
 
   // 5) Aggregate clocked hours from labor segments (source of truth)
@@ -278,7 +308,9 @@ export async function getTechLeaderboard(
     if (!techId) continue;
     const row = byTech.get(techId);
     if (!row) continue;
-    row.clockedHours += getOverlapHours(seg.started_at, seg.ended_at, startIso, endExclusiveIso);
+    const hours = getOverlapHours(seg.started_at, seg.ended_at, startIso, endExclusiveIso);
+    row.actualJobHours += hours;
+    row.clockedHours += hours;
   }
 
   // Compatibility fallback for historical windows where no segments were created yet.
@@ -293,7 +325,20 @@ export async function getTechLeaderboard(
     }
   }
 
-  // 6) billedHours already comes from live completed lines above
+  // Attendance is distinct from actual job time. Historical rows fall back to
+  // timecards when the canonical pay-period snapshot is not available.
+  for (const entry of attendance) {
+    const row = byTech.get(entry.user_id);
+    if (!row) continue;
+    row.attendanceHours += safeNum(entry.attendance_minutes) / 60;
+  }
+  for (const row of byTech.values()) {
+    if (row.attendanceHours <= 0) {
+      row.attendanceHours = timecards
+        .filter((timecard) => timecard.user_id === row.techId)
+        .reduce((total, timecard) => total + safeNum(timecard.hours_worked), 0);
+    }
+  }
 
   // 7) Final derived metrics
   for (const row of byTech.values()) {
@@ -301,7 +346,11 @@ export async function getTechLeaderboard(
 
     // ✅ Tech efficiency = billed ÷ worked
     row.efficiencyPct =
-      row.clockedHours > 0 ? (row.billedHours / row.clockedHours) * 100 : 0;
+      row.actualJobHours > 0 ? (row.flaggedHours / row.actualJobHours) * 100 : 0;
+    row.productivityPct =
+      row.attendanceHours > 0 ? (row.actualJobHours / row.attendanceHours) * 100 : 0;
+    row.overallPerformancePct =
+      row.attendanceHours > 0 ? (row.flaggedHours / row.attendanceHours) * 100 : 0;
 
     row.revenuePerHour =
       row.clockedHours > 0 ? row.revenue / row.clockedHours : 0;

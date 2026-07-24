@@ -1,25 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+
+const REQUEST_TYPES = new Set(["vacation", "personal", "appointment", "sick", "other"]);
 
 export async function GET(req: NextRequest) {
   const access = await requireShopScopedApiAccess();
   if (!access.ok) return access.response;
 
   const actor = getActorCapabilities({ role: access.profile.role });
-  const admin = access.supabase;
+  const admin = createAdminSupabase();
   const url = new URL(req.url);
   const status = url.searchParams.get("status")?.trim() || null;
   const userId = url.searchParams.get("user_id")?.trim() || null;
 
   let q = admin
     .from("staff_time_off_requests")
-    .select("*, requester:requested_by(full_name, email), reviewer:reviewed_by(full_name, email)")
+    .select("*, employee:user_id(full_name, email), requester:requested_by(full_name, email), reviewer:reviewed_by(full_name, email)")
     .eq("shop_id", access.profile.shop_id)
     .order("created_at", { ascending: false })
     .limit(200);
 
-  if (!actor.canManageScheduling) {
+  if (!actor.canApproveTimeAway) {
     q = q.eq("user_id", access.profile.id);
   } else if (userId) {
     q = q.eq("user_id", userId);
@@ -51,37 +54,42 @@ export async function POST(req: NextRequest) {
   }
 
   const actor = getActorCapabilities({ role: access.profile.role });
-  const targetUserId = actor.canManageScheduling ? (body.user_id ?? access.profile.id) : access.profile.id;
+  const requestType = body.request_type.trim().toLowerCase();
+  if (!REQUEST_TYPES.has(requestType)) {
+    return NextResponse.json({ error: "Choose vacation, personal, appointment, sick, or other." }, { status: 400 });
+  }
+  const startsAt = new Date(body.starts_at);
+  const endsAt = new Date(body.ends_at);
+  if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt) {
+    return NextResponse.json({ error: "Request end must be after request start." }, { status: 400 });
+  }
+
+  const targetUserId = actor.canApproveTimeAway ? (body.user_id ?? access.profile.id) : access.profile.id;
   if (!targetUserId) return NextResponse.json({ error: "Missing user context" }, { status: 400 });
 
-  const admin = access.supabase;
-  const insertPayload = {
-    shop_id: access.profile.shop_id,
-    user_id: targetUserId,
-    request_type: body.request_type,
-    starts_at: body.starts_at,
-    ends_at: body.ends_at,
-    is_partial_day: Boolean(body.is_partial_day),
-    status: "pending",
-    reason: body.reason ?? null,
-    requested_by: access.profile.id,
-  };
+  const admin = createAdminSupabase() as any;
+  const { data: target } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", targetUserId)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle();
+  if (!target) return NextResponse.json({ error: "Employee not found in this shop." }, { status: 404 });
 
-  const { data, error } = await admin.from("staff_time_off_requests").insert(insertPayload).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  await admin.from("audit_logs").insert({
-    actor_id: access.profile.id,
-    action: "staff.time_off.requested",
-    target: targetUserId,
-    metadata: {
-      shop_id: access.profile.shop_id,
-      request_id: data.id,
-      starts_at: body.starts_at,
-      ends_at: body.ends_at,
-      request_type: body.request_type,
-    },
+  const { data, error } = await admin.rpc("submit_staff_time_off_request", {
+    p_shop_id: access.profile.shop_id,
+    p_actor_profile_id: access.profile.id,
+    p_target_user_id: targetUserId,
+    p_request_type: requestType,
+    p_starts_at: startsAt.toISOString(),
+    p_ends_at: endsAt.toISOString(),
+    p_is_partial_day: Boolean(body.is_partial_day),
+    p_reason: body.reason ?? null,
   });
+  if (error) {
+    const conflict = /overlapping active request/i.test(error.message);
+    return NextResponse.json({ error: error.message }, { status: conflict ? 409 : 400 });
+  }
 
   return NextResponse.json({ ok: true, request: data });
 }

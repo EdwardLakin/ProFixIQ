@@ -102,6 +102,9 @@ export type ActorCapabilities = {
   canViewShopWideData: boolean;
   canViewFinancials: boolean;
   canManageScheduling: boolean;
+  canApproveTimeAway: boolean;
+  canReviewWorkforceTime: boolean;
+  canFinalizeWorkforceTime: boolean;
   canManageFleetApprovals: boolean;
   canViewFleetOnlyData: boolean;
   canManageBranding: boolean;
@@ -127,6 +130,9 @@ const NONE: ActorCapabilities = {
   canViewShopWideData: false,
   canViewFinancials: false,
   canManageScheduling: false,
+  canApproveTimeAway: false,
+  canReviewWorkforceTime: false,
+  canFinalizeWorkforceTime: false,
   canManageFleetApprovals: false,
   canViewFleetOnlyData: false,
   canManageBranding: false,
@@ -152,6 +158,9 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canViewShopWideData: true,
     canViewFinancials: true,
     canManageScheduling: true,
+    canApproveTimeAway: true,
+    canReviewWorkforceTime: true,
+    canFinalizeWorkforceTime: true,
     canManageBranding: true,
     canManageBilling: true,
     canOverrideOperationalState: true,
@@ -173,6 +182,9 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canViewShopWideData: true,
     canViewFinancials: true,
     canManageScheduling: true,
+    canApproveTimeAway: true,
+    canReviewWorkforceTime: true,
+    canFinalizeWorkforceTime: true,
     canManageBranding: true,
     canManageBilling: true,
     canOverrideOperationalState: true,
@@ -193,6 +205,8 @@ const CAPABILITY_MATRIX: RoleCapabilityMap = {
     canViewShopWideData: true,
     canViewFinancials: true,
     canManageScheduling: true,
+    canApproveTimeAway: true,
+    canReviewWorkforceTime: true,
     canInvitePortalCustomers: true,
     canManagePortalQr: true,
     canInviteFleetMembers: true,

@@ -14,6 +14,8 @@ type Staff = {
   override_count_in_range: number;
   approved_away_blocks_in_range: number;
   is_away_today: boolean;
+  is_away_tomorrow: boolean;
+  active_assigned_work_count: number;
 };
 
 type TimeOffRequest = {
@@ -24,6 +26,11 @@ type TimeOffRequest = {
   ends_at: string;
   status: "pending" | "approved" | "declined" | "cancelled";
   reason: string | null;
+  employee_name: string;
+  employee_role: string | null;
+  scheduled_minutes_affected: number;
+  overlapping_approved_absences: number;
+  active_assigned_work_count: number;
 };
 
 type TemplateRow = {
@@ -53,6 +60,11 @@ export default function WorkforceSchedulingClient() {
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStart, setOverrideStart] = useState("");
   const [overrideEnd, setOverrideEnd] = useState("");
+  const [showCreateRequest, setShowCreateRequest] = useState(false);
+  const [requestType, setRequestType] = useState("vacation");
+  const [requestStart, setRequestStart] = useState("");
+  const [requestEnd, setRequestEnd] = useState("");
+  const [requestReason, setRequestReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -150,15 +162,49 @@ export default function WorkforceSchedulingClient() {
   }
 
   async function reviewRequest(id: string, statusValue: "approved" | "declined") {
+    const reviewNote = window.prompt(
+      statusValue === "approved" ? "Approval note (optional)" : "Reason for declining (recommended)",
+      "",
+    );
+    if (reviewNote === null) return;
     setBusy(true);
     const res = await fetch(`/api/time-off/requests/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status: statusValue }),
+      body: JSON.stringify({ status: statusValue, review_note: reviewNote.trim() || null }),
     });
     const body = await res.json().catch(() => null);
     setBusy(false);
     if (!res.ok) return setError(body?.error ?? "Failed to review request");
+    await load();
+  }
+
+  async function createRequestForStaff() {
+    if (!selectedStaffId || !requestStart || !requestEnd) return;
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/time-off/requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        user_id: selectedStaffId,
+        request_type: requestType,
+        starts_at: new Date(requestStart).toISOString(),
+        ends_at: new Date(requestEnd).toISOString(),
+        is_partial_day: requestStart.slice(0, 10) === requestEnd.slice(0, 10),
+        reason: requestReason.trim() || null,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    setBusy(false);
+    if (!res.ok) {
+      setError(body?.error ?? "Failed to create time-away request");
+      return;
+    }
+    setRequestStart("");
+    setRequestEnd("");
+    setRequestReason("");
+    setShowCreateRequest(false);
     await load();
   }
 
@@ -214,20 +260,66 @@ export default function WorkforceSchedulingClient() {
         </AdminPanel>
 
         <AdminPanel>
-          <AdminPanelTitle title="Tomorrow Roster" description="No explicit tomorrow-away signal is currently available from this API payload." />
-          <div className="p-4 text-sm text-[color:var(--theme-text-secondary)]">
-            <p>Use approved away blocks and staffing templates in the posture table below to plan tomorrow coverage.</p>
+          <AdminPanelTitle title="Tomorrow Roster" description="Approved time away is reflected before assigning tomorrow's work." />
+          <div className="space-y-2 p-4 text-sm">
+            {staff.map((s) => (
+              <div key={`tomorrow-${s.id}`} className="flex items-center justify-between rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
+                <span>{s.full_name ?? "Unnamed"}</span>
+                <span className={s.is_away_tomorrow ? "text-amber-300" : "text-emerald-300"}>{s.is_away_tomorrow ? "Away tomorrow" : "Available"}</span>
+              </div>
+            ))}
           </div>
         </AdminPanel>
       </div>
 
       <AdminPanel className={focus === "time-off" && status === "pending" ? "ring-1 ring-orange-400/50" : ""}>
-        <AdminPanelTitle title={`Time-Off Review Queue (${pending.length})`} description="Approve or decline requests. Existing review actions and semantics are unchanged." />
+        <AdminPanelTitle title={`Time-Away Approval (${pending.length})`} description="Review the employee, scheduled hours affected, coverage pressure, and active assigned work before deciding." />
         <div className="space-y-2 p-4 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">Approvals create schedule availability blocks in the same transaction.</p>
+            <button type="button" onClick={() => setShowCreateRequest((current) => !current)} className="rounded border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs text-orange-200">
+              {showCreateRequest ? "Close" : "Create for employee"}
+            </button>
+          </div>
+          {showCreateRequest ? (
+            <div className="grid gap-2 rounded-lg border border-orange-400/30 bg-orange-500/5 p-3 md:grid-cols-2">
+              <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+                Employee
+                <select value={selectedStaffId} onChange={(event) => setSelectedStaffId(event.target.value)} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2">
+                  {staff.map((person) => <option key={person.id} value={person.id}>{person.full_name ?? "Unnamed"} · {person.role ?? "staff"}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+                Type
+                <select value={requestType} onChange={(event) => setRequestType(event.target.value)} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2">
+                  <option value="vacation">Vacation</option>
+                  <option value="personal">Personal</option>
+                  <option value="appointment">Appointment</option>
+                  <option value="sick">Sick</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">Starts<input type="datetime-local" value={requestStart} onChange={(event) => setRequestStart(event.target.value)} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2" /></label>
+              <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">Ends<input type="datetime-local" value={requestEnd} onChange={(event) => setRequestEnd(event.target.value)} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2" /></label>
+              <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)] md:col-span-2">Note<input value={requestReason} onChange={(event) => setRequestReason(event.target.value)} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2" /></label>
+              <button type="button" disabled={busy || !selectedStaffId || !requestStart || !requestEnd} onClick={() => void createRequestForStaff()} className="rounded bg-orange-500 px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-on-accent)] disabled:opacity-50">Create pending request</button>
+            </div>
+          ) : null}
           {pending.length === 0 ? <p className="text-[color:var(--theme-text-secondary)]">No pending requests.</p> : pending.map((r) => (
             <div key={r.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-              <p className="font-medium">{r.request_type} • {new Date(r.starts_at).toLocaleString()} → {new Date(r.ends_at).toLocaleString()}</p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{r.employee_name}</p>
+                  <p className="font-medium capitalize">{r.request_type} • {new Date(r.starts_at).toLocaleString()} → {new Date(r.ends_at).toLocaleString()}</p>
+                </div>
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-xs text-[color:var(--theme-text-secondary)]">{r.employee_role ?? "staff"}</span>
+              </div>
               <p className="text-xs text-[color:var(--theme-text-secondary)]">{r.reason ?? "No note"}</p>
+              <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+                <span>{minsToHours(r.scheduled_minutes_affected)} scheduled hours affected</span>
+                <span className={r.overlapping_approved_absences > 0 ? "text-amber-300" : "text-emerald-300"}>{r.overlapping_approved_absences} other approved absence{r.overlapping_approved_absences === 1 ? "" : "s"}</span>
+                <span className={r.active_assigned_work_count > 0 ? "text-amber-300" : "text-emerald-300"}>{r.active_assigned_work_count} active assigned job{r.active_assigned_work_count === 1 ? "" : "s"}</span>
+              </div>
               <div className="mt-2 flex gap-2">
                 <button type="button" disabled={busy} onClick={() => void reviewRequest(r.id, "approved")} className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200">Approve</button>
                 <button type="button" disabled={busy} onClick={() => void reviewRequest(r.id, "declined")} className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-200">Decline</button>

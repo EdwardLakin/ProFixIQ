@@ -10571,6 +10571,7 @@ export type Database = {
           attendance_minutes: number
           blocking_exception_count: number
           created_at: string
+          flagged_minutes: number
           has_exceptions: boolean
           id: string
           job_minutes: number
@@ -10595,6 +10596,7 @@ export type Database = {
           attendance_minutes?: number
           blocking_exception_count?: number
           created_at?: string
+          flagged_minutes?: number
           has_exceptions?: boolean
           id?: string
           job_minutes?: number
@@ -10619,6 +10621,7 @@ export type Database = {
           attendance_minutes?: number
           blocking_exception_count?: number
           created_at?: string
+          flagged_minutes?: number
           has_exceptions?: boolean
           id?: string
           job_minutes?: number

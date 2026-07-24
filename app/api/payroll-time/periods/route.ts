@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getOrCreateCurrentPeriod, refreshOpenPeriodIfStale } from "@/features/payroll-time/server/payrollTime";
 import { requirePayrollReviewer } from "../_lib/auth";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 export async function GET(req: NextRequest) {
@@ -101,6 +103,7 @@ export async function GET(req: NextRequest) {
       paid_break_minutes: 0,
       attendance_minutes: 0,
       job_minutes: 0,
+      flagged_minutes: 0,
       adjustment_minutes: 0,
       has_exceptions: false,
       blocking_exception_count: 0,
@@ -162,6 +165,12 @@ export async function PUT(req: NextRequest) {
   if (!["owner", "admin"].includes(String(auth.me.role ?? ""))) {
     return NextResponse.json({ error: "Only an owner or admin can change payroll period settings." }, { status: 403 });
   }
+  const pin = await requireOwnerPinVerified(req, createServerSupabaseRoute() as never, {
+    shopId: auth.me.shop_id!,
+    userId: auth.me.id,
+    allowedPurposes: [OWNER_PIN_PURPOSES.SETTINGS, OWNER_PIN_PURPOSES.PRIVILEGED],
+  });
+  if (!pin.ok) return pin.response;
 
   const body = (await req.json().catch(() => null)) as SettingsBody | null;
   const allowedCadences: PayrollCadence[] = ["weekly", "biweekly", "semimonthly", "monthly"];

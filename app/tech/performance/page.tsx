@@ -12,7 +12,6 @@ import {
   getTechLeaderboard,
   type TechLeaderboardRow,
 } from "@shared/lib/stats/getTechLeaderboard";
-import { formatCurrency } from "@shared/lib/formatters";
 import { Button } from "@shared/components/ui/Button";
 
 type DB = Database;
@@ -40,16 +39,6 @@ function clampEfficiencyLabel(v: number): string {
   if (v > 250) return "250%+";
   if (v < 0) return "0%";
   return `${v.toFixed(1)}%`;
-}
-
-function safeNum(n: number): number {
-  return Number.isFinite(n) ? n : 0;
-}
-
-function avg(nums: number[]): number {
-  if (nums.length === 0) return 0;
-  const s = nums.reduce((a, b) => a + b, 0);
-  return s / nums.length;
 }
 
 export default function TechPerformancePage() {
@@ -149,7 +138,7 @@ export default function TechPerformancePage() {
       setAiSummary(null);
 
       try {
-        const result = await getTechLeaderboard(shopId, range);
+        const result = await getTechLeaderboard(shopId, range, userId ?? undefined);
         setRows(result.rows);
         setStart(result.start);
         setEnd(result.end);
@@ -187,25 +176,14 @@ export default function TechPerformancePage() {
             tech: {
               name: myRow.name,
               jobs: myRow.jobs,
-              revenue: myRow.revenue,
-              laborCost: myRow.laborCost,
-              profit: myRow.profit,
-              billedHours: myRow.billedHours,
-              clockedHours: myRow.clockedHours,
-              revenuePerHour: myRow.revenuePerHour,
+              flaggedHours: myRow.flaggedHours,
+              actualJobHours: myRow.actualJobHours,
+              attendanceHours: myRow.attendanceHours,
               efficiencyPct: myRow.efficiencyPct,
+              productivityPct: myRow.productivityPct,
+              overallPerformancePct: myRow.overallPerformancePct,
             },
-            peers: rows.map((r) => ({
-              name: r.name,
-              jobs: r.jobs,
-              revenue: r.revenue,
-              laborCost: r.laborCost,
-              profit: r.profit,
-              billedHours: r.billedHours,
-              clockedHours: r.clockedHours,
-              revenuePerHour: r.revenuePerHour,
-              efficiencyPct: r.efficiencyPct,
-            })),
+            peers: [],
           }),
         });
 
@@ -231,40 +209,11 @@ export default function TechPerformancePage() {
 
   const hasData = rows.length > 0;
 
-  const myRank =
-    userId && rows.length > 0
-      ? Math.max(
-          1,
-          rows.findIndex((r) => r.techId === userId) + 1,
-        )
-      : null;
-
-  const shopAvgEff = avg(
-    rows
-      .map((r) => safeNum(r.efficiencyPct))
-      .filter((n) => Number.isFinite(n) && n > 0),
-  );
-
-  const shopAvgRevHr = avg(
-    rows
-      .map((r) => safeNum(r.revenuePerHour))
-      .filter((n) => Number.isFinite(n) && n > 0),
-  );
-
-  const myEff = myRow?.efficiencyPct ?? 0;
-  const myRevHr = myRow?.revenuePerHour ?? 0;
-
-  const effDelta =
-    myRow && shopAvgEff > 0 ? safeNum(myEff) - safeNum(shopAvgEff) : null;
-
-  const revHrDelta =
-    myRow && shopAvgRevHr > 0 ? safeNum(myRevHr) - safeNum(shopAvgRevHr) : null;
-
   const showWorkedButNoBilledHint =
-    !!myRow && myRow.clockedHours > 0 && myRow.billedHours === 0;
+    !!myRow && myRow.actualJobHours > 0 && myRow.flaggedHours === 0;
 
   const showBilledButNoClockedHint =
-    !!myRow && myRow.billedHours > 0 && myRow.clockedHours === 0;
+    !!myRow && myRow.flaggedHours > 0 && myRow.actualJobHours === 0;
 
   if (pageLoading) {
     return (
@@ -330,44 +279,26 @@ export default function TechPerformancePage() {
             </div>
           </div>
           <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-            Productivity model: clocked hours come from labor segments (fallback payroll timecards), not attendance shift punches.
+            Actual job time comes from canonical labor segments. Attendance comes from approved workforce time.
           </p>
 
           {/* Quick compare row */}
           {!loading && !error && myRow && (
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <InfoPill
-                label="Rank"
-                value={
-                  myRank ? `#${myRank} of ${rows.length}` : `— of ${rows.length}`
-                }
+                label="Efficiency"
+                value={clampEfficiencyLabel(myRow.efficiencyPct)}
                 hint={role ? `Role: ${String(role)}` : undefined}
               />
               <InfoPill
-                label="Efficiency vs shop avg"
-                value={
-                  effDelta === null
-                    ? "—"
-                    : `${effDelta >= 0 ? "+" : ""}${effDelta.toFixed(1)} pts`
-                }
-                hint={
-                  shopAvgEff > 0
-                    ? `Shop avg: ${clampEfficiencyLabel(shopAvgEff)}`
-                    : "No shop average yet"
-                }
+                label="Productivity"
+                value={clampEfficiencyLabel(myRow.productivityPct)}
+                hint="Actual job hours ÷ attendance hours"
               />
               <InfoPill
-                label="Rev/hr vs shop avg"
-                value={
-                  revHrDelta === null
-                    ? "—"
-                    : `${revHrDelta >= 0 ? "+" : ""}${formatCurrency(revHrDelta)}`
-                }
-                hint={
-                  shopAvgRevHr > 0
-                    ? `Shop avg: ${formatCurrency(shopAvgRevHr)}`
-                    : "No shop average yet"
-                }
+                label="Overall performance"
+                value={clampEfficiencyLabel(myRow.overallPerformancePct)}
+                hint="Flagged hours ÷ attendance hours"
               />
             </div>
           )}
@@ -398,23 +329,22 @@ export default function TechPerformancePage() {
             <div className="grid gap-3 md:grid-cols-3">
               <SummaryCard label="Jobs" value={String(myRow.jobs)} />
               <SummaryCard
-                label="Revenue"
-                value={formatCurrency(myRow.revenue)}
-                accent="text-emerald-300"
+                label="Attendance hours"
+                value={`${myRow.attendanceHours.toFixed(1)} h`}
               />
               <SummaryCard
-                label="Profit"
-                value={formatCurrency(myRow.profit)}
+                label="Actual job hours"
+                value={`${myRow.actualJobHours.toFixed(1)} h`}
                 accent="text-sky-300"
               />
 
               <SummaryCard
-                label="Clocked hours"
-                value={`${myRow.clockedHours.toFixed(1)} h`}
+                label="Flagged hours"
+                value={`${myRow.flaggedHours.toFixed(1)} h`}
               />
               <SummaryCard
-                label="Billed hours"
-                value={`${myRow.billedHours.toFixed(1)} h`}
+                label="Productivity"
+                value={clampEfficiencyLabel(myRow.productivityPct)}
               />
               <SummaryCard
                 label="Efficiency"
@@ -423,17 +353,8 @@ export default function TechPerformancePage() {
               />
 
               <SummaryCard
-                label="Rev / hour"
-                value={formatCurrency(myRow.revenuePerHour)}
-              />
-              <SummaryCard
-                label="Labor cost"
-                value={formatCurrency(myRow.laborCost)}
-              />
-              <SummaryCard
-                label="Revenue"
-                value={formatCurrency(myRow.revenue)}
-                accent="text-emerald-300"
+                label="Overall performance"
+                value={clampEfficiencyLabel(myRow.overallPerformancePct)}
               />
             </div>
 
@@ -444,106 +365,18 @@ export default function TechPerformancePage() {
                 </div>
                 {showWorkedButNoBilledHint ? (
                   <p className="mt-1">
-                    You have <span className="text-[color:var(--theme-text-primary)]">clocked time</span> but{" "}
-                    <span className="text-[color:var(--theme-text-primary)]">0 billed hours</span> in this range.
-                    That usually means jobs weren’t marked completed or billed labor
-                    hasn’t been recorded yet.
+                    You have actual job time but no flagged-hour credit in this
+                    range. The work may still be open or awaiting review.
                   </p>
                 ) : null}
                 {showBilledButNoClockedHint ? (
                   <p className="mt-1">
-                    You have <span className="text-[color:var(--theme-text-primary)]">billed hours</span> but{" "}
-                    <span className="text-[color:var(--theme-text-primary)]">0 clocked hours</span>. Check timecards
-                    for this range (or confirm shift punches are being saved).
+                    You have flagged hours but no actual job time. Ask a manager to
+                    review the canonical labor segments for this range.
                   </p>
                 ) : null}
               </div>
             )}
-          </section>
-        )}
-
-        {/* Leaderboard (top + highlight me) */}
-        {!loading && !error && rows.length > 0 && (
-          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-4 shadow-card">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                  Tech leaderboard (this range)
-                </div>
-                <div className="text-sm text-[color:var(--theme-text-secondary)]">
-                  Sorted by revenue — you’re highlighted.
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-[840px] w-full border-separate border-spacing-0 text-sm">
-                <thead>
-                  <tr className="text-left text-[0.7rem] uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
-                    <th className="pb-2 pr-4">Rank</th>
-                    <th className="pb-2 pr-4">Tech</th>
-                    <th className="pb-2 pr-4">Jobs</th>
-                    <th className="pb-2 pr-4">Revenue</th>
-                    <th className="pb-2 pr-4">Profit</th>
-                    <th className="pb-2 pr-4">Clocked</th>
-                    <th className="pb-2 pr-4">Billed</th>
-                    <th className="pb-2 pr-4">Eff</th>
-                    <th className="pb-2">Rev/hr</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.slice(0, 20).map((r, idx) => {
-                    const mine = userId && r.techId === userId;
-                    return (
-                      <tr
-                        key={r.techId}
-                        className={
-                          mine
-                            ? "bg-orange-500/10"
-                            : idx % 2 === 0
-                              ? "bg-[color:var(--theme-surface-subtle)]"
-                              : "bg-transparent"
-                        }
-                      >
-                        <td className="py-2 pr-4 text-[color:var(--theme-text-secondary)]">
-                          #{idx + 1}
-                        </td>
-                        <td className="py-2 pr-4">
-                          <div className="font-medium text-[color:var(--theme-text-primary)]">{r.name}</div>
-                          <div className="text-xs text-[color:var(--theme-text-muted)]">
-                            {r.role ?? "—"}
-                          </div>
-                        </td>
-                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">{r.jobs}</td>
-                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
-                          {formatCurrency(r.revenue)}
-                        </td>
-                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
-                          {formatCurrency(r.profit)}
-                        </td>
-                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
-                          {r.clockedHours.toFixed(1)}h
-                        </td>
-                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
-                          {r.billedHours.toFixed(1)}h
-                        </td>
-                        <td className="py-2 pr-4 text-[color:var(--theme-text-primary)]">
-                          {clampEfficiencyLabel(r.efficiencyPct)}
-                        </td>
-                        <td className="py-2 text-[color:var(--theme-text-primary)]">
-                          {formatCurrency(r.revenuePerHour)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
-              Tip: if efficiency looks extreme (250%+), double-check billed labor
-              entries or duplicated billing in the time range.
-            </div>
           </section>
         )}
 

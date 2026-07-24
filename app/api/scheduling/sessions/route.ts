@@ -124,34 +124,16 @@ export async function GET(req: NextRequest) {
 /* --------------------------------------------------------- */
 /* POST /api/scheduling/sessions                             */
 /* --------------------------------------------------------- */
-export async function POST(req: NextRequest) {
+export async function POST(_req: NextRequest) {
   const a = await authz();
   if (!a.ok) return a.res;
   if (!a.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const admin = createAdminSupabase();
-
-  const body = (await req.json().catch(() => null)) as
-    | DB["public"]["Tables"]["tech_sessions"]["Insert"]
-    | null;
-
-  if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-
-  if (!body.user_id || !body.started_at || !body.work_order_id) {
-    return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 },
-    );
-  }
-
-  // Force shop scope to caller shop
-  const insert: DB["public"]["Tables"]["tech_sessions"]["Insert"] = {
-    ...body,
-    shop_id: a.me.shop_id,
-  };
-
-  const { error } = await admin.from("tech_sessions").insert(insert);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(
+    {
+      error:
+        "Legacy job sessions are read-only. Correct canonical labor segments from Workforce time review.",
+    },
+    { status: 410 },
+  );
 }
