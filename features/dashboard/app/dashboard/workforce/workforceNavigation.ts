@@ -12,7 +12,6 @@ export type WorkforceNavigationItem = {
     | "payroll"
     | "documents"
     | "certifications"
-    | "insights"
     | "activity";
   roles: readonly WorkforceNavigationRole[];
   matchPrefixes?: readonly string[];
@@ -72,13 +71,6 @@ export const WORKFORCE_NAVIGATION: readonly WorkforceNavigationItem[] = [
     description: "Expiry readiness",
     icon: "certifications",
     roles: OWNER_ADMIN,
-  },
-  {
-    href: "/dashboard/workforce/insights",
-    label: "Insights",
-    description: "Trends and capacity",
-    icon: "insights",
-    roles: ALL_WORKFORCE_MANAGERS,
   },
   {
     href: "/dashboard/workforce/activity",

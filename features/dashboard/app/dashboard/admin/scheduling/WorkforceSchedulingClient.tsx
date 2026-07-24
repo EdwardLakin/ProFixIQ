@@ -15,6 +15,15 @@ type Staff = {
   approved_away_blocks_in_range: number;
   is_away_today: boolean;
   is_away_tomorrow: boolean;
+  is_scheduled_today: boolean;
+  is_scheduled_tomorrow: boolean;
+  schedule_source_today: "override" | "template" | "none";
+  live_state: string;
+  is_clocked_in: boolean;
+  current_job: {
+    work_order_number: string | null;
+    line_description: string | null;
+  } | null;
   active_assigned_work_count: number;
 };
 
@@ -103,12 +112,22 @@ export default function WorkforceSchedulingClient() {
   const coverage = useMemo(() => {
     const awayToday = staff.filter((s) => s.is_away_today).length;
     const activeCount = staff.length;
-    const availableCount = Math.max(activeCount - awayToday, 0);
-    const missingTemplates = staff.filter((s) => s.recurring_template_rows === 0).length;
+    const scheduledToday = staff.filter((s) => s.is_scheduled_today && !s.is_away_today).length;
+    const clockedIn = staff.filter((s) => s.is_clocked_in).length;
     const overrideCount = staff.reduce((sum, s) => sum + s.override_count_in_range, 0);
 
-    return { awayToday, activeCount, availableCount, missingTemplates, overrideCount };
+    return { awayToday, activeCount, scheduledToday, clockedIn, overrideCount };
   }, [staff]);
+
+  function todayPosture(person: Staff) {
+    if (person.is_away_today) return { label: "Away today", tone: "text-[color:var(--theme-warning-text)]" };
+    if (person.live_state === "working_on_job") return { label: "Clocked in · On job", tone: "text-[color:var(--theme-success-text)]" };
+    if (person.live_state === "on_break") return { label: "Clocked in · Break", tone: "text-[color:var(--theme-warning-text)]" };
+    if (person.live_state === "on_lunch") return { label: "Clocked in · Lunch", tone: "text-[color:var(--theme-warning-text)]" };
+    if (person.is_clocked_in) return { label: "Clocked in · No active job", tone: "text-[color:var(--theme-info-text)]" };
+    if (person.is_scheduled_today) return { label: "Scheduled · Not clocked in", tone: "text-[color:var(--theme-text-secondary)]" };
+    return { label: "Off today", tone: "text-[color:var(--theme-text-muted)]" };
+  }
 
   const focus = searchParams.get("focus");
   const status = searchParams.get("status");
@@ -224,20 +243,20 @@ export default function WorkforceSchedulingClient() {
 
       <section className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-          <p className="text-xs text-[color:var(--theme-text-secondary)]">Available / Working</p>
-          <p className="text-xl font-semibold text-[color:var(--theme-success-text)]">{coverage.availableCount} / {coverage.activeCount}</p>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Scheduled Today</p>
+          <p className="text-xl font-semibold text-[color:var(--theme-success-text)]">{coverage.scheduledToday} / {coverage.activeCount}</p>
         </div>
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-          <p className="text-xs text-[color:var(--theme-text-secondary)]">Away Today</p>
-          <p className="text-xl font-semibold text-[color:var(--theme-warning-text)]">{coverage.awayToday}</p>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Clocked In Now</p>
+          <p className="text-xl font-semibold text-[color:var(--theme-info-text)]">{coverage.clockedIn}</p>
         </div>
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           <p className="text-xs text-[color:var(--theme-text-secondary)]">Pending Time-Off</p>
           <p className="text-xl font-semibold text-[color:var(--theme-accent-text)]">{pending.length}</p>
         </div>
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-          <p className="text-xs text-[color:var(--theme-text-secondary)]">Missing Templates</p>
-          <p className="text-xl font-semibold text-[color:var(--theme-danger-text)]">{coverage.missingTemplates}</p>
+          <p className="text-xs text-[color:var(--theme-text-secondary)]">Away Today</p>
+          <p className="text-xl font-semibold text-[color:var(--theme-warning-text)]">{coverage.awayToday}</p>
         </div>
         <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
           <p className="text-xs text-[color:var(--theme-text-secondary)]">Overrides (Range)</p>
@@ -249,11 +268,14 @@ export default function WorkforceSchedulingClient() {
         <AdminPanel>
           <AdminPanelTitle title="Today Roster" description="Real-time posture for today's assigned workforce." />
           <div className="space-y-2 p-4 text-sm">
-            <p className="text-xs text-[color:var(--theme-text-secondary)]">Available: {coverage.availableCount} · Away: {coverage.awayToday}</p>
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">Scheduled: {coverage.scheduledToday} · Clocked in: {coverage.clockedIn} · Away: {coverage.awayToday}</p>
             {staff.length === 0 ? <p className="text-[color:var(--theme-text-secondary)]">No staff in current range.</p> : staff.map((s) => (
               <div key={`today-${s.id}`} className="flex items-center justify-between rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
-                <span>{s.full_name ?? "Unnamed"}</span>
-                <span className={s.is_away_today ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-success-text)]"}>{s.is_away_today ? "Away today" : "Available"}</span>
+                <span>
+                  <span className="block">{s.full_name ?? "Unnamed"}</span>
+                  {s.current_job ? <span className="block text-xs text-[color:var(--theme-text-secondary)]">{s.current_job.work_order_number ?? "Work order"} · {s.current_job.line_description ?? "Active job"}</span> : null}
+                </span>
+                <span className={todayPosture(s).tone}>{todayPosture(s).label}</span>
               </div>
             ))}
           </div>
@@ -265,7 +287,7 @@ export default function WorkforceSchedulingClient() {
             {staff.map((s) => (
               <div key={`tomorrow-${s.id}`} className="flex items-center justify-between rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
                 <span>{s.full_name ?? "Unnamed"}</span>
-                <span className={s.is_away_tomorrow ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-success-text)]"}>{s.is_away_tomorrow ? "Away tomorrow" : "Available"}</span>
+                <span className={s.is_away_tomorrow ? "text-[color:var(--theme-warning-text)]" : s.is_scheduled_tomorrow ? "text-[color:var(--theme-success-text)]" : "text-[color:var(--theme-text-muted)]"}>{s.is_away_tomorrow ? "Away tomorrow" : s.is_scheduled_tomorrow ? "Scheduled" : "Off tomorrow"}</span>
               </div>
             ))}
           </div>

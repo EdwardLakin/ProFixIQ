@@ -111,6 +111,11 @@ export default function PayrollTimeClient() {
   const [csvPreview, setCsvPreview] = useState<string | null>(null);
   const [exportHistory, setExportHistory] = useState<ExportBatch[]>([]);
   const [zeroState, setZeroState] = useState<{ trueZero?: boolean; message?: string | null } | null>(null);
+  const [rosterSummary, setRosterSummary] = useState({
+    activeWorkforce: 0,
+    payrollEligible: 0,
+    excludedFromPayroll: 0,
+  });
   const [refreshState, setRefreshState] = useState<{ reason?: string; refreshError?: string | null; hasSourceTime?: boolean } | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
@@ -210,6 +215,11 @@ export default function PayrollTimeClient() {
     setEntries((body?.entries ?? []) as Entry[]);
     setExceptions((body?.exceptions ?? []) as Exception[]);
     setZeroState(body?.zeroState ?? null);
+    setRosterSummary({
+      activeWorkforce: Number(body?.rosterSummary?.activeWorkforce ?? 0),
+      payrollEligible: Number(body?.rosterSummary?.payrollEligible ?? 0),
+      excludedFromPayroll: Number(body?.rosterSummary?.excludedFromPayroll ?? 0),
+    });
     setRefreshState(body?.refresh ?? null);
     setLoading(false);
   }, []);
@@ -331,7 +341,7 @@ export default function PayrollTimeClient() {
           description="Recorded attendance is refreshed automatically for open periods. Overtime and warnings are advisory unless a blocking integrity issue remains."
         />
         <AdminStatGrid>
-          <AdminStatCard label="Employees" value={summary.employees} />
+          <AdminStatCard label="Payroll eligible" value={rosterSummary.payrollEligible} hint={`${rosterSummary.activeWorkforce} active workforce`} />
           <AdminStatCard label="Payroll hours" value={summary.totalHours} />
           <AdminStatCard label="Regular hours" value={fmtHours(entries.reduce((acc, entry) => acc + Number(entry.regular_minutes ?? 0), 0))} />
           <AdminStatCard label="Overtime" value={summary.overtimeHours} />
@@ -348,7 +358,15 @@ export default function PayrollTimeClient() {
           {summary.blocking > 0 ? <p>{summary.blocking} blocking integrity issue{summary.blocking === 1 ? "" : "s"} must be resolved before payroll can be finalized.</p> : null}
           {Number(summary.overtimeHours) > 0 ? <p>{entries.filter((entry) => entry.overtime_minutes > 0).length} employee day{entries.filter((entry) => entry.overtime_minutes > 0).length === 1 ? "" : "s"} recorded overtime this period.</p> : null}
           {summary.warnings > 0 ? <p>{summary.warnings} advisory warning{summary.warnings === 1 ? "" : "s"} may need owner review, but do not remove recorded payable hours.</p> : null}
-          {summary.blocking === 0 && summary.warnings === 0 ? <p>Payroll totals are ready for review.</p> : null}
+          {rosterSummary.payrollEligible === 0 ? (
+            <p>
+              No active people are included in payroll.{" "}
+              <Link href="/dashboard/workforce/people?filter=payroll" className="font-medium text-[color:var(--theme-accent-text)]">
+                Review payroll readiness in People →
+              </Link>
+            </p>
+          ) : summary.blocking === 0 && summary.warnings === 0 ? <p>Payroll totals are ready for review.</p> : null}
+          {rosterSummary.excludedFromPayroll > 0 ? <p>{rosterSummary.excludedFromPayroll} active person{rosterSummary.excludedFromPayroll === 1 ? " is" : " are"} excluded because payroll readiness is off.</p> : null}
           <p className="text-xs text-[color:var(--theme-text-muted)]">Overtime, long shifts, missing lunch, and job-time ratio flags are advisory. Valid recorded attendance remains visible and payable for owner/admin decisions.</p>
         </div>
       </AdminPanel>
@@ -437,7 +455,7 @@ export default function PayrollTimeClient() {
           <button
             className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-success-text)] disabled:opacity-50"
             onClick={() => void handleApprove()}
-            disabled={!activePeriodId || busyAction !== null || summary.blocking > 0 || Boolean(refreshState?.refreshError) || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
+            disabled={!activePeriodId || summary.employees === 0 || busyAction !== null || summary.blocking > 0 || Boolean(refreshState?.refreshError) || activePeriod?.status === "approved" || activePeriod?.status === "exported"}
           >
             {busyAction === "approve" ? "Approving…" : "Approve Payroll"}
           </button>
@@ -485,7 +503,14 @@ export default function PayrollTimeClient() {
         {loading ? (
           <AdminEmptyState title="Loading payroll period" body="Refreshing employee time records." />
         ) : filteredEntries.length === 0 ? (
-          <AdminEmptyState title={zeroState?.message ?? "No employee time has been recorded for this pay period."} body={activePeriod ? `${activePeriod.period_start} → ${activePeriod.period_end}` : "Open Attendance or Scheduling to record employee time."} />
+          <AdminEmptyState
+            title={zeroState?.message ?? "No employee time has been recorded for this pay period."}
+            body={rosterSummary.payrollEligible === 0
+              ? "Open People and mark each employee who belongs in payroll as payroll-ready."
+              : activePeriod
+                ? `${activePeriod.period_start} → ${activePeriod.period_end}. Attendance—not the schedule template—creates payable hours.`
+                : "Open Attendance to review recorded employee time."}
+          />
         ) : (
           <div className="space-y-3 p-4">
             {groupedEntries.map((group) => (

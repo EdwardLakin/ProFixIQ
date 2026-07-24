@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BarChart3,
   CalendarDays,
   ClipboardCheck,
   Clock3,
@@ -28,7 +27,6 @@ const ICONS: Record<WorkforceNavigationItem["icon"], LucideIcon> = {
   payroll: FileClock,
   documents: Files,
   certifications: ShieldCheck,
-  insights: BarChart3,
   activity: ClipboardCheck,
 };
 
@@ -87,7 +85,7 @@ export default function WorkforceShell({
             aria-label="Workforce sections"
             className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
           >
-            <div className="flex gap-1.5 overflow-x-auto px-3 py-2.5 sm:px-4">
+            <div className="grid grid-cols-2 gap-1.5 px-3 py-2.5 sm:grid-cols-3 sm:px-4 lg:grid-cols-4 xl:grid-cols-8">
               {navigation.map((item) => {
                 const active = isWorkforceNavigationItemActive(pathname, item);
                 const Icon = ICONS[item.icon];
@@ -97,7 +95,7 @@ export default function WorkforceShell({
                     key={item.href}
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className="group flex min-w-max items-center gap-2 rounded-xl border px-3 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-accent)]"
+                    className="group flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-accent)]"
                     style={{
                       borderColor: active
                         ? "color-mix(in srgb, var(--brand-primary) 64%, var(--theme-border-strong))"
@@ -118,7 +116,7 @@ export default function WorkforceShell({
                       <span className="block text-sm font-semibold leading-none">
                         {item.label}
                       </span>
-                      <span className="mt-1 hidden text-[0.67rem] leading-none text-[color:var(--theme-text-muted)] xl:block">
+                      <span className="mt-1 hidden text-[0.67rem] leading-tight text-[color:var(--theme-text-muted)] 2xl:block">
                         {item.description}
                       </span>
                     </span>

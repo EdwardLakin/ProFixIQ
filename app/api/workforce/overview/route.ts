@@ -3,6 +3,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getShopTodayTomorrowRanges } from "@/features/shared/lib/utils/shopDayWindow";
 import { buildWorkforceActivity } from "@/features/workforce/server/buildWorkforceActivity";
+import { resolveWorkforceSchedulePosture } from "@/features/workforce/lib/schedulePosture";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 type Severity = "blocking" | "warning" | "info";
@@ -10,6 +11,8 @@ type WorkforceInboxItem = { id: string; type: string; severity: Severity; title:
 type WorkforceOverviewResponse = {
   summary: {
     workingToday: number;
+    scheduledToday: number;
+    activeStaff: number;
     awayToday: number;
     awayTomorrow: number;
     pendingTimeOff: number;
@@ -67,18 +70,19 @@ export async function GET() {
   const todayEndIso = dayRanges.today.end;
   const tomorrowEndIso = dayRanges.tomorrow.end;
 
-  const [activity, profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes] = await Promise.all([
+  const [activity, profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, overridesRes, blocksRes, linesRes] = await Promise.all([
     buildWorkforceActivity({ shopId, timezone: shopRes.data?.timezone ?? null }),
     admin.from("profiles").select("id, full_name").eq("shop_id", shopId),
     admin.from("people_workforce_profiles").select("user_id, employment_status").eq("shop_id", shopId),
     admin.from("staff_time_off_requests").select("id, created_at").eq("shop_id", shopId).eq("status", "pending").order("created_at", { ascending: true }),
     admin.from("payroll_pay_periods").select("id, period_start").eq("shop_id", shopId).order("period_start", { ascending: false }).limit(1),
     admin.from("staff_certifications").select("expiry_date, status").eq("shop_id", shopId),
-    admin.from("staff_schedule_templates").select("user_id").eq("shop_id", shopId),
+    admin.from("staff_schedule_templates").select("user_id, day_of_week, is_working_day, start_time, end_time, effective_from, effective_to").eq("shop_id", shopId),
+    admin.from("staff_schedule_overrides").select("user_id, schedule_date, start_time, end_time, status").eq("shop_id", shopId).gte("schedule_date", todayStartIso.slice(0, 10)).lte("schedule_date", todayEndIso.slice(0, 10)),
     admin.from("staff_availability_blocks").select("user_id, starts_at, ends_at").eq("shop_id", shopId).lte("starts_at", tomorrowEndIso).gte("ends_at", todayStartIso),
     admin.from("work_order_lines").select("id, assigned_tech_id, line_status, status, voided_at").eq("shop_id", shopId).is("voided_at", null),
   ]);
-  const firstError = [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, blocksRes, linesRes].find((r) => r.error);
+  const firstError = [profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, overridesRes, blocksRes, linesRes].find((r) => r.error);
   if (firstError?.error) return NextResponse.json({ error: firstError.error.message }, { status: 500 });
   const activeLineIds = (linesRes.data ?? [])
     .filter((l) => !ACTIVE_LINE_EXCLUDED.includes((l.line_status || l.status || "").toLowerCase()))
@@ -92,6 +96,15 @@ export async function GET() {
   const profileName = new Map((profilesRes.data ?? []).map((p) => [p.id, p.full_name || "Unknown"]));
   const activeStaff = new Set((workforceRes.data ?? []).filter((w) => w.employment_status === "active").map((w) => w.user_id));
   const templateUsers = new Set((templatesRes.data ?? []).map((t) => t.user_id));
+  const scheduledToday = [...activeStaff].filter((userId) =>
+    resolveWorkforceSchedulePosture({
+      userId,
+      at: now,
+      timezone: shopRes.data?.timezone,
+      templates: templatesRes.data ?? [],
+      overrides: overridesRes.data ?? [],
+    }).scheduled,
+  ).length;
   const blocks = blocksRes.data ?? [];
   const overlap = (start: string, end: string, from: Date, to: Date) => new Date(start) < to && new Date(end) > from;
   const awayTodayUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, new Date(todayStartIso), new Date(todayEndIso))).map((b) => b.user_id));
@@ -165,6 +178,8 @@ export async function GET() {
   const response: WorkforceOverviewResponse = {
     summary: {
       workingToday: activity.summary.activeTechnicians,
+      scheduledToday,
+      activeStaff: activeStaff.size,
       awayToday: awayTodayUsers.size,
       awayTomorrow: awayTomorrowUsers.size,
       pendingTimeOff,

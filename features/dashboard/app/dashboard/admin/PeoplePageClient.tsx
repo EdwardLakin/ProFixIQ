@@ -69,13 +69,17 @@ export default function PeoplePageClient() {
 
   useEffect(() => {
     const view = searchParams.get("view");
+    const filter = searchParams.get("filter");
     if (view === "workforce") {
       setActionFilter("needs_action");
+    }
+    if (filter === "payroll") {
+      setActionFilter("payroll_issues");
     }
     if (workforceAction === "cert_expired" || workforceAction === "cert_expiring") {
       setActionFilter("cert_expiry");
     }
-  }, [searchParams]);
+  }, [searchParams, workforceAction]);
 
   useEffect(() => {
     (async () => {

@@ -252,11 +252,11 @@ export default function WorkforceOverviewClient() {
       title: "Coverage",
       accent: "text-[color:var(--theme-info-text)]",
       items: [
-        { label: "Working today", value: data.summary.workingToday, tone: "border-sky-400/30" },
+        { label: "Scheduled today", value: data.summary.scheduledToday, tone: "border-sky-400/30" },
+        { label: "Clocked in", value: data.summary.workingToday, tone: "border-sky-400/30" },
         { label: "Working on jobs", value: data.summary.workingOnJobs ?? 0, tone: "border-emerald-400/30" },
-        { label: "No active job", value: data.summary.idleTechnicians ?? 0, tone: "border-orange-400/30" },
+        { label: "Clocked in, no job", value: data.summary.idleTechnicians ?? 0, tone: "border-orange-400/30" },
         { label: "Away today", value: data.summary.awayToday, tone: "border-sky-500/20" },
-        { label: "Away tomorrow", value: data.summary.awayTomorrow, tone: "border-sky-500/20" },
       ],
     },
     {

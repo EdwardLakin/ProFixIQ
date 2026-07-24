@@ -62,7 +62,6 @@ describe("workforce cleanup consolidation", () => {
       "Payroll",
       "Documents",
       "Certifications",
-      "Insights",
       "Activity",
     ]);
     expect(getWorkforceNavigation("manager").map((item) => item.label)).toEqual([
@@ -70,7 +69,6 @@ describe("workforce cleanup consolidation", () => {
       "Attendance",
       "Schedule",
       "Payroll",
-      "Insights",
     ]);
   });
 
