@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { sendUserInviteEmail } from "@/features/email/server";
 import { assertShopHasAvailableSeat } from "@/features/shared/lib/server/shop-seat-limit";
 import {
   buildShopUserAuthEmail,
@@ -47,6 +48,7 @@ function logCreateUserStep(
     normalizedUsername?: string | null;
     hasContactEmail?: boolean;
     emailConfirmed?: boolean | null;
+    inviteEmailSent?: boolean | null;
   } = {},
 ): void {
   console.info("[admin/create-user]", { step, ...details });
@@ -168,6 +170,17 @@ export async function POST(req: Request) {
     // Service-role client is created server-side only and is never exposed to the browser.
     const serviceSupabase = createAdminSupabase();
 
+    const { data: me } = await access.supabase
+      .from("profiles")
+      .select("id, full_name, first_name, last_name")
+      .eq("id", access.profile.id)
+      .maybeSingle<{
+        id: string;
+        full_name: string | null;
+        first_name: string | null;
+        last_name: string | null;
+      }>();
+
     const { data: shop } = await serviceSupabase
       .from("shops")
       .select("name, shop_name")
@@ -228,7 +241,7 @@ export async function POST(req: Request) {
 
     // Staff username auth is primary: Supabase Auth uses the same synthetic email
     // that username sign-in derives from the normalized username. Real email remains
-    // a profile/contact field only.
+    // a profile/contact field and is used for invite delivery when present.
     const syntheticEmail = buildShopUserAuthEmail(username);
     const contactEmail = inputEmail || null;
 
@@ -376,6 +389,48 @@ export async function POST(req: Request) {
       );
     }
 
+    let inviteEmailSent = false;
+    let inviteEmailError: string | null = null;
+
+    if (contactEmail) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
+      const inviterName =
+        String(me?.full_name ?? "").trim() ||
+        [String(me?.first_name ?? "").trim(), String(me?.last_name ?? "").trim()]
+          .filter(Boolean)
+          .join(" ")
+          .trim() ||
+        "ProFixIQ";
+
+      try {
+        await sendUserInviteEmail({
+          shopId: effectiveShopId,
+          to: contactEmail,
+          loginUrl: `${siteUrl}/login`,
+          username,
+          tempPassword: null,
+          role: canonicalRole,
+          shopName: shopDisplayName,
+          inviterName,
+          fullName: full_name ?? username,
+          resend: false,
+          createdBy: access.profile.id,
+        });
+        inviteEmailSent = true;
+      } catch (error) {
+        inviteEmailError = error instanceof Error ? error.message : "Invite email failed to send.";
+        logCreateUserError("invite_email_failed", {
+          adminId: access.profile.id,
+          targetShopId: effectiveShopId,
+          role: canonicalRole,
+          authUserId: newUserId,
+          normalizedUsername: username,
+          hasContactEmail: true,
+          error: inviteEmailError,
+        });
+      }
+    }
+
     logCreateUserStep("completed", {
       adminId: access.profile.id,
       targetShopId: effectiveShopId,
@@ -385,6 +440,7 @@ export async function POST(req: Request) {
       normalizedUsername: username,
       hasContactEmail: Boolean(contactEmail),
       emailConfirmed: Boolean(created.user.email_confirmed_at ?? created.user.confirmed_at),
+      inviteEmailSent,
     });
 
     return NextResponse.json({
@@ -394,6 +450,9 @@ export async function POST(req: Request) {
       suggested_alternate_username: withShopUsernameSuffix(username, 1),
       email: contactEmail,
       auth_email: syntheticEmail,
+      invite_email_sent: inviteEmailSent,
+      invite_email_error: inviteEmailError,
+      warning: contactEmail && !inviteEmailSent ? "User created but invite email failed to send." : null,
       must_change_password: true,
       shop_id: effectiveShopId,
       people_record_href: `/dashboard/admin/people/${newUserId}?from=create-user`,
@@ -404,4 +463,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg, code: "unexpected_error" }, { status: 500 });
   }
 }
-
