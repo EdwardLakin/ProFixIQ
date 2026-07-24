@@ -40,6 +40,7 @@ function sectionTitles(role: string, section: string) {
 function duplicateCount<T>(values: T[], value: T) {
   return values.filter((item) => item === value).length;
 }
+const dashboardEntry = read("app/dashboard/page.tsx");
 
 describe("Phase D3 dashboard operational navigation", () => {
   it("groups canonical daily operational views under Dashboard", () => {
@@ -171,5 +172,24 @@ describe("Phase D3 dashboard operational navigation", () => {
 
   it("keeps legacy dispatch redirect unchanged", () => {
     expect(read("app/dashboard/manager/dispatch/page.tsx")).toContain('redirect("/work-orders/board")');
+  });
+});
+
+
+describe("mechanic shop dashboard removal", () => {
+  it("routes dashboard entry to the tech queue and keeps the rest of tech navigation", () => {
+    const dashboardEntry = read("app/dashboard/page.tsx");
+    const navTiles = read("features/shared/config/tiles.ts");
+    const routeMeta = read("features/shared/lib/routeMeta.ts");
+
+    expect(dashboardEntry).toContain('if (role === "mechanic")');
+    expect(dashboardEntry).toContain('router.replace("/tech/queue")');
+    expect(navTiles).toContain('title: "Shop Overview"');
+    expect(navTiles).toContain('title: "Tech Job Queue"');
+    expect(navTiles).toContain('title: "Team Chat"');
+    expect(navTiles).toContain('title: "My Performance"');
+    expect(navTiles).toContain('roles: ["manager", "owner", "admin", "advisor", "parts", "fleet_manager", "dispatcher", "driver", "lead_hand", "foreman"]');
+    expect(routeMeta).toContain('"/dashboard":');
+    expect(routeMeta).not.toContain('roles: ALL_ROLES },');
   });
 });
