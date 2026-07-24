@@ -38,7 +38,11 @@ const PERSIST_DEFAULTS: PersistMeta = { scroll: true, inputs: true };
 const ALL_ROLES: UserRole[] | undefined = undefined;
 
 export const ROUTE_META: Record<string, RouteMeta> = {
-  "/dashboard": { title: () => "Shop Overview", icon: "🏠", roles: ALL_ROLES },
+  "/dashboard": {
+    title: () => "Shop Overview",
+    icon: "🏠",
+    roles: ["owner", "admin", "manager", "advisor", "parts", "dispatcher", "driver", "fleet_manager", "lead_hand", "foreman"],
+  },
   // ----------------------------------------------------------------
   // Work Orders
   // ----------------------------------------------------------------
