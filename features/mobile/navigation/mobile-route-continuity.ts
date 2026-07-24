@@ -138,7 +138,13 @@ function mapFleetPath(pathname: string): string {
   return "/mobile/fleet";
 }
 
-function mapDashboardPath(pathname: string): string {
+function mapDashboardPath(pathname: string): string | null {
+  if (
+    isPathAtOrBelow(pathname, "/dashboard/owner/settings") ||
+    isPathAtOrBelow(pathname, "/dashboard/admin/settings")
+  ) {
+    return null;
+  }
   if (isPathAtOrBelow(pathname, "/dashboard/workforce")) {
     return "/mobile/workforce/attendance";
   }
