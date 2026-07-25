@@ -12,6 +12,12 @@ import { authorizeConversationContext } from "@/features/chat/server/conversatio
 
 export const dynamic = "force-dynamic";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 export async function POST(req: Request): Promise<NextResponse> {
   const userClient = createServerSupabaseRoute();
   const {
@@ -47,6 +53,13 @@ export async function POST(req: Request): Promise<NextResponse> {
   });
 
   if (!createAccess.ok) {
+    console.warn("[chat/start-conversation] create access denied", {
+      status: createAccess.status,
+      error: createAccess.error,
+      channel: body?.channel ?? "internal",
+      actorKind: body?.actor_kind ?? null,
+      participantCount: requestedParticipantIds.length,
+    });
     return NextResponse.json(
       { error: createAccess.error },
       { status: createAccess.status },
@@ -73,6 +86,12 @@ export async function POST(req: Request): Promise<NextResponse> {
   });
 
   if (!context.ok) {
+    console.warn("[chat/start-conversation] context denied", {
+      status: context.status,
+      error: context.error,
+      contextType: body?.context_type ?? null,
+      hasContextId: Boolean(body?.context_id),
+    });
     return NextResponse.json(
       { error: context.error },
       { status: context.status },
@@ -144,17 +163,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
   }
 
-  const requestedId = body?.request_id?.trim();
-  if (
-    requestedId &&
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      requestedId,
-    )
-  ) {
-    return NextResponse.json(
-      { error: "request_id must be a UUID" },
-      { status: 400 },
-    );
+  const requestedIdRaw = body?.request_id?.trim() ?? "";
+  const requestedId = requestedIdRaw && isUuid(requestedIdRaw) ? requestedIdRaw : undefined;
+  if (requestedIdRaw && !requestedId) {
+    console.warn("[chat/start-conversation] ignored invalid request_id", {
+      actorKind: createAccess.actor.kind,
+      channel: createAccess.channel,
+      requestIdLength: requestedIdRaw.length,
+    });
   }
 
   const conversationId = requestedId ?? randomUUID();
@@ -211,6 +227,12 @@ export async function POST(req: Request): Promise<NextResponse> {
   );
 
   if (createError) {
+    console.error("[chat/start-conversation] create rpc failed", {
+      code: createError.code ?? null,
+      message: createError.message ?? null,
+      details: createError.details ?? null,
+      hint: createError.hint ?? null,
+    });
     return NextResponse.json({ error: createError.message }, { status: 500 });
   }
 
