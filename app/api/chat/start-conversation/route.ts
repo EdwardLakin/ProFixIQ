@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   createAdminSupabase,
   createServerSupabaseRoute,
@@ -16,6 +16,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 
 function isUuid(value: string): boolean {
   return UUID_RE.test(value);
+}
+
+function deterministicUuidFromRequestId(requestId: string, actorUserId: string): string {
+  const hex = createHash("sha256")
+    .update(`chat:start-conversation:${actorUserId}:${requestId}`)
+    .digest("hex");
+  const variant = ((parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -164,9 +172,13 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   const requestedIdRaw = body?.request_id?.trim() ?? "";
-  const requestedId = requestedIdRaw && isUuid(requestedIdRaw) ? requestedIdRaw : undefined;
-  if (requestedIdRaw && !requestedId) {
-    console.warn("[chat/start-conversation] ignored invalid request_id", {
+  const requestedId = requestedIdRaw
+    ? isUuid(requestedIdRaw)
+      ? requestedIdRaw
+      : deterministicUuidFromRequestId(requestedIdRaw, user.id)
+    : undefined;
+  if (requestedIdRaw && requestedId !== requestedIdRaw) {
+    console.warn("[chat/start-conversation] normalized invalid request_id", {
       actorKind: createAccess.actor.kind,
       channel: createAccess.channel,
       requestIdLength: requestedIdRaw.length,
