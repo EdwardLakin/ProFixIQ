@@ -1,0 +1,51 @@
+name: P0-003 Shop Boost Preview Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/demo/shop-boost/**"
+      - "app/demo/instant-shop-analysis/**"
+      - "app/demo/preview/**"
+      - "app/demo/report/**"
+      - "features/integrations/shopBoost/**"
+      - "tests/shop-boost-preview-*.test.ts"
+      - "tsconfig.p0-003.json"
+      - ".github/workflows/p0-003-shop-boost-preview-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit -p tsconfig.p0-003.json
+      - run: >-
+          pnpm exec eslint
+          app/api/demo/shop-boost/claim/route.ts
+          app/api/demo/shop-boost/run/route.ts
+          app/api/demo/shop-boost/share/route.ts
+          app/demo/instant-shop-analysis/page.tsx
+          'app/demo/preview/[demoId]/page.tsx'
+          'app/demo/preview/[demoId]/not-found.tsx'
+          'app/demo/preview/[demoId]/_components/ShadowPreviewClient.tsx'
+          'app/demo/report/[demoId]/page.tsx'
+          'app/demo/report/[demoId]/not-found.tsx'
+          features/integrations/shopBoost/ShopBoostAnalysisUnavailable.tsx
+          features/integrations/shopBoost/shareAccess.ts
+          tests/shop-boost-preview-access.test.ts
+          tests/shop-boost-preview-route-guards.test.ts
+      - run: >-
+          pnpm exec vitest run
+          tests/shop-boost-preview-access.test.ts
+          tests/shop-boost-preview-route-guards.test.ts

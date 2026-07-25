@@ -30,6 +30,7 @@ type RunResponse =
       ok: true;
       demoId: string;
       intakeId: string;
+      previewToken: string;
       analysis: InstantAnalysisPayload;
     }
   | {
@@ -50,13 +51,14 @@ type ClaimResponse =
 type ResumePreviewContext = {
   demoId: string;
   intakeId: string;
+  previewToken: string;
   shopName: string;
   blockers: number;
   reviewQueue: number;
   recoverableValue: number;
 };
 
-const PREVIEW_RESUME_STORAGE_KEY = "shop-boost-last-preview-v1";
+const PREVIEW_RESUME_STORAGE_KEY = "shop-boost-last-preview-v2";
 
 
 
@@ -109,6 +111,7 @@ export default function InstantShopAnalysisPage() {
   const [step, setStep] = useState<DemoStep>("form");
   const [demoId, setDemoId] = useState<string | null>(null);
   const [intakeId, setIntakeId] = useState<string | null>(null);
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<InstantAnalysisPayload | null>(null);
 
   const [runError, setRunError] = useState<string | null>(null);
@@ -126,10 +129,16 @@ export default function InstantShopAnalysisPage() {
     if (!stored) return;
     try {
       const parsed = JSON.parse(stored) as Partial<ResumePreviewContext>;
-      if (!parsed.demoId || !parsed.intakeId || !parsed.shopName) return;
+      if (
+        !parsed.demoId ||
+        !parsed.intakeId ||
+        !parsed.previewToken ||
+        !parsed.shopName
+      ) return;
       setResumePreview({
         demoId: parsed.demoId,
         intakeId: parsed.intakeId,
+        previewToken: parsed.previewToken,
         shopName: parsed.shopName,
         blockers: Number(parsed.blockers) || 0,
         reviewQueue: Number(parsed.reviewQueue) || 0,
@@ -185,6 +194,7 @@ export default function InstantShopAnalysisPage() {
     setAnalysis(null);
     setDemoId(null);
     setIntakeId(null);
+    setPreviewToken(null);
 
     if (!shopName.trim()) {
       setRunError("Please enter your shop name.");
@@ -247,6 +257,7 @@ export default function InstantShopAnalysisPage() {
 
       setDemoId(json.demoId);
       setIntakeId(json.intakeId);
+      setPreviewToken(json.previewToken);
       const normalized = normalizeAnalysisPayload(json.analysis);
       if (!normalized) {
         setRunError("Received an invalid analysis payload. Please retry with a CSV export.");
@@ -272,7 +283,7 @@ export default function InstantShopAnalysisPage() {
   const handleClaim = async () => {
     setClaimError(null);
 
-    if (!demoId || !analysis) {
+    if (!demoId || !previewToken || !analysis) {
       setClaimError("Run the analysis first.");
       return;
     }
@@ -288,7 +299,7 @@ export default function InstantShopAnalysisPage() {
       const res = await fetch("/api/demo/shop-boost/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ demoId, intakeId, email: email.trim() }),
+        body: JSON.stringify({ previewToken, email: email.trim() }),
       });
 
       const json = (await res.json()) as ClaimResponse;
@@ -357,7 +368,7 @@ export default function InstantShopAnalysisPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      (window.location.href = `/demo/preview/${encodeURIComponent(resumePreview.demoId)}?intakeId=${encodeURIComponent(resumePreview.intakeId)}`)
+                      (window.location.href = `/demo/preview/${encodeURIComponent(resumePreview.demoId)}?token=${encodeURIComponent(resumePreview.previewToken)}`)
                     }
                     className="mt-2 inline-flex items-center rounded-full border border-cyan-400/30 bg-cyan-500/20 px-4 py-2 text-[11px] text-cyan-100 hover:bg-cyan-500/30"
                   >
@@ -578,7 +589,7 @@ export default function InstantShopAnalysisPage() {
 
                   {claimError ? <p className="mt-2 text-[11px] text-red-400">{claimError}</p> : null}
                   <a
-                    href={`/demo/preview/${encodeURIComponent(demoId ?? "")}?intakeId=${encodeURIComponent(intakeId ?? analysis.intakeId ?? "")}`}
+                    href={`/demo/preview/${encodeURIComponent(demoId ?? "")}?token=${encodeURIComponent(previewToken ?? "")}`}
                     className="mt-3 inline-flex items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-[11px] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
                   >
                     Enter your system preview
@@ -607,7 +618,7 @@ export default function InstantShopAnalysisPage() {
 
                 <div className="flex flex-wrap gap-2">
                   <a
-                    href={`/demo/preview/${encodeURIComponent(demoId ?? "")}?intakeId=${encodeURIComponent(intakeId ?? analysis.intakeId)}`}
+                    href={`/demo/preview/${encodeURIComponent(demoId ?? "")}?token=${encodeURIComponent(previewToken ?? "")}`}
                     className={[
                       "inline-flex items-center justify-center rounded-md px-4 py-1.5 text-xs font-semibold shadow-sm transition",
                       THEME.cta,

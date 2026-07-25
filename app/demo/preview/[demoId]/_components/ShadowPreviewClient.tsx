@@ -31,7 +31,7 @@ type Props = {
   shareMeta: {
     enabled: boolean;
     senderName: string | null;
-    token: string | null;
+    token: string;
   };
 };
 
@@ -94,7 +94,7 @@ const gateCopyByAction: Record<GateActionContext, GateCopy> = {
   },
 };
 
-const PREVIEW_RESUME_STORAGE_KEY = "shop-boost-last-preview-v1";
+const PREVIEW_RESUME_STORAGE_KEY = "shop-boost-last-preview-v2";
 
 function toActivationReadiness(readiness: string): ActivationReadiness {
   if (readiness === "READY_FOR_GO_LIVE" || readiness === "COMPLETED_CLEAN") return "READY";
@@ -161,9 +161,7 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
     const url = new URL(window.location.href);
     url.searchParams.set("share", "1");
     url.searchParams.set("mode", mode);
-    if (shareMeta.token) {
-      url.searchParams.set("token", shareMeta.token);
-    }
+    url.searchParams.set("token", shareMeta.token);
     return url.toString();
   }, [mode, shareMeta.token]);
 
@@ -174,6 +172,7 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
       JSON.stringify({
         demoId: context.demoId,
         intakeId: context.intakeId,
+        previewToken: shareMeta.token,
         shopName: context.shopName,
         blockers: context.snapshot.dashboard.blockerCount,
         reviewQueue: context.snapshot.dashboard.reviewQueueCount,
@@ -181,7 +180,7 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
         updatedAt: new Date().toISOString(),
       }),
     );
-  }, [context.demoId, context.intakeId, context.shopName, context.snapshot.dashboard.blockerCount, context.snapshot.dashboard.reviewQueueCount, context.snapshot.roi.estimated_monthly_impact]);
+  }, [context.demoId, context.intakeId, context.shopName, context.snapshot.dashboard.blockerCount, context.snapshot.dashboard.reviewQueueCount, context.snapshot.roi.estimated_monthly_impact, shareMeta.token]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -313,8 +312,7 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
-                    demoId: context.demoId,
-                    intakeId: context.intakeId,
+                    previewToken: shareMeta.token,
                     recipientEmail: recipientEmail.trim(),
                     senderName: shareMeta.senderName ?? "Shop Boost user",
                   }),
@@ -326,10 +324,10 @@ export default function ShadowPreviewClient({ context, mode, shareMeta }: Props)
               Send via email
             </button>
             <Link
-              href={`/api/shop-boost/intakes/${context.intakeId}/report?download=1`}
+              href={`/demo/report/${context.demoId}?token=${encodeURIComponent(shareMeta.token)}`}
               className="block w-full rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-center text-xs hover:bg-[color:var(--theme-surface-subtle)]"
             >
-              Download report
+              View report
             </Link>
             {shareStatus ? <p className="text-[11px] text-cyan-200">{shareStatus}</p> : null}
           </div>
