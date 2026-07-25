@@ -1,10 +1,28 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { canonicalizeRole, type CanonicalRole } from "@/features/shared/lib/rbac";
 
 type ConversationRow = Database["public"]["Tables"]["conversations"]["Row"];
 type MessagingChannel = "internal" | "customer";
 type ParticipantKind = "staff" | "customer";
-const CUSTOMER_MESSAGING_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+
+export const CUSTOMER_MESSAGING_ROLE_LIST = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "service",
+  "lead_hand",
+  "foreman",
+] as const satisfies readonly CanonicalRole[];
+
+export const CUSTOMER_MESSAGING_ROLES = new Set<CanonicalRole>(
+  CUSTOMER_MESSAGING_ROLE_LIST,
+);
+
+export function isCustomerMessagingRole(role: string | null | undefined): boolean {
+  return CUSTOMER_MESSAGING_ROLES.has(canonicalizeRole(role));
+}
 
 export type MessagingActor =
   | {
@@ -337,10 +355,7 @@ export async function authorizeConversationCreate({
     };
   }
 
-  if (
-    actor.kind === "staff" &&
-    !CUSTOMER_MESSAGING_ROLES.has((actor.role ?? "").toLowerCase())
-  ) {
+  if (actor.kind === "staff" && !isCustomerMessagingRole(actor.role)) {
     return {
       ok: false,
       status: 403,
@@ -377,10 +392,9 @@ export async function authorizeConversationCreate({
   if (actor.kind === "customer" && staffUserIds.length === 0) {
     const { data: serviceTeam, error: serviceTeamError } = await supabase
       .from("profiles")
-      .select("id, user_id")
+      .select("id, user_id, role")
       .eq("shop_id", actor.shopId)
-      .in("role", ["advisor", "manager", "owner", "admin"])
-      .limit(50);
+      .limit(100);
 
     if (serviceTeamError) {
       return { ok: false, status: 500, error: serviceTeamError.message };
@@ -388,6 +402,7 @@ export async function authorizeConversationCreate({
     staffUserIds = Array.from(
       new Set(
         (serviceTeam ?? [])
+          .filter((row) => isCustomerMessagingRole(row.role))
           .map((row) => row.user_id ?? row.id)
           .filter((id): id is string => Boolean(id) && id !== actorUserId),
       ),
