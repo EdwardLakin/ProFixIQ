@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DemoPreviewPage from "../app/demo/preview/[demoId]/page";
 import DemoReportPage from "../app/demo/report/[demoId]/page";
@@ -53,6 +54,7 @@ async function expectPreviewDenied(args: {
 
 describe("Shop Boost preview access", () => {
   beforeEach(() => {
+    vi.stubGlobal("React", React);
     vi.stubEnv("SHOP_BOOST_SHARE_SECRET", SECRET);
     loadShadowPreviewContext.mockReset();
     notFound.mockClear();
@@ -61,6 +63,7 @@ describe("Shop Boost preview access", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("fails closed without the dedicated secret and never falls back to the service key", () => {
