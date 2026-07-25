@@ -16,6 +16,7 @@ export async function POST(req: Request) {
       location_id: string;
       qty: number;
       po_id?: string | null;
+      operation_id?: string | null;
     }>;
 
     const partId = typeof body.part_id === "string" ? body.part_id : "";
@@ -24,6 +25,13 @@ export async function POST(req: Request) {
       typeof body.qty === "number" && Number.isFinite(body.qty) ? body.qty : 0;
     const poId =
       typeof body.po_id === "string" && body.po_id.length > 0 ? body.po_id : null;
+    const operationId =
+      typeof body.operation_id === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          body.operation_id,
+        )
+        ? body.operation_id
+        : null;
 
     if (!partId || !locationId || qty <= 0) {
       return NextResponse.json(
@@ -94,7 +102,9 @@ export async function POST(req: Request) {
         p_qty: qty,
         p_reason: "receive",
         p_ref_kind: "manual_receive",
-        p_ref_id: partId, // non-null placeholder for strict RPC args
+        // New callers send a per-action UUID. The part-id fallback preserves
+        // rolling compatibility and is deliberately non-idempotent in SQL.
+        p_ref_id: operationId ?? partId,
       } as unknown as DB["public"]["Functions"]["apply_stock_move"]["Args"],
     );
 

@@ -82,6 +82,9 @@ export default function ReceivePage(): JSX.Element {
   const [busy, setBusy] = useState(false);
 
   const onDetectedRef = useRef<QuaggaDetectedHandler | null>(null);
+  const lastScanRef = useRef("");
+  const receiveBusyRef = useRef(false);
+  const scanOperationRef = useRef<{ code: string; id: string } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -174,29 +177,57 @@ export default function ReceivePage(): JSX.Element {
 
     const handler: QuaggaDetectedHandler = async (res) => {
       const code = res.codeResult?.code ?? "";
-      if (!code || code === lastScan) return;
+      if (
+        !code ||
+        code === lastScanRef.current ||
+        receiveBusyRef.current
+      ) return;
 
+      lastScanRef.current = code;
+      receiveBusyRef.current = true;
       setLastScan(code);
       setLastResult(null);
 
       if (!selectedLoc) {
         setLastResult({ error: "Select a location first." });
-        window.setTimeout(() => setLastScan(""), 800);
+        receiveBusyRef.current = false;
+        window.setTimeout(() => {
+          lastScanRef.current = "";
+          setLastScan("");
+        }, 800);
         return;
       }
 
       const supplierId = pos.find((p) => p.id === selectedPo)?.supplier_id ?? null;
 
-      const { part_id } = await resolveScannedCode({
-        code,
-        supplier_id: supplierId,
-      });
+      let part_id: string | null = null;
+      try {
+        ({ part_id } = await resolveScannedCode({
+          code,
+          supplier_id: supplierId,
+        }));
+      } catch (error) {
+        receiveBusyRef.current = false;
+        setLastResult({
+          error: error instanceof Error ? error.message : "Part lookup failed",
+        });
+        window.setTimeout(() => {
+          lastScanRef.current = "";
+          setLastScan("");
+        }, 900);
+        return;
+      }
 
       if (!part_id) {
         setLastResult({
           error: `No part found for "${code}". Map it in Parts → Inventory → Edit → Barcodes.`,
         });
-        window.setTimeout(() => setLastScan(""), 1200);
+        receiveBusyRef.current = false;
+        scanOperationRef.current = null;
+        window.setTimeout(() => {
+          lastScanRef.current = "";
+          setLastScan("");
+        }, 1200);
         return;
       }
       const { data: partRow } = await supabase
@@ -215,6 +246,11 @@ export default function ReceivePage(): JSX.Element {
         }),
       );
 
+      const operationId =
+        scanOperationRef.current?.code === code
+          ? scanOperationRef.current.id
+          : crypto.randomUUID();
+      scanOperationRef.current = { code, id: operationId };
       setBusy(true);
       try {
         const resp = await fetch("/api/receive-scan", {
@@ -225,6 +261,7 @@ export default function ReceivePage(): JSX.Element {
             location_id: selectedLoc,
             qty,
             po_id: selectedPo || null,
+            operation_id: operationId,
           }),
         });
 
@@ -247,10 +284,19 @@ export default function ReceivePage(): JSX.Element {
           result: (json as { result?: unknown }).result,
         });
 
+        scanOperationRef.current = null;
         window.dispatchEvent(new CustomEvent("parts:received"));
+      } catch (error) {
+        setLastResult({
+          error: error instanceof Error ? error.message : "Receive failed",
+        });
       } finally {
+        receiveBusyRef.current = false;
         setBusy(false);
-        window.setTimeout(() => setLastScan(""), 900);
+        window.setTimeout(() => {
+          lastScanRef.current = "";
+          setLastScan("");
+        }, 900);
       }
     };
 

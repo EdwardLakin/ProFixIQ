@@ -1,11 +1,12 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { adjustStock } from "@/features/parts/actions";
 
 export function AdjustStockForm({ partId }: { partId: string }) {
   const [locationId, setLocationId] = useState("");
   const [qty, setQty] = useState<number>(0);
   const [pending, start] = useTransition();
+  const operationIdRef = useRef(crypto.randomUUID());
 
   return (
     <form
@@ -17,7 +18,10 @@ export function AdjustStockForm({ partId }: { partId: string }) {
             location_id: locationId,
             qty_change: qty,
             reason: qty >= 0 ? "receive" : "adjust",
+            reference_kind: "manual_adjustment",
+            reference_id: operationIdRef.current,
           });
+          operationIdRef.current = crypto.randomUUID();
         });
       }}
       className="space-y-2"

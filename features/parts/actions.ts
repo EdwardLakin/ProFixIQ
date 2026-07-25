@@ -74,8 +74,8 @@ export async function adjustStock(input: {
     p_loc: input.location_id,
     p_qty: input.qty_change,
     p_reason: input.reason,
-    p_ref_kind: input.reference_kind ?? null,
-    p_ref_id: input.reference_id ?? null,
+    p_ref_kind: input.reference_kind ?? "manual_adjustment",
+    p_ref_id: input.reference_id ?? crypto.randomUUID(),
   };
 
   const { data, error } = await supabase.rpc(
