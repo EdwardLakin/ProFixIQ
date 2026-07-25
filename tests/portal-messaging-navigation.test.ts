@@ -28,6 +28,9 @@ describe("portal work-order navigation and messaging", () => {
     expect(contextRoute).toContain("isCustomerMessagingRole(staff.role)");
     expect(contextRoute).toContain("recipients");
     expect(workspace).toContain('aria-label="Message recipient"');
+    expect(workspace).toContain("normalizeMessageDraft");
+    expect(workspace).toContain("ensureUuid(newThreadDraft?.conversationRequestId)");
+    expect(workspace).toContain("setError(null)");
     expect(workspace).toContain(
       "/api/chat/my-conversations?actor=customer",
     );
@@ -42,6 +45,8 @@ describe("portal work-order navigation and messaging", () => {
       "requestedParticipantIds.length === 0",
     );
     expect(startRoute).toContain("isCustomerMessagingRole(profile.role)");
+    expect(startRoute).toContain("ignored invalid request_id");
+    expect(startRoute).not.toContain("request_id must be a UUID");
   });
 
   it("keeps portal request start server-owned after customer auth", () => {
