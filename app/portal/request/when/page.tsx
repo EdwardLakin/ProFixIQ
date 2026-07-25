@@ -59,21 +59,6 @@ function normalizeWeekdayToJs(dowRaw: number): number | null {
   return null;
 }
 
-function toLabelForSlotInZone(iso: string, tz?: string | null) {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unavailable";
-  try {
-    return date.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      ...(tz ? { timeZone: tz } : {}),
-    });
-  } catch {
-    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
-  }
-}
-
 function getWeekdayCandidates(h: ShopHoursRow): number[] {
   const r = rec(h);
 
@@ -188,56 +173,6 @@ function mergeRanges(ranges: Array<[number, number]>): Array<[number, number]> {
   return out;
 }
 
-function computeLocalSlotsForDate(
-  date: string,
-  shopHours: ShopHoursRow[],
-): Slot[] {
-  const d = new Date(`${date}T00:00:00`);
-  const jsDay = d.getDay();
-
-  const candidateRows = shopHours.filter((h) => {
-    if (isClosedRow(h)) return false;
-    const cands = getWeekdayCandidates(h);
-    return cands.includes(jsDay);
-  });
-
-  if (!candidateRows.length) return [];
-
-  const ranges: Array<[number, number]> = [];
-
-  for (const row of candidateRows) {
-    const open = getOpen(row);
-    const close = getClose(row);
-    if (!open || !close) continue;
-
-    const openM = parseHmToMinutes(open);
-    const closeM = parseHmToMinutes(close);
-    if (openM == null || closeM == null) continue;
-    if (closeM <= openM) continue;
-
-    ranges.push([openM, closeM]);
-  }
-
-  const merged = mergeRanges(ranges);
-  if (!merged.length) return [];
-
-  const startOfDay = new Date(`${date}T00:00:00.000`);
-  const out: Slot[] = [];
-
-  for (const [openM, closeM] of merged) {
-    for (let m = openM; m + 60 <= closeM; m += 60) {
-      const slotStart = new Date(startOfDay);
-      slotStart.setMinutes(m, 0, 0);
-      out.push({
-        startsAtIso: slotStart.toISOString(),
-        label: minutesToLabel(m),
-      });
-    }
-  }
-
-  return out;
-}
-
 export default function PortalRequestWhenPage() {
   const supabase = createBrowserSupabase();
   const router = useRouter();
@@ -250,8 +185,6 @@ export default function PortalRequestWhenPage() {
   const [shop, setShop] = useState<ShopRow | null>(null);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [shopHours, setShopHours] = useState<ShopHoursRow[]>([]);
-  const [slots, setSlots] = useState<Slot[]>([]);
-  const [slotsLoading, setSlotsLoading] = useState(false);
 
   const [vehicleId, setVehicleId] = useState<string>("");
   const [date, setDate] = useState<string>(() => toIsoDate(new Date()));
@@ -345,21 +278,12 @@ export default function PortalRequestWhenPage() {
             .eq("id", quoteLineId)
             .eq("shop_id", cust.shop_id)
             .maybeSingle();
-          const quoteMetadata =
-            quote?.metadata &&
-            typeof quote.metadata === "object" &&
-            !Array.isArray(quote.metadata)
-              ? (quote.metadata as Record<string, unknown>)
-              : {};
-          const quoteVehicleId =
-            typeof quote?.vehicle_id === "string" ? quote.vehicle_id : "";
+          const quoteMetadata = quote?.metadata && typeof quote.metadata === "object" && !Array.isArray(quote.metadata)
+            ? quote.metadata as Record<string, unknown>
+            : {};
+          const quoteVehicleId = typeof quote?.vehicle_id === "string" ? quote.vehicle_id : "";
           const ownedVehicle = vv.some((vehicle) => vehicle.id === quoteVehicleId);
-          if (
-            !quote ||
-            quoteMetadata.request_kind !== "repair" ||
-            (!quote.approved_at && !quote.work_order_line_id) ||
-            !ownedVehicle
-          ) {
+          if (!quote || quoteMetadata.request_kind !== "repair" || (!quote.approved_at && !quote.work_order_line_id) || !ownedVehicle) {
             toast.error("This repair quote is not ready to book.");
             router.replace("/portal/quotes");
             return;
@@ -370,10 +294,7 @@ export default function PortalRequestWhenPage() {
         }
       }
 
-      const { data: h, error: hErr } = await supabase
-        .from("shop_hours")
-        .select("*")
-        .eq("shop_id", s.id);
+      const { data: h, error: hErr } = await supabase.from("shop_hours").select("*").eq("shop_id", s.id);
 
       if (cancelled) return;
 
@@ -398,67 +319,61 @@ export default function PortalRequestWhenPage() {
     const days = Array.from({ length: 21 }).map((_, i) => addDays(base, i));
     return days.map((d) => {
       const iso = toIsoDate(d);
-      const label = d.toLocaleDateString(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      });
+      const label = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
       return { iso, label };
     });
   }, []);
 
-  useEffect(() => {
-    if (!date || !shop?.slug) {
-      setSlots([]);
-      return;
+  const slots: Slot[] = useMemo(() => {
+    if (!date) return [];
+    if (!shopHours.length) return [];
+
+    const d = new Date(`${date}T00:00:00`);
+    const jsDay = d.getDay();
+
+    const candidateRows = shopHours.filter((h) => {
+      if (isClosedRow(h)) return false;
+      const cands = getWeekdayCandidates(h);
+      return cands.includes(jsDay);
+    });
+
+    if (!candidateRows.length) return [];
+
+    const ranges: Array<[number, number]> = [];
+
+    for (const row of candidateRows) {
+      const open = getOpen(row);
+      const close = getClose(row);
+      if (!open || !close) continue;
+
+      const openM = parseHmToMinutes(open);
+      const closeM = parseHmToMinutes(close);
+      if (openM == null || closeM == null) continue;
+      if (closeM <= openM) continue;
+
+      ranges.push([openM, closeM]);
     }
 
-    let cancelled = false;
-    setSlotsLoading(true);
+    const merged = mergeRanges(ranges);
+    if (!merged.length) return [];
 
-    const loadSlots = async () => {
-      try {
-        const availabilityUrl = `/api/portal/availability?shop=${encodeURIComponent(
-          shop.slug,
-        )}&start=${encodeURIComponent(
-          date,
-        )}&end=${encodeURIComponent(
-          date,
-        )}&slotMins=60`;
-        const response = await fetch(availabilityUrl, { cache: "no-store" });
+    const startOfDay = new Date(`${date}T00:00:00.000`);
+    const out: Slot[] = [];
 
-        if (!response.ok) {
-          throw new Error("availability endpoint failed");
-        }
+    for (const [openM, closeM] of merged) {
+      for (let m = openM; m + 60 <= closeM; m += 60) {
+        const slotStart = new Date(startOfDay);
+        slotStart.setMinutes(m, 0, 0);
 
-        const payload = (await response.json().catch(() => ({}))) as {
-          slots?: Array<{ start: string }>;
-        };
-        if (cancelled) return;
-
-        const computed = (payload.slots ?? [])
-          .filter((slot) => typeof slot.start === "string")
-          .map((slot) => ({
-            startsAtIso: slot.start,
-            label: toLabelForSlotInZone(slot.start, shop.timezone),
-          }));
-
-        setSlots(computed);
-      } catch {
-        if (cancelled) return;
-        setSlots(computeLocalSlotsForDate(date, shopHours));
-        toast.error("Using local availability fallback. Please verify slot time.");
-      } finally {
-        if (!cancelled) setSlotsLoading(false);
+        out.push({
+          startsAtIso: slotStart.toISOString(),
+          label: minutesToLabel(m),
+        });
       }
-    };
+    }
 
-    void loadSlots();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [date, shop?.slug, shop?.timezone, shopHours]);
+    return out;
+  }, [date, shopHours]);
 
   const startAttemptKeyRef = useRef<string>("");
 
@@ -530,7 +445,7 @@ export default function PortalRequestWhenPage() {
   }
 
   if (loading) {
-    return <div className={cardClass() + " mx-auto max-w-xl text-sm text-[color:var(--theme-text-primary)]"}>Loadingâ€¦</div>;
+    return <div className={cardClass() + " mx-auto max-w-xl text-sm text-[color:var(--theme-text-primary)]"}>Loading…</div>;
   }
 
   if (!customer) {
@@ -539,7 +454,7 @@ export default function PortalRequestWhenPage() {
         <Toaster position="top-center" />
         <div className={cardClass()}>
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Request service</h1>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">We couldnâ€™t find your customer profile yet.</p>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">We couldn’t find your customer profile yet.</p>
           <div className="mt-4 flex gap-2">
             <LinkButton href="/portal/profile" variant="outline" size="sm">
               Go to profile
@@ -559,7 +474,7 @@ export default function PortalRequestWhenPage() {
         <Toaster position="top-center" />
         <div className={cardClass()}>
           <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Request service</h1>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Your portal account isnâ€™t linked to a shop yet.</p>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">Your portal account isn’t linked to a shop yet.</p>
           <div className="mt-4 flex gap-2">
             <LinkButton href="/portal/profile" variant="outline" size="sm">
               Go to profile
@@ -607,12 +522,7 @@ export default function PortalRequestWhenPage() {
               </div>
             </div>
           ) : (
-            <select
-              className={inputClass()}
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              disabled={Boolean(quoteLineId)}
-            >
+            <select className={inputClass()} value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} disabled={Boolean(quoteLineId)}>
               {vehicles.map((v) => {
                 const label =
                   [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim() || "Vehicle";
@@ -645,11 +555,7 @@ export default function PortalRequestWhenPage() {
             <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">1-hour slots</div>
           </div>
 
-          {slotsLoading ? (
-            <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
-              Loading available times...
-            </div>
-          ) : slots.length === 0 ? (
+          {slots.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
               No hours available for this day.
             </div>
@@ -701,7 +607,7 @@ export default function PortalRequestWhenPage() {
             disabled={!canStart || starting || vehicles.length === 0}
             className="min-w-[180px]"
           >
-            {starting ? "Startingâ€¦" : quoteLineId ? "Book this quote" : "Next: choose service"}
+            {starting ? "Starting…" : quoteLineId ? "Book this quote" : "Next: choose service"}
           </Button>
 
           <LinkButton href="/portal/customer-appointments" variant="outline" size="sm">
@@ -710,7 +616,7 @@ export default function PortalRequestWhenPage() {
         </div>
 
         <p className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
-          Next youâ€™ll complete an intake form, then build your request (menu items, custom lines, and quote-only requests).
+          Next you’ll complete an intake form, then build your request (menu items, custom lines, and quote-only requests).
         </p>
       </section>
     </div>

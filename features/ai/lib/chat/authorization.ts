@@ -4,18 +4,25 @@ import type { Database } from "@shared/types/types/supabase";
 type ConversationRow = Database["public"]["Tables"]["conversations"]["Row"];
 type MessagingChannel = "internal" | "customer";
 type ParticipantKind = "staff" | "customer";
-const CUSTOMER_MESSAGING_ROLES_LIST = [
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-  "service",
-  "mechanic",
-] as const;
-export const CUSTOMER_MESSAGING_ROLES = new Set(
-  CUSTOMER_MESSAGING_ROLES_LIST,
-);
-export const CUSTOMER_MESSAGING_ROLE_LIST = CUSTOMER_MESSAGING_ROLES_LIST;
+const CUSTOMER_MESSAGING_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+
+export type MessagingActor =
+  | {
+      kind: "staff";
+      userId: string;
+      profileId: string;
+      shopId: string;
+      role: string | null;
+      customerId: null;
+    }
+  | {
+      kind: "customer";
+      userId: string;
+      customerId: string;
+      shopId: string;
+      role: null;
+      profileId: null;
+    };
 
 type AccessFailure = {
   ok: false;
@@ -372,7 +379,7 @@ export async function authorizeConversationCreate({
       .from("profiles")
       .select("id, user_id")
       .eq("shop_id", actor.shopId)
-      .in("role", CUSTOMER_MESSAGING_ROLE_LIST)
+      .in("role", ["advisor", "manager", "owner", "admin"])
       .limit(50);
 
     if (serviceTeamError) {
