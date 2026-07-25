@@ -23,7 +23,7 @@ describe("portal work-order navigation and messaging", () => {
 
     expect(authorization).toContain('preferredKind === "customer"');
     expect(authorization).toContain('profileRole === "customer"');
-    expect(contextRoute).toContain('.eq("role", "advisor")');
+    expect(contextRoute).toContain('.in("role", CUSTOMER_MESSAGING_ROLE_LIST)');
     expect(contextRoute).toContain("recipients");
     expect(workspace).toContain('aria-label="Message recipient"');
     expect(workspace).toContain(
