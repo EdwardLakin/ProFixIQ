@@ -8,6 +8,7 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/parts/*.runtime.sql"
+      - "tests/security/*.runtime.sql"
       - "db/sql/schema.sql"
       - "scripts/generate-supabase-public-baseline.py"
       - ".github/workflows/supabase-clean-replay-audit.yml"
@@ -110,6 +111,20 @@ jobs:
             -f tests/parts/use-part-handoff.runtime.sql \
             2>&1 | tee parts-use-handoff-runtime.log
 
+      - name: Execute P0 relation-boundary runtime integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-001-relation-boundaries.runtime.sql \
+            2>&1 | tee p0-001-relation-boundaries-runtime.log
+
       - name: Verify bootstrap and existing-database baseline paths
         shell: bash
         env:
@@ -171,6 +186,7 @@ jobs:
             supabase-db-reset.log
             supabase-existing-baseline.log
             parts-use-handoff-runtime.log
+            p0-001-relation-boundaries-runtime.log
             supabase/config.toml
           if-no-files-found: warn
 
