@@ -3,7 +3,10 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import { resolveMessagingActor } from "@/features/ai/lib/chat/authorization";
+import {
+  isCustomerMessagingRole,
+  resolveMessagingActor,
+} from "@/features/ai/lib/chat/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +52,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     { data: workOrders, error: workOrderError },
     { data: bookings, error: bookingError },
     { data: vehicles, error: vehicleError },
-    { data: advisors, error: advisorError },
+    { data: staffRows, error: staffError },
   ] =
     await Promise.all([
       admin
@@ -75,15 +78,14 @@ export async function GET(req: Request): Promise<NextResponse> {
         .limit(25),
       admin
         .from("profiles")
-        .select("id, user_id, full_name, email")
+        .select("id, user_id, full_name, email, role")
         .eq("shop_id", shopId)
-        .eq("role", "advisor")
         .order("full_name", { ascending: true })
-        .limit(50),
+        .limit(100),
     ]);
 
   const queryError =
-    workOrderError ?? bookingError ?? vehicleError ?? advisorError;
+    workOrderError ?? bookingError ?? vehicleError ?? staffError;
   if (queryError) {
     return NextResponse.json({ error: queryError.message }, { status: 500 });
   }
@@ -111,18 +113,19 @@ export async function GET(req: Request): Promise<NextResponse> {
     })),
   ];
 
-  const recipients: RecipientOption[] = (advisors ?? [])
-    .map((advisor) => ({
-      id: advisor.user_id ?? advisor.id,
+  const recipients: RecipientOption[] = (staffRows ?? [])
+    .filter((staff) => isCustomerMessagingRole(staff.role))
+    .map((staff) => ({
+      id: staff.user_id ?? staff.id,
       label:
-        advisor.full_name?.trim() ||
-        advisor.email?.trim() ||
+        staff.full_name?.trim() ||
+        staff.email?.trim() ||
         "Service advisor",
     }))
     .filter(
-      (advisor, index, rows) =>
-        Boolean(advisor.id) &&
-        rows.findIndex((candidate) => candidate.id === advisor.id) === index,
+      (staff, index, rows) =>
+        Boolean(staff.id) &&
+        rows.findIndex((candidate) => candidate.id === staff.id) === index,
     );
 
   return NextResponse.json({ options, recipients });

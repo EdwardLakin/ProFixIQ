@@ -21,9 +21,11 @@ describe("portal work-order navigation and messaging", () => {
       "features/chat/components/PortalMessagesWorkspace.tsx",
     );
 
+    expect(authorization).toContain('export type MessagingActor');
     expect(authorization).toContain('preferredKind === "customer"');
     expect(authorization).toContain('profileRole === "customer"');
-    expect(contextRoute).toContain('.eq("role", "advisor")');
+    expect(authorization).toContain("isCustomerMessagingRole");
+    expect(contextRoute).toContain("isCustomerMessagingRole(staff.role)");
     expect(contextRoute).toContain("recipients");
     expect(workspace).toContain('aria-label="Message recipient"');
     expect(workspace).toContain(
@@ -39,5 +41,22 @@ describe("portal work-order navigation and messaging", () => {
     expect(startRoute).toContain(
       "requestedParticipantIds.length === 0",
     );
+    expect(startRoute).toContain("isCustomerMessagingRole(profile.role)");
+  });
+
+  it("keeps portal request start server-owned after customer auth", () => {
+    const startRoute = source("app/api/portal/request/start/route.ts");
+    const submitRoute = source("app/api/portal/request/submit/route.ts");
+    const migration = source(
+      "supabase/migrations/20260725024500_restore_customer_portal_request_read_access.sql",
+    );
+
+    expect(startRoute).toContain("const userClient = createServerSupabaseRoute()");
+    expect(startRoute).toContain("const actor = await requirePortalCustomerActor(userClient)");
+    expect(startRoute).toContain("const admin = createAdminSupabase()");
+    expect(startRoute).toContain("admin.rpc(");
+    expect(submitRoute).toContain("const admin = createAdminSupabase()");
+    expect(migration).toContain("work_orders_customer_portal_select");
+    expect(migration).toContain("profixiq_is_portal_customer_work_order");
   });
 });

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
@@ -29,10 +32,11 @@ function bad(message: string, status = 400) {
 }
 
 export async function POST(req: Request) {
-  const supabase = createServerSupabaseRoute();
+  const userClient = createServerSupabaseRoute();
 
   try {
-    const actor = await requirePortalCustomerActor(supabase);
+    const actor = await requirePortalCustomerActor(userClient);
+    const admin = createAdminSupabase();
     const body = (await req.json().catch(() => null)) as Body | null;
     const workOrderId = clean(body?.workOrderId);
     const bookingId = clean(body?.bookingId);
@@ -43,7 +47,7 @@ export async function POST(req: Request) {
     if (!customerAgreedAt) return bad("You must agree to the terms before submitting.");
     if (!actor.customer.shop_id) return bad("Customer is not linked to a shop", 409);
 
-    const { data: workOrder, error: workOrderError } = await supabase
+    const { data: workOrder, error: workOrderError } = await admin
       .from("work_orders")
       .select("id,shop_id,customer_id,portal_submitted_at")
       .eq("id", workOrderId)
@@ -53,7 +57,7 @@ export async function POST(req: Request) {
     if (workOrderError) return bad("Failed to load work order", 500);
     if (!workOrder) return bad("Work order not found", 404);
 
-    const { data: booking, error: bookingError } = await supabase
+    const { data: booking, error: bookingError } = await admin
       .from("bookings")
       .select("id,shop_id,customer_id,work_order_id,starts_at,status")
       .eq("id", bookingId)
@@ -72,12 +76,12 @@ export async function POST(req: Request) {
       return bad("This booking time is in the past. Please start again.", 409);
     }
 
-    const { count: lineCount, error: lineError } = await supabase
+    const { count: lineCount, error: lineError } = await admin
       .from("work_order_lines")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", workOrder.shop_id)
       .eq("work_order_id", workOrder.id);
-    const { count: quoteCount, error: quoteError } = await supabase
+    const { count: quoteCount, error: quoteError } = await admin
       .from("work_order_quote_lines")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", workOrder.shop_id)
@@ -91,7 +95,7 @@ export async function POST(req: Request) {
       customer_approval_signature_url: customerSignatureUrl,
       portal_submitted_at: workOrder.portal_submitted_at ?? submittedAt,
     };
-    const { error: updateWorkOrderError } = await supabase
+    const { error: updateWorkOrderError } = await admin
       .from("work_orders")
       .update(workOrderUpdate)
       .eq("id", workOrder.id)
@@ -103,7 +107,7 @@ export async function POST(req: Request) {
       status: "pending",
       work_order_id: workOrder.id,
     };
-    const { error: updateBookingError } = await supabase
+    const { error: updateBookingError } = await admin
       .from("bookings")
       .update(bookingUpdate)
       .eq("id", booking.id)
