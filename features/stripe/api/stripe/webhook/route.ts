@@ -3,9 +3,18 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { syncCanonicalShopBilling } from "@/features/stripe/lib/server/canonical-shop-billing";
+import {
+  getStripeCheckoutEmail,
+  getStripeCheckoutPriceId,
+  isCompletedStripeAcquisitionSession,
+  readStripeAcquisitionMetadata,
+  recordStripeAcquisitionCompletion,
+  STRIPE_ACQUISITION_PURPOSE,
+  toStripeId,
+} from "@/features/stripe/lib/server/stripe-acquisition-intent";
 import {
   getActiveInvoiceVersion,
   postPaymentEvent,
@@ -13,7 +22,7 @@ import {
 } from "@/features/invoices/server/financialLifecycle";
 
 type DB = Database;
-type AdminClient = ReturnType<typeof createClient<DB>>;
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 type WebhookContext = { event: Stripe.Event; stripe: Stripe; supabase: AdminClient };
 
 type FinancialMetadata = {
@@ -31,15 +40,6 @@ function isUuid(value: unknown): value is string {
       value.trim(),
     )
   );
-}
-
-function toStripeId(value: unknown, prefix: string): string | null {
-  if (typeof value === "string" && value.startsWith(prefix)) return value;
-  if (value && typeof value === "object") {
-    const id = (value as { id?: unknown }).id;
-    if (typeof id === "string" && id.startsWith(prefix)) return id;
-  }
-  return null;
 }
 
 function normalizeCurrency(value: unknown): "CAD" | "USD" {
@@ -213,6 +213,146 @@ async function resolveShopIdForSubscription(args: {
   return null;
 }
 
+async function recordAcquisitionCheckout(args: {
+  event: Stripe.Event;
+  session: Stripe.Checkout.Session;
+  stripe: Stripe;
+  supabase: AdminClient;
+}): Promise<void> {
+  const metadata = readStripeAcquisitionMetadata(args.session.metadata);
+  if (!metadata || !isCompletedStripeAcquisitionSession(args.session)) {
+    console.warn("[stripe/webhook] acquisition checkout failed identity validation", {
+      eventId: args.event.id,
+      sessionId: args.session.id,
+    });
+    return;
+  }
+
+  const [priceId, checkoutEmail] = await Promise.all([
+    getStripeCheckoutPriceId(args.stripe, args.session.id),
+    getStripeCheckoutEmail(args.stripe, args.session),
+  ]);
+  const customerId = toStripeId(args.session.customer, "cus_");
+  const subscriptionId = toStripeId(args.session.subscription, "sub_");
+  if (
+    priceId !== metadata.priceId ||
+    !checkoutEmail ||
+    !customerId ||
+    !subscriptionId
+  ) {
+    console.warn("[stripe/webhook] acquisition checkout artifacts did not match", {
+      eventId: args.event.id,
+      sessionId: args.session.id,
+    });
+    return;
+  }
+
+  const recorded = await recordStripeAcquisitionCompletion({
+    admin: args.supabase,
+    metadata,
+    checkoutSessionId: args.session.id,
+    customerId,
+    subscriptionId,
+    checkoutEmail,
+    eventId: args.event.id,
+    eventCreatedAt: new Date(args.event.created * 1000).toISOString(),
+  });
+  if (!recorded) {
+    console.warn("[stripe/webhook] acquisition intent rejected completion", {
+      eventId: args.event.id,
+      sessionId: args.session.id,
+    });
+  }
+}
+
+async function linkVerifiedOwnerCheckout(args: {
+  event: Stripe.Event;
+  session: Stripe.Checkout.Session;
+  stripe: Stripe;
+  supabase: AdminClient;
+}): Promise<void> {
+  if (
+    args.session.status !== "complete" ||
+    (args.session.payment_status !== "paid" &&
+      args.session.payment_status !== "no_payment_required")
+  ) {
+    return;
+  }
+
+  const userId = String(args.session.metadata?.supabase_user_id ?? "").trim();
+  const shopId = String(args.session.metadata?.shop_id ?? "").trim();
+  const customerId = toStripeId(args.session.customer, "cus_");
+  const subscriptionId = toStripeId(args.session.subscription, "sub_");
+  if (!isUuid(userId) || !isUuid(shopId) || !customerId || !subscriptionId) return;
+
+  const [{ data: profile, error: profileError }, { data: shop, error: shopError }] =
+    await Promise.all([
+      args.supabase
+        .from("profiles")
+        .select("id, shop_id, role")
+        .eq("id", userId)
+        .maybeSingle<{ id: string; shop_id: string | null; role: string | null }>(),
+      args.supabase
+        .from("shops")
+        .select("id, stripe_customer_id")
+        .eq("id", shopId)
+        .maybeSingle<{ id: string; stripe_customer_id: string | null }>(),
+    ]);
+
+  const role = String(profile?.role ?? "").trim().toLowerCase();
+  if (
+    profileError ||
+    shopError ||
+    !profile ||
+    !shop ||
+    profile.shop_id !== shopId ||
+    (role !== "owner" && role !== "admin") ||
+    shop.stripe_customer_id !== customerId
+  ) {
+    console.warn("[stripe/webhook] owner checkout no longer matches billing authority", {
+      eventId: args.event.id,
+      sessionId: args.session.id,
+    });
+    return;
+  }
+
+  const [{ error: profileUpdateError }, { error: shopUpdateError }] = await Promise.all([
+    args.supabase
+      .from("profiles")
+      .update({
+        stripe_checkout_complete: true,
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscriptionId,
+        stripe_checkout_session_id: args.session.id,
+      } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
+      .eq("id", userId)
+      .eq("shop_id", shopId),
+    args.supabase
+      .from("shops")
+      .update({
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscriptionId,
+        stripe_checkout_session_id: args.session.id,
+      } as unknown as DB["public"]["Tables"]["shops"]["Update"])
+      .eq("id", shopId)
+      .eq("stripe_customer_id", customerId),
+  ]);
+  if (profileUpdateError || shopUpdateError) {
+    throw new Error(
+      `owner checkout persistence failed (${profileUpdateError?.code ?? shopUpdateError?.code ?? "unknown"})`,
+    );
+  }
+
+  await syncCanonicalShopBilling({
+    stripe: args.stripe,
+    supabase: args.supabase,
+    shopId,
+    customerId,
+    subscriptionId,
+    checkoutSessionId: args.session.id,
+  });
+}
+
 async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
   const { event, stripe, supabase } = ctx;
 
@@ -252,45 +392,11 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
       }
 
       if (session.mode === "subscription") {
-        const userId =
-          session.metadata?.supabase_user_id ??
-          session.metadata?.supabaseUserId ??
-          (isUuid(session.client_reference_id) ? session.client_reference_id : null);
-        const customerId = toStripeId(session.customer, "cus_");
-        const subscriptionId = toStripeId(session.subscription, "sub_");
-        const shopId = String(session.metadata?.shop_id ?? "").trim();
-
-        if (isUuid(userId)) {
-          await supabase
-            .from("profiles")
-            .update({
-              stripe_checkout_complete: true,
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
-              stripe_checkout_session_id: session.id,
-            } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
-            .eq("id", userId);
-        }
-
-        if (isUuid(shopId)) {
-          await supabase
-            .from("shops")
-            .update({
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
-              stripe_checkout_session_id: session.id,
-            } as unknown as DB["public"]["Tables"]["shops"]["Update"])
-            .eq("id", shopId);
-          if (subscriptionId) {
-            await syncCanonicalShopBilling({
-              stripe,
-              supabase,
-              shopId,
-              customerId,
-              subscriptionId,
-              checkoutSessionId: session.id,
-            });
-          }
+        const purpose = String(session.metadata?.purpose ?? "").trim();
+        if (purpose === STRIPE_ACQUISITION_PURPOSE) {
+          await recordAcquisitionCheckout({ event, session, stripe, supabase });
+        } else if (purpose === "profixiq_subscription") {
+          await linkVerifiedOwnerCheckout({ event, session, stripe, supabase });
         }
       }
       return;
@@ -399,10 +505,7 @@ export async function handleStripeWebhook(req: Request): Promise<Response> {
   if (!signature) return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
 
   const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY);
-  const supabase = createClient<DB>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-  );
+  const supabase = createAdminSupabase();
 
   let event: Stripe.Event;
   try {

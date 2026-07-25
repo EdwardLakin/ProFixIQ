@@ -189,23 +189,31 @@ export async function reconcileShopBillingFromUser(params: {
     (typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id ?? null);
 
   if (customerId) {
-    await stripe.customers.update(customerId, {
+    await stripe.customers.update(
+      customerId,
+      {
+        metadata: {
+          shop_id: shopId,
+          supabase_user_id: userId,
+          source: "profixiq",
+        },
+      },
+      { idempotencyKey: `profixiq:reconcile-customer:${userId}:${shopId}` },
+    );
+  }
+
+  await stripe.subscriptions.update(
+    subscriptionId,
+    {
       metadata: {
+        ...(subscription.metadata ?? {}),
         shop_id: shopId,
         supabase_user_id: userId,
         source: "profixiq",
       },
-    });
-  }
-
-  await stripe.subscriptions.update(subscriptionId, {
-    metadata: {
-      ...(subscription.metadata ?? {}),
-      shop_id: shopId,
-      supabase_user_id: userId,
-      source: "profixiq",
     },
-  });
+    { idempotencyKey: `profixiq:reconcile-subscription:${userId}:${shopId}` },
+  );
 
   await syncCanonicalShopBilling({
     stripe,
@@ -216,87 +224,4 @@ export async function reconcileShopBillingFromUser(params: {
   });
 
   return { linked: true };
-}
-
-export async function reconcileShopBillingFromCheckoutSession(params: {
-  stripe: Stripe;
-  supabase: SupabaseClient<DB>;
-  userId: string;
-  shopId: string;
-  sessionId: string;
-}): Promise<{ linked: boolean; reason?: string }> {
-  const { stripe, supabase, userId, shopId, sessionId } = params;
-  const trimmedSessionId = sessionId.trim();
-  if (!trimmedSessionId.startsWith("cs_")) {
-    return { linked: false, reason: "invalid_checkout_session_id" };
-  }
-
-  const session = await stripe.checkout.sessions.retrieve(trimmedSessionId);
-  if (session.mode !== "subscription") {
-    return { linked: false, reason: "not_subscription_checkout" };
-  }
-
-  const sessionCustomerId =
-    typeof session.customer === "string" ? session.customer : null;
-  const sessionSubscriptionId =
-    typeof session.subscription === "string" ? session.subscription : null;
-
-  if (!sessionCustomerId && !sessionSubscriptionId) {
-    return { linked: false, reason: "session_missing_billing_artifacts" };
-  }
-
-  const metadataUserId = String(session.metadata?.supabase_user_id ?? "").trim();
-  if (metadataUserId && metadataUserId !== userId) {
-    return { linked: false, reason: "session_user_mismatch" };
-  }
-
-  const { error: profileError } = await supabase
-    .from("profiles")
-    .update({
-      stripe_checkout_complete: true,
-      stripe_checkout_session_id: session.id,
-      stripe_customer_id: sessionCustomerId,
-      stripe_subscription_id: sessionSubscriptionId,
-    } as unknown as DB["public"]["Tables"]["profiles"]["Update"])
-    .eq("id", userId);
-
-  if (profileError) {
-    throw new Error(profileError.message);
-  }
-
-  if (sessionCustomerId) {
-    await stripe.customers.update(sessionCustomerId, {
-      metadata: {
-        shop_id: shopId,
-        supabase_user_id: userId,
-        source: "profixiq",
-      },
-    });
-  }
-
-  if (sessionSubscriptionId) {
-    const subscription = await stripe.subscriptions.retrieve(sessionSubscriptionId);
-    await stripe.subscriptions.update(sessionSubscriptionId, {
-      metadata: {
-        ...(subscription.metadata ?? {}),
-        shop_id: shopId,
-        supabase_user_id: userId,
-        source: "profixiq",
-      },
-    });
-  }
-
-  if (sessionSubscriptionId) {
-    await syncCanonicalShopBilling({
-      stripe,
-      supabase,
-      shopId,
-      customerId: sessionCustomerId,
-      subscriptionId: sessionSubscriptionId,
-      checkoutSessionId: session.id,
-    });
-    return { linked: true };
-  }
-
-  return { linked: false, reason: "no_subscription_found" };
 }

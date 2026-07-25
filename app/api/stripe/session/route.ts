@@ -5,7 +5,12 @@ import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 
-const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY!);
+function noStoreJson(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
 
 export async function GET(req: Request) {
   try {
@@ -13,28 +18,11 @@ export async function GET(req: Request) {
     const sessionId = (url.searchParams.get("session_id") ?? "").trim();
 
     if (!sessionId) {
-      return NextResponse.json({ error: "Missing session_id" }, { status: 400 });
+      return noStoreJson({ error: "Missing session_id" }, 400);
     }
 
-    if (!sessionId.startsWith("cs_")) {
-      return NextResponse.json({ error: "Invalid session_id" }, { status: 400 });
-    }
-
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    const metadataPurpose = String(session.metadata?.purpose ?? "").trim();
-
-    if (metadataPurpose === "profixiq_acquisition") {
-      let email: string | null = session.customer_details?.email ?? null;
-
-      if (!email && typeof session.customer === "string") {
-        const customer = await stripe.customers.retrieve(session.customer);
-
-        if (customer && !("deleted" in customer)) {
-          email = customer.email ?? null;
-        }
-      }
-
-      return NextResponse.json({ email }, { status: 200 });
+    if (!/^cs_[A-Za-z0-9_]+$/.test(sessionId)) {
+      return noStoreJson({ error: "Invalid session_id" }, 400);
     }
 
     const access = await requireShopScopedApiAccess({
@@ -46,6 +34,12 @@ export async function GET(req: Request) {
     });
     if (!access.ok) return access.response;
 
+    const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
+    if (!secretKey) return noStoreJson({ error: "Billing unavailable" }, 503);
+    const stripe = createStripeClient(secretKey);
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const metadataPurpose = String(session.metadata?.purpose ?? "").trim();
+
     const { data: shop } = await access.supabase
       .from("shops")
       .select("id, stripe_customer_id")
@@ -53,7 +47,7 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (!shop) {
-      return NextResponse.json({ error: "Shop not found" }, { status: 404 });
+      return noStoreJson({ error: "Shop not found" }, 404);
     }
 
     const metadataShopId = String(session.metadata?.shop_id ?? "").trim();
@@ -67,7 +61,7 @@ export async function GET(req: Request) {
       !shopCustomer ||
       sessionCustomer !== shopCustomer
     ) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return noStoreJson({ error: "Forbidden" }, 403);
     }
 
     let email: string | null = session.customer_details?.email ?? null;
@@ -80,13 +74,10 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({ email }, { status: 200 });
+    return noStoreJson({ email });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("Stripe session lookup failed:", message);
-    return NextResponse.json(
-      { error: "Failed to fetch session", details: message },
-      { status: 500 },
-    );
+    return noStoreJson({ error: "Failed to fetch session" }, 500);
   }
 }

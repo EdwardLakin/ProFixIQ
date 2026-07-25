@@ -9,6 +9,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 import { getProfileStripeArtifacts } from "@/features/stripe/lib/server/canonical-shop-billing";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type DB = Database;
 
@@ -41,18 +42,23 @@ async function createCustomerIfMissing(
   stripe: Stripe,
   supabase: SupabaseClient<DB>,
   shop: ShopScope,
+  actorId: string,
 ): Promise<string> {
   const existingCustomerId = (shop.stripe_customer_id ?? "").trim();
   if (existingCustomerId) return existingCustomerId;
 
-  const customer = await stripe.customers.create({
-    email: shop.email ?? undefined,
-    name: getShopDisplayName(shop),
-    metadata: {
-      shop_id: shop.id,
-      source: "profixiq",
+  const customer = await stripe.customers.create(
+    {
+      email: shop.email ?? undefined,
+      name: getShopDisplayName(shop),
+      metadata: {
+        shop_id: shop.id,
+        source: "profixiq",
+        supabase_user_id: actorId,
+      },
     },
-  });
+    { idempotencyKey: `profixiq:portal-customer:${shop.id}` },
+  );
 
   const { error: updateError } = await supabase
     .from("shops")
@@ -116,7 +122,12 @@ export async function POST(req: Request) {
       }
     }
 
-    const customerId = await createCustomerIfMissing(stripe, access.supabase, shop);
+    const customerId = await createCustomerIfMissing(
+      stripe,
+      createAdminSupabase(),
+      shop,
+      access.profile.id,
+    );
     const returnUrl = `${getSiteUrl()}/dashboard/owner/settings#billing`;
 
     const session = await stripe.billingPortal.sessions.create({

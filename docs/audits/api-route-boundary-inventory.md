@@ -1,6 +1,6 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-07-25T22:46:58.427Z
+Generated: 2026-07-25T23:33:03.315Z
 
 ## Summary
 - Total route count: **381**
@@ -11,7 +11,7 @@ Generated: 2026-07-25T22:46:58.427Z
 - Routes exporting DELETE: **12**
 - Routes with service-role pattern: **24**
 - Routes using requireShopScopedApiAccess: **123**
-- Routes with auth.getUser references: **145**
+- Routes with auth.getUser references: **144**
 
 ## High-Risk Routes
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker

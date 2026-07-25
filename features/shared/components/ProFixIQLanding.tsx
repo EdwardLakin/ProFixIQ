@@ -148,11 +148,19 @@ export default function ProFixIQLanding() {
     window.location.href = "/";
   };
 
-  const startCheckout = async ({ planKey, interval }: { planKey: PlanKey; interval: Interval }) => {
+  const startCheckout = async ({
+    planKey,
+    interval,
+    checkoutAttemptId,
+  }: {
+    planKey: PlanKey;
+    interval: Interval;
+    checkoutAttemptId: string;
+  }) => {
     const response = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source: "pricing_cta", planKey, interval, enableTrial: true, applyFoundingDiscount: true, cancelPath: "/compare-plans" }),
+      body: JSON.stringify({ flow: "acquisition", planKey, interval, checkoutAttemptId }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.url) throw new Error(String(data?.error ?? data?.details ?? "Unable to start checkout"));

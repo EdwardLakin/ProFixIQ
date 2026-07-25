@@ -11114,6 +11114,10 @@ export type Database = {
           shop_id: string | null
           shop_name: string | null
           street: string | null
+          stripe_checkout_complete: boolean
+          stripe_checkout_session_id: string | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           tech_signature_hash: string | null
           tech_signature_path: string | null
           tech_signature_updated_at: string | null
@@ -11143,6 +11147,10 @@ export type Database = {
           shop_id?: string | null
           shop_name?: string | null
           street?: string | null
+          stripe_checkout_complete?: boolean
+          stripe_checkout_session_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           tech_signature_hash?: string | null
           tech_signature_path?: string | null
           tech_signature_updated_at?: string | null
@@ -11172,6 +11180,10 @@ export type Database = {
           shop_id?: string | null
           shop_name?: string | null
           street?: string | null
+          stripe_checkout_complete?: boolean
+          stripe_checkout_session_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           tech_signature_hash?: string | null
           tech_signature_path?: string | null
           tech_signature_updated_at?: string | null
@@ -16938,6 +16950,7 @@ export type Database = {
           street: string | null
           stripe_account_id: string | null
           stripe_charges_enabled: boolean
+          stripe_checkout_session_id: string | null
           stripe_current_period_end: string | null
           stripe_customer_id: string | null
           stripe_default_currency: string
@@ -17005,6 +17018,7 @@ export type Database = {
           street?: string | null
           stripe_account_id?: string | null
           stripe_charges_enabled?: boolean
+          stripe_checkout_session_id?: string | null
           stripe_current_period_end?: string | null
           stripe_customer_id?: string | null
           stripe_default_currency?: string
@@ -17072,6 +17086,7 @@ export type Database = {
           street?: string | null
           stripe_account_id?: string | null
           stripe_charges_enabled?: boolean
+          stripe_checkout_session_id?: string | null
           stripe_current_period_end?: string | null
           stripe_customer_id?: string | null
           stripe_default_currency?: string
@@ -23275,6 +23290,61 @@ export type Database = {
     }
     Functions: {
       _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
+      attach_stripe_acquisition_checkout: {
+        Args: {
+          p_checkout_session_id: string
+          p_intent_id: string
+          p_nonce: string
+        }
+        Returns: boolean
+      }
+      begin_stripe_acquisition_intent: {
+        Args: {
+          p_founding_discount_applied: boolean
+          p_nonce: string
+          p_plan_key: string
+          p_request_key: string
+          p_stripe_price_id: string
+          p_trial_days: number
+        }
+        Returns: {
+          checkout_session_id: string | null
+          intent_id: string
+          intent_nonce: string
+          intent_status: string
+        }[]
+      }
+      claim_stripe_acquisition_intent: {
+        Args: {
+          p_checkout_email: string
+          p_checkout_session_id: string
+          p_customer_id: string
+          p_intent_id: string
+          p_nonce: string
+          p_stripe_price_id: string
+          p_subscription_id: string
+          p_user_id: string
+        }
+        Returns: {
+          claimed: boolean
+          denial_reason: string | null
+          shop_id: string | null
+        }[]
+      }
+      record_stripe_acquisition_completion: {
+        Args: {
+          p_checkout_email: string
+          p_checkout_session_id: string
+          p_customer_id: string
+          p_event_created_at: string
+          p_event_id: string
+          p_intent_id: string
+          p_nonce: string
+          p_stripe_price_id: string
+          p_subscription_id: string
+        }
+        Returns: boolean
+      }
       accept_property_portal_invite: {
         Args: { p_raw_token: string }
         Returns: Json
