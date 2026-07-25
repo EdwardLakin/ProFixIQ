@@ -1,6 +1,9 @@
 // app/api/portal/request/start/route.ts
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 
@@ -59,8 +62,9 @@ function isDuplicateKeyError(
 
 export async function POST(req: Request) {
   try {
-    const supabase = createServerSupabaseRoute();
-    const actor = await requirePortalCustomerActor(supabase);
+    const userClient = createServerSupabaseRoute();
+    const actor = await requirePortalCustomerActor(userClient);
+    const admin = createAdminSupabase();
 
     let body: Body;
     try {
@@ -95,7 +99,7 @@ export async function POST(req: Request) {
     const startsAt = startsAtDate.toISOString();
     const endsAt = addMinsIso(startsAt, duration);
 
-    const { data: customer, error: custErr } = await supabase
+    const { data: customer, error: custErr } = await admin
       .from("customers")
       .select("id, shop_id")
       .eq("id", actor.customer.id)
@@ -117,7 +121,7 @@ export async function POST(req: Request) {
         ? body.vehicleId.trim()
         : null;
     if (vehicleId) {
-      const { data: vehicle, error: vehicleErr } = await supabase
+      const { data: vehicle, error: vehicleErr } = await admin
         .from("vehicles")
         .select("id")
         .eq("id", vehicleId)
@@ -144,7 +148,7 @@ export async function POST(req: Request) {
         p_at: new Date().toISOString(),
       };
       const { data, error } = await (
-        supabase as never as {
+        userClient as never as {
           rpc: (
             fn: "book_portal_repair_quote_atomic",
             args: typeof quotePayload,
@@ -169,7 +173,7 @@ export async function POST(req: Request) {
 
     const sourceRowId = `portal_start:${customer.id}:${normalizedKey}`;
 
-    const { data: existingWo, error: existingWoErr } = await supabase
+    const { data: existingWo, error: existingWoErr } = await admin
       .from("work_orders")
       .select("id")
       .eq("shop_id", customer.shop_id)
@@ -179,7 +183,7 @@ export async function POST(req: Request) {
 
     if (existingWoErr) return bad("Failed to verify request replay", 500);
     if (existingWo?.id) {
-      const { data: existingBooking, error: existingBookingErr } = await supabase
+      const { data: existingBooking, error: existingBookingErr } = await admin
         .from("bookings")
         .select("id")
         .eq("work_order_id", existingWo.id)
@@ -209,7 +213,7 @@ export async function POST(req: Request) {
     };
 
     const { data: created, error: createErr } = await (
-      supabase as never as {
+      admin as never as {
         rpc: (
           fn: "portal_request_start_atomic",
           args: typeof rpcPayload,
@@ -222,7 +226,7 @@ export async function POST(req: Request) {
 
     if (createErr) {
       if (isDuplicateKeyError(createErr)) {
-        const { data: fallbackWo } = await supabase
+        const { data: fallbackWo } = await admin
           .from("work_orders")
           .select("id")
           .eq("shop_id", customer.shop_id)
@@ -231,7 +235,7 @@ export async function POST(req: Request) {
           .maybeSingle();
 
         if (fallbackWo?.id) {
-          const { data: fallbackBooking } = await supabase
+          const { data: fallbackBooking } = await admin
             .from("bookings")
             .select("id")
             .eq("work_order_id", fallbackWo.id)
