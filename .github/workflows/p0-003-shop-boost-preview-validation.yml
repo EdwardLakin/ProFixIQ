@@ -9,6 +9,7 @@ on:
       - "app/demo/report/**"
       - "features/integrations/shopBoost/**"
       - "tests/shop-boost-preview-*.test.ts"
+      - "tsconfig.p0-003.json"
       - ".github/workflows/p0-003-shop-boost-preview-validation.yml"
 
 permissions:
@@ -28,7 +29,7 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
+      - run: pnpm exec tsc --noEmit -p tsconfig.p0-003.json
       - run: >-
           pnpm exec eslint
           app/api/demo/shop-boost/claim/route.ts

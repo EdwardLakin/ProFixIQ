@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import DemoPreviewPage from "@/app/demo/preview/[demoId]/page";
-import DemoReportPage from "@/app/demo/report/[demoId]/page";
+import DemoPreviewPage from "../app/demo/preview/[demoId]/page";
+import DemoReportPage from "../app/demo/report/[demoId]/page";
 import {
   generateShopBoostPreviewToken,
   verifyShopBoostPreviewToken,

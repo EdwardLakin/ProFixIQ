@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { POST as claimPreview } from "@/app/api/demo/shop-boost/claim/route";
-import { POST as runAnalysis } from "@/app/api/demo/shop-boost/run/route";
-import { POST as sharePreview } from "@/app/api/demo/shop-boost/share/route";
+import { POST as claimPreview } from "../app/api/demo/shop-boost/claim/route";
+import { POST as runAnalysis } from "../app/api/demo/shop-boost/run/route";
+import { POST as sharePreview } from "../app/api/demo/shop-boost/share/route";
 import {
   generateShopBoostPreviewToken,
   verifyShopBoostPreviewToken,
