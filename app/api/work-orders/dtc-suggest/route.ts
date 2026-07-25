@@ -676,14 +676,12 @@ export async function POST(req: Request) {
       errorCode: null,
     });
 
-    const finalMessages: PersistedMessage[] = [
-      ...nextMessages,
-      {
-        role: "assistant",
-        content: ai.reply,
-        createdAt: new Date().toISOString(),
-      },
-    ].slice(-40);
+    const assistantMessage: PersistedMessage = {
+      role: "assistant",
+      content: ai.reply,
+      createdAt: new Date().toISOString(),
+    };
+    const finalMessages = [...nextMessages, assistantMessage].slice(-40);
 
     const finalSummary = ai.summary ?? persistedSummary;
 
