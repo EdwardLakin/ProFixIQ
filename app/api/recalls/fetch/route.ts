@@ -25,6 +25,10 @@ type VehicleScope = {
   make: string | null;
   model: string | null;
 };
+type RecallQuota = {
+  allowed: boolean;
+  retry_after_seconds: number;
+};
 
 function json(body: Record<string, unknown>, status = 200, headers?: HeadersInit) {
   return NextResponse.json(body, {
@@ -122,7 +126,9 @@ export async function POST(request: Request) {
     return json({ ok: false, error: "Recall lookup is temporarily unavailable." }, 503);
   }
 
-  const quota = quotaRows?.[0];
+  const quota = Array.isArray(quotaRows)
+    ? (quotaRows[0] as RecallQuota | undefined)
+    : undefined;
   if (!quota?.allowed) {
     const retryAfter = Math.max(1, quota?.retry_after_seconds ?? 60);
     return json(

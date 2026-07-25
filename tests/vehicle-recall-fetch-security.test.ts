@@ -111,7 +111,7 @@ describe("POST /api/recalls/fetch tenant boundary", () => {
       ok: false,
       response: Response.json({ error: "Not authenticated" }, { status: 401 }),
     });
-    const { POST } = await import("@/app/api/recalls/fetch/route");
+    const { POST } = await import("../app/api/recalls/fetch/route");
 
     const response = await POST(request({ vehicleId: VEHICLE_ID }));
 
@@ -122,7 +122,7 @@ describe("POST /api/recalls/fetch tenant boundary", () => {
 
   it("returns not found for a vehicle outside the actor shop", async () => {
     mocks.vehicleMaybeSingle.mockResolvedValue({ data: null, error: null });
-    const { POST } = await import("@/app/api/recalls/fetch/route");
+    const { POST } = await import("../app/api/recalls/fetch/route");
 
     const response = await POST(request({ vehicleId: VEHICLE_ID }));
 
@@ -134,7 +134,7 @@ describe("POST /api/recalls/fetch tenant boundary", () => {
   });
 
   it("rejects a malformed vehicle id", async () => {
-    const { POST } = await import("@/app/api/recalls/fetch/route");
+    const { POST } = await import("../app/api/recalls/fetch/route");
 
     const response = await POST(request({ vehicleId: "not-a-uuid" }));
 
@@ -155,7 +155,7 @@ describe("POST /api/recalls/fetch tenant boundary", () => {
       },
       error: null,
     });
-    const { POST } = await import("@/app/api/recalls/fetch/route");
+    const { POST } = await import("../app/api/recalls/fetch/route");
 
     const response = await POST(request({ vehicleId: VEHICLE_ID }));
 
@@ -165,7 +165,7 @@ describe("POST /api/recalls/fetch tenant boundary", () => {
   });
 
   it("ignores forged identity and vehicle fields and writes only server-derived scope", async () => {
-    const { POST } = await import("@/app/api/recalls/fetch/route");
+    const { POST } = await import("../app/api/recalls/fetch/route");
 
     const response = await POST(
       request({
@@ -204,7 +204,7 @@ describe("POST /api/recalls/fetch tenant boundary", () => {
       data: [{ allowed: false, retry_after_seconds: 37 }],
       error: null,
     });
-    const { POST } = await import("@/app/api/recalls/fetch/route");
+    const { POST } = await import("../app/api/recalls/fetch/route");
 
     const response = await POST(request({ vehicleId: VEHICLE_ID }));
 
@@ -215,7 +215,7 @@ describe("POST /api/recalls/fetch tenant boundary", () => {
   });
 
   it("uses a stable tenant-safe conflict key on repeated requests", async () => {
-    const { POST } = await import("@/app/api/recalls/fetch/route");
+    const { POST } = await import("../app/api/recalls/fetch/route");
 
     const first = await POST(request({ vehicleId: VEHICLE_ID }));
     const second = await POST(request({ vehicleId: VEHICLE_ID }));
