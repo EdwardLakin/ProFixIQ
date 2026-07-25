@@ -32,6 +32,20 @@ type QuoteBookingRpcResult = {
   idempotent?: boolean;
 };
 
+type DbError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+type AdminSupabase = ReturnType<typeof createAdminSupabase>;
+
+type PortalCustomer = {
+  id: string;
+  shop_id: string;
+};
+
 function bad(msg: string, status = 400) {
   return NextResponse.json({ error: msg }, { status });
 }
@@ -51,12 +65,136 @@ function normalizeIdempotencyKey(v: unknown): string {
   return v.trim().toLowerCase().slice(0, 120);
 }
 
+function serializeDbError(err: DbError | null | undefined) {
+  return {
+    code: err?.code ?? null,
+    message: err?.message ?? null,
+    details: err?.details ?? null,
+    hint: err?.hint ?? null,
+  };
+}
+
+function dbErrorText(err: DbError | null | undefined): string {
+  return [err?.code, err?.message, err?.details, err?.hint]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function isPortalStartCompatibilityError(
+  err: DbError | null | undefined,
+): boolean {
+  const text = dbErrorText(err);
+  return (
+    text.includes("source_row_id") ||
+    text.includes("scheduled_at") ||
+    text.includes("portal_request_start_atomic") ||
+    text.includes("schema cache") ||
+    text.includes("pgrst202") ||
+    text.includes("pgrst204") ||
+    text.includes("42703") ||
+    (text.includes("function") && text.includes("not found")) ||
+    (text.includes("column") && text.includes("not found"))
+  );
+}
+
 function isDuplicateKeyError(
   err: { code?: string | null; message?: string | null } | null,
 ): boolean {
   return (
     err?.code === "23505" ||
     (err?.message ?? "").toLowerCase().includes("duplicate key")
+  );
+}
+
+function statusForCreateError(err: DbError | null | undefined): number {
+  const text = dbErrorText(err);
+  if (err?.code === "P0001" || err?.code === "23P01" || text.includes("overlap")) {
+    return 409;
+  }
+  return 500;
+}
+
+async function createPortalRequestDirect({
+  supabase,
+  customer,
+  vehicleId,
+  startsAt,
+  endsAt,
+  visitType,
+  notes,
+  sourceRowId,
+}: {
+  supabase: AdminSupabase;
+  customer: PortalCustomer;
+  vehicleId: string | null;
+  startsAt: string;
+  endsAt: string;
+  visitType: "waiter" | "drop_off";
+  notes: string | null;
+  sourceRowId: string | null;
+}): Promise<{ row: StartRpcRow | null; error: DbError | null }> {
+  const notesValue = notes?.trim() || null;
+  const workOrderInsert = {
+    shop_id: customer.shop_id,
+    customer_id: customer.id,
+    vehicle_id: vehicleId,
+    status: "awaiting_approval",
+    approval_state: "pending",
+    is_waiter: visitType === "waiter",
+    notes: notesValue,
+    portal_submitted_at: new Date().toISOString(),
+    ...(sourceRowId ? { source_row_id: sourceRowId } : {}),
+  };
+
+  const { data: workOrder, error: workOrderErr } = await supabase
+    .from("work_orders")
+    .insert(workOrderInsert)
+    .select("id")
+    .single();
+
+  if (workOrderErr || !workOrder?.id) {
+    return { row: null, error: workOrderErr ?? { message: "Work order was not created" } };
+  }
+
+  const { data: booking, error: bookingErr } = await supabase
+    .from("bookings")
+    .insert({
+      shop_id: customer.shop_id,
+      customer_id: customer.id,
+      vehicle_id: vehicleId,
+      work_order_id: workOrder.id,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      status: "pending",
+      notes: notesValue,
+    })
+    .select("id")
+    .single();
+
+  if (bookingErr || !booking?.id) {
+    await supabase.from("work_orders").delete().eq("id", workOrder.id);
+    return { row: null, error: bookingErr ?? { message: "Booking was not created" } };
+  }
+
+  return {
+    row: {
+      work_order_id: workOrder.id,
+      booking_id: booking.id,
+      deduped: false,
+    },
+    error: null,
+  };
+}
+
+function portalStartResponse(row: StartRpcRow, statusOverride?: number) {
+  return NextResponse.json(
+    {
+      workOrderId: row.work_order_id,
+      bookingId: row.booking_id,
+      replayed: Boolean(row.deduped),
+    },
+    { status: statusOverride ?? (row.deduped ? 200 : 201) },
   );
 }
 
@@ -172,6 +310,7 @@ export async function POST(req: Request) {
     }
 
     const sourceRowId = `portal_start:${customer.id}:${normalizedKey}`;
+    const notes = (body.notes ?? "").trim() || null;
 
     const { data: existingWo, error: existingWoErr } = await admin
       .from("work_orders")
@@ -181,14 +320,46 @@ export async function POST(req: Request) {
       .eq("source_row_id", sourceRowId)
       .maybeSingle();
 
-    if (existingWoErr) return bad("Failed to verify request replay", 500);
+    if (existingWoErr) {
+      console.error("[portal/request/start] replay lookup failed", {
+        error: serializeDbError(existingWoErr),
+      });
+      if (isPortalStartCompatibilityError(existingWoErr)) {
+        const fallback = await createPortalRequestDirect({
+          supabase: admin,
+          customer,
+          vehicleId,
+          startsAt,
+          endsAt,
+          visitType,
+          notes,
+          sourceRowId: null,
+        });
+        if (fallback.error || !fallback.row) {
+          console.error("[portal/request/start] direct fallback failed", {
+            error: serializeDbError(fallback.error),
+          });
+          return bad(
+            fallback.error?.message || "Failed to start request",
+            statusForCreateError(fallback.error),
+          );
+        }
+        return portalStartResponse(fallback.row, 201);
+      }
+      return bad("Failed to verify request replay", 500);
+    }
     if (existingWo?.id) {
       const { data: existingBooking, error: existingBookingErr } = await admin
         .from("bookings")
         .select("id")
         .eq("work_order_id", existingWo.id)
         .maybeSingle();
-      if (existingBookingErr) return bad("Failed to verify existing booking", 500);
+      if (existingBookingErr) {
+        console.error("[portal/request/start] existing booking lookup failed", {
+          error: serializeDbError(existingBookingErr),
+        });
+        return bad("Failed to verify existing booking", 500);
+      }
       if (existingBooking?.id) {
         return NextResponse.json(
           {
@@ -208,7 +379,7 @@ export async function POST(req: Request) {
       p_starts_at: startsAt,
       p_ends_at: endsAt,
       p_visit_type: visitType,
-      p_notes: (body.notes ?? "").trim() || null,
+      p_notes: notes,
       p_source_row_id: sourceRowId,
     };
 
@@ -219,12 +390,38 @@ export async function POST(req: Request) {
           args: typeof rpcPayload,
         ) => Promise<{
           data: StartRpcRow[] | null;
-          error: { code?: string; message?: string } | null;
+          error: DbError | null;
         }>;
       }
     ).rpc("portal_request_start_atomic", rpcPayload);
 
     if (createErr) {
+      console.error("[portal/request/start] atomic create failed", {
+        error: serializeDbError(createErr),
+      });
+      if (isPortalStartCompatibilityError(createErr)) {
+        const fallback = await createPortalRequestDirect({
+          supabase: admin,
+          customer,
+          vehicleId,
+          startsAt,
+          endsAt,
+          visitType,
+          notes,
+          sourceRowId,
+        });
+        if (fallback.error || !fallback.row) {
+          console.error("[portal/request/start] direct fallback failed", {
+            error: serializeDbError(fallback.error),
+          });
+          return bad(
+            fallback.error?.message || "Failed to start request",
+            statusForCreateError(fallback.error),
+          );
+        }
+        return portalStartResponse(fallback.row, 201);
+      }
+
       if (isDuplicateKeyError(createErr)) {
         const { data: fallbackWo } = await admin
           .from("work_orders")
@@ -264,14 +461,7 @@ export async function POST(req: Request) {
       return bad("Failed to create work order and booking", 500);
     }
 
-    return NextResponse.json(
-      {
-        workOrderId: row.work_order_id,
-        bookingId: row.booking_id,
-        replayed: Boolean(row.deduped),
-      },
-      { status: row.deduped ? 200 : 201 },
-    );
+    return portalStartResponse(row);
   } catch (e: unknown) {
     if (e instanceof PortalAccessError) return bad(e.message, e.status);
     const msg = e instanceof Error ? e.message : String(e);
