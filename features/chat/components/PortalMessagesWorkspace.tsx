@@ -52,6 +52,24 @@ type RecipientOption = {
   label: string;
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function ensureUuid(value: string | null | undefined): string {
+  return value && UUID_RE.test(value) ? value : crypto.randomUUID();
+}
+
+function normalizeMessageDraft(draft: OfflineMessageDraft): OfflineMessageDraft {
+  const conversationRequestId = ensureUuid(draft.conversationRequestId);
+  const clientMessageId = ensureUuid(draft.clientMessageId);
+  if (
+    conversationRequestId === draft.conversationRequestId &&
+    clientMessageId === draft.clientMessageId
+  ) {
+    return draft;
+  }
+  return { ...draft, conversationRequestId, clientMessageId };
+}
+
 export default function PortalMessagesWorkspace(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const searchParams = useSearchParams();
@@ -110,10 +128,18 @@ export default function PortalMessagesWorkspace(): JSX.Element {
         };
         const options = payload.options;
         const safeOptions = Array.isArray(options) ? options : [];
+        const safeRecipients = Array.isArray(payload.recipients)
+          ? payload.recipients
+          : [];
         setContextOptions(safeOptions);
-        setRecipientOptions(
-          Array.isArray(payload.recipients) ? payload.recipients : [],
-        );
+        setRecipientOptions(safeRecipients);
+        if (safeRecipients.length > 0) {
+          setError((current) =>
+            current === "No customer-facing shop staff are available"
+              ? null
+              : current,
+          );
+        }
         if (
           requestedContextKey &&
           safeOptions.some(
@@ -145,8 +171,12 @@ export default function PortalMessagesWorkspace(): JSX.Element {
         targetId: draftTargetId,
       });
       if (cancelled) return;
-      const next =
+      const rawNext =
         stored ?? createMessageDraft({ scope, targetId: draftTargetId });
+      const next = normalizeMessageDraft(rawNext);
+      if (stored && next !== rawNext) {
+        void saveOfflineMessageDraft(next);
+      }
       setDraftScope(scope);
       setNewThreadDraft(next);
       setMessage(next.content);
@@ -210,8 +240,21 @@ export default function PortalMessagesWorkspace(): JSX.Element {
     const selectedContext = contextOptions.find(
       (option) => `${option.type}:${option.id}` === contextKey,
     );
-    const requestId =
-      newThreadDraft?.conversationRequestId ?? crypto.randomUUID();
+    const requestId = ensureUuid(newThreadDraft?.conversationRequestId);
+    const clientMessageId = ensureUuid(newThreadDraft?.clientMessageId);
+    if (
+      newThreadDraft &&
+      (requestId !== newThreadDraft.conversationRequestId ||
+        clientMessageId !== newThreadDraft.clientMessageId)
+    ) {
+      const refreshed = {
+        ...newThreadDraft,
+        conversationRequestId: requestId,
+        clientMessageId,
+      };
+      setNewThreadDraft(refreshed);
+      if (draftScope) void saveOfflineMessageDraft(refreshed);
+    }
 
     try {
       const createResponse = await fetch("/api/chat/start-conversation", {
@@ -242,8 +285,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
         body: JSON.stringify({
           conversationId: created.id,
           content,
-          clientMessageId:
-            newThreadDraft?.clientMessageId ?? crypto.randomUUID(),
+          clientMessageId,
         }),
       });
       if (!messageResponse.ok) {
@@ -295,6 +337,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
         <button
           type="button"
           onClick={() => {
+            setError(null);
             setNewThread(true);
             setActiveId(null);
           }}
@@ -410,7 +453,10 @@ export default function PortalMessagesWorkspace(): JSX.Element {
               />
               <select
                 value={recipientUserId}
-                onChange={(event) => setRecipientUserId(event.target.value)}
+                onChange={(event) => {
+                  setRecipientUserId(event.target.value);
+                  setError(null);
+                }}
                 aria-label="Message recipient"
                 className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-sm"
               >
