@@ -45,7 +45,8 @@ describe("portal work-order navigation and messaging", () => {
       "requestedParticipantIds.length === 0",
     );
     expect(startRoute).toContain("isCustomerMessagingRole(profile.role)");
-    expect(startRoute).toContain("ignored invalid request_id");
+    expect(startRoute).toContain("deterministicUuidFromRequestId");
+    expect(startRoute).toContain("normalized invalid request_id");
     expect(startRoute).not.toContain("request_id must be a UUID");
   });
 
