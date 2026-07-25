@@ -67,24 +67,6 @@ values
   )
 on conflict (id) do nothing;
 
-insert into public.shops (id, owner_id, business_name, name, user_limit)
-values
-  (
-    'c6100000-0000-4000-8000-000000000001',
-    '66000000-0000-4000-8000-000000000001',
-    'P0-006 Shop A',
-    'P0-006 Shop A',
-    3
-  ),
-  (
-    'd6200000-0000-4000-8000-000000000002',
-    '67000000-0000-4000-8000-000000000002',
-    'P0-006 Shop B',
-    'P0-006 Shop B',
-    3
-  )
-on conflict (id) do nothing;
-
 insert into public.profiles (id, user_id, role, full_name, shop_id)
 values
   (
@@ -106,13 +88,35 @@ values
     '68000000-0000-4000-8000-000000000003',
     'mechanic',
     'P0-006 Mechanic',
-    'd6200000-0000-4000-8000-000000000002'
+    null
   )
 on conflict (id) do update
 set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name,
     shop_id = excluded.shop_id;
+
+insert into public.shops (id, owner_id, business_name, name, user_limit)
+values
+  (
+    'c6100000-0000-4000-8000-000000000001',
+    '66000000-0000-4000-8000-000000000001',
+    'P0-006 Shop A',
+    'P0-006 Shop A',
+    3
+  ),
+  (
+    'd6200000-0000-4000-8000-000000000002',
+    '67000000-0000-4000-8000-000000000002',
+    'P0-006 Shop B',
+    'P0-006 Shop B',
+    3
+  )
+on conflict (id) do nothing;
+
+update public.profiles
+set shop_id = 'd6200000-0000-4000-8000-000000000002'
+where id = '68000000-0000-4000-8000-000000000003';
 
 set local role service_role;
 
