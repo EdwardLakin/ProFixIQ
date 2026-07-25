@@ -291,6 +291,8 @@ begin
     'P0-002 runtime assertion failed: denied stock move succeeded';
 end;
 $$;
+grant execute on function pg_temp.expect_stock_move_denied(uuid, uuid, uuid)
+  to anon, authenticated;
 
 create function pg_temp.expect_user_limit_denied()
 returns void
@@ -310,6 +312,8 @@ begin
     'P0-002 runtime assertion failed: denied user-limit mutation succeeded';
 end;
 $$;
+grant execute on function pg_temp.expect_user_limit_denied()
+  to anon, authenticated;
 
 set local role anon;
 select pg_temp.expect_stock_move_denied(
@@ -410,6 +414,8 @@ begin
     'P0-002 runtime assertion failed: conflicting retry succeeded';
 end;
 $$;
+grant execute on function pg_temp.expect_idempotency_conflict()
+  to authenticated;
 
 set local role authenticated;
 select pg_temp.expect_idempotency_conflict();

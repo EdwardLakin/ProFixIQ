@@ -441,6 +441,8 @@ begin
     p_relation;
 end;
 $$;
+grant execute on function pg_temp.expect_anon_select_denied(regclass)
+  to anon;
 
 set local role anon;
 insert into p0_001_public_view_result
@@ -684,6 +686,8 @@ begin
     p_target;
 end;
 $$;
+grant execute on function pg_temp.expect_protected_insert_denied(text)
+  to authenticated;
 
 create function pg_temp.expect_disallowed_updates_hidden()
 returns void
@@ -711,6 +715,8 @@ begin
   end if;
 end;
 $$;
+grant execute on function pg_temp.expect_disallowed_updates_hidden()
+  to authenticated;
 
 -- Same-shop technicians may read operational records but cannot mutate
 -- inventory, warranty, or private shop-profile configuration.
