@@ -114,6 +114,16 @@ values
   )
 on conflict (id) do nothing;
 
+-- The baseline shop trigger immediately links owner profiles to newly inserted
+-- shops. Restore the acquisition fixtures to their intended pre-onboarding
+-- state before exercising the claim path.
+update public.profiles
+set shop_id = null
+where id in (
+  '66000000-0000-4000-8000-000000000001',
+  '67000000-0000-4000-8000-000000000002'
+);
+
 update public.profiles
 set shop_id = 'd6200000-0000-4000-8000-000000000002'
 where id = '68000000-0000-4000-8000-000000000003';
