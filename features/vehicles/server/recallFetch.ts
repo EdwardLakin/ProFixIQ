@@ -160,6 +160,8 @@ export async function fetchNhtsaRecalls(
         await sleep(150 * attempt);
         continue;
       }
+
+      throw lastError;
     } finally {
       clearTimeout(timeout);
     }
