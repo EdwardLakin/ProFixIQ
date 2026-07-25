@@ -61,11 +61,14 @@ describe("portal work-order navigation and messaging", () => {
     expect(startRoute).toContain("const admin = createAdminSupabase()");
     expect(startRoute).toContain("admin.rpc(");
     expect(startRoute).toContain("isPortalStartCompatibilityError");
-    expect(startRoute).toContain("createPortalRequestDirect");
+    expect(startRoute).toContain("portalSetupUnavailable");
     expect(startRoute).toContain(
       'console.error("[portal/request/start] replay lookup failed"',
     );
-    expect(startRoute).toContain("sourceRowId: null");
+    expect(startRoute).toContain("Retry-After");
+    expect(startRoute).not.toContain("createPortalRequestDirect");
+    expect(startRoute).not.toContain("portal_submitted_at");
+    expect(startRoute).not.toContain("sourceRowId: null");
     expect(submitRoute).toContain("const admin = createAdminSupabase()");
     expect(migration).toContain("work_orders_customer_portal_select");
     expect(migration).toContain("profixiq_is_portal_customer_work_order");
