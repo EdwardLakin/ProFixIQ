@@ -15,7 +15,9 @@ export type AIFeature =
   | "ai_summarize_stats"
   | "openai_realtime_token"
   | "work_order_documentation_rewrite"
-  | "branding_generate_logo";
+  | "branding_generate_logo"
+  | "dtc_suggest"
+  | "inspection_interpret";
 
 const AI_POLICIES: Record<AIFeature, AIPolicy> = {
   work_orders_suggest_lines: {
@@ -52,6 +54,20 @@ const AI_POLICIES: Record<AIFeature, AIPolicy> = {
     timeoutMs: 30000,
     maxTokens: 0,
     fallbackMode: "hard_fail",
+  },
+  dtc_suggest: {
+    feature: "dtc_suggest",
+    modelPurpose: "reasoning",
+    timeoutMs: 20000,
+    maxTokens: 900,
+    fallbackMode: "graceful_empty",
+  },
+  inspection_interpret: {
+    feature: "inspection_interpret",
+    modelPurpose: "extraction",
+    timeoutMs: 12000,
+    maxTokens: 700,
+    fallbackMode: "graceful_empty",
   },
 };
 

@@ -23583,6 +23583,35 @@ export type Database = {
             Args: { p_location_id: string; p_request_item_id: string }
             Returns: undefined
           }
+      complete_ai_route_quota: {
+        Args: {
+          p_actor_id: string
+          p_actual_cost_usd: number
+          p_feature: string
+          p_receipt_id: string
+          p_shop_id: string
+          p_succeeded: boolean
+        }
+        Returns: boolean
+      }
+      consume_ai_route_quota: {
+        Args: {
+          p_actor_id: string
+          p_actor_max: number
+          p_feature: string
+          p_hard_budget_usd: number
+          p_reservation_cost_usd: number
+          p_shop_id: string
+          p_shop_max: number
+          p_window_seconds: number
+        }
+        Returns: {
+          allowed: boolean
+          denial_reason: string | null
+          receipt_id: string | null
+          retry_after_seconds: number
+        }[]
+      }
       consume_vehicle_recall_fetch_quota: {
         Args: {
           p_actor_id: string

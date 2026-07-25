@@ -167,6 +167,20 @@ jobs:
             -f tests/security/p0-004-vehicle-recall-fetch.runtime.sql \
             2>&1 | tee p0-004-vehicle-recall-fetch-runtime.log
 
+      - name: Execute P0 AI route governance integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-005-ai-route-governance.runtime.sql \
+            2>&1 | tee p0-005-ai-route-governance-runtime.log
+
       - name: Verify bootstrap and existing-database baseline paths
         shell: bash
         env:
@@ -232,6 +246,7 @@ jobs:
             p0-002-rpc-privileges-runtime.log
             p0-002-stock-move-signature-compat-runtime.log
             p0-004-vehicle-recall-fetch-runtime.log
+            p0-005-ai-route-governance-runtime.log
             supabase/config.toml
           if-no-files-found: warn
 

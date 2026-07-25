@@ -200,6 +200,24 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/admin/users/[id]/resend-invite/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "public_or_token",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/admin/users/[id]/route.ts",
     "methods": [
       "PUT",
@@ -412,17 +430,17 @@
       "POST"
     ],
     "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
+    "hasRequireShopScopedApiAccess": true,
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
     "hasServiceRolePattern": false,
-    "hasShopReference": false,
+    "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [
-      "mutating_without_obvious_auth_marker"
+      "has_stronger_boundary_signal"
     ],
-    "riskLevel": "high"
+    "riskLevel": "low"
   },
   {
     "path": "app/api/ai/parts/suggest/route.ts",
@@ -1294,12 +1312,15 @@
     "hasRequireShopScopedApiAccess": false,
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
-    "hasServiceRolePattern": false,
+    "hasServiceRolePattern": true,
     "hasShopReference": true,
-    "hasRoleOrCapabilityReference": false,
+    "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "public_or_token",
-    "riskFlags": [],
-    "riskLevel": "low"
+    "riskFlags": [
+      "mutating_with_service_role_without_obvious_auth_or_boundary",
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "high"
   },
   {
     "path": "app/api/demo/shop-boost/share/route.ts",
@@ -1361,17 +1382,17 @@
       "POST"
     ],
     "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
+    "hasRequireShopScopedApiAccess": true,
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
     "hasServiceRolePattern": false,
-    "hasShopReference": false,
+    "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [
-      "mutating_without_obvious_auth_marker"
+      "has_stronger_boundary_signal"
     ],
-    "riskLevel": "high"
+    "riskLevel": "low"
   },
   {
     "path": "app/api/email/logs/route.ts",
@@ -2906,6 +2927,24 @@
     "riskLevel": "high"
   },
   {
+    "path": "app/api/parts/picker/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "isMutating": false,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "public_or_token",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/parts/receiving/receive-item/route.ts",
     "methods": [
       "POST"
@@ -4118,17 +4157,17 @@
       "POST"
     ],
     "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
-    "hasServiceRolePattern": true,
-    "hasShopReference": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "public_or_token",
+    "routeClassGuess": "staff_or_admin",
     "riskFlags": [
-      "mutating_with_service_role_without_obvious_auth_or_boundary"
+      "has_stronger_boundary_signal"
     ],
-    "riskLevel": "high"
+    "riskLevel": "low"
   },
   {
     "path": "app/api/receive-scan/route.ts",
@@ -4258,7 +4297,7 @@
     "hasServiceRolePattern": false,
     "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "public_or_token",
+    "routeClassGuess": "staff_or_admin",
     "riskFlags": [],
     "riskLevel": "low"
   },
@@ -5820,14 +5859,16 @@
       "POST"
     ],
     "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
+    "hasRequireShopScopedApiAccess": true,
     "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": true,
+    "hasAuthGetUser": false,
     "hasServiceRolePattern": false,
     "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "public_or_token",
-    "riskFlags": [],
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
     "riskLevel": "low"
   },
   {
@@ -6417,6 +6458,61 @@
     "hasServiceRolePattern": false,
     "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
+    "path": "app/api/workforce/flat-rate/credits/route.ts",
+    "methods": [
+      "GET",
+      "PUT"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
+    "path": "app/api/workforce/job-time/corrections/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
+    "path": "app/api/workforce/me/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "isMutating": false,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": false,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [
       "has_stronger_boundary_signal"
