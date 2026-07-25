@@ -4,10 +4,7 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import {
-  authorizeConversationCreate,
-  CUSTOMER_MESSAGING_ROLE_LIST,
-} from "@/features/ai/lib/chat/authorization";
+import { authorizeConversationCreate } from "@/features/ai/lib/chat/authorization";
 import { authorizeConversationContext } from "@/features/chat/server/conversationContext";
 
 export const dynamic = "force-dynamic";
@@ -103,42 +100,46 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    const { data: assignedAdvisor, error: advisorError } = workOrder?.advisor_id
-      ? await admin
+    if (workOrder?.advisor_id) {
+      const [
+        { data: assignedAdvisor, error: advisorError },
+        { data: coverage, error: coverageError },
+      ] = await Promise.all([
+        admin
           .from("profiles")
           .select("id,user_id")
           .eq("id", workOrder.advisor_id)
           .eq("shop_id", createAccess.actorShopId)
-          .maybeSingle()
-      : { data: null, error: null };
+          .maybeSingle(),
+        admin
+          .from("profiles")
+          .select("id,user_id")
+          .eq("shop_id", createAccess.actorShopId)
+          .in("role", ["owner", "admin", "manager"])
+          .limit(25),
+      ]);
 
-    const { data: coverage, error: coverageError } = await admin
-      .from("profiles")
-      .select("id,user_id")
-      .eq("shop_id", createAccess.actorShopId)
-      .in("role", CUSTOMER_MESSAGING_ROLE_LIST)
-      .limit(50);
+      const recipientError = advisorError ?? coverageError;
+      if (recipientError) {
+        return NextResponse.json(
+          { error: recipientError.message },
+          { status: 500 },
+        );
+      }
 
-    const recipientError = advisorError ?? coverageError;
-    if (recipientError) {
-      return NextResponse.json(
-        { error: recipientError.message },
-        { status: 500 },
-      );
-    }
-
-    const advisorUserId = assignedAdvisor?.user_id ?? assignedAdvisor?.id ?? null;
-    const coverageUserIds = (coverage ?? [])
-      .map((profile) => profile.user_id ?? profile.id)
-      .filter((id): id is string => Boolean(id) && id !== user.id);
-
-    if (advisorUserId || coverageUserIds.length > 0) {
-      recipientUserIds = Array.from(
-        new Set([...(advisorUserId ? [advisorUserId] : []), ...coverageUserIds]),
-      ).filter((id) => id !== user.id);
-      participantKindByUserId = Object.fromEntries(
-        recipientUserIds.map((id) => [id, "staff" as const]),
-      );
+      const advisorUserId =
+        assignedAdvisor?.user_id ?? assignedAdvisor?.id ?? null;
+      if (advisorUserId) {
+        recipientUserIds = Array.from(
+          new Set([
+            advisorUserId,
+            ...(coverage ?? []).map((profile) => profile.user_id ?? profile.id),
+          ]),
+        ).filter((id) => id !== user.id);
+        participantKindByUserId = Object.fromEntries(
+          recipientUserIds.map((id) => [id, "staff" as const]),
+        );
+      }
     }
   }
 

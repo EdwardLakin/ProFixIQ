@@ -3,10 +3,7 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import {
-  resolveMessagingActor,
-  CUSTOMER_MESSAGING_ROLE_LIST,
-} from "@/features/ai/lib/chat/authorization";
+import { resolveMessagingActor } from "@/features/ai/lib/chat/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +77,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         .from("profiles")
         .select("id, user_id, full_name, email")
         .eq("shop_id", shopId)
-        .in("role", CUSTOMER_MESSAGING_ROLE_LIST)
+        .eq("role", "advisor")
         .order("full_name", { ascending: true })
         .limit(50),
     ]);
