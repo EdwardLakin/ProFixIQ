@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import {
@@ -28,10 +31,11 @@ function bad(message: string, status = 400) {
 }
 
 export async function POST(req: Request) {
-  const supabase = createServerSupabaseRoute();
+  const userClient = createServerSupabaseRoute();
 
   try {
-    const actor = await requirePortalCustomerActor(supabase);
+    const actor = await requirePortalCustomerActor(userClient);
+    const admin = createAdminSupabase();
     const body = (await req.json().catch(() => null)) as Body | null;
     const description = clean(body?.description);
     const workOrderId = clean(body?.workOrderId) || null;
@@ -47,7 +51,7 @@ export async function POST(req: Request) {
 
     let vehicleId = clean(body?.vehicleId);
     if (workOrderId) {
-      const { data: workOrder, error } = await supabase
+      const { data: workOrder, error } = await admin
         .from("work_orders")
         .select("id, vehicle_id")
         .eq("id", workOrderId)
@@ -61,7 +65,7 @@ export async function POST(req: Request) {
     if (!vehicleId) return bad("A vehicle is required for a quote request.");
 
     const result = await createPortalQuoteRequest({
-      supabase,
+      supabase: userClient,
       shopId: actor.customer.shop_id,
       customerId: actor.customer.id,
       vehicleId,
