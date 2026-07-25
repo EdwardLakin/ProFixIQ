@@ -4,12 +4,17 @@
 -- PostgreSQL grants EXECUTE on new functions to PUBLIC by default. The
 -- baseline also granted broad table, sequence, and function privileges to the
 -- client roles. Future migrations must grant client access intentionally.
+-- Function EXECUTE is granted to PUBLIC by PostgreSQL's global default, so
+-- that revoke must be global; a schema-scoped revoke cannot remove it.
+alter default privileges for role postgres
+  revoke execute on functions from public;
+
 alter default privileges for role postgres in schema public
-  revoke all privileges on tables from public, anon, authenticated;
+  revoke all privileges on tables from anon, authenticated;
 alter default privileges for role postgres in schema public
-  revoke all privileges on sequences from public, anon, authenticated;
+  revoke all privileges on sequences from anon, authenticated;
 alter default privileges for role postgres in schema public
-  revoke all privileges on functions from public, anon, authenticated;
+  revoke all privileges on functions from anon, authenticated;
 
 alter default privileges for role postgres in schema public
   grant all privileges on tables to service_role;
