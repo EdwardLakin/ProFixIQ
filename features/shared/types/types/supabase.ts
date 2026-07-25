@@ -18810,6 +18810,48 @@ export type Database = {
           },
         ]
       }
+      vehicle_recall_fetch_limits: {
+        Row: {
+          request_count: number
+          scope: string
+          shop_id: string
+          subject_id: string
+          updated_at: string
+          window_started_at: string
+        }
+        Insert: {
+          request_count?: number
+          scope: string
+          shop_id: string
+          subject_id: string
+          updated_at?: string
+          window_started_at?: string
+        }
+        Update: {
+          request_count?: number
+          scope?: string
+          shop_id?: string
+          subject_id?: string
+          updated_at?: string
+          window_started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_recall_fetch_limits_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_recall_fetch_limits_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicle_recalls: {
         Row: {
           campaign_number: string
@@ -23541,6 +23583,17 @@ export type Database = {
             Args: { p_location_id: string; p_request_item_id: string }
             Returns: undefined
           }
+      consume_vehicle_recall_fetch_quota: {
+        Args: {
+          p_actor_id: string
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: {
+          allowed: boolean
+          retry_after_seconds: number
+        }[]
+      }
       create_fleet_form_upload: {
         Args: { _filename: string; _path: string }
         Returns: string

@@ -1,0 +1,45 @@
+name: P0-004 Vehicle Recall Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/recalls/fetch/**"
+      - "app/vehicle/VinCaptureModal.tsx"
+      - "app/agent/planner/page.tsx"
+      - "app/mobile/work-orders/create/page.tsx"
+      - "features/vehicles/**"
+      - "features/work-orders/app/work-orders/create/page.tsx"
+      - "features/shared/types/types/supabase.ts"
+      - "tests/vehicle-recall-fetch-security.test.ts"
+      - "tsconfig.p0-004.json"
+      - ".github/workflows/p0-004-vehicle-recall-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit -p tsconfig.p0-004.json
+      - run: >-
+          pnpm exec eslint
+          app/api/recalls/fetch/route.ts
+          app/vehicle/VinCaptureModal.tsx
+          app/agent/planner/page.tsx
+          app/mobile/work-orders/create/page.tsx
+          features/vehicles/lib/requestRecallEnrichment.ts
+          features/vehicles/server/recallFetch.ts
+          features/work-orders/app/work-orders/create/page.tsx
+          tests/vehicle-recall-fetch-security.test.ts
+      - run: pnpm exec vitest run tests/vehicle-recall-fetch-security.test.ts

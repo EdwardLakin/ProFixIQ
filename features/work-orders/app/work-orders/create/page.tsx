@@ -29,6 +29,7 @@ import type {
 import { normalizeCustomerForIntake } from "@/features/inspections/lib/customerNormalization";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
+import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestRecallEnrichment";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -1414,6 +1415,7 @@ useEffect(() => {
       const hadExplicitVehicleId = Boolean(vehicleId);
       const cust = await ensureCustomer(shopId);
       const veh = await ensureVehicleRow(cust, shopId);
+      void requestVehicleRecallEnrichment(veh.id);
       const persistedCustomer = hydrateCustomerFromRow(cust);
       const persistedVehicle = hydrateVehicleFromRow(veh);
 

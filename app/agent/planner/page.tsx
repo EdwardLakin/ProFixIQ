@@ -1521,7 +1521,7 @@ export default function PlannerPage() {
               engine: d.engine ?? null,
             });
             setPlateOrVin(d.vin);
-            setToast("VIN decoded and recalls queued ✅");
+            setToast("VIN decoded and added to the work-order draft.");
             window.setTimeout(() => setToast(null), 4000);
 
             setCustomerDraft({
