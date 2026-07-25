@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "app/api/recalls/fetch/route.ts",
+    "app/vehicle/VinCaptureModal.tsx",
+    "features/vehicles/lib/requestRecallEnrichment.ts",
+    "features/vehicles/server/recallFetch.ts",
+    "features/work-orders/app/work-orders/create/page.tsx",
+    "app/mobile/work-orders/create/page.tsx",
+    "app/agent/planner/page.tsx",
+    "tests/vehicle-recall-fetch-security.test.ts"
+  ]
+}

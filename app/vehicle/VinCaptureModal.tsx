@@ -168,28 +168,6 @@ export default function VinCaptureModal({
       window.removeEventListener("vin:decoded", handler as EventListener);
   }, [setOpen]);
 
-  const fetchRecallData = useCallback(
-    (vin: string, decoded: DecodeVinResponseExtended) => {
-      if (!decoded.year || !decoded.make || !decoded.model) return;
-
-      void fetch("/api/recalls/fetch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          vin,
-          year: decoded.year,
-          make: decoded.make,
-          model: decoded.model,
-          user_id: userId,
-        }),
-        keepalive: true,
-      }).catch(() => {
-        // Recall enrichment must never block vehicle intake.
-      });
-    },
-    [userId],
-  );
-
   const handleManualVin = useCallback(
     async (rawVin: string) => {
       const normalized = normalizeVinInput(rawVin);
@@ -212,7 +190,6 @@ export default function VinCaptureModal({
 
         const enriched = decoded as DecodeVinResponseExtended;
         applyDecodedVehicle(normalized.vin, enriched);
-        fetchRecallData(normalized.vin, enriched);
         setOpen(false);
       } catch {
         setCaptureError(
@@ -223,7 +200,7 @@ export default function VinCaptureModal({
         setIsDecoding(false);
       }
     },
-    [applyDecodedVehicle, fetchRecallData, setOpen, userId],
+    [applyDecodedVehicle, setOpen, userId],
   );
 
   const handleScannedVin = useCallback(
@@ -255,13 +232,12 @@ export default function VinCaptureModal({
           if (decoded.error) return;
           const enriched = decoded as DecodeVinResponseExtended;
           applyDecodedVehicle(normalized.vin, enriched);
-          fetchRecallData(normalized.vin, enriched);
         })
         .catch(() => {
           // Local intake is already complete.
         });
     },
-    [applyDecodedVehicle, fetchRecallData, setOpen, userId],
+    [applyDecodedVehicle, setOpen, userId],
   );
 
   return (
