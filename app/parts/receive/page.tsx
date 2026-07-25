@@ -71,8 +71,6 @@ export default function ReceivePage(): JSX.Element {
   const [selectedPo, setSelectedPo] = useState<string>("");
   const [selectedLoc, setSelectedLoc] = useState<string>("");
   const [locs, setLocs] = useState<StockLoc[]>([]);
-  const [lastScan, setLastScan] = useState<string>("");
-
   const videoRef = useRef<HTMLDivElement | null>(null);
   const [scanning, setScanning] = useState<boolean>(false);
   const [qty, setQty] = useState<number>(1);
@@ -185,7 +183,6 @@ export default function ReceivePage(): JSX.Element {
 
       lastScanRef.current = code;
       receiveBusyRef.current = true;
-      setLastScan(code);
       setLastResult(null);
 
       if (!selectedLoc) {
@@ -193,7 +190,6 @@ export default function ReceivePage(): JSX.Element {
         receiveBusyRef.current = false;
         window.setTimeout(() => {
           lastScanRef.current = "";
-          setLastScan("");
         }, 800);
         return;
       }
@@ -213,7 +209,6 @@ export default function ReceivePage(): JSX.Element {
         });
         window.setTimeout(() => {
           lastScanRef.current = "";
-          setLastScan("");
         }, 900);
         return;
       }
@@ -226,7 +221,6 @@ export default function ReceivePage(): JSX.Element {
         scanOperationRef.current = null;
         window.setTimeout(() => {
           lastScanRef.current = "";
-          setLastScan("");
         }, 1200);
         return;
       }
@@ -295,7 +289,6 @@ export default function ReceivePage(): JSX.Element {
         setBusy(false);
         window.setTimeout(() => {
           lastScanRef.current = "";
-          setLastScan("");
         }, 900);
       }
     };
