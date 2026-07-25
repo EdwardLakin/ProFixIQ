@@ -106,6 +106,26 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
     anomalyHighCostUsd: envNum("AI_ANOMALY_COST_BRANDING", 1.5),
     anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_BRANDING", 3),
   },
+  dtc_suggest: {
+    budgetSoftUsd: 50,
+    budgetHardUsd: 75,
+    rateLimitMax: 20,
+    rateLimitWindowMs: 5 * 60 * 1000,
+    anomalySpikeThreshold: 15,
+    anomalyFailureThreshold: 6,
+    anomalyHighCostUsd: 0.2,
+    anomalyHardDenialThreshold: 4,
+  },
+  inspection_interpret: {
+    budgetSoftUsd: 35,
+    budgetHardUsd: 50,
+    rateLimitMax: 60,
+    rateLimitWindowMs: 5 * 60 * 1000,
+    anomalySpikeThreshold: 45,
+    anomalyFailureThreshold: 8,
+    anomalyHighCostUsd: 0.08,
+    anomalyHardDenialThreshold: 8,
+  },
 };
 
 export function estimateAICostUsd(feature: AIFeature, totalTokens: number | null): number {

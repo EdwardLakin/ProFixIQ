@@ -1,20 +1,19 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-07-24T02:48:34.215Z
+Generated: 2026-07-25T22:46:58.427Z
 
 ## Summary
-- Total route count: **376**
-- Routes exporting GET: **119**
-- Routes exporting POST: **267**
-- Routes exporting PUT: **9**
+- Total route count: **381**
+- Routes exporting GET: **122**
+- Routes exporting POST: **269**
+- Routes exporting PUT: **10**
 - Routes exporting PATCH: **22**
 - Routes exporting DELETE: **12**
 - Routes with service-role pattern: **24**
-- Routes using requireShopScopedApiAccess: **114**
-- Routes with auth.getUser references: **146**
+- Routes using requireShopScopedApiAccess: **123**
+- Routes with auth.getUser references: **145**
 
 ## High-Risk Routes
-- `app/api/ai/interpret/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/branding/assets/[id]/activate/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/branding/assets/[id]/archive/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -24,10 +23,10 @@ Generated: 2026-07-24T02:48:34.215Z
 - `app/api/branding/user-preferences/reset/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/branding/user-preferences/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/dashboard/layout/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/demo/shop-boost/run/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
 - `app/api/demo/shop-boost/share/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/demo/shop-boost/uploads/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/diag/log/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/dtc-suggest/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/fleet/service-requests/convert-to-work-order/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/inspections/build/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/integrations/quickbooks/connect/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -57,7 +56,6 @@ Generated: 2026-07-24T02:48:34.215Z
 - `app/api/payroll-time/periods/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/rebuild/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/settings/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/recalls/fetch/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/scheduling/shifts/[id]/route.ts` | methods: PATCH, DELETE | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/shop-assistant/actions/[actionId]/cancel/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/shop-assistant/actions/[actionId]/confirm/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -104,6 +102,7 @@ Generated: 2026-07-24T02:48:34.215Z
 - `app/api/agent/requests/[id]/notify-discord/route.ts` | methods: POST | riskFlags: none
 - `app/api/agent/requests/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/assignables/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/demo/shop-boost/run/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
 - `app/api/integrations/quickbooks/callback/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/invoice-versions/[id]/pdf/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/invoices/send/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -114,7 +113,6 @@ Generated: 2026-07-24T02:48:34.215Z
 - `app/api/portal/payments/session/[id]/route.ts` | methods: GET | riskFlags: none
 - `app/api/quotes/apply-ai/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/quotes/send/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
-- `app/api/recalls/fetch/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/time/labor-segments/backfill/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/work-orders/[id]/corrections/[sessionId]/close/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/work-orders/[id]/corrections/open/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -127,7 +125,6 @@ Generated: 2026-07-24T02:48:34.215Z
 
 ## Routes Missing Obvious Auth Markers (staff/admin guess)
 - `app/api/agent/events/route.ts` | methods: GET | riskFlags: none
-- `app/api/ai/interpret/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ai/suggest/route.ts` | methods: none | riskFlags: none
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/auth/send-reset-email/route.ts` | methods: none | riskFlags: none
@@ -144,7 +141,6 @@ Generated: 2026-07-24T02:48:34.215Z
 - `app/api/demo/shop-boost/share/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/demo/shop-boost/uploads/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/diag/log/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/dtc-suggest/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/fleet/service-requests/convert-to-work-order/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/inspections/build/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/integrations/quickbooks/connect/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker

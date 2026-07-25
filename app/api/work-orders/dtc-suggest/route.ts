@@ -1,11 +1,37 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { openai } from "lib/server/openai";
+import { z } from "zod";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
+import {
+  claimDurableAIRouteQuota,
+  completeDurableAIRouteQuota,
+} from "@/features/shared/lib/server/durable-ai-guard";
+import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
+import { estimateAICostUsd, registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
+import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
+import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { Database, Json } from "@shared/types/types/supabase";
 
 type DB = Database;
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const FEATURE = "dtc_suggest" as const;
+const ENDPOINT = "/api/work-orders/dtc-suggest";
+const REQUEST_MAX_BYTES = 32 * 1024;
+const DTC_ALLOWED_ROLES = [...ROLE_GROUPS.workOrderManagers, "mechanic"] as const;
+
+const jobIdSchema = z.string().uuid();
+const postBodySchema = z.object({
+  jobId: jobIdSchema,
+  code: z.string().trim().max(32).nullable().optional(),
+  userMessage: z.string().trim().min(1).max(4000),
+});
 
 type ChatRole = "user" | "assistant";
 
@@ -74,12 +100,6 @@ type RouteContext = {
   vehicle: VehicleContext | null;
 };
 
-type PostBody = {
-  jobId?: string;
-  code?: string | null;
-  userMessage?: string;
-};
-
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -119,11 +139,12 @@ function parseMessages(value: unknown): PersistedMessage[] {
 
       return {
         role,
-        content,
+        content: content.slice(0, 4000),
         createdAt,
       } satisfies PersistedMessage;
     })
-    .filter((item): item is PersistedMessage => item !== null);
+    .filter((item): item is PersistedMessage => item !== null)
+    .slice(-40);
 }
 
 function parseSummary(value: unknown): DtcAnalysisSummary | null {
@@ -163,25 +184,13 @@ function parseSummary(value: unknown): DtcAnalysisSummary | null {
   };
 }
 
-async function loadRouteContext(jobId: string): Promise<RouteContext | null> {
-  const routeSupabase = createServerSupabaseRoute();
-  const admin = await createAdminSupabase();
-
-  const {
-    data: { user },
-    error: authErr,
-  } = await routeSupabase.auth.getUser();
-
-  if (authErr || !user) return null;
-
-  const { data: profile, error: profileErr } = await admin
-    .from("profiles")
-    .select("id, shop_id")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileErr || !profile?.shop_id) return null;
-
+async function loadRouteContext(input: {
+  admin: ReturnType<typeof createAdminSupabase>;
+  jobId: string;
+  shopId: string;
+  userId: string;
+}): Promise<RouteContext | null> {
+  const { admin, jobId, shopId, userId } = input;
   const { data: line, error: lineErr } = await admin
     .from("work_order_lines")
     .select(
@@ -196,9 +205,10 @@ async function loadRouteContext(jobId: string): Promise<RouteContext | null> {
     .from("work_orders")
     .select("id, custom_id, shop_id, vehicle_id, notes")
     .eq("id", line.work_order_id)
+    .eq("shop_id", shopId)
     .maybeSingle();
 
-  if (workOrderErr || !workOrder || workOrder.shop_id !== profile.shop_id) {
+  if (workOrderErr || !workOrder) {
     return null;
   }
 
@@ -207,14 +217,15 @@ async function loadRouteContext(jobId: string): Promise<RouteContext | null> {
         .from("vehicles")
         .select(
           "year, make, model, engine, fuel_type, drivetrain, transmission, vin, unit_number, license_plate",
-        )
+         )
         .eq("id", workOrder.vehicle_id)
+        .eq("shop_id", shopId)
         .maybeSingle()
     : { data: null };
 
   return {
-    userId: user.id,
-    shopId: profile.shop_id,
+    userId,
+    shopId,
     line,
     workOrder,
     vehicle: vehicle
@@ -235,13 +246,12 @@ async function loadRouteContext(jobId: string): Promise<RouteContext | null> {
 }
 
 async function upsertThread(args: {
+  admin: ReturnType<typeof createAdminSupabase>;
   context: RouteContext;
   dtcCode: string | null;
   messages: PersistedMessage[];
   summary: DtcAnalysisSummary | null;
 }) {
-  const admin = await createAdminSupabase();
-
   const payload: DB["public"]["Tables"]["work_order_line_dtc_threads"]["Insert"] = {
     shop_id: args.context.shopId,
     work_order_id: args.context.workOrder.id,
@@ -255,7 +265,7 @@ async function upsertThread(args: {
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await admin
+  const { error } = await args.admin
     .from("work_order_line_dtc_threads")
     .upsert(payload, { onConflict: "work_order_line_id" });
 
@@ -316,7 +326,7 @@ function buildUserPrompt(args: {
       notes: args.context.line.notes ?? null,
     },
     dtcCode: args.dtcCode,
-    conversation: args.messages.map((message) => ({
+    conversation: args.messages.slice(-20).map((message) => ({
       role: message.role,
       content: message.content,
       createdAt: message.createdAt,
@@ -328,21 +338,30 @@ async function generateDtcResponse(args: {
   context: RouteContext;
   dtcCode: string | null;
   messages: PersistedMessage[];
-}): Promise<DtcSuggestResponse> {
-  const completion = await openai.chat.completions.create({
-    model: getOpenAIModelForPurpose("reasoning"),
-    response_format: { type: "json_object" },
-    messages: [
+}) {
+  const policy = getAIPolicy(FEATURE);
+  const model = getOpenAIModelForPurpose(policy.modelPurpose);
+  const openai = getOpenAIClient();
+  const completion = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
+    openai.chat.completions.create(
       {
-        role: "system",
-        content: buildSystemPrompt(),
+        model,
+        response_format: { type: "json_object" },
+        max_completion_tokens: policy.maxTokens,
+        messages: [
+          {
+            role: "system",
+            content: buildSystemPrompt(),
+          },
+          {
+            role: "user",
+            content: buildUserPrompt(args),
+          },
+        ],
       },
-      {
-        role: "user",
-        content: buildUserPrompt(args),
-      },
-    ],
-  });
+      { signal },
+    ),
+  );
 
   const raw = completion.choices[0]?.message?.content ?? "{}";
 
@@ -370,41 +389,52 @@ async function generateDtcResponse(args: {
       laborHours: null,
     } satisfies DtcAnalysisSummary);
 
-  return { reply, summary };
+  return { reply, summary, usage: completion.usage, model };
 }
 
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const jobId = asNonEmptyString(url.searchParams.get("jobId"));
+    const access = await requireShopScopedApiAccess({
+      allowRoles: DTC_ALLOWED_ROLES,
+    });
+    if (!access.ok) return access.response;
 
-    if (!jobId) {
+    const url = new URL(req.url);
+    const parsedJobId = jobIdSchema.safeParse(url.searchParams.get("jobId"));
+
+    if (!parsedJobId.success) {
       return NextResponse.json(
-        { error: "jobId is required" },
-        { status: 400 },
+        { error: "A valid jobId is required." },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
       );
     }
 
-    const context = await loadRouteContext(jobId);
+    const admin = createAdminSupabase();
+    const context = await loadRouteContext({
+      admin,
+      jobId: parsedJobId.data,
+      shopId: access.profile.shop_id,
+      userId: access.profile.id,
+    });
     if (!context) {
       return NextResponse.json(
-        { error: "Unauthorized or job not found" },
-        { status: 401 },
+        { error: "Job not found." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
       );
     }
-
-    const admin = await createAdminSupabase();
 
     const { data: thread, error } = await admin
       .from("work_order_line_dtc_threads")
       .select("dtc_code, messages, summary")
-      .eq("work_order_line_id", jobId)
+      .eq("work_order_line_id", parsedJobId.data)
+      .eq("shop_id", access.profile.shop_id)
       .maybeSingle();
 
     if (error) {
+      console.error("dtc_suggest_thread_lookup_failed", { code: error.code });
       return NextResponse.json(
-        { error: error.message },
-        { status: 500 },
+        { error: "Failed to load DTC thread." },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
       );
     }
 
@@ -413,11 +443,14 @@ export async function GET(req: Request) {
       "dtc_code" | "messages" | "summary"
     > | null;
 
-    return NextResponse.json({
-      dtcCode: typedThread?.dtc_code ?? null,
-      messages: parseMessages(typedThread?.messages ?? []),
-      summary: parseSummary(typedThread?.summary ?? null),
-    });
+    return NextResponse.json(
+      {
+        dtcCode: typedThread?.dtc_code ?? null,
+        messages: parseMessages(typedThread?.messages ?? []),
+        summary: parseSummary(typedThread?.summary ?? null),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     console.error("[dtc-suggest][GET]", error);
     return NextResponse.json(
@@ -428,35 +461,68 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const startedAt = Date.now();
   try {
-    const body = (await req.json()) as PostBody;
+    const access = await requireShopScopedApiAccess({
+      allowRoles: DTC_ALLOWED_ROLES,
+    });
+    if (!access.ok) return access.response;
 
-    const jobId = asNonEmptyString(body.jobId);
-    const userMessage = asNonEmptyString(body.userMessage);
-    const dtcCode = asNullableString(body.code)?.toUpperCase() ?? null;
-
-    if (!jobId || !userMessage) {
+    const boundedBody = await readBoundedJson(req, REQUEST_MAX_BYTES);
+    if (!boundedBody.ok) {
       return NextResponse.json(
-        { error: "jobId and userMessage are required" },
-        { status: 400 },
+        {
+          error:
+            boundedBody.reason === "too_large"
+              ? "Request is too large."
+              : "A valid job and message are required.",
+        },
+        {
+          status: boundedBody.reason === "too_large" ? 413 : 400,
+          headers: { "Cache-Control": "no-store" },
+        },
       );
     }
 
-    const context = await loadRouteContext(jobId);
+    const parsedBody = postBodySchema.safeParse(boundedBody.value);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: "A valid job and message are required." },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const jobId = parsedBody.data.jobId;
+    const userMessage = parsedBody.data.userMessage;
+    const dtcCode = asNullableString(parsedBody.data.code)?.toUpperCase() ?? null;
+    const admin = createAdminSupabase();
+    const context = await loadRouteContext({
+      admin,
+      jobId,
+      shopId: access.profile.shop_id,
+      userId: access.profile.id,
+    });
     if (!context) {
       return NextResponse.json(
-        { error: "Unauthorized or job not found" },
-        { status: 401 },
+        { error: "Job not found." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
       );
     }
 
-    const admin = await createAdminSupabase();
-
-    const { data: existingThread } = await admin
+    const { data: existingThread, error: threadError } = await admin
       .from("work_order_line_dtc_threads")
       .select("dtc_code, messages, summary")
       .eq("work_order_line_id", jobId)
+      .eq("shop_id", access.profile.shop_id)
       .maybeSingle();
+
+    if (threadError) {
+      console.error("dtc_suggest_thread_lookup_failed", { code: threadError.code });
+      return NextResponse.json(
+        { error: "Failed to load DTC thread." },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
 
     const persistedMessages = parseMessages(existingThread?.messages ?? []);
     const persistedSummary = parseSummary(existingThread?.summary ?? null);
@@ -470,34 +536,170 @@ export async function POST(req: Request) {
       },
     ];
 
-    const ai = await generateDtcResponse({
-      context,
-      dtcCode: dtcCode ?? existingThread?.dtc_code ?? null,
-      messages: nextMessages,
+    let claim: Awaited<ReturnType<typeof claimDurableAIRouteQuota>>;
+    try {
+      claim = await claimDurableAIRouteQuota({
+        admin,
+        actorId: access.profile.id,
+        feature: FEATURE,
+        shopId: access.profile.shop_id,
+      });
+    } catch (error) {
+      console.error("dtc_suggest_quota_failed", {
+        shopId: access.profile.shop_id,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+      return NextResponse.json(
+        { error: "AI diagnosis is temporarily unavailable." },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (!claim.allowed) {
+      return NextResponse.json(
+        {
+          error: "AI diagnosis is temporarily limited. Please try again later.",
+          code:
+            claim.reason === "hard_budget_exceeded"
+              ? "ai_budget_limit"
+              : "ai_rate_limit",
+        },
+        {
+          status: 429,
+          headers: {
+            "Cache-Control": "no-store",
+            "Retry-After": String(claim.retryAfterSeconds),
+          },
+        },
+      );
+    }
+
+    let ai: Awaited<ReturnType<typeof generateDtcResponse>>;
+    try {
+      ai = await generateDtcResponse({
+        context,
+        dtcCode: dtcCode ?? existingThread?.dtc_code ?? null,
+        messages: nextMessages,
+      });
+    } catch (error) {
+      await completeDurableAIRouteQuota({
+        admin,
+        actorId: access.profile.id,
+        actualCostUsd: 0,
+        feature: FEATURE,
+        receiptId: claim.receiptId,
+        shopId: access.profile.shop_id,
+        succeeded: false,
+      });
+      const model = getOpenAIModelForPurpose(getAIPolicy(FEATURE).modelPurpose);
+      recordAITelemetry({
+        feature: FEATURE,
+        endpoint: ENDPOINT,
+        shop_id: access.profile.shop_id,
+        user_id: access.profile.id,
+        model,
+        latency_ms: Date.now() - startedAt,
+        prompt_tokens: null,
+        completion_tokens: null,
+        total_tokens: null,
+        estimated_cost_usd: 0,
+        status: "error",
+        error_code: "dtc_suggest_failed",
+        error_message:
+          error instanceof Error && error.message.includes("timed out")
+            ? "provider_timeout"
+            : "provider_error",
+      });
+      registerAIUsageEvent({
+        feature: FEATURE,
+        endpoint: ENDPOINT,
+        shopId: access.profile.shop_id,
+        model,
+        totalTokens: null,
+        estimatedCostUsd: 0,
+        status: "error",
+        errorCode: "dtc_suggest_failed",
+      });
+      console.error("dtc_suggest_provider_failed", {
+        shopId: access.profile.shop_id,
+        kind:
+          error instanceof Error && error.message.includes("timed out")
+            ? "timeout"
+            : "provider",
+      });
+      return NextResponse.json(
+        { error: "Failed to continue DTC diagnosis. Try again or continue manually." },
+        {
+          status:
+            error instanceof Error && error.message.includes("timed out")
+              ? 504
+              : 502,
+          headers: { "Cache-Control": "no-store" },
+        },
+      );
+    }
+
+    const totalTokens = ai.usage?.total_tokens ?? null;
+    const estimatedCostUsd = estimateAICostUsd(FEATURE, totalTokens);
+    await completeDurableAIRouteQuota({
+      admin,
+      actorId: access.profile.id,
+      actualCostUsd: estimatedCostUsd,
+      feature: FEATURE,
+      receiptId: claim.receiptId,
+      shopId: access.profile.shop_id,
+      succeeded: true,
+    });
+    recordAITelemetry({
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shop_id: access.profile.shop_id,
+      user_id: access.profile.id,
+      model: ai.model,
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: ai.usage?.prompt_tokens ?? null,
+      completion_tokens: ai.usage?.completion_tokens ?? null,
+      total_tokens: totalTokens,
+      estimated_cost_usd: estimatedCostUsd,
+      status: "success",
+      error_code: null,
+      error_message: null,
+    });
+    registerAIUsageEvent({
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shopId: access.profile.shop_id,
+      model: ai.model,
+      totalTokens,
+      estimatedCostUsd,
+      status: "success",
+      errorCode: null,
     });
 
-    const finalMessages: PersistedMessage[] = [
-      ...nextMessages,
-      {
-        role: "assistant",
-        content: ai.reply,
-        createdAt: new Date().toISOString(),
-      },
-    ];
+    const assistantMessage: PersistedMessage = {
+      role: "assistant",
+      content: ai.reply,
+      createdAt: new Date().toISOString(),
+    };
+    const finalMessages = [...nextMessages, assistantMessage].slice(-40);
 
     const finalSummary = ai.summary ?? persistedSummary;
 
     await upsertThread({
+      admin,
       context,
       dtcCode: dtcCode ?? existingThread?.dtc_code ?? null,
       messages: finalMessages,
       summary: finalSummary,
     });
 
-    return NextResponse.json({
-      reply: ai.reply,
-      summary: finalSummary,
-    } satisfies DtcSuggestResponse);
+    return NextResponse.json(
+      {
+        reply: ai.reply,
+        summary: finalSummary,
+      } satisfies DtcSuggestResponse,
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     console.error("[dtc-suggest][POST]", error);
     return NextResponse.json(

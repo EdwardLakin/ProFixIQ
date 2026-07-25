@@ -103,7 +103,7 @@ describe("POST /api/chat/start-conversation", () => {
   });
 
   it("normalizes a stale non-UUID request ID into a replayable conversation ID", async () => {
-    const { POST } = await import("@/app/api/chat/start-conversation/route");
+    const { POST } = await import("../app/api/chat/start-conversation/route");
     const body = {
       request_id: "legacy-offline-draft-id",
       actor_kind: "customer",

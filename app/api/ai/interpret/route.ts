@@ -1,11 +1,37 @@
-// /app/api/ai/interpret/route.ts (FULL FILE REPLACEMENT)
 import { NextResponse } from "next/server";
+import { z } from "zod";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
+import {
+  claimDurableAIRouteQuota,
+  completeDurableAIRouteQuota,
+} from "@/features/shared/lib/server/durable-ai-guard";
+import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
+import { estimateAICostUsd, registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
+import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
+import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const openai = getOpenAIClient();
+const FEATURE = "inspection_interpret" as const;
+const ENDPOINT = "/api/ai/interpret";
+const REQUEST_MAX_BYTES = 64 * 1024;
+
+const contextSchema = z.object({
+  sectionTitle: z.string().trim().max(160).optional(),
+  sectionTitles: z.array(z.string().trim().min(1).max(160)).max(64).optional(),
+  items: z.array(z.string().trim().min(1).max(200)).max(300).optional(),
+});
+
+const requestSchema = z.object({
+  transcript: z.string().trim().min(1).max(4000),
+  context: contextSchema.nullish(),
+  mode: z.enum(["open", "strict_context"]).optional().default("open"),
+});
 
 type CommandStatus = "ok" | "fail" | "na" | "recommend";
 type InterpretMode = "open" | "strict_context";
@@ -114,38 +140,17 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
 
-function getString(o: Record<string, unknown>, key: string): string | undefined {
-  const v = o[key];
-  return typeof v === "string" ? v : undefined;
-}
-
-function getStringArray(o: Record<string, unknown>, key: string): string[] | undefined {
-  const v = o[key];
-  if (!Array.isArray(v)) return undefined;
-  const out: string[] = [];
-  for (const it of v) {
-    if (typeof it === "string") out.push(it);
-  }
-  return out;
-}
-
 function safeJsonParseArray(input: string): VoiceCommand[] {
   try {
     const parsed: unknown = JSON.parse(input);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is VoiceCommand => {
+    return parsed.slice(0, 50).filter((x): x is VoiceCommand => {
       if (!isRecord(x)) return false;
       return typeof x.command === "string";
     });
   } catch {
     return [];
   }
-}
-
-function isBodyShape(
-  x: unknown,
-): x is { transcript?: unknown; context?: unknown; mode?: unknown } {
-  return isRecord(x);
 }
 
 function findExactAllowedItem(allowed: string[], candidate: string): string | null {
@@ -273,37 +278,34 @@ function findBestAllowedItem(allowed: string[], candidate: string): string | nul
 /* ------------------------------------------------------------------------------------------------- */
 
 export async function POST(req: Request) {
+  const startedAt = Date.now();
   try {
-    const rawBody: unknown = await req.json().catch(() => null);
-    const body = isBodyShape(rawBody)
-      ? (rawBody as { transcript?: unknown; context?: unknown; mode?: unknown })
-      : null;
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canRunInspections",
+    });
+    if (!access.ok) return access.response;
 
-    const transcript = norm(body?.transcript);
-    if (!transcript) return NextResponse.json([]);
+    const boundedBody = await readBoundedJson(req, REQUEST_MAX_BYTES);
+    if (!boundedBody.ok) {
+      return NextResponse.json([], {
+        status: boundedBody.reason === "too_large" ? 413 : 400,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
 
-    const mode = parseInterpretMode(body?.mode);
+    const parsedBody = requestSchema.safeParse(boundedBody.value);
+    if (!parsedBody.success) {
+      return NextResponse.json([], {
+        status: 400,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+
+    const transcript = norm(parsedBody.data.transcript);
+    const mode = parseInterpretMode(parsedBody.data.mode);
 
     // ✅ No "any": parse context safely
-    const ctxCandidate: unknown = body?.context ?? null;
-    let ctx: InterpretContext | null = null;
-
-    if (isRecord(ctxCandidate)) {
-      const sectionTitleRaw = getString(ctxCandidate, "sectionTitle");
-      const sectionTitlesRaw = getStringArray(ctxCandidate, "sectionTitles");
-      const itemsRaw = getStringArray(ctxCandidate, "items");
-
-      const sectionTitle = norm(sectionTitleRaw ?? "");
-      const sectionTitles = Array.isArray(sectionTitlesRaw)
-        ? sectionTitlesRaw.map((x) => norm(x)).filter(Boolean)
-        : undefined;
-
-      const items = Array.isArray(itemsRaw)
-        ? itemsRaw.map((x) => norm(x)).filter(Boolean)
-        : undefined;
-
-      ctx = { sectionTitle, sectionTitles, items };
-    }
+    const ctx: InterpretContext | null = parsedBody.data.context ?? null;
 
     const allowedItems = (ctx?.items ?? []).filter(Boolean);
     const hasContext = allowedItems.length > 0;
@@ -376,14 +378,111 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
       .filter(Boolean)
       .join("\n\n");
 
-    const completion = await openai.chat.completions.create({
-      model: getOpenAIModelForPurpose("extraction"),
-      ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0.2),
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: transcript },
-      ],
-    });
+    const admin = createAdminSupabase();
+    let claim: Awaited<ReturnType<typeof claimDurableAIRouteQuota>>;
+    try {
+      claim = await claimDurableAIRouteQuota({
+        admin,
+        actorId: access.profile.id,
+        feature: FEATURE,
+        shopId: access.profile.shop_id,
+      });
+    } catch (error) {
+      console.error("inspection_interpret_quota_failed", {
+        shopId: access.profile.shop_id,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+      return NextResponse.json([], {
+        status: 503,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+
+    if (!claim.allowed) {
+      return NextResponse.json([], {
+        status: 429,
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": String(claim.retryAfterSeconds),
+          "X-Profixiq-AI-Limit": claim.reason,
+        },
+      });
+    }
+
+    const policy = getAIPolicy(FEATURE);
+    const model = getOpenAIModelForPurpose(policy.modelPurpose);
+    let completion: Awaited<
+      ReturnType<ReturnType<typeof getOpenAIClient>["chat"]["completions"]["create"]>
+    >;
+    try {
+      const openai = getOpenAIClient();
+      completion = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
+        openai.chat.completions.create(
+          {
+            model,
+            ...openAITemperatureParam(model, 0.2),
+            max_completion_tokens: policy.maxTokens,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: transcript },
+            ],
+          },
+          { signal },
+        ),
+      );
+    } catch (error) {
+      await completeDurableAIRouteQuota({
+        admin,
+        actorId: access.profile.id,
+        actualCostUsd: 0,
+        feature: FEATURE,
+        receiptId: claim.receiptId,
+        shopId: access.profile.shop_id,
+        succeeded: false,
+      });
+      recordAITelemetry({
+        feature: FEATURE,
+        endpoint: ENDPOINT,
+        shop_id: access.profile.shop_id,
+        user_id: access.profile.id,
+        model,
+        latency_ms: Date.now() - startedAt,
+        prompt_tokens: null,
+        completion_tokens: null,
+        total_tokens: null,
+        estimated_cost_usd: 0,
+        status: "error",
+        error_code: "inspection_interpret_failed",
+      error_message:
+        error instanceof Error && error.message.includes("timed out")
+          ? "provider_timeout"
+          : "provider_error",
+      });
+      registerAIUsageEvent({
+        feature: FEATURE,
+        endpoint: ENDPOINT,
+        shopId: access.profile.shop_id,
+        model,
+        totalTokens: null,
+        estimatedCostUsd: 0,
+        status: "error",
+        errorCode: "inspection_interpret_failed",
+      });
+      console.error("inspection_interpret_provider_failed", {
+        shopId: access.profile.shop_id,
+        kind:
+          error instanceof Error && error.message.includes("timed out")
+            ? "timeout"
+            : "provider",
+      });
+      return NextResponse.json([], {
+        status:
+          error instanceof Error && error.message.includes("timed out")
+            ? 504
+            : 502,
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
 
     const raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
     let commands = safeJsonParseArray(raw).map(normalizeNoteFields);
@@ -414,10 +513,53 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
       commands = filtered;
     }
 
-    return NextResponse.json(commands);
+    const totalTokens = completion.usage?.total_tokens ?? null;
+    const estimatedCostUsd = estimateAICostUsd(FEATURE, totalTokens);
+    await completeDurableAIRouteQuota({
+      admin,
+      actorId: access.profile.id,
+      actualCostUsd: estimatedCostUsd,
+      feature: FEATURE,
+      receiptId: claim.receiptId,
+      shopId: access.profile.shop_id,
+      succeeded: true,
+    });
+    recordAITelemetry({
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shop_id: access.profile.shop_id,
+      user_id: access.profile.id,
+      model,
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: completion.usage?.prompt_tokens ?? null,
+      completion_tokens: completion.usage?.completion_tokens ?? null,
+      total_tokens: totalTokens,
+      estimated_cost_usd: estimatedCostUsd,
+      status: "success",
+      error_code: null,
+      error_message: null,
+    });
+    registerAIUsageEvent({
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shopId: access.profile.shop_id,
+      model,
+      totalTokens,
+      estimatedCostUsd,
+      status: "success",
+      errorCode: null,
+    });
+
+    return NextResponse.json(commands, {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (err: unknown) {
-    // eslint-disable-next-line no-console
-    console.error("[api/ai/interpret] error:", err);
-    return NextResponse.json([]);
+    console.error("inspection_interpret_unexpected", {
+      kind: err instanceof Error ? err.name : "unknown",
+    });
+    return NextResponse.json([], {
+      status: 500,
+      headers: { "Cache-Control": "no-store" },
+    });
   }
 }
