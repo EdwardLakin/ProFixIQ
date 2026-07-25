@@ -5,6 +5,7 @@ export const WORK_ORDER_BOARD_FILTER_KEYS = [
   "awaiting_approval",
   "waiting_parts",
   "on_hold",
+  "ready_to_invoice",
   "completed",
 ] as const;
 
