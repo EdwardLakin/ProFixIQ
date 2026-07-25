@@ -2,12 +2,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { verifyShopBoostPreviewToken } from "@/features/integrations/shopBoost/shareAccess";
 
 type DB = Database;
 
 type ClaimBody = {
-  demoId?: string;
-  intakeId?: string;
+  previewToken?: string;
   email?: string;
 };
 
@@ -35,13 +35,18 @@ export async function POST(
   try {
     const body = (await req.json().catch(() => null)) as ClaimBody | null;
 
-    const demoId = body?.demoId?.trim();
-    const intakeId = body?.intakeId?.trim() ?? null;
+    const access = verifyShopBoostPreviewToken(body?.previewToken?.trim() ?? "");
     const emailRaw = body?.email?.trim();
 
-    if (!demoId || !emailRaw) {
+    if (!access) {
       return NextResponse.json(
-        { ok: false, error: "demoId and email are required." },
+        { ok: false, error: "Analysis unavailable." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (!emailRaw) {
+      return NextResponse.json(
+        { ok: false, error: "Email is required." },
         { status: 400 },
       );
     }
@@ -70,7 +75,7 @@ export async function POST(
     const { data: demoRow, error: demoErr } = await supabase
       .from("demo_shop_boosts")
       .select("id, snapshot")
-      .eq("id", demoId)
+      .eq("id", access.demoId)
       .maybeSingle();
 
     if (demoErr || !demoRow || !demoRow.snapshot) {
@@ -82,14 +87,13 @@ export async function POST(
     }
 
     const rawPayload = asRecord(demoRow.snapshot);
-    if (intakeId) {
-      const snapshotIntakeId = typeof rawPayload.intakeId === "string" ? rawPayload.intakeId : null;
-      if (!snapshotIntakeId || snapshotIntakeId !== intakeId) {
-        return NextResponse.json(
-          { ok: false, error: "This preview link does not match the analysis intake." },
-          { status: 403 },
-        );
-      }
+    const snapshotIntakeId =
+      typeof rawPayload.intakeId === "string" ? rawPayload.intakeId : null;
+    if (snapshotIntakeId !== access.intakeId) {
+      return NextResponse.json(
+        { ok: false, error: "Analysis unavailable." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
     }
 
     const summary =
@@ -100,7 +104,7 @@ export async function POST(
     const { error: leadErr } = await supabase
       .from("demo_shop_boost_leads")
       .insert({
-        demo_id: demoId,
+        demo_id: access.demoId,
         email: emailNormalized,
         summary,
         lead_kind: "activation_claim",
@@ -117,7 +121,7 @@ export async function POST(
     const { error: updateErr } = await supabase
       .from("demo_shop_boosts")
       .update({ has_unlocked: true })
-      .eq("id", demoId);
+      .eq("id", access.demoId);
 
     if (updateErr) {
       console.error("[demo/shop-boost/claim] Failed to mark demo as unlocked", updateErr);
@@ -125,12 +129,13 @@ export async function POST(
 
     return NextResponse.json(
       { ok: true, analysis: demoRow.snapshot },
-      { status: 200 },
+      { status: 200, headers: { "Cache-Control": "no-store" } },
     );
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Unexpected error while claiming demo.";
     console.error("[demo/shop-boost/claim] Demo claim error", err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Unexpected error while claiming demo." },
+      { status: 500 },
+    );
   }
 }

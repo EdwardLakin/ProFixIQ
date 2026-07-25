@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import sgMail from "@sendgrid/mail";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { buildShopBoostShareHref } from "@/features/integrations/shopBoost/shareAccess";
+import {
+  buildShopBoostShareHref,
+  verifyShopBoostPreviewToken,
+} from "@/features/integrations/shopBoost/shareAccess";
+import { loadShadowPreviewContext } from "@/features/integrations/shopBoost/shadowShop";
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -16,35 +20,42 @@ function isEmail(value: string): boolean {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
-      demoId?: string;
-      intakeId?: string;
+      previewToken?: string;
       recipientEmail?: string;
       senderName?: string;
     };
 
-    const demoId = body.demoId?.trim() ?? "";
-    const intakeId = body.intakeId?.trim() ?? "";
+    const access = verifyShopBoostPreviewToken(body.previewToken?.trim() ?? "");
     const recipientEmail = body.recipientEmail?.trim() ?? "";
-    const senderName = body.senderName?.trim() || "ProFixIQ Shop Boost";
+    const senderName =
+      body.senderName?.trim().slice(0, 80) || "ProFixIQ Shop Boost";
 
-    if (!demoId || !intakeId || !isEmail(recipientEmail)) {
+    if (!access) {
+      return NextResponse.json(
+        { ok: false, error: "Analysis unavailable." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (!isEmail(recipientEmail)) {
       return NextResponse.json({ ok: false, error: "Invalid payload." }, { status: 400 });
     }
 
-    const supabase = createAdminSupabase();
-    const { data: demo } = await supabase
-      .from("demo_shop_boosts")
-      .select("id, shop_name")
-      .eq("id", demoId)
-      .maybeSingle<{ id: string; shop_name: string }>();
-
-    if (!demo) return NextResponse.json({ ok: false, error: "Demo not found." }, { status: 404 });
+    const context = await loadShadowPreviewContext({
+      demoId: access.demoId,
+      intakeId: access.intakeId,
+    });
+    if (!context) {
+      return NextResponse.json(
+        { ok: false, error: "Analysis unavailable." },
+        { status: 404, headers: { "Cache-Control": "no-store" } },
+      );
+    }
 
     const origin = new URL(req.url).origin;
     const shareLink = buildShopBoostShareHref({
       origin,
-      demoId,
-      intakeId,
+      demoId: access.demoId,
+      intakeId: access.intakeId,
       senderName,
       expiresInDays: 7,
     });
@@ -53,18 +64,19 @@ export async function POST(req: NextRequest) {
     await sgMail.send({
       to: recipientEmail,
       from: requiredEnv("SENDGRID_FROM_EMAIL"),
-      subject: `${senderName} shared a Shop Boost analysis for ${demo.shop_name}`,
+      subject: `${senderName} shared a Shop Boost analysis for ${context.shopName}`,
       text: [
-        `This analysis was generated for ${demo.shop_name}.`,
+        `This analysis was generated for ${context.shopName}.`,
         `ROI highlights and blockers are included in this read-only view.`,
         `Open analysis: ${shareLink}`,
       ].join("\n"),
     });
 
+    const supabase = createAdminSupabase();
     const { data: existingLead } = await supabase
       .from("demo_shop_boost_leads")
       .select("id, share_count, emails_sent, lead_kind")
-      .eq("demo_id", demoId)
+      .eq("demo_id", access.demoId)
       .eq("email", recipientEmail)
       .maybeSingle<{ id: string; share_count: number | null; emails_sent: number | null; lead_kind: string | null }>();
 
@@ -81,7 +93,7 @@ export async function POST(req: NextRequest) {
         .eq("id", existingLead.id);
     } else {
       await supabase.from("demo_shop_boost_leads").insert({
-        demo_id: demoId,
+        demo_id: access.demoId,
         email: recipientEmail,
         summary: `Shared by ${senderName}`,
         share_count: 1,
@@ -91,9 +103,15 @@ export async function POST(req: NextRequest) {
       } as Record<string, unknown>);
     }
 
-    return NextResponse.json({ ok: true, shareLink });
+    return NextResponse.json(
+      { ok: true, shareLink },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to send share email.";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    console.error("[demo/shop-boost/share] Unable to share analysis", error);
+    return NextResponse.json(
+      { ok: false, error: "Unable to send share email." },
+      { status: 500 },
+    );
   }
 }

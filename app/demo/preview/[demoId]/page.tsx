@@ -1,84 +1,49 @@
-import Link from "next/link";
+import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
+import { notFound } from "next/navigation";
 import { loadShadowPreviewContext } from "@/features/integrations/shopBoost/shadowShop";
-import { verifyShopBoostShareToken } from "@/features/integrations/shopBoost/shareAccess";
+import { verifyShopBoostPreviewToken } from "@/features/integrations/shopBoost/shareAccess";
 import ShadowPreviewClient from "./_components/ShadowPreviewClient";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+  referrer: "no-referrer",
+};
 
 type PageProps = {
   params: Promise<{ demoId: string }>;
-  searchParams: Promise<{ intakeId?: string; mode?: string; share?: string; token?: string }>;
+  searchParams: Promise<{ mode?: string; share?: string; token?: string }>;
 };
 
 export default async function DemoPreviewPage({ params, searchParams }: PageProps) {
-  const { demoId } = await params;
-  const sp = await searchParams;
+  noStore();
+
+  const [{ demoId: routeDemoId }, sp] = await Promise.all([params, searchParams]);
   const token = typeof sp.token === "string" ? sp.token : "";
+  const access = token ? verifyShopBoostPreviewToken(token) : null;
+
+  if (!access || access.demoId !== routeDemoId) notFound();
+
+  const context = await loadShadowPreviewContext({
+    demoId: access.demoId,
+    intakeId: access.intakeId,
+  });
+  if (!context) notFound();
+
   const shared = sp.share === "1";
-  const validatedToken = token ? verifyShopBoostShareToken(token) : null;
-  const intakeId = typeof sp.intakeId === "string" ? sp.intakeId : validatedToken?.intakeId ?? "";
   const mode = sp.mode === "sales" ? "sales" : "default";
-  const isUuid = (value: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-
-  if (!intakeId) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
-        <div className="max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-center">
-          <p className="text-lg font-semibold">Missing preview intake</p>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This preview link is incomplete. Return to Instant Shop Analysis and relaunch preview mode.</p>
-          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs">Back to analysis</Link>
-        </div>
-      </div>
-    );
-  }
-  if (!isUuid(demoId) || !isUuid(intakeId)) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
-        <div className="max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-center">
-          <p className="text-lg font-semibold">Preview expired</p>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This preview link is invalid or expired. Start a new analysis to continue.</p>
-          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs">Restart analysis</Link>
-        </div>
-      </div>
-    );
-  }
-
-  const context = await loadShadowPreviewContext({ demoId, intakeId });
-  if (!context) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
-        <div className="max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-center">
-          <p className="text-lg font-semibold">Preview expired</p>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">The demo snapshot is missing or no longer matches this intake link. Please restart Instant Shop Analysis.</p>
-          <Link href="/demo/instant-shop-analysis" className="mt-4 inline-flex rounded-md border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs">Restart analysis</Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (shared && token && (!validatedToken || validatedToken.demoId !== demoId || validatedToken.intakeId !== intakeId)) {
-    return (
-      <div className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] px-4 text-[color:var(--theme-text-primary)]">
-        <div className="max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-center">
-          <p className="text-lg font-semibold">Share link expired</p>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This shared link is no longer valid. Ask the sender for a fresh link.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <ShadowPreviewClient
       context={context}
       mode={mode}
-      shareMeta={
-        shared
-          ? {
-              enabled: true,
-              senderName: validatedToken?.senderName ?? null,
-              token: token || null,
-            }
-          : { enabled: false, senderName: null, token: null }
-      }
+      shareMeta={{
+        enabled: shared,
+        senderName: shared ? access.senderName ?? null : null,
+        token,
+      }}
     />
   );
 }
