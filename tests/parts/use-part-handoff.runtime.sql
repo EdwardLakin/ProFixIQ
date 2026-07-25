@@ -253,6 +253,8 @@ begin
   raise exception 'Runtime assertion failed: conflicting retry succeeded.';
 end;
 $$;
+grant execute on function pg_temp.expect_idempotency_conflict()
+  to authenticated;
 
 set local role authenticated;
 select pg_temp.expect_idempotency_conflict();
@@ -498,6 +500,8 @@ begin
   raise exception 'Runtime assertion failed: insufficient stock succeeded.';
 end;
 $$;
+grant execute on function pg_temp.expect_insufficient_stock()
+  to authenticated;
 
 set local role authenticated;
 select pg_temp.expect_insufficient_stock();
@@ -563,6 +567,8 @@ begin
   raise exception 'Runtime assertion failed: cross-shop direct RPC succeeded.';
 end;
 $$;
+grant execute on function pg_temp.expect_cross_shop_denied(uuid)
+  to authenticated;
 
 create function pg_temp.expect_cross_shop_canonical_denied()
 returns void
@@ -585,6 +591,8 @@ begin
     'Runtime assertion failed: cross-shop canonical RPC succeeded.';
 end;
 $$;
+grant execute on function pg_temp.expect_cross_shop_canonical_denied()
+  to authenticated;
 
 select set_config(
   'request.jwt.claim.sub',
@@ -675,6 +683,8 @@ begin
     'Runtime assertion failed: cross-shop request-item attach succeeded.';
 end;
 $$;
+grant execute on function pg_temp.expect_cross_shop_attach_denied()
+  to authenticated;
 
 select set_config(
   'request.jwt.claim.sub',
@@ -1005,6 +1015,8 @@ begin
   raise exception 'Runtime assertion failed: inconsistent handoff succeeded.';
 end;
 $$;
+grant execute on function pg_temp.expect_handoff_rollback()
+  to authenticated;
 
 set local role authenticated;
 select pg_temp.expect_handoff_rollback();

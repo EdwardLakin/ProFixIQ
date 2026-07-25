@@ -148,18 +148,18 @@ export async function receivePo(po_id: string) {
       );
     }
 
+    const lineId = typeof rec.id === "string" ? rec.id : null;
+    if (!lineId) throw new Error("Missing purchase_order_lines.id");
+
     const { error: se } = await supabase.rpc("apply_stock_move", {
       p_part: partId,
       p_loc: loc,
       p_qty: delta,
       p_reason: "receive",
-      p_ref_kind: "purchase_order",
-      p_ref_id: po_id,
+      p_ref_kind: "purchase_order_line",
+      p_ref_id: lineId,
     });
     if (se) throw se;
-
-    const lineId = typeof rec.id === "string" ? rec.id : null;
-    if (!lineId) throw new Error("Missing purchase_order_lines.id");
 
     const { error: ue } = await supabase
       .from("purchase_order_lines")
