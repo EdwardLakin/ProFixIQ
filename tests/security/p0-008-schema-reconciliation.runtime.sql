@@ -134,7 +134,7 @@ begin
     raise exception 'P0-008 missing runtime relations: %', missing;
   end if;
 
-  select array_agg(column_name order by column_name)
+  select array_agg(expected.column_name order by expected.column_name)
     into missing
   from unnest(
     ARRAY[
@@ -211,15 +211,7 @@ begin
     ('work_order_lines', 'work_order_id'),
     ('work_order_part_allocations', 'shop_id'),
     ('work_order_parts', 'work_order_id'),
-    ('work_order_quote_lines', 'est_labor_hours'),
     ('work_order_quote_lines', 'description'),
-    ('work_order_quote_lines', 'grand_total'),
-    ('work_order_quote_lines', 'labor_hours'),
-    ('work_order_quote_lines', 'labor_total'),
-    ('work_order_quote_lines', 'metadata'),
-    ('work_order_quote_lines', 'parts_total'),
-    ('work_order_quote_lines', 'subtotal'),
-    ('work_order_quote_lines', 'tax_total'),
     ('work_orders', 'status')
   ) as expected(table_name, column_name)
   left join information_schema.columns c
@@ -260,6 +252,96 @@ begin
 
   if unsafe is not null then
     raise exception 'P0-008 canonical column defaults remain missing: %', unsafe;
+  end if;
+
+  select array_agg(
+      expected.table_name || '.' || expected.column_name
+      order by expected.table_name, expected.column_name
+    )
+    into missing
+  from (values
+    ('email_logs', 'shop_id'),
+    ('email_logs', 'template_key'),
+    ('email_logs', 'to_email'),
+    ('history', 'source_payload'),
+    ('history', 'source_row_id'),
+    ('menu_item_parts', 'part_id'),
+    ('menu_item_parts', 'shop_id'),
+    ('payments', 'amount_cents'),
+    ('payments', 'platform_fee_cents'),
+    ('payments', 'stripe_checkout_session_id'),
+    ('payments', 'stripe_payment_intent_id'),
+    ('payments', 'stripe_session_id'),
+    ('purchase_orders', 'notes'),
+    ('tech_sessions', 'work_order_line_id'),
+    ('work_order_line_technicians', 'id'),
+    ('work_order_quote_lines', 'ai_cause'),
+    ('work_order_quote_lines', 'ai_complaint'),
+    ('work_order_quote_lines', 'ai_correction'),
+    ('work_order_quote_lines', 'job_type'),
+    ('work_order_quote_lines', 'notes'),
+    ('work_order_quote_lines', 'qty'),
+    ('work_order_quote_lines', 'sent_to_customer_at'),
+    ('work_order_quote_lines', 'suggested_by'),
+    ('work_order_quote_lines', 'vehicle_id')
+  ) as expected(table_name, column_name)
+  where not exists (
+    select 1
+    from information_schema.columns c
+    where c.table_schema = 'public'
+      and c.table_name = expected.table_name
+      and c.column_name = expected.column_name
+  );
+
+  if missing is not null then
+    raise exception 'P0-008 missing application schema columns: %', missing;
+  end if;
+
+  select array_agg(column_name order by column_name)
+    into unsafe
+  from unnest(
+    ARRAY[
+      'est_labor_hours',
+      'grand_total',
+      'labor_hours',
+      'labor_total',
+      'metadata',
+      'parts_total',
+      'subtotal',
+      'tax_total'
+    ]::text[]
+  ) as expected(column_name)
+  left join information_schema.columns c
+    on c.table_schema = 'public'
+   and c.table_name = 'work_order_quote_lines'
+   and c.column_name = expected.column_name
+  where c.is_nullable is distinct from 'YES';
+
+  if unsafe is not null then
+    raise exception 'P0-008 quote input columns must preserve nullable application semantics: %', unsafe;
+  end if;
+
+  select array_agg(expected.name order by expected.name)
+    into unsafe
+  from unnest(
+    ARRAY[
+      'part_stock_summary',
+      'v_quote_queue',
+      'v_work_order_board_cards_fleet',
+      'v_work_order_board_cards_portal'
+    ]::text[]
+  ) as expected(name)
+  left join pg_class c
+    on c.relnamespace = 'public'::regnamespace
+   and c.relname = expected.name
+  where c.relkind is distinct from 'v'
+     or not (
+       coalesce(c.reloptions, ARRAY[]::text[])
+       @> ARRAY['security_invoker=true']::text[]
+     );
+
+  if unsafe is not null then
+    raise exception 'P0-008 application views must be security-invoker views: %', unsafe;
   end if;
 
   select array_agg(trigger_name order by trigger_name)

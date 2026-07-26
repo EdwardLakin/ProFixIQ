@@ -532,16 +532,35 @@ begin
       'P0-002 runtime assertion failed: legacy stock cache is wrong';
   end if;
 
-  if not exists (
-    select 1
-    from public.part_stock_summary
-    where part_id = 'a2300000-0000-4000-8000-000000000001'
-      and location_id = 'a2500000-0000-4000-8000-000000000001'
-      and shop_id = 'a2100000-0000-4000-8000-000000000001'
-      and qty_on_hand = 5
+  if (
+    select c.relkind = 'v'
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'part_stock_summary'
   ) then
-    raise exception
-      'P0-002 runtime assertion failed: baseline stock summary cache is wrong';
+    if not exists (
+      select 1
+      from public.part_stock_summary
+      where part_id = 'a2300000-0000-4000-8000-000000000001'
+        and shop_id = 'a2100000-0000-4000-8000-000000000001'
+        and on_hand = 5
+    ) then
+      raise exception
+        'P0-002 runtime assertion failed: stock summary view is wrong';
+    end if;
+  else
+    if not exists (
+      select 1
+      from public.part_stock_summary
+      where part_id = 'a2300000-0000-4000-8000-000000000001'
+        and location_id = 'a2500000-0000-4000-8000-000000000001'
+        and shop_id = 'a2100000-0000-4000-8000-000000000001'
+        and qty_on_hand = 5
+    ) then
+      raise exception
+        'P0-002 runtime assertion failed: baseline stock summary cache is wrong';
+    end if;
   end if;
 
   if public.parts_on_hand(
