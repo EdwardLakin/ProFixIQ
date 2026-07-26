@@ -6,6 +6,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
+import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
 
 const OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -80,6 +81,17 @@ export default function AuthCallbackPage() {
 
       router.refresh();
 
+      const claim = await claimStripeAcquisitionAfterAuth(sp);
+      if (!claim.linked) {
+        const retry = new URLSearchParams();
+        const sessionId = sp.get("session_id")?.trim();
+        if (sessionId) retry.set("session_id", sessionId);
+        retry.set("flow", "acquisition");
+        retry.set("billing_link_error", "1");
+        router.replace(`/sign-in?${retry.toString()}`);
+        return;
+      }
+
       const isMobileMode =
         (sp.get("mode") || "").toLowerCase() === "mobile" ||
         (sp.get("redirect") || "") === "/mobile";
@@ -108,7 +120,7 @@ export default function AuthCallbackPage() {
   return (
     <div className="min-h-[60vh] grid place-items-center text-[color:var(--theme-text-primary)]">
       <div className="text-center">
-        <h1 className="text-2xl font-bold">Finishing sign-in…</h1>
+        <h1 className="text-2xl font-bold">Finishing sign-in...</h1>
         <p className="text-sm text-[color:var(--theme-text-secondary)]">One moment while we set things up.</p>
       </div>
     </div>

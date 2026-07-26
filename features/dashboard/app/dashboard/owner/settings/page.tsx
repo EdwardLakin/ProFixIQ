@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
@@ -267,6 +267,7 @@ export default function OwnerSettingsPage() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(false);
   const [canManageBilling, setCanManageBilling] = useState(false);
+  const subscriptionCheckoutAttemptId = useRef(crypto.randomUUID());
 
   const trialDaysLeft = daysUntil(trialEndIso);
   const periodDaysLeft = daysUntil(periodEndIso);
@@ -1230,11 +1231,10 @@ export default function OwnerSettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          flow: "owner",
           planKey: selectedPlan,
-          shopId,
-          successPath: "/dashboard/owner/settings#billing-stripe",
-          cancelPath: "/dashboard/owner/settings#billing-stripe",
-          enableTrial: subStatus !== "active" && subStatus !== "trialing",
+          interval: "monthly",
+          checkoutAttemptId: subscriptionCheckoutAttemptId.current,
         }),
       });
 

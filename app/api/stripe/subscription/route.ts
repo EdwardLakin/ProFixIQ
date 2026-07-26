@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   getProfileStripeArtifacts,
   resolveCanonicalPlanFromSubscription,
@@ -439,7 +440,7 @@ export async function GET() {
     const resolution = await findCanonicalSubscription(stripe, shop);
 
     if (resolution.state === "resolved") {
-      await syncShopSubscription(access.supabase, shop.id, resolution.subscription);
+      await syncShopSubscription(createAdminSupabase(), shop.id, resolution.subscription);
       return NextResponse.json({
         ...normalizeSubscription(resolution.subscription),
         linkage_needed: false,
@@ -650,7 +651,7 @@ export async function POST(req: Request) {
     }
 
     if (canonicalSubscription.cancel_at_period_end) {
-      await syncShopSubscription(access.supabase, shop.id, canonicalSubscription);
+      await syncShopSubscription(createAdminSupabase(), shop.id, canonicalSubscription);
       return NextResponse.json(normalizeSubscription(canonicalSubscription));
     }
 
@@ -658,7 +659,7 @@ export async function POST(req: Request) {
       cancel_at_period_end: true,
     });
 
-    await syncShopSubscription(access.supabase, shop.id, updated);
+    await syncShopSubscription(createAdminSupabase(), shop.id, updated);
 
     return NextResponse.json(normalizeSubscription(updated));
   } catch (error) {

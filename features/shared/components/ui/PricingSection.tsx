@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { PLAN_PRICING, type PlanKey } from "@/features/stripe/lib/stripe/constants";
 
@@ -9,6 +9,7 @@ export type BillingInterval = "monthly" | "yearly";
 export type CheckoutPayload = {
   planKey: PlanKey;
   interval: BillingInterval;
+  checkoutAttemptId: string;
 };
 
 export type PricingSectionProps = {
@@ -58,12 +59,15 @@ const plans: Array<{
 
 export default function PricingSection({ onCheckout }: PricingSectionProps) {
   const [busyKey, setBusyKey] = useState<PlanKey | null>(null);
+  const attemptIds = useRef<Partial<Record<PlanKey, string>>>({});
 
   const startCheckout = async (planKey: PlanKey) => {
     if (busyKey) return;
     setBusyKey(planKey);
     try {
-      await onCheckout({ planKey, interval: "monthly" });
+      const checkoutAttemptId =
+        attemptIds.current[planKey] ?? (attemptIds.current[planKey] = crypto.randomUUID());
+      await onCheckout({ planKey, interval: "monthly", checkoutAttemptId });
     } catch (error) {
       console.error("[PricingSection] checkout failed", error);
       window.alert("Checkout could not be started. Please try again.");

@@ -27,21 +27,21 @@ export default function ComparePlansPage() {
   const handleCheckout = async ({
     planKey,
     interval,
+    checkoutAttemptId,
   }: {
     planKey: string;
     interval: Interval;
+    checkoutAttemptId: string;
   }) => {
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: "pricing_cta",
+          flow: "acquisition",
           planKey,
           interval,
-          cancelPath: "/compare-plans",
-          demoId: demoId ?? null,
-          intakeId: intakeId ?? null,
+          checkoutAttemptId,
         }),
       });
 
