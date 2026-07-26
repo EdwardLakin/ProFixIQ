@@ -557,10 +557,12 @@ begin
     select 1
     from public.shops
     where id = 'a2100000-0000-4000-8000-000000000001'
-      and user_limit = 5
+      -- The canonical billing trigger normalizes the insert to the default
+      -- plan cap (10) before this service-only RPC increments it by 2.
+      and user_limit = 12
   ) then
     raise exception
-      'P0-002 runtime assertion failed: service user-limit mutation failed';
+      'P0-002 runtime assertion failed: service user-limit mutation failed after plan normalization';
   end if;
 
   if exists (
