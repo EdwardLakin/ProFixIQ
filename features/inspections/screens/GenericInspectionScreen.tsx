@@ -57,6 +57,7 @@ import {
   saveInspectionOfflineDraft,
   type InspectionDraftRecoveryState,
 } from "@inspections/lib/inspection/offlineDrafts";
+import { mergeInspectionRuntimeParams } from "@inspections/lib/inspection/runtimeParams";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -628,21 +629,18 @@ type SmartMatchRow = {
 };
 
   const sp = useMemo(() => {
-    const merged = new URLSearchParams();
     const staged = readStaged<Record<string, string>>("inspection:params");
-
-    // Direct-route params form the base. The mobile runner stages its context
-    // because it prepares the template client-side. A desktop modal passes the
-    // exact inspection source as props and must win over any stale staged run.
-    routeSp.forEach((value, key) => merged.set(key, value));
-    Object.entries(staged ?? {}).forEach(([key, value]) => {
-      if (value != null) merged.set(key, String(value));
-    });
-    Object.entries(props.params ?? {}).forEach(([key, value]) => {
-      if (value != null) merged.set(key, String(value));
+    const route: Record<string, string> = {};
+    routeSp.forEach((value, key) => {
+      route[key] = value;
     });
 
-    return merged;
+    // Session storage carries the template payload, but it must never redirect
+    // a newly opened work-order line back to an older line. Route identity wins,
+    // and explicit host props remain the strongest source.
+    return new URLSearchParams(
+      mergeInspectionRuntimeParams({ staged, route, props: props.params }),
+    );
   }, [props.params, routeSp]);
 
   const isEmbed = useMemo(
@@ -654,18 +652,23 @@ type SmartMatchRow = {
     [props.embed, sp],
   );
 
-  const workOrderId = sp.get("workOrderId") || null;
-  const workOrderLineId = sp.get("workOrderLineId") || "";
+  const workOrderId =
+    sp.get("workOrderId") || sp.get("work_order_id") || null;
+  const workOrderLineId =
+    sp.get("workOrderLineId") ||
+    sp.get("work_order_line_id") ||
+    sp.get("lineId") ||
+    "";
 
   const showMissingLineWarning = isEmbed && !workOrderLineId;
 
 
   const templateName =
+    sp.get("templateName") ||
+    sp.get("template_name") ||
     (typeof window !== "undefined"
       ? sessionStorage.getItem("inspection:title")
       : null) ||
-    sp.get("templateName") ||
-    sp.get("template_name") ||
     props.template ||
     sp.get("template") ||
     "Inspection";
@@ -814,7 +817,11 @@ type SmartMatchRow = {
 
   const [voicePulse, setVoicePulse] = useState(false);
   const pulseTimerRef = useRef<number | null>(null);
-  const [draftBootLoaded, setDraftBootLoaded] = useState(false);
+  const [draftBootstrappedKey, setDraftBootstrappedKey] = useState<
+    string | null
+  >(null);
+  const draftBootLoaded = draftBootstrappedKey === draftKey;
+  const [hasRecoveredLocalDraft, setHasRecoveredLocalDraft] = useState(false);
   const [recoveryState, setRecoveryState] =
     useState<InspectionDraftRecoveryState>("editing");
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
@@ -848,13 +855,21 @@ type SmartMatchRow = {
       quote: [],
       customer,
       vehicle,
-      sections: [],
+      sections: bootSections,
       currentSectionIndex: 0,
       currentItemIndex: 0,
       started: false,
       completed: false,
     }),
-    [inspectionId, templateName, workOrderId, workOrderLineId, customer, vehicle],
+    [
+      bootSections,
+      inspectionId,
+      templateName,
+      workOrderId,
+      workOrderLineId,
+      customer,
+      vehicle,
+    ],
   );
 
   const {
@@ -921,6 +936,7 @@ type SmartMatchRow = {
     locked: isLocked,
     draftKey,
     recoveryOperationKey: recoveryOperationKeyRef.current,
+    hasRecoveredLocalDraft,
     onRemoteSession: (remote) => {
       replaceSession(remote);
     },
@@ -949,6 +965,12 @@ type SmartMatchRow = {
   useEffect(() => {
     let cancelled = false;
     inspectionCompletedRef.current = false;
+    setHasRecoveredLocalDraft(false);
+    setRecoveryState("editing");
+    recoveryOperationKeyRef.current = undefined;
+    queuedSessionRef.current = null;
+    skipNextQueuedEditCheckRef.current = false;
+    setRecoveryMessage(null);
     const recoverDraft = async () => {
       try {
         const recovered = await getInspectionOfflineDraft({
@@ -957,6 +979,7 @@ type SmartMatchRow = {
         });
         if (cancelled) return;
         if (recovered) {
+          setHasRecoveredLocalDraft(true);
           replaceSession(recovered.session);
           setRecoveryState(recovered.state);
           recoveryOperationKeyRef.current = recovered.operationKey;
@@ -972,12 +995,13 @@ type SmartMatchRow = {
                 : `Recovered inspection saved ${new Date(recovered.savedAt).toLocaleString()}.`,
           );
         } else {
+          setHasRecoveredLocalDraft(false);
           replaceSession(initialSession);
         }
       } catch (error) {
         console.warn("[inspection] offline recovery unavailable", error);
       } finally {
-        if (!cancelled) setDraftBootLoaded(true);
+        if (!cancelled) setDraftBootstrappedKey(draftKey);
       }
     };
     void recoverDraft();
@@ -1413,12 +1437,6 @@ type SmartMatchRow = {
     toast.error("This inspection is signed and locked. Editing is disabled.");
     return true;
   };
-
-  useEffect(() => {
-    if (session && (session.sections?.length ?? 0) === 0) {
-      updateInspection({ sections: bootSections });
-    }
-  }, [session, bootSections, updateInspection]);
 
   useEffect(() => {
     if (

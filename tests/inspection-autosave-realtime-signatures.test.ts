@@ -92,7 +92,8 @@ describe("inspection autosave, realtime, and signatures", () => {
   });
 
   it("uses the work-order line as the shared mobile and desktop identity", () => {
-    expect(genericScreen).toContain("Object.entries(props.params ?? {})");
+    expect(genericScreen).toContain("mergeInspectionRuntimeParams");
+    expect(genericScreen).toContain("staged, route, props: props.params");
     expect(genericScreen).toContain("props.embed === true");
     expect(mobileRunner).toContain('.from("work_orders")');
     expect(mobileRunner).toContain("Object.assign(runtimeParams, workOrderContext)");
