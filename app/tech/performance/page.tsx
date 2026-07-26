@@ -173,17 +173,8 @@ export default function TechPerformancePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             timeRange: range,
-            tech: {
-              name: myRow.name,
-              jobs: myRow.jobs,
-              flaggedHours: myRow.flaggedHours,
-              actualJobHours: myRow.actualJobHours,
-              attendanceHours: myRow.attendanceHours,
-              efficiencyPct: myRow.efficiencyPct,
-              productivityPct: myRow.productivityPct,
-              overallPerformancePct: myRow.overallPerformancePct,
-            },
-            peers: [],
+            tech: myRow,
+            peers: rows,
           }),
         });
 
@@ -279,7 +270,7 @@ export default function TechPerformancePage() {
             </div>
           </div>
           <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
-            Actual job time comes from canonical labor segments. Attendance comes from approved workforce time.
+            Clocked hours come from canonical shift punches. Actual job time comes from canonical labor segments.
           </p>
 
           {/* Quick compare row */}
@@ -329,7 +320,7 @@ export default function TechPerformancePage() {
             <div className="grid gap-3 md:grid-cols-3">
               <SummaryCard label="Jobs" value={String(myRow.jobs)} />
               <SummaryCard
-                label="Attendance hours"
+                label="Clocked hours"
                 value={`${myRow.attendanceHours.toFixed(1)} h`}
               />
               <SummaryCard

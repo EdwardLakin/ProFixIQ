@@ -148,7 +148,7 @@ export default function TechPerformanceTiles({
       </div>
 
       <Link href="/tech/performance" className={`${T.card} ${T.link} px-4 py-3`}>
-        <div className={T.label}>Hours worked</div>
+        <div className={T.label}>Clocked hours</div>
         <div className={`${T.value} ${T.copper}`}>{loading ? "…" : fmtHours(clocked)}</div>
         <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-muted)]">
           Based on clocked hours ({range})

@@ -31,7 +31,7 @@ export default function MobileTechPerformancePage() {
   const [shopId, setShopId] = useState<string | null>(null);
   const [, setRole] = useState<ProfileRole | null>(null);
 
-  const [range, setRange] = useState<Range>("monthly");
+  const [range, setRange] = useState<Range>("weekly");
   const [rows, setRows] = useState<TechLeaderboardRow[]>([]);
   const [myRow, setMyRow] = useState<TechLeaderboardRow | null>(null);
 
@@ -124,17 +124,8 @@ export default function MobileTechPerformancePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             timeRange: range,
-            tech: {
-              name: myRow.name,
-              jobs: myRow.jobs,
-              flaggedHours: myRow.flaggedHours,
-              actualJobHours: myRow.actualJobHours,
-              attendanceHours: myRow.attendanceHours,
-              efficiencyPct: myRow.efficiencyPct,
-              productivityPct: myRow.productivityPct,
-              overallPerformancePct: myRow.overallPerformancePct,
-            },
-            peers: [],
+            tech: myRow,
+            peers: rows,
           }),
         });
 
@@ -166,7 +157,7 @@ export default function MobileTechPerformancePage() {
           <h1 className="font-blackops text-lg uppercase tracking-[0.16em] text-sky-300">My Performance</h1>
           <p className="text-[0.8rem] text-[color:var(--theme-text-secondary)]">Jobs, hours and efficiency for your chosen time range.</p>
           <p className="text-[0.68rem] text-[color:var(--theme-text-muted)]">
-            Actual job time, attendance, and durable flagged-hour credits.
+            Clocked shift time, actual job time, and durable flagged-hour credits.
           </p>
         </header>
 
@@ -205,7 +196,7 @@ export default function MobileTechPerformancePage() {
         {!loading && !error && myRow && (
           <section className="grid grid-cols-2 gap-2.5">
             <StatTile label="Jobs" value={String(myRow.jobs)} accent="text-sky-300" />
-            <StatTile label="Attendance" value={`${myRow.attendanceHours.toFixed(1)} h`} />
+            <StatTile label="Clocked" value={`${myRow.attendanceHours.toFixed(1)} h`} />
             <StatTile label="Actual job" value={`${myRow.actualJobHours.toFixed(1)} h`} />
             <StatTile label="Flagged hours" value={`${myRow.flaggedHours.toFixed(1)} h`} />
             <StatTile label="Efficiency" value={`${myRow.efficiencyPct.toFixed(1)}%`} accent="text-sky-300" />

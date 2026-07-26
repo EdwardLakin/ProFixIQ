@@ -1,138 +1,220 @@
-// features/stats/api/tech-leaderboard/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import {
-  startOfMonth,
   endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  startOfQuarter,
   endOfQuarter,
-  startOfYear,
+  endOfWeek,
   endOfYear,
+  startOfMonth,
+  startOfQuarter,
+  startOfWeek,
+  startOfYear,
 } from "date-fns";
 
-import type { Database } from "@shared/types/types/supabase";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { TimeRange } from "@shared/lib/stats/getShopStats";
-import type {
-  TechLeaderboardResult,
-  TechLeaderboardRow,
+import {
+  isTechRole,
+  type TechLeaderboardResult,
+  type TechLeaderboardRow,
 } from "@shared/lib/stats/getTechLeaderboard";
-
-const supabaseAdmin = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
 
 type Body = {
   shopId?: string;
   timeRange?: TimeRange;
+  technicianId?: string;
+};
+
+type SlimProfile = {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+  shop_id: string | null;
+};
+
+type InvoiceSlim = {
+  id: string;
+  tech_id: string | null;
+  total: number | null;
+  labor_cost: number | null;
+};
+
+type ShiftSlim = {
+  user_id: string | null;
+  start_time: string | null;
+  end_time: string | null;
+};
+
+type LaborSegmentSlim = {
+  technician_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+};
+
+type FlatRateCreditSlim = {
+  technician_id: string;
+  work_order_line_id: string;
+  credit_hours: number | null;
+};
+
+type TimecardSlim = {
+  user_id: string | null;
+  hours_worked: number | null;
 };
 
 function toIso(d: Date): string {
   return d.toISOString();
 }
 
+function safeNum(value: number | null | undefined): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function getRange(timeRange: TimeRange) {
+  const now = new Date();
+
+  switch (timeRange) {
+    case "weekly":
+      return {
+        start: startOfWeek(now, { weekStartsOn: 1 }),
+        end: endOfWeek(now, { weekStartsOn: 1 }),
+      };
+    case "quarterly":
+      return { start: startOfQuarter(now), end: endOfQuarter(now) };
+    case "yearly":
+      return { start: startOfYear(now), end: endOfYear(now) };
+    case "monthly":
+    default:
+      return { start: startOfMonth(now), end: endOfMonth(now) };
+  }
+}
+
+function getOverlapHours(
+  startedAt: string | null | undefined,
+  endedAt: string | null | undefined,
+  rangeStartIso: string,
+  rangeEndIso: string,
+): number {
+  if (!startedAt) return 0;
+  const startMs = new Date(startedAt).getTime();
+  if (!Number.isFinite(startMs)) return 0;
+
+  const endMs = endedAt ? new Date(endedAt).getTime() : Date.now();
+  if (!Number.isFinite(endMs)) return 0;
+
+  const windowStart = new Date(rangeStartIso).getTime();
+  const windowEnd = new Date(rangeEndIso).getTime();
+  const overlapMs = Math.min(endMs, windowEnd) - Math.max(startMs, windowStart);
+  return overlapMs > 0 ? overlapMs / (1000 * 60 * 60) : 0;
+}
+
 export async function POST(req: Request) {
+  const access = await requireShopScopedApiAccess();
+  if (!access.ok) return access.response;
+
   try {
     const body = (await req.json().catch(() => null)) as Body | null;
-    const shopId = body?.shopId;
-    const timeRange = body?.timeRange ?? "monthly";
+    const requestedShopId = body?.shopId ?? access.profile.shop_id;
+    const timeRange = body?.timeRange ?? "weekly";
+    const technicianId = body?.technicianId?.trim() || undefined;
 
-    if (!shopId) {
-      return NextResponse.json({ error: "Missing shopId" }, { status: 400 });
+    if (requestedShopId !== access.profile.shop_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const now = new Date();
-    let start: Date;
-    let end: Date;
-
-    switch (timeRange) {
-      case "weekly":
-        start = startOfWeek(now, { weekStartsOn: 1 });
-        end = endOfWeek(now, { weekStartsOn: 1 });
-        break;
-      case "quarterly":
-        start = startOfQuarter(now);
-        end = endOfQuarter(now);
-        break;
-      case "yearly":
-        start = startOfYear(now);
-        end = endOfYear(now);
-        break;
-      case "monthly":
-      default:
-        start = startOfMonth(now);
-        end = endOfMonth(now);
-        break;
-    }
-
-    // exclusive end bound
+    const { start, end } = getRange(timeRange);
     const endExclusive = new Date(end.getTime() + 1);
     const startIso = toIso(start);
     const endIso = toIso(end);
     const endExclusiveIso = toIso(endExclusive);
 
-    // 1) tech profiles (don’t over-filter; roles can be messy)
-    const { data: profiles, error: profErr } = await supabaseAdmin
+    const admin = createAdminSupabase();
+
+    let profilesQuery = admin
       .from("profiles")
       .select("id, full_name, role, shop_id")
-      .eq("shop_id", shopId);
+      .eq("shop_id", requestedShopId);
+    if (technicianId) profilesQuery = profilesQuery.eq("id", technicianId);
 
-    if (profErr) throw profErr;
+    const { data: profiles, error: profilesError } = await profilesQuery;
+    if (profilesError) throw profilesError;
 
-    // Filter to “tech-ish” roles but tolerate casing/variants
-    const techProfiles =
-      (profiles ?? []).filter((p) => {
-        const role = (p.role ?? "").toLowerCase();
-        return role === "tech" || role === "technician" || role === "mechanic";
-      }) ?? [];
+    const techProfiles: SlimProfile[] = ((profiles ?? []) as SlimProfile[])
+      .filter((profile) => profile.shop_id === requestedShopId)
+      .filter((profile) => isTechRole(profile.role));
 
-    const techIds = techProfiles.map((p) => p.id).filter(Boolean);
-
+    const techIds = techProfiles.map((profile) => profile.id).filter(Boolean);
     if (techIds.length === 0) {
-      const empty: TechLeaderboardResult = {
-        shop_id: shopId,
+      return NextResponse.json({
+        shop_id: requestedShopId,
         start: startIso,
         end: endIso,
         rows: [],
-      };
-      return NextResponse.json(empty);
+      } satisfies TechLeaderboardResult);
     }
 
-    // 2) invoices + timecards
-    const [invoicesRes, timecardsRes] = await Promise.all([
-      supabaseAdmin
+    const [
+      invoicesRes,
+      shiftsRes,
+      segmentsRes,
+      creditsRes,
+      timecardsRes,
+    ] = await Promise.all([
+      admin
         .from("invoices")
-        .select("id, tech_id, shop_id, total, labor_cost, created_at")
-        .eq("shop_id", shopId)
+        .select("id, tech_id, total, labor_cost")
+        .eq("shop_id", requestedShopId)
         .in("tech_id", techIds)
         .gte("created_at", startIso)
         .lt("created_at", endExclusiveIso),
 
-      supabaseAdmin
+      admin
+        .from("tech_shifts")
+        .select("user_id, start_time, end_time")
+        .eq("shop_id", requestedShopId)
+        .in("user_id", techIds)
+        .neq("excluded_from_payroll", true)
+        .lt("start_time", endExclusiveIso)
+        .or(`end_time.is.null,end_time.gt.${startIso}`),
+
+      admin
+        .from("work_order_line_labor_segments")
+        .select("technician_id, started_at, ended_at")
+        .eq("shop_id", requestedShopId)
+        .in("technician_id", techIds)
+        .lt("started_at", endExclusiveIso)
+        .or(`ended_at.is.null,ended_at.gt.${startIso}`),
+
+      admin
+        .from("work_order_line_flat_rate_credits")
+        .select("technician_id, work_order_line_id, credit_hours")
+        .eq("shop_id", requestedShopId)
+        .in("technician_id", techIds)
+        .gte("credited_at", startIso)
+        .lt("credited_at", endExclusiveIso),
+
+      admin
         .from("payroll_timecards")
-        .select("id, user_id, shop_id, clock_in, clock_out, hours_worked, created_at")
-        .eq("shop_id", shopId)
+        .select("user_id, hours_worked")
+        .eq("shop_id", requestedShopId)
         .in("user_id", techIds)
         .gte("clock_in", startIso)
         .lt("clock_in", endExclusiveIso),
     ]);
 
     if (invoicesRes.error) throw invoicesRes.error;
+    if (shiftsRes.error) throw shiftsRes.error;
+    if (segmentsRes.error) throw segmentsRes.error;
+    if (creditsRes.error) throw creditsRes.error;
     if (timecardsRes.error) throw timecardsRes.error;
 
-    const invoices = invoicesRes.data ?? [];
-    const timecards = timecardsRes.data ?? [];
-
-    // 3) aggregate
     const byTech = new Map<string, TechLeaderboardRow>();
-
-    for (const prof of techProfiles) {
-      byTech.set(prof.id, {
-        techId: prof.id,
-        name: prof.full_name || "Unnamed tech",
-        role: prof.role ?? null,
+    for (const profile of techProfiles) {
+      byTech.set(profile.id, {
+        techId: profile.id,
+        name: profile.full_name || "Unnamed tech",
+        role: profile.role,
         jobs: 0,
         revenue: 0,
         laborCost: 0,
@@ -149,38 +231,76 @@ export async function POST(req: Request) {
       });
     }
 
-    for (const inv of invoices) {
-      const techId = inv.tech_id;
-      if (!techId) continue;
-      const row = byTech.get(techId);
+    for (const invoice of ((invoicesRes.data ?? []) as InvoiceSlim[])) {
+      if (!invoice.tech_id) continue;
+      const row = byTech.get(invoice.tech_id);
       if (!row) continue;
-
-      const total = Number(inv.total ?? 0);
-      const laborCost = Number(inv.labor_cost ?? 0);
-
-      row.jobs += 1;
-      row.revenue += Number.isFinite(total) ? total : 0;
-      row.laborCost += Number.isFinite(laborCost) ? laborCost : 0;
+      row.revenue += safeNum(invoice.total);
+      row.laborCost += safeNum(invoice.labor_cost);
     }
 
-    for (const tc of timecards) {
-      const techId = tc.user_id;
-      if (!techId) continue;
-      const row = byTech.get(techId);
+    for (const shift of ((shiftsRes.data ?? []) as ShiftSlim[])) {
+      if (!shift.user_id) continue;
+      const row = byTech.get(shift.user_id);
       if (!row) continue;
+      row.attendanceHours += getOverlapHours(
+        shift.start_time,
+        shift.end_time,
+        startIso,
+        endExclusiveIso,
+      );
+    }
 
-      const hours = Number(tc.hours_worked ?? 0);
-      row.clockedHours += Number.isFinite(hours) ? hours : 0;
+    for (const segment of ((segmentsRes.data ?? []) as LaborSegmentSlim[])) {
+      if (!segment.technician_id) continue;
+      const row = byTech.get(segment.technician_id);
+      if (!row) continue;
+      row.actualJobHours += getOverlapHours(
+        segment.started_at,
+        segment.ended_at,
+        startIso,
+        endExclusiveIso,
+      );
+    }
+
+    const creditedLines = new Map<string, Set<string>>();
+    for (const credit of ((creditsRes.data ?? []) as FlatRateCreditSlim[])) {
+      const row = byTech.get(credit.technician_id);
+      if (!row) continue;
+      const hours = safeNum(credit.credit_hours);
+      row.flaggedHours += hours;
+      row.billedHours += hours;
+      const lines = creditedLines.get(credit.technician_id) ?? new Set<string>();
+      lines.add(credit.work_order_line_id);
+      creditedLines.set(credit.technician_id, lines);
+    }
+
+    for (const [techId, lines] of creditedLines) {
+      const row = byTech.get(techId);
+      if (row) row.jobs = lines.size;
     }
 
     for (const row of byTech.values()) {
+      if (row.attendanceHours <= 0) {
+        row.attendanceHours = ((timecardsRes.data ?? []) as TimecardSlim[])
+          .filter((timecard) => timecard.user_id === row.techId)
+          .reduce((total, timecard) => total + safeNum(timecard.hours_worked), 0);
+      }
+
+      row.clockedHours = row.attendanceHours;
       row.profit = row.revenue - row.laborCost;
-      row.efficiencyPct = row.laborCost > 0 ? (row.revenue / row.laborCost) * 100 : 0;
-      row.revenuePerHour = row.clockedHours > 0 ? row.revenue / row.clockedHours : 0;
+      row.efficiencyPct =
+        row.actualJobHours > 0 ? (row.flaggedHours / row.actualJobHours) * 100 : 0;
+      row.productivityPct =
+        row.attendanceHours > 0 ? (row.actualJobHours / row.attendanceHours) * 100 : 0;
+      row.overallPerformancePct =
+        row.attendanceHours > 0 ? (row.flaggedHours / row.attendanceHours) * 100 : 0;
+      row.revenuePerHour =
+        row.clockedHours > 0 ? row.revenue / row.clockedHours : 0;
     }
 
     const result: TechLeaderboardResult = {
-      shop_id: shopId,
+      shop_id: requestedShopId,
       start: startIso,
       end: endIso,
       rows: Array.from(byTech.values()).sort((a, b) => b.revenue - a.revenue),
@@ -189,7 +309,6 @@ export async function POST(req: Request) {
     return NextResponse.json(result);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    // eslint-disable-next-line no-console
     console.error("[tech-leaderboard] error:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }

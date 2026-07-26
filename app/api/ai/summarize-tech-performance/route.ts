@@ -9,13 +9,18 @@ type Range = "weekly" | "monthly" | "quarterly" | "yearly";
 type TechRow = {
   name: string;
   jobs: number;
-  revenue: number;
-  laborCost: number;
-  profit: number;
-  billedHours: number;
-  clockedHours: number;
-  revenuePerHour: number;
-  efficiencyPct: number;
+  revenue?: number;
+  laborCost?: number;
+  profit?: number;
+  billedHours?: number;
+  clockedHours?: number;
+  flaggedHours?: number;
+  actualJobHours?: number;
+  attendanceHours?: number;
+  revenuePerHour?: number;
+  efficiencyPct?: number;
+  productivityPct?: number;
+  overallPerformancePct?: number;
 };
 
 type Payload = {
@@ -23,6 +28,11 @@ type Payload = {
   tech: TechRow | null;
   peers: TechRow[]; // all rows for this shop/range (including tech)
 };
+
+function safeNumber(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
 
 export async function POST(req: Request) {
   try {
@@ -56,29 +66,47 @@ export async function POST(req: Request) {
 
     // Build a compact numeric context for the model
     const peerCount = peers.length;
-    const totalPeerRevenue = peers.reduce((acc, p) => acc + p.revenue, 0);
+    const totalPeerRevenue = peers.reduce((acc, p) => acc + safeNumber(p.revenue), 0);
     const avgPeerRevenue =
       peerCount > 0 ? totalPeerRevenue / peerCount : 0;
 
     const totalPeerEff = peers.reduce(
-      (acc, p) => acc + (Number.isFinite(p.efficiencyPct) ? p.efficiencyPct : 0),
+      (acc, p) => acc + safeNumber(p.efficiencyPct),
       0,
     );
     const avgPeerEff =
       peerCount > 0 ? totalPeerEff / peerCount : 0;
+
+    const revenue = safeNumber(tech.revenue);
+    const laborCost = safeNumber(tech.laborCost);
+    const profit = safeNumber(tech.profit);
+    const clockedHours = safeNumber(tech.clockedHours ?? tech.attendanceHours);
+    const attendanceHours = safeNumber(tech.attendanceHours ?? tech.clockedHours);
+    const actualJobHours = safeNumber(tech.actualJobHours);
+    const flaggedHours = safeNumber(tech.flaggedHours ?? tech.billedHours);
+    const billedHours = safeNumber(tech.billedHours ?? tech.flaggedHours);
+    const revenuePerHour = safeNumber(tech.revenuePerHour);
+    const efficiencyPct = safeNumber(tech.efficiencyPct);
+    const productivityPct = safeNumber(tech.productivityPct);
+    const overallPerformancePct = safeNumber(tech.overallPerformancePct);
 
     const userPrompt = [
       `You are helping an auto repair shop summarize one technician's performance ${timeLabel}.`,
       "",
       `Technician: ${tech.name || "Unnamed tech"}`,
       `Jobs: ${tech.jobs}`,
-      `Revenue: ${tech.revenue.toFixed(2)}`,
-      `Labor cost: ${tech.laborCost.toFixed(2)}`,
-      `Profit: ${tech.profit.toFixed(2)}`,
-      `Clocked hours: ${tech.clockedHours.toFixed(2)}`,
-      `Billed hours: ${tech.billedHours.toFixed(2)}`,
-      `Revenue per hour: ${tech.revenuePerHour.toFixed(2)}`,
-      `Efficiency (%): ${tech.efficiencyPct.toFixed(1)}`,
+      `Revenue: ${revenue.toFixed(2)}`,
+      `Labor cost: ${laborCost.toFixed(2)}`,
+      `Profit: ${profit.toFixed(2)}`,
+      `Clocked attendance hours: ${clockedHours.toFixed(2)}`,
+      `Attendance hours: ${attendanceHours.toFixed(2)}`,
+      `Actual job hours: ${actualJobHours.toFixed(2)}`,
+      `Flagged hours: ${flaggedHours.toFixed(2)}`,
+      `Billed hours: ${billedHours.toFixed(2)}`,
+      `Revenue per hour: ${revenuePerHour.toFixed(2)}`,
+      `Efficiency (% flagged / actual job): ${efficiencyPct.toFixed(1)}`,
+      `Productivity (% actual job / attendance): ${productivityPct.toFixed(1)}`,
+      `Overall performance (% flagged / attendance): ${overallPerformancePct.toFixed(1)}`,
       "",
       `Peer techs in same shop for ${timeLabel}: ${peerCount}`,
       `Average peer revenue: ${avgPeerRevenue.toFixed(2)}`,
