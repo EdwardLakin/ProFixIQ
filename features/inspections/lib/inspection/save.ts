@@ -26,6 +26,8 @@ type InspectionSaveResponse = {
   inspection_id?: string;
   sync_revision?: number;
   saved_at?: string;
+  superseded?: boolean;
+  session?: InspectionSession;
 };
 
 async function postInspectionSave(
@@ -73,6 +75,8 @@ export async function saveInspectionSession(
   inspectionId?: string;
   syncRevision?: number;
   savedAt?: string;
+  superseded: boolean;
+  serverSession?: InspectionSession;
 }> {
   if (!workOrderLineId) {
     throw new Error("Missing workOrderLineId");
@@ -116,6 +120,7 @@ export async function saveInspectionSession(
         queued: true,
         conflicted: false,
         operationKey,
+        superseded: false,
       };
     }
     serverResponse.current = await postInspectionSave(payload);
@@ -144,5 +149,7 @@ export async function saveInspectionSession(
     inspectionId: serverResponse.current?.inspection_id,
     syncRevision: serverResponse.current?.sync_revision,
     savedAt: serverResponse.current?.saved_at,
+    superseded: serverResponse.current?.superseded === true,
+    serverSession: serverResponse.current?.session,
   };
 }

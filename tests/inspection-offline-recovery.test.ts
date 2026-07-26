@@ -35,8 +35,8 @@ describe("technician inspection offline recovery", () => {
     expect(screen).toContain("!serverBootLoaded ||");
     expect(screen).not.toContain("localDraftUpdatedAtRef");
     expect(screen).not.toContain("localStorage");
-    expect(autosave).toContain("remoteShouldReplace");
-    expect(autosave).toContain("hasMeaningfulLocalChanges");
+    expect(autosave).toContain("remoteInspectionShouldReplace");
+    expect(autosave).toContain("hasRecoveredLocalDraft");
     expect(autosave).toContain("recoveryOperationKey?.trim()");
   });
 
@@ -104,7 +104,7 @@ describe("technician inspection offline recovery", () => {
     expect(save).toContain("syncRevision: serverResponse.current?.sync_revision");
   });
 
-  it("pauses conflicts without destructive override or priority merging", () => {
+  it("keeps irreconcilable conflicts protected without device priority", () => {
     expect(screen).not.toContain("<InspectionConflictRecoveryPanel");
     expect(screen).toContain('recovered.state === "conflicted"');
     expect(autosave).not.toContain("const resolveConflict = useCallback");

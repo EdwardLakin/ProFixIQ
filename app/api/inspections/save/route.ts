@@ -27,6 +27,9 @@ function isInspectionRevisionConflict(message: string): boolean {
   const lower = message.toLowerCase();
   return (
     lower.includes("inspection save conflicts with a newer server version") ||
+    lower.includes(
+      "inspection client revision is newer than the server version",
+    ) ||
     lower.includes("inspection is finalized and locked") ||
     lower.includes("inspection was finalized while autosave was in progress") ||
     lower.includes("inspection changed or was finalized while autosave was in progress")
