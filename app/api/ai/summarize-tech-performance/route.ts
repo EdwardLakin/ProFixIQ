@@ -66,10 +66,6 @@ export async function POST(req: Request) {
 
     // Build a compact numeric context for the model
     const peerCount = peers.length;
-    const totalPeerRevenue = peers.reduce((acc, p) => acc + safeNumber(p.revenue), 0);
-    const avgPeerRevenue =
-      peerCount > 0 ? totalPeerRevenue / peerCount : 0;
-
     const totalPeerEff = peers.reduce(
       (acc, p) => acc + safeNumber(p.efficiencyPct),
       0,
@@ -77,15 +73,10 @@ export async function POST(req: Request) {
     const avgPeerEff =
       peerCount > 0 ? totalPeerEff / peerCount : 0;
 
-    const revenue = safeNumber(tech.revenue);
-    const laborCost = safeNumber(tech.laborCost);
-    const profit = safeNumber(tech.profit);
     const clockedHours = safeNumber(tech.clockedHours ?? tech.attendanceHours);
     const attendanceHours = safeNumber(tech.attendanceHours ?? tech.clockedHours);
     const actualJobHours = safeNumber(tech.actualJobHours);
     const flaggedHours = safeNumber(tech.flaggedHours ?? tech.billedHours);
-    const billedHours = safeNumber(tech.billedHours ?? tech.flaggedHours);
-    const revenuePerHour = safeNumber(tech.revenuePerHour);
     const efficiencyPct = safeNumber(tech.efficiencyPct);
     const productivityPct = safeNumber(tech.productivityPct);
     const overallPerformancePct = safeNumber(tech.overallPerformancePct);
@@ -95,27 +86,25 @@ export async function POST(req: Request) {
       "",
       `Technician: ${tech.name || "Unnamed tech"}`,
       `Jobs: ${tech.jobs}`,
-      `Revenue: ${revenue.toFixed(2)}`,
-      `Labor cost: ${laborCost.toFixed(2)}`,
-      `Profit: ${profit.toFixed(2)}`,
       `Clocked attendance hours: ${clockedHours.toFixed(2)}`,
       `Attendance hours: ${attendanceHours.toFixed(2)}`,
       `Actual job hours: ${actualJobHours.toFixed(2)}`,
       `Flagged hours: ${flaggedHours.toFixed(2)}`,
-      `Billed hours: ${billedHours.toFixed(2)}`,
-      `Revenue per hour: ${revenuePerHour.toFixed(2)}`,
       `Efficiency (% flagged / actual job): ${efficiencyPct.toFixed(1)}`,
       `Productivity (% actual job / attendance): ${productivityPct.toFixed(1)}`,
       `Overall performance (% flagged / attendance): ${overallPerformancePct.toFixed(1)}`,
       "",
-      `Peer techs in same shop for ${timeLabel}: ${peerCount}`,
-      `Average peer revenue: ${avgPeerRevenue.toFixed(2)}`,
-      `Average peer efficiency: ${avgPeerEff.toFixed(1)}%`,
+      peerCount > 0
+        ? `Peer techs in same shop for ${timeLabel}: ${peerCount}`
+        : "No authorized peer comparison is available.",
+      peerCount > 0 ? `Average peer efficiency: ${avgPeerEff.toFixed(1)}%` : "",
       "",
       "Write a short, plain-language summary (3–5 sentences) for the technician themselves.",
       "Focus on:",
       "- how they are doing overall,",
-      "- where they appear above or below the peer average, and",
+      peerCount > 0
+        ? "- where they appear above or below the peer average, and"
+        : "- what their own time metrics indicate, and",
       "- one or two simple, actionable suggestions.",
       "Do NOT use bullet points. Keep it under 120 words. No greetings or sign-offs.",
     ].join("\n");

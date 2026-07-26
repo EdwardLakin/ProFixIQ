@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
-import {
-  endOfMonth,
-  endOfQuarter,
-  endOfWeek,
-  endOfYear,
-  startOfMonth,
-  startOfQuarter,
-  startOfWeek,
-  startOfYear,
-} from "date-fns";
-
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import {
+  derivePerformanceMetrics,
+  getShopPerformanceRange,
+  mergedIntervalHours,
+} from "@/features/stats/lib/techPerformanceMetrics";
 import type { TimeRange } from "@shared/lib/stats/getShopStats";
 import {
   isTechRole,
@@ -59,35 +53,14 @@ type FlatRateCreditSlim = {
 
 type TimecardSlim = {
   user_id: string | null;
+  clock_in: string;
+  clock_out: string | null;
   hours_worked: number | null;
 };
-
-function toIso(d: Date): string {
-  return d.toISOString();
-}
 
 function safeNum(value: number | null | undefined): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
-}
-
-function getRange(timeRange: TimeRange) {
-  const now = new Date();
-
-  switch (timeRange) {
-    case "weekly":
-      return {
-        start: startOfWeek(now, { weekStartsOn: 1 }),
-        end: endOfWeek(now, { weekStartsOn: 1 }),
-      };
-    case "quarterly":
-      return { start: startOfQuarter(now), end: endOfQuarter(now) };
-    case "yearly":
-      return { start: startOfYear(now), end: endOfYear(now) };
-    case "monthly":
-    default:
-      return { start: startOfMonth(now), end: endOfMonth(now) };
-  }
 }
 
 function getOverlapHours(
@@ -123,13 +96,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { start, end } = getRange(timeRange);
-    const endExclusive = new Date(end.getTime() + 1);
-    const startIso = toIso(start);
-    const endIso = toIso(end);
-    const endExclusiveIso = toIso(endExclusive);
-
     const admin = createAdminSupabase();
+    const { data: shop, error: shopError } = await admin
+      .from("shops")
+      .select("timezone")
+      .eq("id", requestedShopId)
+      .maybeSingle();
+    if (shopError) throw shopError;
+    const { start: startIso, endExclusive: endExclusiveIso } =
+      getShopPerformanceRange(timeRange, shop?.timezone?.trim() || "UTC");
+    const endIso = endExclusiveIso;
 
     let profilesQuery = admin
       .from("profiles")
@@ -174,6 +150,7 @@ export async function POST(req: Request) {
         .select("user_id, start_time, end_time")
         .eq("shop_id", requestedShopId)
         .in("user_id", techIds)
+        .eq("type", "shift")
         .neq("excluded_from_payroll", true)
         .lt("start_time", endExclusiveIso)
         .or(`end_time.is.null,end_time.gt.${startIso}`),
@@ -196,11 +173,11 @@ export async function POST(req: Request) {
 
       admin
         .from("payroll_timecards")
-        .select("user_id, hours_worked")
+        .select("user_id, clock_in, clock_out, hours_worked")
         .eq("shop_id", requestedShopId)
         .in("user_id", techIds)
-        .gte("clock_in", startIso)
-        .lt("clock_in", endExclusiveIso),
+        .lt("clock_in", endExclusiveIso)
+        .or(`clock_out.is.null,clock_out.gt.${startIso}`),
     ]);
 
     if (invoicesRes.error) throw invoicesRes.error;
@@ -239,18 +216,6 @@ export async function POST(req: Request) {
       row.laborCost += safeNum(invoice.labor_cost);
     }
 
-    for (const shift of ((shiftsRes.data ?? []) as ShiftSlim[])) {
-      if (!shift.user_id) continue;
-      const row = byTech.get(shift.user_id);
-      if (!row) continue;
-      row.attendanceHours += getOverlapHours(
-        shift.start_time,
-        shift.end_time,
-        startIso,
-        endExclusiveIso,
-      );
-    }
-
     for (const segment of ((segmentsRes.data ?? []) as LaborSegmentSlim[])) {
       if (!segment.technician_id) continue;
       const row = byTech.get(segment.technician_id);
@@ -281,22 +246,22 @@ export async function POST(req: Request) {
     }
 
     for (const row of byTech.values()) {
-      if (row.attendanceHours <= 0) {
-        row.attendanceHours = ((timecardsRes.data ?? []) as TimecardSlim[])
-          .filter((timecard) => timecard.user_id === row.techId)
-          .reduce((total, timecard) => total + safeNum(timecard.hours_worked), 0);
-      }
-
-      row.clockedHours = row.attendanceHours;
-      row.profit = row.revenue - row.laborCost;
-      row.efficiencyPct =
-        row.actualJobHours > 0 ? (row.flaggedHours / row.actualJobHours) * 100 : 0;
-      row.productivityPct =
-        row.attendanceHours > 0 ? (row.actualJobHours / row.attendanceHours) * 100 : 0;
-      row.overallPerformancePct =
-        row.attendanceHours > 0 ? (row.flaggedHours / row.attendanceHours) * 100 : 0;
-      row.revenuePerHour =
-        row.clockedHours > 0 ? row.revenue / row.clockedHours : 0;
+      const shifts = ((shiftsRes.data ?? []) as ShiftSlim[])
+        .filter((shift) => shift.user_id === row.techId)
+        .map((shift) => ({ start: shift.start_time, end: shift.end_time }));
+      const timecards = ((timecardsRes.data ?? []) as TimecardSlim[])
+        .filter((timecard) => timecard.user_id === row.techId)
+        .map((timecard) => ({
+          start: timecard.clock_in,
+          end: timecard.clock_out,
+          fallbackHours: timecard.hours_worked,
+        }));
+      row.attendanceHours = mergedIntervalHours(
+        [...shifts, ...timecards],
+        startIso,
+        endExclusiveIso,
+      );
+      derivePerformanceMetrics(row);
     }
 
     const result: TechLeaderboardResult = {

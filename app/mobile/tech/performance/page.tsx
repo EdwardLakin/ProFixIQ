@@ -124,8 +124,17 @@ export default function MobileTechPerformancePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             timeRange: range,
-            tech: myRow,
-            peers: rows,
+            tech: {
+              name: myRow.name,
+              jobs: myRow.jobs,
+              flaggedHours: myRow.flaggedHours,
+              actualJobHours: myRow.actualJobHours,
+              attendanceHours: myRow.attendanceHours,
+              efficiencyPct: myRow.efficiencyPct,
+              productivityPct: myRow.productivityPct,
+              overallPerformancePct: myRow.overallPerformancePct,
+            },
+            peers: [],
           }),
         });
 
