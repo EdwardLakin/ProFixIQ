@@ -12,10 +12,24 @@ SET LOCAL search_path = public, pg_temp;
 ALTER TABLE public.payments
   ADD COLUMN IF NOT EXISTS amount numeric(14,2);
 
-UPDATE public.payments
-SET amount = round(amount_cents::numeric / 100, 2)
-WHERE amount IS NULL
-  AND amount_cents IS NOT NULL;
+DO $p0_008_backfill$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'payments'
+      AND column_name = 'amount_cents'
+  ) THEN
+    EXECUTE $sql$
+      UPDATE public.payments
+      SET amount = round(amount_cents::numeric / 100, 2)
+      WHERE amount IS NULL
+        AND amount_cents IS NOT NULL
+    $sql$;
+  END IF;
+END
+$p0_008_backfill$;
 
 DO $p0_008$
 BEGIN
