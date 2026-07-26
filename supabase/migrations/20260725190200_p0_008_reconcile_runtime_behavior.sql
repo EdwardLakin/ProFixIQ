@@ -1749,6 +1749,61 @@ begin
 end;
 $function$
 ;
+CREATE OR REPLACE FUNCTION public.is_agent_developer()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select coalesce((select agent_role from public.profiles where id = auth.uid()), '') = 'developer'
+$function$
+;
+CREATE OR REPLACE FUNCTION public.is_shop_member_v2(shop_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select public.is_shop_member($1);
+$function$
+;
+CREATE OR REPLACE FUNCTION public.shop_role(shop_id uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select sm.role
+  from public.shop_members sm
+  where sm.shop_id = $1
+    and sm.user_id = auth.uid()
+  limit 1;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.shop_role_v2(shop_id uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select public.shop_role($1);
+$function$
+;
+CREATE OR REPLACE FUNCTION public.user_is_in_shop(target_shop_id uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select exists (
+    select 1
+    from public.shop_users su
+    where su.shop_id = target_shop_id
+      and su.user_id = auth.uid()
+      and su.is_active = true
+  );
+$function$
+;
 CREATE OR REPLACE FUNCTION public.update_pricing_snapshot_status()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2196,6 +2251,8 @@ REVOKE ALL ON FUNCTION public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,tex
 REVOKE ALL ON FUNCTION public.invoice_is_historical_import(jsonb) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.invoices_compute_totals_biu() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.invoices_sync_work_orders_aiu() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.is_agent_developer() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.is_shop_member_v2(uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.match_learned_job_templates(uuid,vector,integer) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.match_work_order_intelligence(uuid,vector,integer) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.menu_repair_items_set_updated_at() FROM PUBLIC, anon, authenticated, service_role;
@@ -2218,12 +2275,15 @@ REVOKE ALL ON FUNCTION public.set_updated_at_shopreel_integrations() FROM PUBLIC
 REVOKE ALL ON FUNCTION public.set_updated_at_timestamp() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_user_theme_preferences_updated_at() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_work_order_line_dtc_threads_updated_at() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.shop_role(uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.shop_role_v2(uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.shopreel_manual_assets_set_updated_at() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.start_canonical_shift(uuid,uuid,uuid,timestamp with time zone) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.sync_shop_brand_logo_to_profile() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.sync_shop_user_limit_from_billing() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.tg_set_updated_at() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.touch_updated_at() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.user_is_in_shop(uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.update_pricing_snapshot_status() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.validate_property_assets_tenant_consistency() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.validate_property_inspections_tenant_consistency() FROM PUBLIC, anon, authenticated, service_role;
@@ -2261,6 +2321,8 @@ GRANT EXECUTE ON FUNCTION public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,
 GRANT EXECUTE ON FUNCTION public.invoice_is_historical_import(jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.invoices_compute_totals_biu() TO service_role;
 GRANT EXECUTE ON FUNCTION public.invoices_sync_work_orders_aiu() TO service_role;
+GRANT EXECUTE ON FUNCTION public.is_agent_developer() TO service_role;
+GRANT EXECUTE ON FUNCTION public.is_shop_member_v2(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.match_learned_job_templates(uuid,vector,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.match_work_order_intelligence(uuid,vector,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.menu_repair_items_set_updated_at() TO service_role;
@@ -2283,12 +2345,15 @@ GRANT EXECUTE ON FUNCTION public.set_updated_at_shopreel_integrations() TO servi
 GRANT EXECUTE ON FUNCTION public.set_updated_at_timestamp() TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_user_theme_preferences_updated_at() TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_work_order_line_dtc_threads_updated_at() TO service_role;
+GRANT EXECUTE ON FUNCTION public.shop_role(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.shop_role_v2(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.shopreel_manual_assets_set_updated_at() TO service_role;
 GRANT EXECUTE ON FUNCTION public.start_canonical_shift(uuid,uuid,uuid,timestamp with time zone) TO service_role;
 GRANT EXECUTE ON FUNCTION public.sync_shop_brand_logo_to_profile() TO service_role;
 GRANT EXECUTE ON FUNCTION public.sync_shop_user_limit_from_billing() TO service_role;
 GRANT EXECUTE ON FUNCTION public.tg_set_updated_at() TO service_role;
 GRANT EXECUTE ON FUNCTION public.touch_updated_at() TO service_role;
+GRANT EXECUTE ON FUNCTION public.user_is_in_shop(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.update_pricing_snapshot_status() TO service_role;
 GRANT EXECUTE ON FUNCTION public.validate_property_assets_tenant_consistency() TO service_role;
 GRANT EXECUTE ON FUNCTION public.validate_property_inspections_tenant_consistency() TO service_role;
@@ -2308,11 +2373,16 @@ GRANT EXECUTE ON FUNCTION public.agent_approve_action(uuid,uuid) TO authenticate
 GRANT EXECUTE ON FUNCTION public.agent_reject_action(uuid,uuid,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_work_order_assignments(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_agent_developer() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_shop_member_v2(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.match_learned_job_templates(uuid,vector,integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.match_work_order_intelligence(uuid,vector,integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.receive_po_part_and_allocate(uuid,uuid,uuid,numeric) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.replace_shop_hours_atomic(uuid,jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_part_request_status(uuid,part_request_status) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.shop_role(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.shop_role_v2(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.user_is_in_shop(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.wo_release_parts_holds_for_part(uuid) TO authenticated;
 
 CREATE OR REPLACE VIEW public.v_menu_repair_item_match_stats
