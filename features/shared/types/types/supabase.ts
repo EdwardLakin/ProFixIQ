@@ -1508,24 +1508,24 @@ export type Database = {
       }
       chat_participants: {
         Row: {
-          chat_id: string | null
+          chat_id: string
           id: string
           joined_at: string | null
-          profile_id: string | null
+          profile_id: string
           role: string | null
         }
         Insert: {
-          chat_id?: string | null
+          chat_id: string
           id?: string
           joined_at?: string | null
-          profile_id?: string | null
+          profile_id: string
           role?: string | null
         }
         Update: {
-          chat_id?: string | null
+          chat_id?: string
           id?: string
           joined_at?: string | null
-          profile_id?: string | null
+          profile_id?: string
           role?: string | null
         }
         Relationships: [
@@ -2177,27 +2177,27 @@ export type Database = {
       conversation_participants: {
         Row: {
           added_at: string | null
-          conversation_id: string | null
+          conversation_id: string
           id: string
           participant_kind: string
           role: string | null
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           added_at?: string | null
-          conversation_id?: string | null
+          conversation_id: string
           id?: string
           participant_kind?: string
           role?: string | null
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           added_at?: string | null
-          conversation_id?: string | null
+          conversation_id?: string
           id?: string
           participant_kind?: string
           role?: string | null
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -3000,7 +3000,7 @@ export type Database = {
       }
       email_logs: {
         Row: {
-          created_at: string | null
+          created_at: string
           delivered_at: string | null
           email: string
           error: string | null
@@ -3012,11 +3012,11 @@ export type Database = {
           metadata: Json
           provider_message_id: string | null
           sg_event_id: string | null
-          status: string | null
+          status: string
           timestamp: string
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           delivered_at?: string | null
           email: string
           error?: string | null
@@ -3028,11 +3028,11 @@ export type Database = {
           metadata?: Json
           provider_message_id?: string | null
           sg_event_id?: string | null
-          status?: string | null
+          status?: string
           timestamp: string
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           delivered_at?: string | null
           email?: string
           error?: string | null
@@ -3044,7 +3044,7 @@ export type Database = {
           metadata?: Json
           provider_message_id?: string | null
           sg_event_id?: string | null
-          status?: string | null
+          status?: string
           timestamp?: string
         }
         Relationships: []
@@ -5095,10 +5095,10 @@ export type Database = {
           reopen_reason: string | null
           reopened_at: string | null
           reopened_by: string | null
-          shop_id: string | null
+          shop_id: string
           signing_cycle: number
           started_at: string | null
-          status: string | null
+          status: string
           summary: Json | null
           sync_revision: number
           template_id: string | null
@@ -5128,10 +5128,10 @@ export type Database = {
           reopen_reason?: string | null
           reopened_at?: string | null
           reopened_by?: string | null
-          shop_id?: string | null
+          shop_id: string
           signing_cycle?: number
           started_at?: string | null
-          status?: string | null
+          status?: string
           summary?: Json | null
           sync_revision?: number
           template_id?: string | null
@@ -5161,10 +5161,10 @@ export type Database = {
           reopen_reason?: string | null
           reopened_at?: string | null
           reopened_by?: string | null
-          shop_id?: string | null
+          shop_id?: string
           signing_cycle?: number
           started_at?: string | null
-          status?: string | null
+          status?: string
           summary?: Json | null
           sync_revision?: number
           template_id?: string | null
@@ -9450,7 +9450,7 @@ export type Database = {
           kind: string
           metadata: Json
           read_at: string | null
-          title: string | null
+          title: string
           user_id: string
           work_order_id: string | null
         }
@@ -9463,7 +9463,7 @@ export type Database = {
           kind?: string
           metadata?: Json
           read_at?: string | null
-          title?: string | null
+          title: string
           user_id: string
           work_order_id?: string | null
         }
@@ -9476,7 +9476,7 @@ export type Database = {
           kind?: string
           metadata?: Json
           read_at?: string | null
-          title?: string | null
+          title?: string
           user_id?: string
           work_order_id?: string | null
         }
@@ -11426,12 +11426,12 @@ export type Database = {
           photo_urls: string[] | null
           price: number | null
           quantity: number | null
-          status: string | null
+          status: string
           title: string
           total: number | null
           updated_at: string | null
           user_id: string | null
-          work_order_id: string | null
+          work_order_id: string
         }
         Insert: {
           created_at?: string | null
@@ -11449,12 +11449,12 @@ export type Database = {
           photo_urls?: string[] | null
           price?: number | null
           quantity?: number | null
-          status?: string | null
+          status: string
           title: string
           total?: number | null
           updated_at?: string | null
           user_id?: string | null
-          work_order_id?: string | null
+          work_order_id: string
         }
         Update: {
           created_at?: string | null
@@ -11472,12 +11472,12 @@ export type Database = {
           photo_urls?: string[] | null
           price?: number | null
           quantity?: number | null
-          status?: string | null
+          status?: string
           title?: string
           total?: number | null
           updated_at?: string | null
           user_id?: string | null
-          work_order_id?: string | null
+          work_order_id?: string
         }
         Relationships: [
           {
@@ -17255,21 +17255,21 @@ export type Database = {
           approved_by: string | null
           id: string
           method: string | null
-          work_order_id: string | null
+          work_order_id: string
         }
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
           id?: string
           method?: string | null
-          work_order_id?: string | null
+          work_order_id: string
         }
         Update: {
           approved_at?: string | null
           approved_by?: string | null
           id?: string
           method?: string | null
-          work_order_id?: string | null
+          work_order_id?: string
         }
         Relationships: [
           {
@@ -18222,12 +18222,12 @@ export type Database = {
           punched_out_at: string | null
           quoted_at: string | null
           service_code: string | null
-          shop_id: string | null
+          shop_id: string
           source_inspection_id: string | null
           source_inspection_item_key: string | null
           source_intake_id: string | null
           source_row_id: string | null
-          status: string | null
+          status: string
           template_id: string | null
           tools: string | null
           updated_at: string | null
@@ -18240,7 +18240,7 @@ export type Database = {
           voided_by: string | null
           voided_note: string | null
           voided_reason: string | null
-          work_order_id: string | null
+          work_order_id: string
         }
         Insert: {
           approval_at?: string | null
@@ -18286,12 +18286,12 @@ export type Database = {
           punched_out_at?: string | null
           quoted_at?: string | null
           service_code?: string | null
-          shop_id?: string | null
+          shop_id: string
           source_inspection_id?: string | null
           source_inspection_item_key?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
-          status?: string | null
+          status?: string
           template_id?: string | null
           tools?: string | null
           updated_at?: string | null
@@ -18304,7 +18304,7 @@ export type Database = {
           voided_by?: string | null
           voided_note?: string | null
           voided_reason?: string | null
-          work_order_id?: string | null
+          work_order_id: string
         }
         Update: {
           approval_at?: string | null
@@ -18350,12 +18350,12 @@ export type Database = {
           punched_out_at?: string | null
           quoted_at?: string | null
           service_code?: string | null
-          shop_id?: string | null
+          shop_id?: string
           source_inspection_id?: string | null
           source_inspection_item_key?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
-          status?: string | null
+          status?: string
           template_id?: string | null
           tools?: string | null
           updated_at?: string | null
@@ -18368,7 +18368,7 @@ export type Database = {
           voided_by?: string | null
           voided_note?: string | null
           voided_reason?: string | null
-          work_order_id?: string | null
+          work_order_id?: string
         }
         Relationships: [
           {
@@ -18564,7 +18564,7 @@ export type Database = {
           location_id: string
           part_id: string
           qty: number
-          shop_id: string | null
+          shop_id: string
           source_request_item_id: string | null
           stock_move_id: string | null
           unit_cost: number
@@ -18578,7 +18578,7 @@ export type Database = {
           location_id: string
           part_id: string
           qty: number
-          shop_id?: string | null
+          shop_id: string
           source_request_item_id?: string | null
           stock_move_id?: string | null
           unit_cost?: number
@@ -18592,7 +18592,7 @@ export type Database = {
           location_id?: string
           part_id?: string
           qty?: number
-          shop_id?: string | null
+          shop_id?: string
           source_request_item_id?: string | null
           stock_move_id?: string | null
           unit_cost?: number
@@ -18740,7 +18740,7 @@ export type Database = {
           unit_sell_price_snapshot: number | null
           updated_at: string
           vendor_snapshot: string | null
-          work_order_id: string | null
+          work_order_id: string
           work_order_line_id: string | null
         }
         Insert: {
@@ -18771,7 +18771,7 @@ export type Database = {
           unit_sell_price_snapshot?: number | null
           updated_at?: string
           vendor_snapshot?: string | null
-          work_order_id?: string | null
+          work_order_id: string
           work_order_line_id?: string | null
         }
         Update: {
@@ -18802,7 +18802,7 @@ export type Database = {
           unit_sell_price_snapshot?: number | null
           updated_at?: string
           vendor_snapshot?: string | null
-          work_order_id?: string | null
+          work_order_id?: string
           work_order_line_id?: string | null
         }
         Relationships: [
@@ -18871,7 +18871,7 @@ export type Database = {
           defer_reason: string | null
           deferred_at: string | null
           deferred_by: string | null
-          description: string | null
+          description: string
           discount_total: number
           est_labor_hours: number
           external_id: string | null
@@ -18911,7 +18911,7 @@ export type Database = {
           defer_reason?: string | null
           deferred_at?: string | null
           deferred_by?: string | null
-          description?: string | null
+          description: string
           discount_total?: number
           est_labor_hours?: number
           external_id?: string | null
@@ -18951,7 +18951,7 @@ export type Database = {
           defer_reason?: string | null
           deferred_at?: string | null
           deferred_by?: string | null
-          description?: string | null
+          description?: string
           discount_total?: number
           est_labor_hours?: number
           external_id?: string | null
@@ -19090,7 +19090,7 @@ export type Database = {
           source_fleet_service_request_id: string | null
           source_intake_id: string | null
           source_row_id: string | null
-          status: string | null
+          status: string
           type: string | null
           updated_at: string | null
           user_id: string | null
@@ -19163,7 +19163,7 @@ export type Database = {
           source_fleet_service_request_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
-          status?: string | null
+          status?: string
           type?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -19236,7 +19236,7 @@ export type Database = {
           source_fleet_service_request_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
-          status?: string | null
+          status?: string
           type?: string | null
           updated_at?: string | null
           user_id?: string | null

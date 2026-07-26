@@ -180,6 +180,87 @@ begin
     raise exception 'P0-008 work_orders.shop_id must be required';
   end if;
 
+  select array_agg(
+      expected.table_name || '.' || expected.column_name
+      order by expected.table_name, expected.column_name
+    )
+    into unsafe
+  from (values
+    ('chat_participants', 'chat_id'),
+    ('chat_participants', 'profile_id'),
+    ('conversation_participants', 'conversation_id'),
+    ('conversation_participants', 'user_id'),
+    ('demo_shop_boosts', 'snapshot'),
+    ('email_logs', 'created_at'),
+    ('email_logs', 'status'),
+    ('inspections', 'shop_id'),
+    ('inspections', 'status'),
+    ('inspections', 'locked'),
+    ('payments', 'updated_at'),
+    ('payroll_pay_periods', 'created_at'),
+    ('payroll_pay_periods', 'period_end'),
+    ('payroll_pay_periods', 'period_start'),
+    ('payroll_pay_periods', 'shop_id'),
+    ('portal_notifications', 'title'),
+    ('quote_lines', 'status'),
+    ('quote_lines', 'work_order_id'),
+    ('shops', 'owner_id'),
+    ('work_order_approvals', 'work_order_id'),
+    ('work_order_lines', 'shop_id'),
+    ('work_order_lines', 'status'),
+    ('work_order_lines', 'work_order_id'),
+    ('work_order_part_allocations', 'shop_id'),
+    ('work_order_parts', 'work_order_id'),
+    ('work_order_quote_lines', 'est_labor_hours'),
+    ('work_order_quote_lines', 'description'),
+    ('work_order_quote_lines', 'grand_total'),
+    ('work_order_quote_lines', 'labor_hours'),
+    ('work_order_quote_lines', 'labor_total'),
+    ('work_order_quote_lines', 'metadata'),
+    ('work_order_quote_lines', 'parts_total'),
+    ('work_order_quote_lines', 'subtotal'),
+    ('work_order_quote_lines', 'tax_total'),
+    ('work_orders', 'status')
+  ) as expected(table_name, column_name)
+  left join information_schema.columns c
+    on c.table_schema = 'public'
+   and c.table_name = expected.table_name
+   and c.column_name = expected.column_name
+  where c.is_nullable is distinct from 'NO';
+
+  if unsafe is not null then
+    raise exception 'P0-008 required runtime columns remain nullable or missing: %', unsafe;
+  end if;
+
+  select array_agg(
+      expected.table_name || '.' || expected.column_name
+      order by expected.table_name, expected.column_name
+    )
+    into unsafe
+  from (values
+    ('demo_shop_boosts', 'snapshot'),
+    ('inspections', 'locked'),
+    ('payments', 'updated_at'),
+    ('payroll_pay_periods', 'created_at'),
+    ('work_order_quote_lines', 'est_labor_hours'),
+    ('work_order_quote_lines', 'grand_total'),
+    ('work_order_quote_lines', 'labor_hours'),
+    ('work_order_quote_lines', 'labor_total'),
+    ('work_order_quote_lines', 'metadata'),
+    ('work_order_quote_lines', 'parts_total'),
+    ('work_order_quote_lines', 'subtotal'),
+    ('work_order_quote_lines', 'tax_total')
+  ) as expected(table_name, column_name)
+  left join information_schema.columns c
+    on c.table_schema = 'public'
+   and c.table_name = expected.table_name
+   and c.column_name = expected.column_name
+  where c.column_default is null;
+
+  if unsafe is not null then
+    raise exception 'P0-008 canonical column defaults remain missing: %', unsafe;
+  end if;
+
   select array_agg(trigger_name order by trigger_name)
     into missing
   from unnest(
