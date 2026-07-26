@@ -2381,6 +2381,20 @@ export type Database = {
             foreignKeyName: "conversations_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "conversations_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "conversations_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -2533,6 +2547,20 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "customer_portal_invites_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "customer_portal_invites_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
             referencedColumns: ["work_order_id"]
           },
           {
@@ -3099,6 +3127,7 @@ export type Database = {
           template_key: string
           timestamp: string
           to_email: string
+        }
         Insert: {
           created_at?: string
           created_by?: string | null
@@ -3122,6 +3151,7 @@ export type Database = {
           template_key: string
           timestamp: string
           to_email: string
+        }
         Update: {
           created_at?: string
           created_by?: string | null
@@ -3145,6 +3175,7 @@ export type Database = {
           template_key?: string
           timestamp?: string
           to_email?: string
+        }
         Relationships: [
           {
             foreignKeyName: "email_logs_created_by_fkey"
@@ -4428,6 +4459,7 @@ export type Database = {
           vehicle_id: string | null
           work_order_id: string | null
           work_order_number: string | null
+        }
         Insert: {
           advisor_name?: string | null
           approval_state?: string | null
@@ -4465,6 +4497,7 @@ export type Database = {
           vehicle_id?: string | null
           work_order_id?: string | null
           work_order_number?: string | null
+        }
         Update: {
           advisor_name?: string | null
           approval_state?: string | null
@@ -4502,6 +4535,7 @@ export type Database = {
           vehicle_id?: string | null
           work_order_id?: string | null
           work_order_number?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "history_customer_id_fkey"
@@ -4997,7 +5031,7 @@ export type Database = {
           {
             foreignKeyName: "inspection_sessions_work_order_line_fk"
             columns: ["work_order_line_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
@@ -5011,7 +5045,7 @@ export type Database = {
           {
             foreignKeyName: "inspection_sessions_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
@@ -5527,6 +5561,20 @@ export type Database = {
             foreignKeyName: "inspections_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -5535,13 +5583,6 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "inspections_work_order_line_fk"
-            columns: ["work_order_line_id"]
-            isOneToOne: false
-            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -5844,6 +5885,20 @@ export type Database = {
             foreignKeyName: "invoice_versions_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_versions_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_versions_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -5983,14 +6038,14 @@ export type Database = {
           {
             foreignKeyName: "invoices_work_order_id_fkey"
             columns: ["work_order_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_fleet"
             referencedColumns: ["work_order_id"]
           },
           {
             foreignKeyName: "invoices_work_order_id_fkey"
             columns: ["work_order_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_portal"
             referencedColumns: ["work_order_id"]
           },
@@ -6391,6 +6446,7 @@ export type Database = {
           shop_id: string | null
           unit_cost: number
           user_id: string | null
+        }
         Insert: {
           created_at?: string | null
           id?: string
@@ -6401,6 +6457,7 @@ export type Database = {
           shop_id?: string | null
           unit_cost?: number
           user_id?: string | null
+        }
         Update: {
           created_at?: string | null
           id?: string
@@ -6411,6 +6468,7 @@ export type Database = {
           shop_id?: string | null
           unit_cost?: number
           user_id?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "menu_item_parts_menu_item_id_fkey"
@@ -7262,6 +7320,20 @@ export type Database = {
             foreignKeyName: "mobile_operation_keys_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_operation_keys_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "mobile_operation_keys_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -7270,6 +7342,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mobile_operation_keys_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -7818,6 +7897,13 @@ export type Database = {
             foreignKeyName: "part_request_items_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "part_request_items_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -7868,6 +7954,20 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "part_request_items_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "part_request_items_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
             referencedColumns: ["work_order_id"]
           },
           {
@@ -8020,6 +8120,20 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "part_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "part_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
             referencedColumns: ["work_order_id"]
           },
           {
@@ -8291,6 +8405,7 @@ export type Database = {
           part_id: string
           shop_id: string
           supplier_id: string | null
+        }
         Insert: {
           barcode: string
           code?: string | null
@@ -8299,6 +8414,7 @@ export type Database = {
           part_id: string
           shop_id: string
           supplier_id?: string | null
+        }
         Update: {
           barcode?: string
           code?: string | null
@@ -8307,6 +8423,7 @@ export type Database = {
           part_id?: string
           shop_id?: string
           supplier_id?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "parts_barcodes_part_id_fkey"
@@ -8410,6 +8527,20 @@ export type Database = {
             foreignKeyName: "parts_disposition_events_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_disposition_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "parts_disposition_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -8418,6 +8549,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_disposition_events_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -8922,6 +9060,20 @@ export type Database = {
             foreignKeyName: "payment_events_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "payment_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "payment_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -9020,6 +9172,20 @@ export type Database = {
             foreignKeyName: "payment_receipts_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "payment_receipts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "payment_receipts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -9061,6 +9227,7 @@ export type Database = {
           updated_at: string
           work_order_id: string | null
           work_order_line_id: string | null
+        }
         Insert: {
           amount?: number
           amount_cents: number
@@ -9089,6 +9256,7 @@ export type Database = {
           updated_at?: string
           work_order_id?: string | null
           work_order_line_id?: string | null
+        }
         Update: {
           amount?: number
           amount_cents?: number
@@ -9117,6 +9285,7 @@ export type Database = {
           updated_at?: string
           work_order_id?: string | null
           work_order_line_id?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "payments_invoice_id_fkey"
@@ -9418,6 +9587,7 @@ export type Database = {
           start_date: string
           status: string
           updated_at: string
+        }
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
@@ -9435,6 +9605,7 @@ export type Database = {
           start_date: string
           status?: string
           updated_at?: string
+        }
         Update: {
           approved_at?: string | null
           approved_by?: string | null
@@ -9452,6 +9623,7 @@ export type Database = {
           start_date?: string
           status?: string
           updated_at?: string
+        }
         Relationships: [
           {
             foreignKeyName: "payroll_pay_periods_approved_by_fkey"
@@ -11581,6 +11753,7 @@ export type Database = {
           supplier_id: string
           tax_total: number | null
           total: number | null
+        }
         Insert: {
           created_at?: string
           created_by?: string | null
@@ -11596,6 +11769,7 @@ export type Database = {
           supplier_id: string
           tax_total?: number | null
           total?: number | null
+        }
         Update: {
           created_at?: string
           created_by?: string | null
@@ -11611,6 +11785,7 @@ export type Database = {
           supplier_id?: string
           tax_total?: number | null
           total?: number | null
+        }
         Relationships: [
           {
             foreignKeyName: "purchase_orders_supplier_id_fkey"
@@ -12016,6 +12191,20 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "quote_lifecycle_operation_keys_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "quote_lifecycle_operation_keys_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
             referencedColumns: ["work_order_id"]
           },
           {
@@ -14439,6 +14628,7 @@ export type Database = {
           updated_at: string
           week_starts_on: number
           weekly_overtime_after_minutes: number
+        }
         Insert: {
           breaks_are_paid?: boolean
           cadence?: string
@@ -14457,6 +14647,7 @@ export type Database = {
           updated_at?: string
           week_starts_on?: number
           weekly_overtime_after_minutes?: number
+        }
         Update: {
           breaks_are_paid?: boolean
           cadence?: string
@@ -14475,6 +14666,7 @@ export type Database = {
           updated_at?: string
           week_starts_on?: number
           weekly_overtime_after_minutes?: number
+        }
         Relationships: [
           {
             foreignKeyName: "shop_payroll_settings_shop_id_fkey"
@@ -14636,6 +14828,7 @@ export type Database = {
           shop_id: string
           shop_owner_reply: string | null
           updated_at: string
+        }
         Insert: {
           comment?: string | null
           created_at?: string
@@ -14649,6 +14842,7 @@ export type Database = {
           shop_id: string
           shop_owner_reply?: string | null
           updated_at?: string
+        }
         Update: {
           comment?: string | null
           created_at?: string
@@ -14662,6 +14856,7 @@ export type Database = {
           shop_id?: string
           shop_owner_reply?: string | null
           updated_at?: string
+        }
         Relationships: [
           {
             foreignKeyName: "shop_reviews_customer_id_fkey"
@@ -14734,6 +14929,7 @@ export type Database = {
           province: string | null
           timezone: string | null
           user_id: string | null
+        }
         Insert: {
           allow_customer_quotes?: boolean | null
           allow_self_booking?: boolean | null
@@ -14743,6 +14939,7 @@ export type Database = {
           province?: string | null
           timezone?: string | null
           user_id?: string | null
+        }
         Update: {
           allow_customer_quotes?: boolean | null
           allow_self_booking?: boolean | null
@@ -14752,6 +14949,7 @@ export type Database = {
           province?: string | null
           timezone?: string | null
           user_id?: string | null
+        }
         Relationships: []
       }
       shop_time_off: {
@@ -16795,6 +16993,20 @@ export type Database = {
             foreignKeyName: "system_lifecycle_operation_keys_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "system_lifecycle_operation_keys_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "system_lifecycle_operation_keys_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -16818,6 +17030,7 @@ export type Database = {
           user_id: string | null
           work_order_id: string | null
           work_order_line_id: string | null
+        }
         Insert: {
           ended_at?: string | null
           id?: string
@@ -16828,6 +17041,7 @@ export type Database = {
           user_id?: string | null
           work_order_id?: string | null
           work_order_line_id?: string | null
+        }
         Update: {
           ended_at?: string | null
           id?: string
@@ -16838,6 +17052,7 @@ export type Database = {
           user_id?: string | null
           work_order_id?: string | null
           work_order_line_id?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "tech_sessions_shift_fk"
@@ -16866,13 +17081,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "tech_sessions_wol_fk"
-            columns: ["work_order_line_id"]
-            isOneToOne: false
-            referencedRelation: "v_vehicle_service_history"
-            referencedColumns: ["work_order_line_id"]
           },
           {
             foreignKeyName: "tech_sessions_wol_fk"
@@ -18177,6 +18385,20 @@ export type Database = {
             foreignKeyName: "work_order_correction_sessions_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_correction_sessions_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_correction_sessions_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -18769,6 +18991,20 @@ export type Database = {
             foreignKeyName: "work_order_line_flat_rate_credits_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_flat_rate_credits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_flat_rate_credits_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -18777,6 +19013,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_flat_rate_credits_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -19063,18 +19306,21 @@ export type Database = {
           id: string
           technician_id: string
           work_order_line_id: string
+        }
         Insert: {
           assigned_at?: string
           assigned_by?: string | null
           id?: string
           technician_id: string
           work_order_line_id: string
+        }
         Update: {
           assigned_at?: string
           assigned_by?: string | null
           id?: string
           technician_id?: string
           work_order_line_id?: string
+        }
         Relationships: [
           {
             foreignKeyName: "work_order_line_technicians_assigned_by_fkey"
@@ -19353,6 +19599,20 @@ export type Database = {
             foreignKeyName: "work_order_lines_work_order_fk"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -19503,6 +19763,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_media_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -19858,6 +20125,13 @@ export type Database = {
             foreignKeyName: "work_order_parts_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
             isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_parts_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -19913,6 +20187,7 @@ export type Database = {
           vehicle_id: string | null
           work_order_id: string
           work_order_line_id: string | null
+        }
         Insert: {
           ai_cause?: string | null
           ai_complaint?: string | null
@@ -19962,6 +20237,7 @@ export type Database = {
           vehicle_id?: string | null
           work_order_id: string
           work_order_line_id?: string | null
+        }
         Update: {
           ai_cause?: string | null
           ai_complaint?: string | null
@@ -20011,6 +20287,7 @@ export type Database = {
           vehicle_id?: string | null
           work_order_id?: string
           work_order_line_id?: string | null
+        }
         Relationships: [
           {
             foreignKeyName: "work_order_quote_lines_inspection_item_id_fkey"
@@ -20529,6 +20806,20 @@ export type Database = {
             foreignKeyName: "workforce_job_resume_contexts_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "workforce_job_resume_contexts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "workforce_job_resume_contexts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -20537,6 +20828,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workforce_job_resume_contexts_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -20608,6 +20906,20 @@ export type Database = {
             foreignKeyName: "workforce_operation_keys_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "workforce_operation_keys_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "workforce_operation_keys_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -20616,6 +20928,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workforce_operation_keys_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -20652,6 +20971,13 @@ export type Database = {
             foreignKeyName: "work_order_parts_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "work_order_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -20666,6 +20992,20 @@ export type Database = {
             foreignKeyName: "work_order_parts_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_parts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_parts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "v_work_order_board_cards_shop"
             referencedColumns: ["work_order_id"]
           },
@@ -20674,6 +21014,13 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_parts_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -20820,15 +21167,7 @@ export type Database = {
           qty_on_hand: number | null
           qty_reserved: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "part_stock_part_id_fkey"
-            columns: ["part_id"]
-            isOneToOne: false
-            referencedRelation: "part_stock_summary"
-            referencedColumns: ["part_id"]
-          },
-        ]
+        Relationships: []
       }
       v_portal_invoices: {
         Row: {
@@ -20951,13 +21290,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "fk_wol_inspection_session"
-            columns: ["inspection_session_id"]
-            isOneToOne: false
-            referencedRelation: "inspection_sessions"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "work_order_lines_assigned_tech_id_fkey"
             columns: ["assigned_tech_id"]
             isOneToOne: false
@@ -20997,6 +21329,41 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
           {
@@ -21229,13 +21596,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "work_orders_advisor_id_fkey"
-            columns: ["advisor_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "work_orders_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false
@@ -21303,13 +21663,6 @@ export type Database = {
           work_order_id: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "work_orders_advisor_id_fkey"
-            columns: ["advisor_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "work_orders_customer_id_fkey"
             columns: ["customer_id"]
