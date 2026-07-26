@@ -74,6 +74,20 @@ describe("P0-006 Stripe identity boundary", () => {
     expect(linking).toContain("idempotencyKey: `profixiq:acquisition-subscription-link:");
   });
 
+  it("reconciles canonical payment amounts before the application contract", async () => {
+    const correctionPath =
+      "supabase/migrations/20260725190490_p0_008_reconcile_payment_amount_contract.sql";
+    const applicationPath =
+      "supabase/migrations/20260725190500_p0_008_reconcile_application_schema_contract.sql";
+    const correction = await source(correctionPath);
+
+    expect(correctionPath.localeCompare(applicationPath)).toBeLessThan(0);
+    expect(correction).toContain("ADD COLUMN IF NOT EXISTS amount numeric(14,2)");
+    expect(correction).toContain("amount_cents::numeric / 100");
+    expect(correction).toContain("ALTER COLUMN amount SET NOT NULL");
+    expect(correction).toContain("cannot infer payments.amount");
+  });
+
   it("does not expose acquisition email by bearer Checkout Session ID", async () => {
     const sessionRoute = await source("app/api/stripe/session/route.ts");
     const accessIndex = sessionRoute.indexOf("requireShopScopedApiAccess({");
