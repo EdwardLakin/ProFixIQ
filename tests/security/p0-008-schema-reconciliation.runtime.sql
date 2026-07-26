@@ -131,6 +131,62 @@ begin
     raise exception 'P0-008 missing runtime relations: %', missing;
   end if;
 
+  select array_agg(column_name order by column_name)
+    into missing
+  from unnest(
+    ARRAY[
+      'work_order_id',
+      'updated_at',
+      'cancelled_at',
+      'cancelled_by',
+      'cancellation_reason',
+      'lifecycle_metadata'
+    ]::text[]
+  ) as expected(column_name)
+  where not exists (
+    select 1
+    from information_schema.columns c
+    where c.table_schema = 'public'
+      and c.table_name = 'bookings'
+      and c.column_name = expected.column_name
+  );
+
+  if missing is not null then
+    raise exception 'P0-008 missing booking lifecycle columns: %', missing;
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'bookings'
+      and column_name = 'shop_id'
+      and is_nullable <> 'NO'
+  ) then
+    raise exception 'P0-008 bookings.shop_id must be required';
+  end if;
+
+  select array_agg(trigger_name order by trigger_name)
+    into missing
+  from unnest(
+    ARRAY[
+      'bookings_guard_customer_mutation',
+      'trg_enforce_booking_customer_vehicle_consistency',
+      'trg_enforce_booking_work_order_consistency'
+    ]::text[]
+  ) as expected(trigger_name)
+  where not exists (
+    select 1
+    from pg_trigger t
+    where t.tgrelid = 'public.bookings'::regclass
+      and t.tgname = expected.trigger_name
+      and not t.tgisinternal
+  );
+
+  if missing is not null then
+    raise exception 'P0-008 missing booking integrity triggers: %', missing;
+  end if;
+
   select array_agg(c.relname order by c.relname)
     into unsafe
   from pg_class c
@@ -272,6 +328,8 @@ begin
       'public.compute_timecard_hours()',
       'public.enforce_ai_suggestion_feedback_consistency()',
       'public.enforce_assistant_daily_summary_consistency()',
+      'public.enforce_booking_customer_vehicle_consistency()',
+      'public.enforce_booking_work_order_consistency()',
       'public.enforce_content_asset_consistency()',
       'public.enforce_content_event_consistency()',
       'public.enforce_invoice_amount_consistency()',
@@ -282,6 +340,7 @@ begin
       'public.fleet_fill_fleet_id()',
       'public.fleet_inspection_schedules_set_next()',
       'public.get_work_order_assignments(uuid)',
+      'public.guard_customer_booking_mutation()',
       'public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text)',
       'public.invoice_is_historical_import(jsonb)',
       'public.invoices_compute_totals_biu()',
@@ -376,6 +435,8 @@ begin
       'public.compute_timecard_hours()',
       'public.enforce_ai_suggestion_feedback_consistency()',
       'public.enforce_assistant_daily_summary_consistency()',
+      'public.enforce_booking_customer_vehicle_consistency()',
+      'public.enforce_booking_work_order_consistency()',
       'public.enforce_content_asset_consistency()',
       'public.enforce_content_event_consistency()',
       'public.enforce_invoice_amount_consistency()',
@@ -386,6 +447,7 @@ begin
       'public.fleet_fill_fleet_id()',
       'public.fleet_inspection_schedules_set_next()',
       'public.get_work_order_assignments(uuid)',
+      'public.guard_customer_booking_mutation()',
       'public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text)',
       'public.invoice_is_historical_import(jsonb)',
       'public.invoices_compute_totals_biu()',
