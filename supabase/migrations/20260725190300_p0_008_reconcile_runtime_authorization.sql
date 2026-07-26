@@ -54,6 +54,7 @@ ALTER TABLE public."menu_repair_items" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."optimization_actions" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."org_members" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."organizations" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public."parts_suppliers" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."payroll_timecards" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."people_workforce_profiles" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."planner_events" ENABLE ROW LEVEL SECURITY;
@@ -472,6 +473,10 @@ BEGIN
       ('organizations', 'organizations_select_by_membership', 'CREATE POLICY "organizations_select_by_membership" ON public."organizations" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM org_members om
   WHERE ((om.org_id = organizations.id) AND (om.user_id = auth.uid())))));'),
+      ('parts_suppliers', 'parts_suppliers__shop_delete', 'CREATE POLICY "parts_suppliers__shop_delete" ON public."parts_suppliers" AS PERMISSIVE FOR DELETE TO "authenticated" USING (is_shop_member_v2(shop_id));'),
+      ('parts_suppliers', 'parts_suppliers__shop_insert', 'CREATE POLICY "parts_suppliers__shop_insert" ON public."parts_suppliers" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (is_shop_member_v2(shop_id));'),
+      ('parts_suppliers', 'parts_suppliers__shop_select', 'CREATE POLICY "parts_suppliers__shop_select" ON public."parts_suppliers" AS PERMISSIVE FOR SELECT TO "authenticated" USING (is_shop_member_v2(shop_id));'),
+      ('parts_suppliers', 'parts_suppliers__shop_update', 'CREATE POLICY "parts_suppliers__shop_update" ON public."parts_suppliers" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (is_shop_member_v2(shop_id)) WITH CHECK (is_shop_member_v2(shop_id));'),
       ('payroll_timecards', 'timecards_manager_select', 'CREATE POLICY "timecards_manager_select" ON public."payroll_timecards" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = p.shop_id) AND (p.role = ANY (ARRAY[''owner''::text, ''admin''::text, ''manager''::text]))))));'),
@@ -1010,6 +1015,7 @@ REVOKE ALL ON TABLE public."menu_repair_items" FROM PUBLIC, anon, authenticated,
 REVOKE ALL ON TABLE public."optimization_actions" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."org_members" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."organizations" FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON TABLE public."parts_suppliers" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."payroll_timecards" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."people_workforce_profiles" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."planner_events" FROM PUBLIC, anon, authenticated, service_role;
@@ -1125,6 +1131,7 @@ GRANT ALL PRIVILEGES ON TABLE public."menu_repair_items" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."optimization_actions" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."org_members" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."organizations" TO service_role;
+GRANT ALL PRIVILEGES ON TABLE public."parts_suppliers" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."payroll_timecards" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."people_workforce_profiles" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."planner_events" TO service_role;
@@ -1244,6 +1251,7 @@ GRANT DELETE, INSERT, SELECT, UPDATE ON TABLE public."menu_repair_items" TO auth
 GRANT INSERT, SELECT, UPDATE ON TABLE public."optimization_actions" TO authenticated;
 GRANT SELECT ON TABLE public."org_members" TO authenticated;
 GRANT SELECT ON TABLE public."organizations" TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."parts_suppliers" TO authenticated;
 GRANT SELECT ON TABLE public."payroll_timecards" TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."people_workforce_profiles" TO authenticated;
 GRANT INSERT, SELECT ON TABLE public."planner_events" TO authenticated;

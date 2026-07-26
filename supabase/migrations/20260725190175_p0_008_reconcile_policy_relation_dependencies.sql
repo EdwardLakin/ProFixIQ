@@ -25,6 +25,21 @@ CREATE TABLE IF NOT EXISTS public.org_members (
 CREATE INDEX IF NOT EXISTS idx_org_members_user_id
   ON public.org_members (user_id);
 
+CREATE TABLE IF NOT EXISTS public.parts_suppliers (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  shop_id uuid,
+  supplier_name text NOT NULL,
+  api_key text,
+  api_base_url text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT parts_suppliers_pkey PRIMARY KEY (id),
+  CONSTRAINT parts_suppliers_shop_id_fkey
+    FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_parts_suppliers__shop_id
+  ON public.parts_suppliers (shop_id);
+
 CREATE TABLE IF NOT EXISTS public.supplier_catalog_items (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   supplier_id uuid,

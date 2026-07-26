@@ -59,6 +59,7 @@ begin
       'optimization_actions',
       'org_members',
       'organizations',
+      'parts_suppliers',
       'payroll_timecards',
       'people_workforce_profiles',
       'planner_events',
@@ -244,6 +245,7 @@ begin
       'optimization_actions',
       'org_members',
       'organizations',
+      'parts_suppliers',
       'payroll_timecards',
       'people_workforce_profiles',
       'planner_events',
@@ -334,6 +336,18 @@ begin
     select 1
     from pg_policies
     where schemaname = 'public'
+      and tablename = 'parts_suppliers'
+      and policyname = 'parts_suppliers__shop_select'
+      and roles = array['authenticated']::name[]
+      and cmd = 'SELECT'
+  ) then
+    raise exception 'P0-008 parts supplier tenant policy is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
       and tablename = 'supplier_catalog_items'
       and policyname = 'supplier_catalog_items__supplier_shop_all'
       and roles = array['authenticated']::name[]
@@ -343,16 +357,22 @@ begin
   end if;
 
   if has_table_privilege('anon', 'public.org_members', 'SELECT')
+    or has_table_privilege('anon', 'public.parts_suppliers', 'SELECT')
     or has_table_privilege('anon', 'public.supplier_catalog_items', 'SELECT')
     or not has_table_privilege('authenticated', 'public.org_members', 'SELECT')
     or has_table_privilege('authenticated', 'public.org_members', 'INSERT')
     or has_table_privilege('authenticated', 'public.org_members', 'UPDATE')
     or has_table_privilege('authenticated', 'public.org_members', 'DELETE')
+    or not has_table_privilege('authenticated', 'public.parts_suppliers', 'SELECT')
+    or not has_table_privilege('authenticated', 'public.parts_suppliers', 'INSERT')
+    or not has_table_privilege('authenticated', 'public.parts_suppliers', 'UPDATE')
+    or not has_table_privilege('authenticated', 'public.parts_suppliers', 'DELETE')
     or not has_table_privilege('authenticated', 'public.supplier_catalog_items', 'SELECT')
     or not has_table_privilege('authenticated', 'public.supplier_catalog_items', 'INSERT')
     or not has_table_privilege('authenticated', 'public.supplier_catalog_items', 'UPDATE')
     or not has_table_privilege('authenticated', 'public.supplier_catalog_items', 'DELETE')
     or not has_table_privilege('service_role', 'public.org_members', 'SELECT')
+    or not has_table_privilege('service_role', 'public.parts_suppliers', 'SELECT')
     or not has_table_privilege('service_role', 'public.supplier_catalog_items', 'SELECT')
   then
     raise exception 'P0-008 policy dependency table ACLs are unsafe';
