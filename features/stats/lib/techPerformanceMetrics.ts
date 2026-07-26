@@ -6,7 +6,19 @@ type Interval = {
   start: string | null;
   end: string | null;
   fallbackHours?: number | null;
+  useNowWhenOpen?: boolean;
 };
+
+function normalizeTimezone(timezone?: string | null): string {
+  const candidate = timezone?.trim();
+  if (!candidate) return "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate });
+    return candidate;
+  } catch {
+    return "UTC";
+  }
+}
 
 function localDateKey(value: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -46,8 +58,9 @@ export function getShopPerformanceRange(
   timeRange: TimeRange,
   timezone: string,
   now = new Date(),
-): { start: string; endExclusive: string } {
-  const todayKey = localDateKey(now, timezone);
+): { start: string; endInclusive: string; endExclusive: string } {
+  const safeTimezone = normalizeTimezone(timezone);
+  const todayKey = localDateKey(now, safeTimezone);
   const startDate = utcDateFromKey(todayKey);
 
   if (timeRange === "weekly") {
@@ -73,8 +86,11 @@ export function getShopPerformanceRange(
         );
 
   return {
-    start: shopLocalDateTimeToUtc(startKey, "00:00:00", timezone),
-    endExclusive: shopLocalDateTimeToUtc(endKey, "00:00:00", timezone),
+    start: shopLocalDateTimeToUtc(startKey, "00:00:00", safeTimezone),
+    endInclusive: new Date(
+      new Date(shopLocalDateTimeToUtc(endKey, "00:00:00", safeTimezone)).getTime() - 1,
+    ).toISOString(),
+    endExclusive: shopLocalDateTimeToUtc(endKey, "00:00:00", safeTimezone),
   };
 }
 
@@ -98,7 +114,9 @@ export function mergedIntervalHours(
         ? explicitEnd
         : fallbackEnd > start
           ? fallbackEnd
-          : now.getTime();
+          : interval.useNowWhenOpen
+            ? now.getTime()
+            : Number.NaN;
       const clippedStart = Math.max(start, rangeStart);
       const clippedEnd = Math.min(end, rangeEnd);
       return clippedEnd > clippedStart ? [{ start: clippedStart, end: clippedEnd }] : [];
