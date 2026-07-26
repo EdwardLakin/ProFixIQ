@@ -239,6 +239,7 @@ begin
     into unsafe
   from (values
     ('demo_shop_boosts', 'snapshot'),
+    ('email_logs', 'status'),
     ('inspections', 'locked'),
     ('payments', 'updated_at'),
     ('payroll_pay_periods', 'created_at'),

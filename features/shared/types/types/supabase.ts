@@ -20707,7 +20707,7 @@ export type Database = {
           source_fleet_service_request_id: string | null
           source_intake_id: string | null
           source_row_id: string | null
-          status: string | null
+          status: string
           type: string | null
           updated_at: string | null
           user_id: string | null
