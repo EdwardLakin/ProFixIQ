@@ -57,6 +57,7 @@ begin
       'menu_repair_item_pricing_snapshots',
       'menu_repair_items',
       'optimization_actions',
+      'org_members',
       'organizations',
       'payroll_timecards',
       'people_workforce_profiles',
@@ -114,6 +115,7 @@ begin
       'staff_certifications',
       'staff_invite_candidates',
       'staff_invite_suggestions',
+      'supplier_catalog_items',
       'supplier_quote_batch_rows',
       'supplier_quote_batches',
       'user_theme_preferences',
@@ -240,6 +242,7 @@ begin
       'menu_repair_item_pricing_snapshots',
       'menu_repair_items',
       'optimization_actions',
+      'org_members',
       'organizations',
       'payroll_timecards',
       'people_workforce_profiles',
@@ -297,6 +300,7 @@ begin
       'staff_certifications',
       'staff_invite_candidates',
       'staff_invite_suggestions',
+      'supplier_catalog_items',
       'supplier_quote_batch_rows',
       'supplier_quote_batches',
       'user_theme_preferences',
@@ -312,6 +316,46 @@ begin
 
   if unsafe is not null then
     raise exception 'P0-008 recovered tables without RLS: %', unsafe;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'org_members'
+      and policyname = 'org_members_select_self'
+      and roles = array['authenticated']::name[]
+      and cmd = 'SELECT'
+  ) then
+    raise exception 'P0-008 org_members self-read policy is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'supplier_catalog_items'
+      and policyname = 'supplier_catalog_items__supplier_shop_all'
+      and roles = array['authenticated']::name[]
+      and cmd = 'ALL'
+  ) then
+    raise exception 'P0-008 supplier catalog tenant policy is missing';
+  end if;
+
+  if has_table_privilege('anon', 'public.org_members', 'SELECT')
+    or has_table_privilege('anon', 'public.supplier_catalog_items', 'SELECT')
+    or not has_table_privilege('authenticated', 'public.org_members', 'SELECT')
+    or has_table_privilege('authenticated', 'public.org_members', 'INSERT')
+    or has_table_privilege('authenticated', 'public.org_members', 'UPDATE')
+    or has_table_privilege('authenticated', 'public.org_members', 'DELETE')
+    or not has_table_privilege('authenticated', 'public.supplier_catalog_items', 'SELECT')
+    or not has_table_privilege('authenticated', 'public.supplier_catalog_items', 'INSERT')
+    or not has_table_privilege('authenticated', 'public.supplier_catalog_items', 'UPDATE')
+    or not has_table_privilege('authenticated', 'public.supplier_catalog_items', 'DELETE')
+    or not has_table_privilege('service_role', 'public.org_members', 'SELECT')
+    or not has_table_privilege('service_role', 'public.supplier_catalog_items', 'SELECT')
+  then
+    raise exception 'P0-008 policy dependency table ACLs are unsafe';
   end if;
 
   select array_agg(signature order by signature)

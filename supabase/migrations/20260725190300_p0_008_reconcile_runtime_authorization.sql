@@ -52,6 +52,7 @@ ALTER TABLE public."menu_repair_item_pricing_parts" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."menu_repair_item_pricing_snapshots" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."menu_repair_items" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."optimization_actions" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public."org_members" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."organizations" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."payroll_timecards" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."people_workforce_profiles" ENABLE ROW LEVEL SECURITY;
@@ -109,6 +110,7 @@ ALTER TABLE public."shopreel_story_sources" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."staff_certifications" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."staff_invite_candidates" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."staff_invite_suggestions" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public."supplier_catalog_items" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."supplier_quote_batch_rows" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."supplier_quote_batches" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public."user_theme_preferences" ENABLE ROW LEVEL SECURITY;
@@ -466,6 +468,7 @@ BEGIN
       ('optimization_actions', 'optimization_actions_insert', 'CREATE POLICY "optimization_actions_insert" ON public."optimization_actions" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND ((created_by IS NULL) OR (created_by = auth.uid()))));'),
       ('optimization_actions', 'optimization_actions_select', 'CREATE POLICY "optimization_actions_select" ON public."optimization_actions" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
       ('optimization_actions', 'optimization_actions_update', 'CREATE POLICY "optimization_actions_update" ON public."optimization_actions" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('org_members', 'org_members_select_self', 'CREATE POLICY "org_members_select_self" ON public."org_members" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((user_id = auth.uid()));'),
       ('organizations', 'organizations_select_by_membership', 'CREATE POLICY "organizations_select_by_membership" ON public."organizations" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM org_members om
   WHERE ((om.org_id = organizations.id) AND (om.user_id = auth.uid())))));'),
@@ -903,6 +906,11 @@ BEGIN
       ('staff_invite_suggestions', 'shop-users-read-staff-invite-suggestions', 'CREATE POLICY "shop-users-read-staff-invite-suggestions" ON public."staff_invite_suggestions" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = staff_invite_suggestions.shop_id)))));'),
+      ('supplier_catalog_items', 'supplier_catalog_items__supplier_shop_all', 'CREATE POLICY "supplier_catalog_items__supplier_shop_all" ON public."supplier_catalog_items" AS PERMISSIVE FOR ALL TO "authenticated" USING ((EXISTS ( SELECT 1
+   FROM suppliers s
+  WHERE ((s.id = supplier_catalog_items.supplier_id) AND is_shop_member_v2(s.shop_id))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM suppliers s
+  WHERE ((s.id = supplier_catalog_items.supplier_id) AND is_shop_member_v2(s.shop_id)))));'),
       ('supplier_quote_batch_rows', 'supplier_quote_batch_rows_deny_all', 'CREATE POLICY "supplier_quote_batch_rows_deny_all" ON public."supplier_quote_batch_rows" AS PERMISSIVE FOR ALL TO PUBLIC USING (false) WITH CHECK (false);'),
       ('supplier_quote_batches', 'supplier_quote_batches_deny_all', 'CREATE POLICY "supplier_quote_batches_deny_all" ON public."supplier_quote_batches" AS PERMISSIVE FOR ALL TO PUBLIC USING (false) WITH CHECK (false);'),
       ('user_theme_preferences', 'user_theme_preferences_delete_own', 'CREATE POLICY "user_theme_preferences_delete_own" ON public."user_theme_preferences" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((user_id = auth.uid()));'),
@@ -1000,6 +1008,7 @@ REVOKE ALL ON TABLE public."menu_repair_item_pricing_parts" FROM PUBLIC, anon, a
 REVOKE ALL ON TABLE public."menu_repair_item_pricing_snapshots" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."menu_repair_items" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."optimization_actions" FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON TABLE public."org_members" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."organizations" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."payroll_timecards" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."people_workforce_profiles" FROM PUBLIC, anon, authenticated, service_role;
@@ -1057,6 +1066,7 @@ REVOKE ALL ON TABLE public."shopreel_story_sources" FROM PUBLIC, anon, authentic
 REVOKE ALL ON TABLE public."staff_certifications" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."staff_invite_candidates" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."staff_invite_suggestions" FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON TABLE public."supplier_catalog_items" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."supplier_quote_batch_rows" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."supplier_quote_batches" FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON TABLE public."user_theme_preferences" FROM PUBLIC, anon, authenticated, service_role;
@@ -1113,6 +1123,7 @@ GRANT ALL PRIVILEGES ON TABLE public."menu_repair_item_pricing_parts" TO service
 GRANT ALL PRIVILEGES ON TABLE public."menu_repair_item_pricing_snapshots" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."menu_repair_items" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."optimization_actions" TO service_role;
+GRANT ALL PRIVILEGES ON TABLE public."org_members" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."organizations" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."payroll_timecards" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."people_workforce_profiles" TO service_role;
@@ -1170,6 +1181,7 @@ GRANT ALL PRIVILEGES ON TABLE public."shopreel_story_sources" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."staff_certifications" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."staff_invite_candidates" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."staff_invite_suggestions" TO service_role;
+GRANT ALL PRIVILEGES ON TABLE public."supplier_catalog_items" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."supplier_quote_batch_rows" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."supplier_quote_batches" TO service_role;
 GRANT ALL PRIVILEGES ON TABLE public."user_theme_preferences" TO service_role;
@@ -1230,6 +1242,7 @@ GRANT DELETE, INSERT, SELECT, UPDATE ON TABLE public."menu_repair_item_pricing_s
 GRANT DELETE, INSERT, SELECT, UPDATE ON TABLE public."menu_repair_item_pricing_snapshots" TO authenticated;
 GRANT DELETE, INSERT, SELECT, UPDATE ON TABLE public."menu_repair_items" TO authenticated;
 GRANT INSERT, SELECT, UPDATE ON TABLE public."optimization_actions" TO authenticated;
+GRANT SELECT ON TABLE public."org_members" TO authenticated;
 GRANT SELECT ON TABLE public."organizations" TO authenticated;
 GRANT SELECT ON TABLE public."payroll_timecards" TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."people_workforce_profiles" TO authenticated;
@@ -1301,6 +1314,7 @@ GRANT SELECT ON TABLE public."shopreel_story_sources" TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."staff_certifications" TO authenticated;
 GRANT DELETE, INSERT, SELECT, UPDATE ON TABLE public."staff_invite_candidates" TO authenticated;
 GRANT SELECT ON TABLE public."staff_invite_suggestions" TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."supplier_catalog_items" TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."supplier_quote_batch_rows" TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."supplier_quote_batch_rows" TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."supplier_quote_batches" TO anon;
