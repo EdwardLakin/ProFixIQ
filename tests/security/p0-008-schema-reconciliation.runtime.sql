@@ -169,6 +169,17 @@ begin
     raise exception 'P0-008 bookings.shop_id must be required';
   end if;
 
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'work_orders'
+      and column_name = 'shop_id'
+      and is_nullable <> 'NO'
+  ) then
+    raise exception 'P0-008 work_orders.shop_id must be required';
+  end if;
+
   select array_agg(trigger_name order by trigger_name)
     into missing
   from unnest(
@@ -432,6 +443,7 @@ begin
       'public.clear_other_active_brand_assets()',
       'public.complete_canonical_shift(uuid,uuid,uuid,uuid,timestamp with time zone)',
       'public.compute_timecard_hours()',
+      'public.create_work_order_with_custom_id(uuid,uuid,uuid,text,integer,boolean,uuid)',
       'public.enforce_ai_suggestion_feedback_consistency()',
       'public.enforce_assistant_daily_summary_consistency()',
       'public.enforce_booking_customer_vehicle_consistency()',
@@ -544,6 +556,7 @@ begin
       'public.clear_other_active_brand_assets()',
       'public.complete_canonical_shift(uuid,uuid,uuid,uuid,timestamp with time zone)',
       'public.compute_timecard_hours()',
+      'public.create_work_order_with_custom_id(uuid,uuid,uuid,text,integer,boolean,uuid)',
       'public.enforce_ai_suggestion_feedback_consistency()',
       'public.enforce_assistant_daily_summary_consistency()',
       'public.enforce_booking_customer_vehicle_consistency()',
@@ -666,6 +679,28 @@ begin
   then
     raise exception 'P0-008 portal request RPC ACL is unsafe';
   end if;
+
+  if to_regprocedure(
+      'public.create_work_order_with_custom_id(uuid,uuid,uuid,text,integer,boolean)'
+    ) is not null
+    or has_function_privilege(
+      'anon',
+      'public.create_work_order_with_custom_id(uuid,uuid,uuid,text,integer,boolean,uuid)',
+      'EXECUTE'
+    )
+    or not has_function_privilege(
+      'authenticated',
+      'public.create_work_order_with_custom_id(uuid,uuid,uuid,text,integer,boolean,uuid)',
+      'EXECUTE'
+    )
+    or not has_function_privilege(
+      'service_role',
+      'public.create_work_order_with_custom_id(uuid,uuid,uuid,text,integer,boolean,uuid)',
+      'EXECUTE'
+    )
+  then
+    raise exception 'P0-008 work-order creation RPC contract or ACL is unsafe';
+  end if;
 end
 $p0_008$;
 
@@ -733,6 +768,47 @@ where id in (
   '82000000-0000-4000-8000-000000000002'
 );
 
+insert into public.customers (id, shop_id, name)
+values
+  (
+    'ca100000-0000-4000-8000-000000000001',
+    'a8100000-0000-4000-8000-000000000001',
+    'P0-008 Customer A'
+  ),
+  (
+    'cb200000-0000-4000-8000-000000000002',
+    'b8200000-0000-4000-8000-000000000002',
+    'P0-008 Customer B'
+  )
+on conflict (id) do update
+set shop_id = excluded.shop_id,
+    name = excluded.name;
+
+insert into public.vehicles (id, shop_id, customer_id, year, make, model)
+values
+  (
+    'aa100000-0000-4000-8000-000000000001',
+    'a8100000-0000-4000-8000-000000000001',
+    'ca100000-0000-4000-8000-000000000001',
+    2024,
+    'Test',
+    'Shop A Vehicle'
+  ),
+  (
+    'bb200000-0000-4000-8000-000000000002',
+    'b8200000-0000-4000-8000-000000000002',
+    'cb200000-0000-4000-8000-000000000002',
+    2024,
+    'Test',
+    'Shop B Vehicle'
+  )
+on conflict (id) do update
+set shop_id = excluded.shop_id,
+    customer_id = excluded.customer_id,
+    year = excluded.year,
+    make = excluded.make,
+    model = excluded.model;
+
 do $p0_008$
 begin
   if (select user_limit from public.shops where id = 'a8100000-0000-4000-8000-000000000001') <> 100
@@ -764,7 +840,42 @@ select set_config(
 );
 
 do $p0_008$
+declare
+  created_work_order public.work_orders%rowtype;
 begin
+  begin
+    perform public.create_work_order_with_custom_id(
+      p_shop_id => 'b8200000-0000-4000-8000-000000000002',
+      p_customer_id => 'cb200000-0000-4000-8000-000000000002',
+      p_vehicle_id => 'bb200000-0000-4000-8000-000000000002'
+    );
+    raise exception 'P0-008 cross-shop work-order creation unexpectedly succeeded';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+
+  select *
+    into created_work_order
+  from public.create_work_order_with_custom_id(
+    p_shop_id => 'a8100000-0000-4000-8000-000000000001',
+    p_customer_id => 'ca100000-0000-4000-8000-000000000001',
+    p_vehicle_id => 'aa100000-0000-4000-8000-000000000001',
+    p_notes => 'P0-008 same-shop creation',
+    p_priority => 3,
+    p_is_waiter => false,
+    p_advisor_id => '81000000-0000-4000-8000-000000000001'
+  );
+
+  if created_work_order.id is null
+    or created_work_order.shop_id <> 'a8100000-0000-4000-8000-000000000001'::uuid
+    or created_work_order.customer_id <> 'ca100000-0000-4000-8000-000000000001'::uuid
+    or created_work_order.vehicle_id <> 'aa100000-0000-4000-8000-000000000001'::uuid
+    or created_work_order.created_by <> '81000000-0000-4000-8000-000000000001'::uuid
+  then
+    raise exception 'P0-008 same-shop work-order creation returned the wrong tenant or actor';
+  end if;
+
   if (select count(*) from public.dashboard_layouts) <> 1 then
     raise exception 'P0-008 dashboard_layouts tenant isolation failed';
   end if;
