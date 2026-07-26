@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "app/api/internal/financial-outbox/tick/route.ts",
+    "app/api/webhooks/sendgrid/events/route.ts",
+    "features/email/server/sendFinancialEventEmail.ts",
+    "features/email/server/sendgridWebhook.ts",
+    "features/invoices/server/processFinancialOutbox.ts",
+    "features/shared/types/types/supabase.ts",
+    "tests/p0-007-financial-outbox.test.ts",
+    "tests/phase1-financial-foundation.test.ts"
+  ]
+}

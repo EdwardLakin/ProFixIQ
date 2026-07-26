@@ -1,0 +1,51 @@
+name: P0-007 Financial Outbox Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/internal/financial-outbox/**"
+      - "app/api/webhooks/sendgrid/**"
+      - "features/email/server/sendFinancialEventEmail.ts"
+      - "features/email/server/sendgridWebhook.ts"
+      - "features/invoices/server/processFinancialOutbox.ts"
+      - "features/shared/types/types/supabase.ts"
+      - "supabase/migrations/**"
+      - "tests/p0-007-financial-outbox.test.ts"
+      - "tests/phase1-financial-foundation.test.ts"
+      - "tests/security/p0-007-financial-outbox.runtime.sql"
+      - "tests/security/p0-007-financial-outbox-concurrency.sh"
+      - "tsconfig.p0-007.json"
+      - ".github/workflows/p0-007-financial-outbox-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc --noEmit -p tsconfig.p0-007.json
+      - run: >-
+          pnpm exec eslint
+          app/api/internal/financial-outbox/tick/route.ts
+          app/api/webhooks/sendgrid/events/route.ts
+          features/email/server/sendFinancialEventEmail.ts
+          features/email/server/sendgridWebhook.ts
+          features/invoices/server/processFinancialOutbox.ts
+          tests/p0-007-financial-outbox.test.ts
+          tests/phase1-financial-foundation.test.ts
+      - run: >-
+          pnpm exec vitest run
+          tests/p0-007-financial-outbox.test.ts
+          tests/phase1-financial-foundation.test.ts
+          tests/sendgrid-webhook-security.test.ts

@@ -7,6 +7,7 @@ export type SendGridEvent = {
   sg_event_id?: unknown;
   sg_message_id?: unknown;
   email_log_id?: unknown;
+  financial_delivery_key?: unknown;
   reason?: unknown;
   response?: unknown;
   status?: unknown;
@@ -16,6 +17,7 @@ export type SendGridEvent = {
 
 const MAX_WEBHOOK_BYTES = 1_000_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const FINANCIAL_DELIVERY_KEY_RE = /^fin_[0-9a-f]{32}_(customer|staff)$/;
 
 function cleanString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -61,6 +63,10 @@ export function normalizeSendGridEvent(event: SendGridEvent) {
   const eventAt = Number.isFinite(timestamp) && timestamp > 0
     ? new Date(timestamp * 1000).toISOString()
     : new Date().toISOString();
+  const financialDeliveryKey = cleanString(event.financial_delivery_key);
+  const safeFinancialDeliveryKey = FINANCIAL_DELIVERY_KEY_RE.test(financialDeliveryKey ?? "")
+    ? financialDeliveryKey
+    : null;
 
   return {
     eventType,
@@ -71,6 +77,7 @@ export function normalizeSendGridEvent(event: SendGridEvent) {
       ? cleanString(event.email_log_id)
       : null,
     email: cleanString(event.email)?.toLowerCase() ?? null,
+    financialDeliveryKey: safeFinancialDeliveryKey,
     errorText:
       cleanString(event.reason) ??
       cleanString(event.response) ??
@@ -81,6 +88,7 @@ export function normalizeSendGridEvent(event: SendGridEvent) {
       status: cleanString(event.status),
       attempt: typeof event.attempt === "number" ? event.attempt : null,
       type: cleanString(event.type),
+      financial_delivery_key: safeFinancialDeliveryKey,
     },
   };
 }
