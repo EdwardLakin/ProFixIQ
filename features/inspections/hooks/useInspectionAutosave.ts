@@ -611,7 +611,64 @@ export function useInspectionAutosave({
         }
 
         let persistedSnapshot = snapshot;
-        if (!result.queued && !result.conflicted) {
+        if (!result.queued && !result.conflicted && result.superseded) {
+          if (result.serverSession) {
+            const canonicalSnapshot: InspectionSession = {
+              ...result.serverSession,
+              id: result.inspectionId ?? result.serverSession.id,
+              syncRevision:
+                result.syncRevision ?? result.serverSession.syncRevision,
+              serverUpdatedAt:
+                result.savedAt ?? result.serverSession.serverUpdatedAt ?? null,
+            };
+            const current = latestSessionRef.current;
+            if (current && inspectionFingerprint(current) !== nextFingerprint) {
+              // The server settled the snapshot that was sent, but the user
+              // edited again while that request was in flight. Preserve that
+              // later edit and rebase only its canonical identity/revision so
+              // the next queued pass can become the newest server revision.
+              persistedSnapshot = {
+                ...current,
+                id: canonicalSnapshot.id,
+                syncRevision: canonicalSnapshot.syncRevision,
+                serverUpdatedAt: canonicalSnapshot.serverUpdatedAt,
+              };
+              latestSessionRef.current = persistedSnapshot;
+              lastServerFingerprintRef.current =
+                inspectionFingerprint(canonicalSnapshot);
+              lastServerRevisionRef.current =
+                inspectionRevision(canonicalSnapshot);
+              lastServerUpdatedAtRef.current = timestamp(
+                canonicalSnapshot.serverUpdatedAt,
+              );
+              applyRemoteMeta({
+                locked: false,
+                finalizedAt: null,
+                updatedAt: canonicalSnapshot.serverUpdatedAt ?? null,
+              });
+              onRemoteSessionRef.current(persistedSnapshot);
+            } else {
+              persistedSnapshot = canonicalSnapshot;
+              applyRemote(
+                canonicalSnapshot,
+                {
+                  locked: false,
+                  finalizedAt: null,
+                  updatedAt: canonicalSnapshot.serverUpdatedAt ?? null,
+                },
+                true,
+              );
+            }
+          } else {
+            // Rolling-deployment fallback: the canonical writer normally
+            // returns the winning session with a superseded acknowledgement.
+            // If it does not, fetch that same canonical revision before
+            // clearing the device recovery operation.
+            await pullLatest(true);
+            persistedSnapshot = latestSessionRef.current ?? snapshot;
+          }
+          lastQueuedFingerprintRef.current = "";
+        } else if (!result.queued && !result.conflicted) {
           const acknowledgedSnapshot: InspectionSession = {
             ...snapshot,
             id: result.inspectionId ?? snapshot.id,
@@ -712,7 +769,15 @@ export function useInspectionAutosave({
         throw new Error(message);
       }
     },
-    [draftKey, identityKey, locked, workOrderLineId],
+    [
+      applyRemote,
+      applyRemoteMeta,
+      draftKey,
+      identityKey,
+      locked,
+      pullLatest,
+      workOrderLineId,
+    ],
   );
 
   const queueFlush = useCallback(
