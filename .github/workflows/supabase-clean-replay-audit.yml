@@ -10,7 +10,10 @@ on:
       - "tests/parts/*.runtime.sql"
       - "tests/security/*.runtime.sql"
       - "db/sql/schema.sql"
+      - "features/shared/types/types/supabase.ts"
+      - "package.json"
       - "scripts/generate-supabase-public-baseline.py"
+      - "docs/supabase-recovery-and-schema-contract.md"
       - ".github/workflows/supabase-clean-replay-audit.yml"
 
 permissions:
@@ -218,6 +221,31 @@ jobs:
           bash tests/security/p0-007-financial-outbox-concurrency.sh \
             2>&1 | tee p0-007-financial-outbox-concurrency.log
 
+      - name: Execute P0 schema reconciliation integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-008-schema-reconciliation.runtime.sql \
+            2>&1 | tee p0-008-schema-reconciliation-runtime.log
+
+      - name: Verify generated types match the clean migration replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local --schema public \
+            > generated-supabase-types.ts
+          diff -u \
+            features/shared/types/types/supabase.ts \
+            generated-supabase-types.ts \
+            2>&1 | tee p0-008-generated-types.diff
+
       - name: Verify bootstrap and existing-database baseline paths
         shell: bash
         env:
@@ -287,6 +315,9 @@ jobs:
             p0-006-stripe-identity-runtime.log
             p0-007-financial-outbox-runtime.log
             p0-007-financial-outbox-concurrency.log
+            p0-008-schema-reconciliation-runtime.log
+            p0-008-generated-types.diff
+            generated-supabase-types.ts
             supabase/config.toml
           if-no-files-found: warn
 

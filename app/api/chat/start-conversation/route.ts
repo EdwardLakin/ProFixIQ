@@ -9,8 +9,25 @@ import {
   isCustomerMessagingRole,
 } from "@/features/ai/lib/chat/authorization";
 import { authorizeConversationContext } from "@/features/chat/server/conversationContext";
+import type { Database } from "@/features/shared/types/types/supabase";
 
 export const dynamic = "force-dynamic";
+
+type CreateMessagingConversationArgs =
+  Database["public"]["Functions"]["create_messaging_conversation"]["Args"];
+type NullableConversationArgument =
+  | "_booking_id"
+  | "_context_id"
+  | "_context_type"
+  | "_customer_id"
+  | "_title"
+  | "_vehicle_id"
+  | "_work_order_id";
+type CreateMessagingConversationInput = Omit<
+  CreateMessagingConversationArgs,
+  NullableConversationArgument
+> &
+  Record<NullableConversationArgument, string | null>;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -219,23 +236,27 @@ export async function POST(req: Request): Promise<NextResponse> {
       : (participantKindByUserId[id] ?? "staff"),
   );
 
+  const createConversationInput: CreateMessagingConversationInput = {
+    _conversation_id: conversationId,
+    _created_by: user.id,
+    _shop_id: createAccess.actorShopId,
+    _channel: createAccess.channel,
+    _customer_id: context.anchors.customer_id,
+    _work_order_id: context.anchors.work_order_id,
+    _vehicle_id: context.anchors.vehicle_id,
+    _booking_id: context.anchors.booking_id,
+    _context_type: context.anchors.context_type,
+    _context_id: context.anchors.context_id,
+    _title: body?.title?.trim().slice(0, 160) || null,
+    _participant_user_ids: allParticipantIds,
+    _participant_kinds: participantKindValues,
+  };
+
+  // PostgreSQL accepts nullable context anchors; the local Supabase generator
+  // does not preserve function-argument nullability in its TypeScript output.
   const { data: createdId, error: createError } = await admin.rpc(
     "create_messaging_conversation",
-    {
-      _conversation_id: conversationId,
-      _created_by: user.id,
-      _shop_id: createAccess.actorShopId,
-      _channel: createAccess.channel,
-      _customer_id: context.anchors.customer_id,
-      _work_order_id: context.anchors.work_order_id,
-      _vehicle_id: context.anchors.vehicle_id,
-      _booking_id: context.anchors.booking_id,
-      _context_type: context.anchors.context_type,
-      _context_id: context.anchors.context_id,
-      _title: body?.title?.trim().slice(0, 160) || null,
-      _participant_user_ids: allParticipantIds,
-      _participant_kinds: participantKindValues,
-    },
+    createConversationInput as CreateMessagingConversationArgs,
   );
 
   if (createError) {

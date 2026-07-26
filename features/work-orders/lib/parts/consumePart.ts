@@ -3,6 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@/features/shared/types/types/supabase";
 
 export type ConsumePartInput = {
   work_order_line_id: string;
@@ -35,6 +36,12 @@ type RpcResult = {
   on_hand_after?: unknown;
   stock_move_id?: unknown;
   work_order_part_id?: unknown;
+};
+
+type AttachAndIssueArgs =
+  Database["public"]["Functions"]["parts_attach_and_issue_line_part_atomic"]["Args"];
+type AttachAndIssueInput = Omit<AttachAndIssueArgs, "p_unit_cost"> & {
+  p_unit_cost: number | null;
 };
 
 function asFiniteNumber(value: unknown): number {
@@ -115,16 +122,20 @@ export async function consumePart(
       };
     }
 
+    const attachAndIssueInput: AttachAndIssueInput = {
+      p_work_order_line_id: input.work_order_line_id,
+      p_part_id: input.part_id,
+      p_location_id: input.location_id,
+      p_qty: input.qty,
+      p_unit_cost: input.unit_cost ?? null,
+      p_idempotency_key: `${shopId}:attach-issue:${input.idempotency_key.trim()}`,
+    };
+
+    // PostgreSQL accepts a null unit cost; the local Supabase generator does
+    // not preserve function-argument nullability in its TypeScript output.
     const { data, error } = await supabase.rpc(
       "parts_attach_and_issue_line_part_atomic",
-      {
-        p_work_order_line_id: input.work_order_line_id,
-        p_part_id: input.part_id,
-        p_location_id: input.location_id,
-        p_qty: input.qty,
-        p_unit_cost: input.unit_cost ?? null,
-        p_idempotency_key: `${shopId}:attach-issue:${input.idempotency_key.trim()}`,
-      },
+      attachAndIssueInput as AttachAndIssueArgs,
     );
 
     if (error) {

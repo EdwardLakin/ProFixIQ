@@ -106,26 +106,32 @@ values
     'P0-001 Location B'
   );
 
-insert into public.part_stock_summary (
+insert into public.stock_moves (
+  id,
   part_id,
   location_id,
-  shop_id,
-  qty_on_hand,
-  qty_reserved
+  qty_change,
+  reason,
+  reference_kind,
+  shop_id
 ) values
   (
+    'a1250000-0000-4000-8000-000000000001',
     'a1100000-0000-4000-8000-000000000001',
     'a1200000-0000-4000-8000-000000000001',
-    'a1000000-0000-4000-8000-000000000001',
     5,
-    1
+    'adjust',
+    'p0_001_fixture',
+    'a1000000-0000-4000-8000-000000000001'
   ),
   (
+    'b2350000-0000-4000-8000-000000000002',
     'b2200000-0000-4000-8000-000000000002',
     'b2300000-0000-4000-8000-000000000002',
-    'b2000000-0000-4000-8000-000000000002',
     7,
-    2
+    'adjust',
+    'p0_001_fixture',
+    'b2000000-0000-4000-8000-000000000002'
   );
 
 insert into public.parts_barcodes (id, shop_id, part_id, barcode)
@@ -221,6 +227,7 @@ declare
 begin
   foreach v_relation in array array[
     'apps',
+    'parts',
     'parts_barcodes',
     'shop_profiles',
     'warranties',

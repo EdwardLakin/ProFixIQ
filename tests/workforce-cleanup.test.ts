@@ -75,8 +75,8 @@ describe("workforce cleanup consolidation", () => {
   it("scopes punch events through same-shop shifts and ignores cross-shop shift punches", () => {
     const result = activity({
       shifts: [
-        { id: "shift-a", shop_id: shopId, user_id: "tech-a", start_time: "2026-07-10T17:00:00.000Z", end_time: null, status: "active", type: "shift", created_at: null },
-        { id: "shift-b", shop_id: "shop-b", user_id: "tech-b", start_time: "2026-07-10T17:00:00.000Z", end_time: null, status: "active", type: "shift", created_at: null },
+        { id: "shift-a", shop_id: shopId, user_id: "tech-a", start_time: "2026-07-10T17:00:00.000Z", end_time: null, status: "active", type: "shift", created_at: null, excluded_from_payroll: false },
+        { id: "shift-b", shop_id: "shop-b", user_id: "tech-b", start_time: "2026-07-10T17:00:00.000Z", end_time: null, status: "active", type: "shift", created_at: null, excluded_from_payroll: false },
       ],
       punches: [
         { id: "p-a", shift_id: "shift-a", user_id: "tech-a", profile_id: null, event_type: "start_shift", timestamp: "2026-07-10T17:00:00.000Z", note: null, created_at: null },
