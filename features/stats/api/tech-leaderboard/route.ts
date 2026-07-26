@@ -103,9 +103,11 @@ export async function POST(req: Request) {
       .eq("id", requestedShopId)
       .maybeSingle();
     if (shopError) throw shopError;
-    const { start: startIso, endExclusive: endExclusiveIso } =
-      getShopPerformanceRange(timeRange, shop?.timezone?.trim() || "UTC");
-    const endIso = endExclusiveIso;
+    const {
+      start: startIso,
+      endInclusive: endIso,
+      endExclusive: endExclusiveIso,
+    } = getShopPerformanceRange(timeRange, shop?.timezone);
 
     let profilesQuery = admin
       .from("profiles")
@@ -248,7 +250,11 @@ export async function POST(req: Request) {
     for (const row of byTech.values()) {
       const shifts = ((shiftsRes.data ?? []) as ShiftSlim[])
         .filter((shift) => shift.user_id === row.techId)
-        .map((shift) => ({ start: shift.start_time, end: shift.end_time }));
+        .map((shift) => ({
+          start: shift.start_time,
+          end: shift.end_time,
+          useNowWhenOpen: true,
+        }));
       const timecards = ((timecardsRes.data ?? []) as TimecardSlim[])
         .filter((timecard) => timecard.user_id === row.techId)
         .map((timecard) => ({
