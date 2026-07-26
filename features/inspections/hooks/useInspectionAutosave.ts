@@ -14,6 +14,12 @@ import {
   saveInspectionOfflineDraft,
   type InspectionDraftRecoveryState,
 } from "@inspections/lib/inspection/offlineDrafts";
+import {
+  inspectionFingerprint,
+  inspectionRevision,
+  remoteInspectionShouldReplace,
+  shouldForceCanonicalBootstrap,
+} from "@inspections/lib/inspection/reconciliation";
 
 export type InspectionSyncState =
   | "hydrating"
@@ -39,6 +45,7 @@ type UseInspectionAutosaveArgs = {
   draftKey?: string;
   debounceMs?: number;
   recoveryOperationKey?: string;
+  hasRecoveredLocalDraft?: boolean;
   onRemoteSession: (session: InspectionSession) => void;
   onRemoteMeta?: (meta: InspectionRemoteMeta) => void;
   onRecoveryState?: (
@@ -78,22 +85,6 @@ function timestamp(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function revision(session: InspectionSession | null): number {
-  const value = session?.syncRevision;
-  return typeof value === "number" && Number.isFinite(value)
-    ? Math.max(0, Math.trunc(value))
-    : 0;
-}
-
-function fingerprint(session: InspectionSession | null): string {
-  if (!session) return "";
-  return [
-    session.id ?? "",
-    revision(session),
-    session.lastUpdated ?? "",
-  ].join(":");
-}
-
 function hasDurableSession(value: unknown): value is InspectionSession {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<InspectionSession>;
@@ -107,59 +98,6 @@ function sessionMatchesWorkOrderLine(
   const embeddedLineId = session?.workOrderLineId?.trim() ?? "";
   const activeLineId = workOrderLineId?.trim() ?? "";
   return !embeddedLineId || !activeLineId || embeddedLineId === activeLineId;
-}
-
-function hasMeaningfulLocalChanges(session: InspectionSession): boolean {
-  if (session.transcript?.trim()) return true;
-  if ((session.quote?.length ?? 0) > 0) return true;
-
-  return (session.sections ?? []).some((section) =>
-    (section.items ?? []).some((item) => {
-      const value = item as unknown as {
-        status?: unknown;
-        notes?: unknown;
-        value?: unknown;
-        photoUrls?: unknown;
-      };
-      const status = String(value.status ?? "").trim().toLowerCase();
-      const hasStatus =
-        status.length > 0 &&
-        !["pending", "not_started", "not started"].includes(status);
-      const hasNotes =
-        typeof value.notes === "string" && value.notes.trim().length > 0;
-      const hasValue =
-        value.value !== null &&
-        value.value !== undefined &&
-        String(value.value).trim().length > 0;
-      const hasPhotos =
-        Array.isArray(value.photoUrls) && value.photoUrls.length > 0;
-      return hasStatus || hasNotes || hasValue || hasPhotos;
-    }),
-  );
-}
-
-function remoteShouldReplace(
-  remote: InspectionSession,
-  local: InspectionSession | null,
-  lastPersistedFingerprint: string,
-): boolean {
-  if (!local) return true;
-
-  const remoteRevision = revision(remote);
-  const localRevision = revision(local);
-  const localFingerprint = fingerprint(local);
-  const localIsDirty = lastPersistedFingerprint
-    ? Boolean(localFingerprint) &&
-      localFingerprint !== lastPersistedFingerprint
-    : hasMeaningfulLocalChanges(local);
-
-  // Never erase an unsaved edit (including a field the user intentionally
-  // cleared). The following save will surface a revision conflict if another
-  // device advanced while this client was dirty.
-  if (localIsDirty) return false;
-  if (remoteRevision > localRevision) return true;
-  if (remoteRevision < localRevision) return false;
-  return timestamp(remote.lastUpdated) >= timestamp(local.lastUpdated);
 }
 
 function errorStatus(error: unknown): number | null {
@@ -207,6 +145,7 @@ export function useInspectionAutosave({
   draftKey,
   debounceMs = 700,
   recoveryOperationKey,
+  hasRecoveredLocalDraft = false,
   onRemoteSession,
   onRemoteMeta,
   onRecoveryState,
@@ -263,7 +202,7 @@ export function useInspectionAutosave({
     const recoveredKey = recoveryOperationKey?.trim();
     if (recoveredKey && !pendingOperationKeyRef.current) {
       pendingOperationKeyRef.current = recoveredKey;
-      pendingOperationFingerprintRef.current = fingerprint(
+      pendingOperationFingerprintRef.current = inspectionFingerprint(
         latestSessionRef.current,
       );
     }
@@ -314,19 +253,19 @@ export function useInspectionAutosave({
         ? latestSessionRef.current
         : null;
       const metaAccepted = meta ? applyRemoteMeta(meta) : true;
-      const remoteFingerprint = fingerprint(remote);
-      const remoteRevision = revision(remote);
+      const remoteFingerprint = inspectionFingerprint(remote);
+      const remoteRevision = inspectionRevision(remote);
       const remoteUpdatedAt = timestamp(
         remote.serverUpdatedAt ?? meta?.updatedAt ?? remote.lastUpdated,
       );
       const shouldReplace =
         force ||
         (metaAccepted && Boolean(meta?.locked)) ||
-        remoteShouldReplace(
+        remoteInspectionShouldReplace({
           remote,
-          current,
-          previousServerFingerprint,
-        );
+          local: current,
+          lastPersistedFingerprint: previousServerFingerprint,
+        });
 
       if (
         remoteRevision > lastServerRevisionRef.current ||
@@ -397,13 +336,7 @@ export function useInspectionAutosave({
     const remote = json?.session;
     if (hasDurableSession(remote)) {
       const local = latestSessionRef.current;
-      const localRevision = revision(local);
-      const serverIsAhead = revision(remote) > localRevision;
       const hasPendingLocalSave = Boolean(pendingOperationKeyRef.current);
-      const hasUnversionedRecovery =
-        localRevision === 0 &&
-        Boolean(local) &&
-        hasMeaningfulLocalChanges(local as InspectionSession);
 
       // On first hydration, the durable server revision is canonical across
       // devices. Queued offline work and older unversioned recovery drafts stay
@@ -411,10 +344,13 @@ export function useInspectionAutosave({
       applyRemote(
         remote,
         meta,
-        preferCanonicalServer &&
-          serverIsAhead &&
-          !hasPendingLocalSave &&
-          !hasUnversionedRecovery,
+        shouldForceCanonicalBootstrap({
+          remote,
+          local,
+          preferCanonicalServer,
+          hasPendingLocalSave,
+          hasRecoveredLocalDraft,
+        }),
       );
     } else {
       applyRemoteMeta(meta);
@@ -425,6 +361,7 @@ export function useInspectionAutosave({
     enabled,
     identityKey,
     inspectionId,
+    hasRecoveredLocalDraft,
     workOrderLineId,
   ]);
 
@@ -582,7 +519,7 @@ export function useInspectionAutosave({
         };
       }
 
-      const nextFingerprint = fingerprint(snapshot);
+      const nextFingerprint = inspectionFingerprint(snapshot);
       if (
         nextFingerprint &&
         nextFingerprint === lastServerFingerprintRef.current
@@ -683,13 +620,14 @@ export function useInspectionAutosave({
               result.savedAt ?? snapshot.serverUpdatedAt ?? null,
           };
           const current = latestSessionRef.current;
-          const acknowledgementRevision = revision(acknowledgedSnapshot);
+          const acknowledgementRevision =
+            inspectionRevision(acknowledgedSnapshot);
 
-          if (!current || fingerprint(current) === nextFingerprint) {
+          if (!current || inspectionFingerprint(current) === nextFingerprint) {
             persistedSnapshot = acknowledgedSnapshot;
             latestSessionRef.current = acknowledgedSnapshot;
             onRemoteSessionRef.current(acknowledgedSnapshot);
-          } else if (acknowledgementRevision >= revision(current)) {
+          } else if (acknowledgementRevision >= inspectionRevision(current)) {
             // Preserve edits made while the request was in flight, but advance
             // their concurrency token so the follow-up save is accepted.
             persistedSnapshot = {
@@ -713,7 +651,7 @@ export function useInspectionAutosave({
             // Record only the snapshot the server acknowledged. A newer local
             // edit must remain dirty and receive its own operation key.
             lastServerFingerprintRef.current =
-              fingerprint(acknowledgedSnapshot);
+              inspectionFingerprint(acknowledgedSnapshot);
           }
           lastQueuedFingerprintRef.current = "";
         } else {
@@ -808,7 +746,7 @@ export function useInspectionAutosave({
             const latest = latestSessionRef.current ?? result.session;
             if (
               !requireServer ||
-              fingerprint(latest) === lastServerFingerprintRef.current
+              inspectionFingerprint(latest) === lastServerFingerprintRef.current
             ) {
               return latest;
             }
@@ -850,7 +788,7 @@ export function useInspectionAutosave({
       return;
     }
 
-    const nextFingerprint = fingerprint(session);
+    const nextFingerprint = inspectionFingerprint(session);
     const offline =
       typeof navigator !== "undefined" && !navigator.onLine;
     if (

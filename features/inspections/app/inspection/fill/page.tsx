@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
+import { mergeInspectionRuntimeParams } from "@inspections/lib/inspection/runtimeParams";
 
 type Dict = Record<string, string>;
 
@@ -34,30 +35,13 @@ export default function InspectionFillPage() {
         ? (JSON.parse(stagedParamsRaw) as Dict)
         : {};
 
-      /**
-       * IMPORTANT:
-       * - When coming from work order embed, staged params should be authoritative.
-       * - URL params are allowed to add context (workOrderId, customerId, etc),
-       *   but should NOT be able to force us back into "draft/builder" mode.
-       *
-       * So: URL first, staged second (staged wins).
-       */
-      const merged: Dict = { ...urlParams, ...stagedParams };
-
-// allow URL to override for grid specifically
-if (urlParams.grid) merged.grid = urlParams.grid;
-
-      // Hard safety: if we have staged mode, keep it.
-      if (stagedParams.mode) merged.mode = stagedParams.mode;
-
-      // Same for screen template if staged already set it
-      if (stagedParams.template) merged.template = stagedParams.template;
-
-      // Also preserve template identity helpers if staged has them
-      if (stagedParams.templateId) merged.templateId = stagedParams.templateId;
-      if (stagedParams.template_id) merged.template_id = stagedParams.template_id;
-      if (stagedParams.templateName) merged.templateName = stagedParams.templateName;
-      if (stagedParams.template_name) merged.template_name = stagedParams.template_name;
+      // Staged data carries the prepared template, while the current URL owns
+      // the work-order/line identity. This prevents a prior tab's staged params
+      // from reopening or saving a different inspection line.
+      const merged = mergeInspectionRuntimeParams({
+        staged: stagedParams,
+        route: urlParams,
+      });
 
       sessionStorage.setItem("inspection:params", JSON.stringify(merged));
 

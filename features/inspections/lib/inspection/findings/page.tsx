@@ -213,6 +213,14 @@ export default function InspectionFindingsPage(): JSX.Element {
   );
 
   const [session, setSession] = useState<InspectionSession | null>(null);
+  const [draftBootstrappedKey, setDraftBootstrappedKey] = useState<
+    string | null
+  >(null);
+  const draftBootLoaded = draftBootstrappedKey === draftKey;
+  const [hasRecoveredLocalDraft, setHasRecoveredLocalDraft] = useState(false);
+  const [recoveryOperationKey, setRecoveryOperationKey] = useState<
+    string | undefined
+  >(undefined);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const latestSessionRef = useRef<InspectionSession | null>(session);
@@ -254,9 +262,13 @@ export default function InspectionFindingsPage(): JSX.Element {
     session,
     inspectionId: resolvedInspectionId,
     workOrderLineId: resolvedWorkOrderLineId,
-    enabled: Boolean(resolvedInspectionId || resolvedWorkOrderLineId),
+    enabled:
+      draftBootLoaded &&
+      Boolean(resolvedInspectionId || resolvedWorkOrderLineId),
     locked: isLocked,
     draftKey,
+    recoveryOperationKey,
+    hasRecoveredLocalDraft,
     onRemoteSession: (remote) => {
       latestSessionRef.current = remote;
       setSession(remote);
@@ -266,22 +278,46 @@ export default function InspectionFindingsPage(): JSX.Element {
       isLockedRef.current = meta.locked;
       setIsLocked(meta.locked);
     },
+    onRecoveryState: (_state, operationKey) => {
+      setRecoveryOperationKey(operationKey);
+    },
   });
 
   const syncFromDraft = useCallback(async () => {
-    if (isLockedRef.current || busyRef.current) return;
-    const recovered = await getInspectionOfflineDraft({
-      draftKey,
-      sessionHint: {
-        id: inspectionId,
-        workOrderId: workOrderId || null,
-        workOrderLineId: workOrderLineId || null,
-        templateitem: templateName,
-      },
-    });
-    if (recovered) {
-      latestSessionRef.current = recovered.session;
-      setSession(recovered.session);
+    setHasRecoveredLocalDraft(false);
+    setRecoveryOperationKey(undefined);
+    try {
+      const recovered = await getInspectionOfflineDraft({
+        draftKey,
+        sessionHint: {
+          id: inspectionId,
+          workOrderId: workOrderId || null,
+          workOrderLineId: workOrderLineId || null,
+          templateitem: templateName,
+        },
+      });
+      if (activeDraftKeyRef.current !== draftKey) return;
+      if (recovered) {
+        latestSessionRef.current = recovered.session;
+        setSession(recovered.session);
+        setHasRecoveredLocalDraft(true);
+        setRecoveryOperationKey(recovered.operationKey);
+      } else {
+        latestSessionRef.current = null;
+        setSession(null);
+      }
+    } catch (error) {
+      // IndexedDB recovery is a safety net. If it is unavailable, continue to
+      // the canonical HTTP load instead of leaving this screen unbootstrapped.
+      console.warn("[inspection findings] offline recovery unavailable", error);
+      if (activeDraftKeyRef.current === draftKey) {
+        latestSessionRef.current = null;
+        setSession(null);
+      }
+    } finally {
+      if (activeDraftKeyRef.current === draftKey) {
+        setDraftBootstrappedKey(draftKey);
+      }
     }
   }, [draftKey, inspectionId, templateName, workOrderId, workOrderLineId]);
 
