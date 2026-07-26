@@ -174,7 +174,13 @@ export default function MobileJobPage() {
       <MobileFocusedJob
         workOrderLineId={lineId}
         onChanged={loadStory}
-        onBack={() => router.push("/mobile/tech/queue")}
+        onBack={() =>
+          router.push(
+            line?.work_order_id
+              ? `/mobile/work-orders/${line.work_order_id}`
+              : "/mobile/tech/queue",
+          )
+        }
       />
 
       <div className="fixed inset-x-0 bottom-0 z-[120] border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_rgba(0,0,0,0.22)] backdrop-blur-xl">

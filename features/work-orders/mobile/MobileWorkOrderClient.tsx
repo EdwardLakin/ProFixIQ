@@ -1107,7 +1107,7 @@ export default function MobileWorkOrderClient({
         <div className="metal-panel metal-panel--card rounded-2xl border border-amber-500/40 px-3 py-3 text-xs text-amber-100 shadow-[var(--theme-shadow-medium)]">
           You appear signed out on this tab. If actions fail, open{" "}
           <Link
-            href="/sign-in"
+            href="/mobile/sign-in"
             className="underline decoration-dotted underline-offset-2 hover:text-[color:var(--theme-text-primary)]"
           >
             Sign In
@@ -1558,15 +1558,15 @@ export default function MobileWorkOrderClient({
 
 
           {quotePending.length > 0 && (
-            <section className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-sky-400/25 px-4 py-4 shadow-[var(--theme-shadow-medium)]">
+            <section id="pending-quote-items" className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-sky-400/25 px-4 py-4 shadow-[var(--theme-shadow-medium)]">
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-sky-100 sm:text-base">Pending quote items</h2>
                   <p className="text-[11px] text-[color:var(--theme-text-muted)]">Recommended repairs awaiting quote review or customer decision.</p>
                 </div>
-                <Link href={`/quote-review/${wo?.id ?? routeId}`} className="rounded-full border border-sky-400/40 px-3 py-1.5 text-[11px] font-semibold text-sky-100">
-                  Review
-                </Link>
+                <span className="rounded-full border border-sky-400/40 px-3 py-1.5 text-[11px] font-semibold text-sky-100">
+                  Review here
+                </span>
               </div>
               <div className="space-y-2">
                 {quotePending.map((q) => {

@@ -61,28 +61,29 @@ const suggestions = readFileSync(
 
 describe("technician-first mobile UX", () => {
   it("keeps the technician home simple and opens work directly", () => {
-    expect(mobileHome).toContain('href: `/mobile/jobs/${line.id}`');
+    expect(mobileHome).toContain('`/mobile/work-orders/${line.work_order_id}`');
     expect(mobileHome).toContain('"in_progress"');
-    expect(techHome).toContain('href={`/mobile/jobs/${job.id}`}');
+    expect(techHome).toContain('href={`/mobile/work-orders/${workOrder.id}`}');
     expect(techHome).toContain("Hours &amp; efficiency");
     expect(techHome).toContain("<details");
     expect(techHome).not.toContain("Bench-side view");
     expect(techHome).not.toContain("next action");
   });
 
-  it("keeps inspections out of the mechanic menu while preserving job access", () => {
+  it("gives mechanics an assigned work-order route for contextual inspections", () => {
     const mechanicRoutes = getMobileTilesForRole("mechanic", ["all"]).map(
       (tile) => tile.href,
     );
     expect(mechanicRoutes).not.toContain("/mobile/inspections");
     expect(mechanicRoutes).toContain("/mobile/tech/queue");
+    expect(mechanicRoutes).toContain("/mobile/work-orders");
   });
 
   it("uses a factual job queue without AI or prescribed next steps", () => {
     expect(queuePage).toContain("MobileTechnicianQueue");
-    expect(queue).toContain('href={`/mobile/jobs/${line.id}`}');
+    expect(queue).toContain('`/mobile/work-orders/${workOrder.id}`');
     expect(queue).toContain(
-      "Tap a job to open its timer, photos, parts, notes, history, and assistant.",
+      "Tap a job to review its work order, then open the focused job or inspection.",
     );
     expect(queue).toContain("Download assigned work");
     expect(queue).toContain("fetchAssignedTechnicianWork");
@@ -105,7 +106,16 @@ describe("technician-first mobile UX", () => {
     expect(jobPage).toContain("Cause & Correction");
     expect(jobPage).toContain("onSaveDraft={saveStory}");
     expect(jobPage).toContain("onSubmit={completeJob}");
-    expect(jobPage).toContain('router.push("/mobile/tech/queue")');
+    expect(jobPage).toContain('`/mobile/work-orders/${line.work_order_id}`');
+    expect(jobPage).toContain('"/mobile/tech/queue"');
+  });
+
+  it("keeps the hold modal available before and during active work", () => {
+    expect(mobileFocusedJob).toContain("<HoldModal");
+    expect(mobileFocusedJob).toContain(
+      "!isOnHold && !isCompleted && canStartOrResume",
+    );
+    expect(mobileFocusedJob).toContain("Put on Hold");
   });
 
   it("uses immersive headers only where the focused route owns navigation", () => {

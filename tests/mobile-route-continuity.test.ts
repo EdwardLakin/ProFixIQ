@@ -5,6 +5,7 @@ import {
   requireMobileHref,
   resolveMobileHref,
 } from "../features/mobile/navigation/mobile-route-continuity";
+import { isOutsideDesktopAppShell } from "../features/shared/lib/routes/shellBoundaries";
 
 const read = (path: string) => readFileSync(path, "utf8");
 
@@ -111,7 +112,8 @@ describe("mobile route continuity", () => {
     const pretrip = read("app/mobile/fleet/pretrip/[unitId]/page.tsx");
     const previous = read("features/shared/components/ui/PreviousPageButton.tsx");
 
-    expect(job).toContain('router.push("/mobile/tech/queue")');
+    expect(job).toContain('`/mobile/work-orders/${line.work_order_id}`');
+    expect(job).toContain('"/mobile/tech/queue"');
     expect(job).not.toContain("router.back()");
     expect(inspection).toContain("const backHref = workOrderId");
     expect(inspection).not.toContain("router.back()");
@@ -123,6 +125,14 @@ describe("mobile route continuity", () => {
     );
     expect(pretrip).toContain('href="/mobile/fleet/pretrip"');
     expect(previous).toContain('router.push("/mobile/work-orders")');
+  });
+
+  it("renders every mobile route outside the desktop sidebar shell", () => {
+    expect(isOutsideDesktopAppShell("/mobile")).toBe(true);
+    expect(isOutsideDesktopAppShell("/mobile/work-orders/work-order-id")).toBe(
+      true,
+    );
+    expect(isOutsideDesktopAppShell("/mobile/jobs/line-id")).toBe(true);
   });
 
   it("allows scoped drivers and fleet managers to read mobile service requests", () => {

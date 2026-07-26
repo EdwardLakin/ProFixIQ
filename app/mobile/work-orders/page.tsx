@@ -35,7 +35,11 @@ type WorkOrderSignal = {
   unassigned: number;
   waitingParts: number;
 };
-type WorkOrderListSnapshot = { rows: Row[]; signals: Record<string, WorkOrderSignal> };
+type WorkOrderListSnapshot = {
+  rows: Row[];
+  signals: Record<string, WorkOrderSignal>;
+  assignedOnly?: boolean;
+};
 
 type StatusKey =
   | "awaiting_approval"
@@ -145,6 +149,7 @@ export default function MobileWorkOrdersListPage() {
   const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
+  const [assignedOnly, setAssignedOnly] = useState(false);
   const [lineSignals, setLineSignals] = useState<Record<string, WorkOrderSignal>>({});
 
   const load = useCallback(async () => {
@@ -162,6 +167,7 @@ export default function MobileWorkOrdersListPage() {
       if (cached) {
         setRows(cached.data.rows);
         setLineSignals(cached.data.signals);
+        setAssignedOnly(cached.data.assignedOnly ?? false);
         setLoading(false);
         return;
       }
@@ -186,13 +192,16 @@ export default function MobileWorkOrdersListPage() {
       .maybeSingle();
 
     const actor = getActorCapabilities({ role: me?.role ?? null });
-    const canView = actor.canManageWorkOrders;
+    const canViewAssignedWork =
+      actor.canPerformAssignedWork && !actor.canViewShopWideData;
+    const canView = actor.canManageWorkOrders || canViewAssignedWork;
     if (!canView) {
       setForbidden(true);
       setRows([]);
       setLoading(false);
       return;
     }
+    setAssignedOnly(canViewAssignedWork);
     if (!me?.shop_id) {
       setErr("Your shop scope could not be resolved.");
       setRows([]);
@@ -211,6 +220,7 @@ export default function MobileWorkOrdersListPage() {
           vehicles:vehicles(year,make,model,license_plate)
         `,
       )
+      .eq("shop_id", me.shop_id)
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -236,6 +246,7 @@ export default function MobileWorkOrdersListPage() {
       const { data: linesData } = await supabase
         .from("work_order_lines")
         .select("work_order_id, status, approval_state, assigned_tech_id, hold_reason")
+        .eq("shop_id", me.shop_id)
         .in("work_order_id", workOrderIds);
 
       (linesData ?? []).forEach((line) => {
@@ -302,7 +313,7 @@ export default function MobileWorkOrdersListPage() {
       scope,
       kind: "mobile-work-order-list",
       entityId: status || "active",
-      data: { rows: list, signals },
+      data: { rows: list, signals, assignedOnly: canViewAssignedWork },
     });
     setLoading(false);
   }, [q, status, supabase]);
@@ -348,13 +359,15 @@ export default function MobileWorkOrdersListPage() {
         <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 shadow-[var(--theme-shadow-medium)]">
           <div className="space-y-1">
             <div className="text-[0.7rem] uppercase tracking-[0.25em] text-[color:var(--theme-text-muted)]">
-              ProFixIQ • Tech
+              ProFixIQ • {assignedOnly ? "Mechanic" : "Operations"}
             </div>
             <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-[var(--accent-copper)]">
-              Jobs
+              {assignedOnly ? "My Work Orders" : "Work Orders"}
             </h1>
             <p className="text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-              Work orders for this shop. Tap a card to open details.
+              {assignedOnly
+                ? "Only work orders with a job assigned to you. Open one before entering a focused job or inspection."
+                : "Work orders for this shop. Tap a card to open details."}
             </p>
           </div>
 
@@ -417,15 +430,15 @@ export default function MobileWorkOrdersListPage() {
                 <span className="font-semibold text-[color:var(--theme-text-primary)]">{rows.length}</span>
               </div>
 
-              {/* If you actually have a mobile create route, change this.
-                  Leaving as your original desktop-ish path would be wrong on mobile. */}
-              <Link
-                href="/mobile/work-orders/create"
-                className="inline-flex items-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-[rgba(212,118,49,0.18)] px-3 py-1 text-[0.7rem] font-semibold text-[var(--accent-copper-soft)] hover:bg-[rgba(212,118,49,0.26)]"
-              >
-                <span className="mr-1 text-base leading-none">＋</span>
-                New
-              </Link>
+              {!assignedOnly ? (
+                <Link
+                  href="/mobile/work-orders/create"
+                  className="inline-flex items-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-[rgba(212,118,49,0.18)] px-3 py-1 text-[0.7rem] font-semibold text-[var(--accent-copper-soft)] hover:bg-[rgba(212,118,49,0.26)]"
+                >
+                  <span className="mr-1 text-base leading-none">＋</span>
+                  New
+                </Link>
+              ) : null}
             </div>
           </div>
         </section>

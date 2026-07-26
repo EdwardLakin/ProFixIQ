@@ -550,7 +550,7 @@ function CurrentJobCard({
 
   return (
     <Link
-      href={`/mobile/jobs/${job.id}`}
+      href={`/mobile/work-orders/${workOrder.id}`}
       className="mobile-tech-panel block border border-[var(--accent-copper-soft)]/70 p-4 active:scale-[0.99]"
     >
       <div className="flex items-start justify-between gap-3">

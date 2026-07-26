@@ -24,7 +24,10 @@ export default function ForgotPasswordPage() {
   const goBack = () => {
     const redirect = sp.get("redirect");
     const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
-    router.push(`/sign-in${tail}`);
+    const signInPath = redirect?.startsWith("/mobile")
+      ? "/mobile/sign-in"
+      : "/sign-in";
+    router.push(`${signInPath}${tail}`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
