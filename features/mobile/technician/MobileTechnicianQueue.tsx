@@ -383,7 +383,7 @@ export default function MobileTechnicianQueue() {
           My jobs
         </h1>
         <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-          Tap a job to open its timer, photos, parts, notes, history, and assistant.
+          Tap a job to review its work order, then open the focused job or inspection.
         </p>
         <div className="mt-4 grid grid-cols-3 gap-2">
           <QueueMetric label="Assigned" value={lines.length} />
@@ -394,7 +394,7 @@ export default function MobileTechnicianQueue() {
 
       {pendingSync > 0 ? (
         <Link
-          href="/offline/sync"
+          href="/mobile/offline"
           className="flex items-center justify-between gap-3 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100"
         >
           <span>
@@ -478,7 +478,11 @@ export default function MobileTechnicianQueue() {
             return (
               <Link
                 key={line.id}
-                href={`/mobile/jobs/${line.id}`}
+                href={
+                  workOrder?.id
+                    ? `/mobile/work-orders/${workOrder.id}`
+                    : "/mobile/tech/queue"
+                }
                 className="mobile-tech-subpanel block border border-[color:var(--theme-border-soft)] p-3 active:scale-[0.99]"
               >
                 <div className="flex items-start justify-between gap-3">

@@ -1084,7 +1084,7 @@ export default function MobileFocusedJob(props: {
                       >
                         {primaryActionLabel}
                       </button>
-                      {isActive ? (
+                      {!isOnHold && !isCompleted && canStartOrResume ? (
                         <button
                           type="button"
                           className={btnWarn}
@@ -1096,7 +1096,8 @@ export default function MobileFocusedJob(props: {
                         >
                           Put on Hold
                         </button>
-                      ) : (
+                      ) : null}
+                      {!isCompleted ? (
                         <button
                           type="button"
                           className={btnNeutral}
@@ -1108,7 +1109,7 @@ export default function MobileFocusedJob(props: {
                         >
                           Request Parts
                         </button>
-                      )}
+                      ) : null}
                     </div>
                     {needsApprovalGate && (
                       <div className="mt-2 text-[11px] text-amber-300">
