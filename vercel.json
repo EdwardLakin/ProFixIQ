@@ -11,6 +11,10 @@
     {
       "path": "/api/internal/financial-outbox/tick",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/internal/workforce/auto-punch-out",
+      "schedule": "* * * * *"
     }
   ],
   "git": {
