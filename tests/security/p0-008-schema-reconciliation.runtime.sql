@@ -180,6 +180,17 @@ begin
     raise exception 'P0-008 work_orders.shop_id must be required';
   end if;
 
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'work_orders'
+      and column_name = 'source_row_id'
+      and data_type = 'text'
+  ) then
+    raise exception 'P0-008 work_orders.source_row_id must support namespaced text identities';
+  end if;
+
   select array_agg(
       expected.table_name || '.' || expected.column_name
       order by expected.table_name, expected.column_name

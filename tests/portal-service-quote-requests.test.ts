@@ -66,6 +66,21 @@ describe("customer portal service and quote requests", () => {
     expect(startRoute).toContain("quoteBooking: true");
   });
 
+  it("reconciles legacy UUID work-order source identities before portal starts", () => {
+    const correctionPath =
+      "supabase/migrations/20260725190225_p0_008_reconcile_work_order_source_identity.sql";
+    const portalPath =
+      "supabase/migrations/20260725190250_p0_008_restore_portal_request_atomicity.sql";
+    const correction = source(correctionPath);
+
+    expect(correctionPath.localeCompare(portalPath)).toBeLessThan(0);
+    expect(correction).toContain("source_row_id_type = 'uuid'::regtype");
+    expect(correction).toMatch(
+      /alter column source_row_id type text\s+using source_row_id::text/i,
+    );
+    expect(correction).toContain("source_row_id_type <> 'text'::regtype");
+  });
+
   it("uses the canonical quote approval and invoice payment paths", () => {
     const approval = source("features/portal/components/QuoteApprovalActions.tsx");
     const quotePage = source("features/portal/app/quotes/[id]/QuotePageClient.tsx");
