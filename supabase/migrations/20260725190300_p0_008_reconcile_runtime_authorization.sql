@@ -1,6 +1,8 @@
 -- P0-008: restore row-level policies and explicit API grants.
 -- Every recovered table has RLS enabled. Anonymous/authenticated privileges are
 -- derived from its reviewed policy commands; service_role remains the backend path.
+-- Recovered policies use authenticated profile membership instead of the legacy,
+-- request-local app.current_shop_id setting established as unsafe by P0-001.
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -169,20 +171,20 @@ BEGIN
    FROM profiles
   WHERE (profiles.id = auth.uid()))) AND ((reporter_id = auth.uid()) OR is_agent_developer())));'),
       ('agent_requests', 'agent_requests_update_shop', 'CREATE POLICY "agent_requests_update_shop" ON public."agent_requests" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (is_shop_member(shop_id)) WITH CHECK (is_shop_member(shop_id));'),
-      ('ai_action_previews', 'ai_action_previews_shop_insert', 'CREATE POLICY "ai_action_previews_shop_insert" ON public."ai_action_previews" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('ai_action_previews', 'ai_action_previews_shop_select', 'CREATE POLICY "ai_action_previews_shop_select" ON public."ai_action_previews" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('ai_action_previews', 'ai_action_previews_shop_update', 'CREATE POLICY "ai_action_previews_shop_update" ON public."ai_action_previews" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('ai_action_previews', 'ai_action_previews_shop_insert', 'CREATE POLICY "ai_action_previews_shop_insert" ON public."ai_action_previews" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('ai_action_previews', 'ai_action_previews_shop_select', 'CREATE POLICY "ai_action_previews_shop_select" ON public."ai_action_previews" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('ai_action_previews', 'ai_action_previews_shop_update', 'CREATE POLICY "ai_action_previews_shop_update" ON public."ai_action_previews" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('ai_action_previews', 'service-role-manage-ai-action-previews', 'CREATE POLICY "service-role-manage-ai-action-previews" ON public."ai_action_previews" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
       ('ai_events', 'ai_events_delete_none', 'CREATE POLICY "ai_events_delete_none" ON public."ai_events" AS PERMISSIVE FOR DELETE TO "authenticated" USING (false);'),
-      ('ai_events', 'ai_events_insert_in_shop', 'CREATE POLICY "ai_events_insert_in_shop" ON public."ai_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id IS NULL) OR (shop_id = current_shop_id())));'),
-      ('ai_events', 'ai_events_select_in_shop', 'CREATE POLICY "ai_events_select_in_shop" ON public."ai_events" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id IS NULL) OR (shop_id = current_shop_id())));'),
+      ('ai_events', 'ai_events_insert_in_shop', 'CREATE POLICY "ai_events_insert_in_shop" ON public."ai_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id IS NULL) OR (is_shop_member_v2(shop_id))));'),
+      ('ai_events', 'ai_events_select_in_shop', 'CREATE POLICY "ai_events_select_in_shop" ON public."ai_events" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id IS NULL) OR (is_shop_member_v2(shop_id))));'),
       ('ai_events', 'ai_events_update_none', 'CREATE POLICY "ai_events_update_none" ON public."ai_events" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (false);'),
-      ('ai_evidence_snapshots', 'ai_evidence_snapshots_shop_insert', 'CREATE POLICY "ai_evidence_snapshots_shop_insert" ON public."ai_evidence_snapshots" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('ai_evidence_snapshots', 'ai_evidence_snapshots_shop_select', 'CREATE POLICY "ai_evidence_snapshots_shop_select" ON public."ai_evidence_snapshots" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
+      ('ai_evidence_snapshots', 'ai_evidence_snapshots_shop_insert', 'CREATE POLICY "ai_evidence_snapshots_shop_insert" ON public."ai_evidence_snapshots" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('ai_evidence_snapshots', 'ai_evidence_snapshots_shop_select', 'CREATE POLICY "ai_evidence_snapshots_shop_select" ON public."ai_evidence_snapshots" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
       ('ai_evidence_snapshots', 'service-role-manage-ai-evidence-snapshots', 'CREATE POLICY "service-role-manage-ai-evidence-snapshots" ON public."ai_evidence_snapshots" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
-      ('ai_recommendations', 'ai_recommendations_shop_insert', 'CREATE POLICY "ai_recommendations_shop_insert" ON public."ai_recommendations" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('ai_recommendations', 'ai_recommendations_shop_select', 'CREATE POLICY "ai_recommendations_shop_select" ON public."ai_recommendations" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('ai_recommendations', 'ai_recommendations_shop_update', 'CREATE POLICY "ai_recommendations_shop_update" ON public."ai_recommendations" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('ai_recommendations', 'ai_recommendations_shop_insert', 'CREATE POLICY "ai_recommendations_shop_insert" ON public."ai_recommendations" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('ai_recommendations', 'ai_recommendations_shop_select', 'CREATE POLICY "ai_recommendations_shop_select" ON public."ai_recommendations" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('ai_recommendations', 'ai_recommendations_shop_update', 'CREATE POLICY "ai_recommendations_shop_update" ON public."ai_recommendations" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('ai_recommendations', 'service-role-manage-ai-recommendations', 'CREATE POLICY "service-role-manage-ai-recommendations" ON public."ai_recommendations" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
       ('ai_suggestion_feedback', 'ai_suggestion_feedback_insert', 'CREATE POLICY "ai_suggestion_feedback_insert" ON public."ai_suggestion_feedback" AS PERMISSIVE FOR INSERT TO PUBLIC WITH CHECK (is_shop_member(shop_id));'),
       ('ai_suggestion_feedback', 'ai_suggestion_feedback_select', 'CREATE POLICY "ai_suggestion_feedback_select" ON public."ai_suggestion_feedback" AS PERMISSIVE FOR SELECT TO PUBLIC USING (is_shop_member(shop_id));'),
@@ -200,30 +202,30 @@ BEGIN
   WHERE ((p.id = auth.uid()) AND (p.shop_id = assistant_daily_summaries.shop_id))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = assistant_daily_summaries.shop_id)))));'),
-      ('content_assets', 'content_assets_delete_shop', 'CREATE POLICY "content_assets_delete_shop" ON public."content_assets" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_assets', 'content_assets_insert_shop', 'CREATE POLICY "content_assets_insert_shop" ON public."content_assets" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_assets', 'content_assets_select_shop', 'CREATE POLICY "content_assets_select_shop" ON public."content_assets" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_assets', 'content_assets_update_shop', 'CREATE POLICY "content_assets_update_shop" ON public."content_assets" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_events', 'content_events_delete_shop', 'CREATE POLICY "content_events_delete_shop" ON public."content_events" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_events', 'content_events_insert_shop', 'CREATE POLICY "content_events_insert_shop" ON public."content_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_events', 'content_events_select_shop', 'CREATE POLICY "content_events_select_shop" ON public."content_events" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_events', 'content_events_update_shop', 'CREATE POLICY "content_events_update_shop" ON public."content_events" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_pieces', 'content_pieces_delete_shop', 'CREATE POLICY "content_pieces_delete_shop" ON public."content_pieces" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_pieces', 'content_pieces_insert_shop', 'CREATE POLICY "content_pieces_insert_shop" ON public."content_pieces" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_pieces', 'content_pieces_select_shop', 'CREATE POLICY "content_pieces_select_shop" ON public."content_pieces" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_pieces', 'content_pieces_update_shop', 'CREATE POLICY "content_pieces_update_shop" ON public."content_pieces" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_platform_accounts', 'content_platform_accounts_delete_shop', 'CREATE POLICY "content_platform_accounts_delete_shop" ON public."content_platform_accounts" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_platform_accounts', 'content_platform_accounts_insert_shop', 'CREATE POLICY "content_platform_accounts_insert_shop" ON public."content_platform_accounts" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_platform_accounts', 'content_platform_accounts_select_shop', 'CREATE POLICY "content_platform_accounts_select_shop" ON public."content_platform_accounts" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_platform_accounts', 'content_platform_accounts_update_shop', 'CREATE POLICY "content_platform_accounts_update_shop" ON public."content_platform_accounts" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_publications', 'content_publications_delete_shop', 'CREATE POLICY "content_publications_delete_shop" ON public."content_publications" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_publications', 'content_publications_insert_shop', 'CREATE POLICY "content_publications_insert_shop" ON public."content_publications" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('content_publications', 'content_publications_select_shop', 'CREATE POLICY "content_publications_select_shop" ON public."content_publications" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('content_publications', 'content_publications_update_shop', 'CREATE POLICY "content_publications_update_shop" ON public."content_publications" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('content_assets', 'content_assets_delete_shop', 'CREATE POLICY "content_assets_delete_shop" ON public."content_assets" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_assets', 'content_assets_insert_shop', 'CREATE POLICY "content_assets_insert_shop" ON public."content_assets" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_assets', 'content_assets_select_shop', 'CREATE POLICY "content_assets_select_shop" ON public."content_assets" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_assets', 'content_assets_update_shop', 'CREATE POLICY "content_assets_update_shop" ON public."content_assets" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_events', 'content_events_delete_shop', 'CREATE POLICY "content_events_delete_shop" ON public."content_events" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_events', 'content_events_insert_shop', 'CREATE POLICY "content_events_insert_shop" ON public."content_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_events', 'content_events_select_shop', 'CREATE POLICY "content_events_select_shop" ON public."content_events" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_events', 'content_events_update_shop', 'CREATE POLICY "content_events_update_shop" ON public."content_events" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_pieces', 'content_pieces_delete_shop', 'CREATE POLICY "content_pieces_delete_shop" ON public."content_pieces" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_pieces', 'content_pieces_insert_shop', 'CREATE POLICY "content_pieces_insert_shop" ON public."content_pieces" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_pieces', 'content_pieces_select_shop', 'CREATE POLICY "content_pieces_select_shop" ON public."content_pieces" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_pieces', 'content_pieces_update_shop', 'CREATE POLICY "content_pieces_update_shop" ON public."content_pieces" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_platform_accounts', 'content_platform_accounts_delete_shop', 'CREATE POLICY "content_platform_accounts_delete_shop" ON public."content_platform_accounts" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_platform_accounts', 'content_platform_accounts_insert_shop', 'CREATE POLICY "content_platform_accounts_insert_shop" ON public."content_platform_accounts" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_platform_accounts', 'content_platform_accounts_select_shop', 'CREATE POLICY "content_platform_accounts_select_shop" ON public."content_platform_accounts" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_platform_accounts', 'content_platform_accounts_update_shop', 'CREATE POLICY "content_platform_accounts_update_shop" ON public."content_platform_accounts" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_publications', 'content_publications_delete_shop', 'CREATE POLICY "content_publications_delete_shop" ON public."content_publications" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_publications', 'content_publications_insert_shop', 'CREATE POLICY "content_publications_insert_shop" ON public."content_publications" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('content_publications', 'content_publications_select_shop', 'CREATE POLICY "content_publications_select_shop" ON public."content_publications" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('content_publications', 'content_publications_update_shop', 'CREATE POLICY "content_publications_update_shop" ON public."content_publications" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('content_templates', 'content_templates_all_member', 'CREATE POLICY "content_templates_all_member" ON public."content_templates" AS PERMISSIVE FOR ALL TO "authenticated" USING (user_is_in_shop(shop_id)) WITH CHECK (user_is_in_shop(shop_id));'),
-      ('dashboard_layouts', 'dashboard_layouts_insert', 'CREATE POLICY "dashboard_layouts_insert" ON public."dashboard_layouts" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND ((user_id IS NULL) OR (user_id = auth.uid()))));'),
-      ('dashboard_layouts', 'dashboard_layouts_select', 'CREATE POLICY "dashboard_layouts_select" ON public."dashboard_layouts" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id = current_shop_id()) AND ((user_id IS NULL) OR (user_id = auth.uid()))));'),
-      ('dashboard_layouts', 'dashboard_layouts_update', 'CREATE POLICY "dashboard_layouts_update" ON public."dashboard_layouts" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((shop_id = current_shop_id()) AND ((user_id IS NULL) OR (user_id = auth.uid())))) WITH CHECK (((shop_id = current_shop_id()) AND ((user_id IS NULL) OR (user_id = auth.uid()))));'),
+      ('dashboard_layouts', 'dashboard_layouts_insert', 'CREATE POLICY "dashboard_layouts_insert" ON public."dashboard_layouts" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((is_shop_member_v2(shop_id)) AND ((user_id IS NULL) OR (user_id = auth.uid()))));'),
+      ('dashboard_layouts', 'dashboard_layouts_select', 'CREATE POLICY "dashboard_layouts_select" ON public."dashboard_layouts" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND ((user_id IS NULL) OR (user_id = auth.uid()))));'),
+      ('dashboard_layouts', 'dashboard_layouts_update', 'CREATE POLICY "dashboard_layouts_update" ON public."dashboard_layouts" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND ((user_id IS NULL) OR (user_id = auth.uid())))) WITH CHECK (((is_shop_member_v2(shop_id)) AND ((user_id IS NULL) OR (user_id = auth.uid()))));'),
       ('dashboard_user_layouts', 'dashboard layouts delete own', 'CREATE POLICY "dashboard layouts delete own" ON public."dashboard_user_layouts" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((auth.uid() = user_id));'),
       ('dashboard_user_layouts', 'dashboard layouts insert own', 'CREATE POLICY "dashboard layouts insert own" ON public."dashboard_user_layouts" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((auth.uid() = user_id));'),
       ('dashboard_user_layouts', 'dashboard layouts select own', 'CREATE POLICY "dashboard layouts select own" ON public."dashboard_user_layouts" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((auth.uid() = user_id));'),
@@ -338,67 +340,67 @@ BEGIN
   WHERE ((p.id = auth.uid()) AND (p.shop_id = fleet_vehicles.shop_id) AND (p.role = ANY (ARRAY[''owner''::text, ''admin''::text, ''manager''::text])))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = fleet_vehicles.shop_id) AND (p.role = ANY (ARRAY[''owner''::text, ''admin''::text, ''manager''::text]))))));'),
-      ('guided_onboarding_events', 'guided_onboarding_events_shop_insert', 'CREATE POLICY "guided_onboarding_events_shop_insert" ON public."guided_onboarding_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_events', 'guided_onboarding_events_shop_insert', 'CREATE POLICY "guided_onboarding_events_shop_insert" ON public."guided_onboarding_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_events.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_events', 'guided_onboarding_events_shop_select', 'CREATE POLICY "guided_onboarding_events_shop_select" ON public."guided_onboarding_events" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_events', 'guided_onboarding_events_shop_select', 'CREATE POLICY "guided_onboarding_events_shop_select" ON public."guided_onboarding_events" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_events.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_events', 'guided_onboarding_owner_admin_insert_guided_onboarding_events', 'CREATE POLICY "guided_onboarding_owner_admin_insert_guided_onboarding_events" ON public."guided_onboarding_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_events', 'guided_onboarding_owner_admin_insert_guided_onboarding_events', 'CREATE POLICY "guided_onboarding_owner_admin_insert_guided_onboarding_events" ON public."guided_onboarding_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_events.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_events', 'guided_onboarding_owner_admin_select_guided_onboarding_events', 'CREATE POLICY "guided_onboarding_owner_admin_select_guided_onboarding_events" ON public."guided_onboarding_events" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_events', 'guided_onboarding_owner_admin_select_guided_onboarding_events', 'CREATE POLICY "guided_onboarding_owner_admin_select_guided_onboarding_events" ON public."guided_onboarding_events" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_events.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_events', 'guided_onboarding_owner_admin_update_guided_onboarding_events', 'CREATE POLICY "guided_onboarding_owner_admin_update_guided_onboarding_events" ON public."guided_onboarding_events" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_events', 'guided_onboarding_owner_admin_update_guided_onboarding_events', 'CREATE POLICY "guided_onboarding_owner_admin_update_guided_onboarding_events" ON public."guided_onboarding_events" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
-  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_events.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_events.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_events.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
       ('guided_onboarding_events', 'service_role_manage_guided_onboarding_events', 'CREATE POLICY "service_role_manage_guided_onboarding_events" ON public."guided_onboarding_events" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
-      ('guided_onboarding_sessions', 'guided_onboarding_owner_admin_insert_guided_onboarding_sessions', 'CREATE POLICY "guided_onboarding_owner_admin_insert_guided_onboarding_sessions" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_sessions', 'guided_onboarding_owner_admin_insert_guided_onboarding_sessions', 'CREATE POLICY "guided_onboarding_owner_admin_insert_guided_onboarding_sessions" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_sessions', 'guided_onboarding_owner_admin_select_guided_onboarding_sessions', 'CREATE POLICY "guided_onboarding_owner_admin_select_guided_onboarding_sessions" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_sessions', 'guided_onboarding_owner_admin_select_guided_onboarding_sessions', 'CREATE POLICY "guided_onboarding_owner_admin_select_guided_onboarding_sessions" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_sessions', 'guided_onboarding_owner_admin_update_guided_onboarding_sessions', 'CREATE POLICY "guided_onboarding_owner_admin_update_guided_onboarding_sessions" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_sessions', 'guided_onboarding_owner_admin_update_guided_onboarding_sessions', 'CREATE POLICY "guided_onboarding_owner_admin_update_guided_onboarding_sessions" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
-  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
-   FROM profiles p
-  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_sessions', 'guided_onboarding_sessions_shop_insert', 'CREATE POLICY "guided_onboarding_sessions_shop_insert" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_sessions', 'guided_onboarding_sessions_shop_select', 'CREATE POLICY "guided_onboarding_sessions_shop_select" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_sessions', 'guided_onboarding_sessions_shop_insert', 'CREATE POLICY "guided_onboarding_sessions_shop_insert" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_sessions', 'guided_onboarding_sessions_shop_update', 'CREATE POLICY "guided_onboarding_sessions_shop_update" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_sessions', 'guided_onboarding_sessions_shop_select', 'CREATE POLICY "guided_onboarding_sessions_shop_select" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
-  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
+      ('guided_onboarding_sessions', 'guided_onboarding_sessions_shop_update', 'CREATE POLICY "guided_onboarding_sessions_shop_update" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
+   FROM profiles p
+  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_sessions.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
       ('guided_onboarding_sessions', 'service_role_manage_guided_onboarding_sessions', 'CREATE POLICY "service_role_manage_guided_onboarding_sessions" ON public."guided_onboarding_sessions" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
-      ('guided_onboarding_steps', 'guided_onboarding_owner_admin_insert_guided_onboarding_steps', 'CREATE POLICY "guided_onboarding_owner_admin_insert_guided_onboarding_steps" ON public."guided_onboarding_steps" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_steps', 'guided_onboarding_owner_admin_insert_guided_onboarding_steps', 'CREATE POLICY "guided_onboarding_owner_admin_insert_guided_onboarding_steps" ON public."guided_onboarding_steps" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_steps', 'guided_onboarding_owner_admin_select_guided_onboarding_steps', 'CREATE POLICY "guided_onboarding_owner_admin_select_guided_onboarding_steps" ON public."guided_onboarding_steps" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_steps', 'guided_onboarding_owner_admin_select_guided_onboarding_steps', 'CREATE POLICY "guided_onboarding_owner_admin_select_guided_onboarding_steps" ON public."guided_onboarding_steps" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_steps', 'guided_onboarding_owner_admin_update_guided_onboarding_steps', 'CREATE POLICY "guided_onboarding_owner_admin_update_guided_onboarding_steps" ON public."guided_onboarding_steps" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_steps', 'guided_onboarding_owner_admin_update_guided_onboarding_steps', 'CREATE POLICY "guided_onboarding_owner_admin_update_guided_onboarding_steps" ON public."guided_onboarding_steps" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
-  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
-   FROM profiles p
-  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_steps', 'guided_onboarding_steps_shop_insert', 'CREATE POLICY "guided_onboarding_steps_shop_insert" ON public."guided_onboarding_steps" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_steps', 'guided_onboarding_steps_shop_select', 'CREATE POLICY "guided_onboarding_steps_shop_select" ON public."guided_onboarding_steps" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_steps', 'guided_onboarding_steps_shop_insert', 'CREATE POLICY "guided_onboarding_steps_shop_insert" ON public."guided_onboarding_steps" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
-      ('guided_onboarding_steps', 'guided_onboarding_steps_shop_update', 'CREATE POLICY "guided_onboarding_steps_shop_update" ON public."guided_onboarding_steps" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+      ('guided_onboarding_steps', 'guided_onboarding_steps_shop_select', 'CREATE POLICY "guided_onboarding_steps_shop_select" ON public."guided_onboarding_steps" AS PERMISSIVE FOR SELECT TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
-  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((shop_id = current_shop_id()) AND (EXISTS ( SELECT 1
+  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
+      ('guided_onboarding_steps', 'guided_onboarding_steps_shop_update', 'CREATE POLICY "guided_onboarding_steps_shop_update" ON public."guided_onboarding_steps" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
+   FROM profiles p
+  WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text]))))))) WITH CHECK (((is_shop_member_v2(shop_id)) AND (EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = guided_onboarding_steps.shop_id) AND (lower(COALESCE(p.role, ''''::text)) = ANY (ARRAY[''owner''::text, ''admin''::text])))))));'),
       ('guided_onboarding_steps', 'service_role_manage_guided_onboarding_steps', 'CREATE POLICY "service_role_manage_guided_onboarding_steps" ON public."guided_onboarding_steps" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
@@ -430,10 +432,10 @@ BEGIN
   WHERE ((s.id = inspection_results.session_id) AND (p.shop_id = w.shop_id)))));'),
       ('inspection_smart_match_feedback', 'inspection_smart_match_feedback_insert', 'CREATE POLICY "inspection_smart_match_feedback_insert" ON public."inspection_smart_match_feedback" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (is_shop_member(shop_id));'),
       ('inspection_smart_match_feedback', 'inspection_smart_match_feedback_select', 'CREATE POLICY "inspection_smart_match_feedback_select" ON public."inspection_smart_match_feedback" AS PERMISSIVE FOR SELECT TO "authenticated" USING (is_shop_member(shop_id));'),
-      ('inspection_smart_match_history', 'inspection_smart_match_history_delete_shop', 'CREATE POLICY "inspection_smart_match_history_delete_shop" ON public."inspection_smart_match_history" AS PERMISSIVE FOR DELETE TO PUBLIC USING ((shop_id = current_shop_id()));'),
-      ('inspection_smart_match_history', 'inspection_smart_match_history_insert_shop', 'CREATE POLICY "inspection_smart_match_history_insert_shop" ON public."inspection_smart_match_history" AS PERMISSIVE FOR INSERT TO PUBLIC WITH CHECK ((shop_id = current_shop_id()));'),
-      ('inspection_smart_match_history', 'inspection_smart_match_history_select_shop', 'CREATE POLICY "inspection_smart_match_history_select_shop" ON public."inspection_smart_match_history" AS PERMISSIVE FOR SELECT TO PUBLIC USING ((shop_id = current_shop_id()));'),
-      ('inspection_smart_match_history', 'inspection_smart_match_history_update_shop', 'CREATE POLICY "inspection_smart_match_history_update_shop" ON public."inspection_smart_match_history" AS PERMISSIVE FOR UPDATE TO PUBLIC USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('inspection_smart_match_history', 'inspection_smart_match_history_delete_shop', 'CREATE POLICY "inspection_smart_match_history_delete_shop" ON public."inspection_smart_match_history" AS PERMISSIVE FOR DELETE TO PUBLIC USING ((is_shop_member_v2(shop_id)));'),
+      ('inspection_smart_match_history', 'inspection_smart_match_history_insert_shop', 'CREATE POLICY "inspection_smart_match_history_insert_shop" ON public."inspection_smart_match_history" AS PERMISSIVE FOR INSERT TO PUBLIC WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('inspection_smart_match_history', 'inspection_smart_match_history_select_shop', 'CREATE POLICY "inspection_smart_match_history_select_shop" ON public."inspection_smart_match_history" AS PERMISSIVE FOR SELECT TO PUBLIC USING ((is_shop_member_v2(shop_id)));'),
+      ('inspection_smart_match_history', 'inspection_smart_match_history_update_shop', 'CREATE POLICY "inspection_smart_match_history_update_shop" ON public."inspection_smart_match_history" AS PERMISSIVE FOR UPDATE TO PUBLIC USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('inspection_template_suggestions', 'service-role-manage-inspection-template-suggestions', 'CREATE POLICY "service-role-manage-inspection-template-suggestions" ON public."inspection_template_suggestions" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
       ('inspection_template_suggestions', 'shop-users-read-inspection-template-suggestions', 'CREATE POLICY "shop-users-read-inspection-template-suggestions" ON public."inspection_template_suggestions" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM profiles p
@@ -453,22 +455,22 @@ BEGIN
       ('menu_item_suggestions', 'shop-users-read-menu-item-suggestions', 'CREATE POLICY "shop-users-read-menu-item-suggestions" ON public."menu_item_suggestions" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = menu_item_suggestions.shop_id)))));'),
-      ('menu_repair_item_parts', 'menu_repair_item_parts_delete_shop', 'CREATE POLICY "menu_repair_item_parts_delete_shop" ON public."menu_repair_item_parts" AS PERMISSIVE FOR DELETE TO PUBLIC USING ((shop_id = current_shop_id()));'),
-      ('menu_repair_item_parts', 'menu_repair_item_parts_insert_shop', 'CREATE POLICY "menu_repair_item_parts_insert_shop" ON public."menu_repair_item_parts" AS PERMISSIVE FOR INSERT TO PUBLIC WITH CHECK ((shop_id = current_shop_id()));'),
-      ('menu_repair_item_parts', 'menu_repair_item_parts_select_shop', 'CREATE POLICY "menu_repair_item_parts_select_shop" ON public."menu_repair_item_parts" AS PERMISSIVE FOR SELECT TO PUBLIC USING ((shop_id = current_shop_id()));'),
-      ('menu_repair_item_parts', 'menu_repair_item_parts_update_shop', 'CREATE POLICY "menu_repair_item_parts_update_shop" ON public."menu_repair_item_parts" AS PERMISSIVE FOR UPDATE TO PUBLIC USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('menu_repair_item_parts', 'menu_repair_item_parts_delete_shop', 'CREATE POLICY "menu_repair_item_parts_delete_shop" ON public."menu_repair_item_parts" AS PERMISSIVE FOR DELETE TO PUBLIC USING ((is_shop_member_v2(shop_id)));'),
+      ('menu_repair_item_parts', 'menu_repair_item_parts_insert_shop', 'CREATE POLICY "menu_repair_item_parts_insert_shop" ON public."menu_repair_item_parts" AS PERMISSIVE FOR INSERT TO PUBLIC WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('menu_repair_item_parts', 'menu_repair_item_parts_select_shop', 'CREATE POLICY "menu_repair_item_parts_select_shop" ON public."menu_repair_item_parts" AS PERMISSIVE FOR SELECT TO PUBLIC USING ((is_shop_member_v2(shop_id)));'),
+      ('menu_repair_item_parts', 'menu_repair_item_parts_update_shop', 'CREATE POLICY "menu_repair_item_parts_update_shop" ON public."menu_repair_item_parts" AS PERMISSIVE FOR UPDATE TO PUBLIC USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('menu_repair_item_pricing_parts', 'menu_repair_item_pricing_parts_deny_all', 'CREATE POLICY "menu_repair_item_pricing_parts_deny_all" ON public."menu_repair_item_pricing_parts" AS PERMISSIVE FOR ALL TO PUBLIC USING (false) WITH CHECK (false);'),
-      ('menu_repair_item_pricing_snapshots', 'menu_repair_item_pricing_snapshots_delete_shop', 'CREATE POLICY "menu_repair_item_pricing_snapshots_delete_shop" ON public."menu_repair_item_pricing_snapshots" AS PERMISSIVE FOR DELETE TO PUBLIC USING ((shop_id = current_shop_id()));'),
-      ('menu_repair_item_pricing_snapshots', 'menu_repair_item_pricing_snapshots_insert_shop', 'CREATE POLICY "menu_repair_item_pricing_snapshots_insert_shop" ON public."menu_repair_item_pricing_snapshots" AS PERMISSIVE FOR INSERT TO PUBLIC WITH CHECK ((shop_id = current_shop_id()));'),
-      ('menu_repair_item_pricing_snapshots', 'menu_repair_item_pricing_snapshots_select_shop', 'CREATE POLICY "menu_repair_item_pricing_snapshots_select_shop" ON public."menu_repair_item_pricing_snapshots" AS PERMISSIVE FOR SELECT TO PUBLIC USING ((shop_id = current_shop_id()));'),
-      ('menu_repair_item_pricing_snapshots', 'menu_repair_item_pricing_snapshots_update_shop', 'CREATE POLICY "menu_repair_item_pricing_snapshots_update_shop" ON public."menu_repair_item_pricing_snapshots" AS PERMISSIVE FOR UPDATE TO PUBLIC USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('menu_repair_item_pricing_snapshots', 'menu_repair_item_pricing_snapshots_delete_shop', 'CREATE POLICY "menu_repair_item_pricing_snapshots_delete_shop" ON public."menu_repair_item_pricing_snapshots" AS PERMISSIVE FOR DELETE TO PUBLIC USING ((is_shop_member_v2(shop_id)));'),
+      ('menu_repair_item_pricing_snapshots', 'menu_repair_item_pricing_snapshots_insert_shop', 'CREATE POLICY "menu_repair_item_pricing_snapshots_insert_shop" ON public."menu_repair_item_pricing_snapshots" AS PERMISSIVE FOR INSERT TO PUBLIC WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('menu_repair_item_pricing_snapshots', 'menu_repair_item_pricing_snapshots_select_shop', 'CREATE POLICY "menu_repair_item_pricing_snapshots_select_shop" ON public."menu_repair_item_pricing_snapshots" AS PERMISSIVE FOR SELECT TO PUBLIC USING ((is_shop_member_v2(shop_id)));'),
+      ('menu_repair_item_pricing_snapshots', 'menu_repair_item_pricing_snapshots_update_shop', 'CREATE POLICY "menu_repair_item_pricing_snapshots_update_shop" ON public."menu_repair_item_pricing_snapshots" AS PERMISSIVE FOR UPDATE TO PUBLIC USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('menu_repair_items', 'menu_repair_items_delete', 'CREATE POLICY "menu_repair_items_delete" ON public."menu_repair_items" AS PERMISSIVE FOR DELETE TO "authenticated" USING (is_shop_member(shop_id));'),
       ('menu_repair_items', 'menu_repair_items_insert', 'CREATE POLICY "menu_repair_items_insert" ON public."menu_repair_items" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (is_shop_member(shop_id));'),
       ('menu_repair_items', 'menu_repair_items_select', 'CREATE POLICY "menu_repair_items_select" ON public."menu_repair_items" AS PERMISSIVE FOR SELECT TO "authenticated" USING (is_shop_member(shop_id));'),
       ('menu_repair_items', 'menu_repair_items_update', 'CREATE POLICY "menu_repair_items_update" ON public."menu_repair_items" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (is_shop_member(shop_id)) WITH CHECK (is_shop_member(shop_id));'),
-      ('optimization_actions', 'optimization_actions_insert', 'CREATE POLICY "optimization_actions_insert" ON public."optimization_actions" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((shop_id = current_shop_id()) AND ((created_by IS NULL) OR (created_by = auth.uid()))));'),
-      ('optimization_actions', 'optimization_actions_select', 'CREATE POLICY "optimization_actions_select" ON public."optimization_actions" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('optimization_actions', 'optimization_actions_update', 'CREATE POLICY "optimization_actions_update" ON public."optimization_actions" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('optimization_actions', 'optimization_actions_insert', 'CREATE POLICY "optimization_actions_insert" ON public."optimization_actions" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK (((is_shop_member_v2(shop_id)) AND ((created_by IS NULL) OR (created_by = auth.uid()))));'),
+      ('optimization_actions', 'optimization_actions_select', 'CREATE POLICY "optimization_actions_select" ON public."optimization_actions" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('optimization_actions', 'optimization_actions_update', 'CREATE POLICY "optimization_actions_update" ON public."optimization_actions" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('org_members', 'org_members_select_self', 'CREATE POLICY "org_members_select_self" ON public."org_members" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((user_id = auth.uid()));'),
       ('organizations', 'organizations_select_by_membership', 'CREATE POLICY "organizations_select_by_membership" ON public."organizations" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM org_members om
@@ -483,7 +485,7 @@ BEGIN
       ('payroll_timecards', 'timecards_own_select', 'CREATE POLICY "timecards_own_select" ON public."payroll_timecards" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.id = p.user_id) AND (p.shop_id = p.shop_id)))));'),
-      ('people_workforce_profiles', 'people_workforce_profiles_shop_all', 'CREATE POLICY "people_workforce_profiles_shop_all" ON public."people_workforce_profiles" AS PERMISSIVE FOR ALL TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('people_workforce_profiles', 'people_workforce_profiles_shop_all', 'CREATE POLICY "people_workforce_profiles_shop_all" ON public."people_workforce_profiles" AS PERMISSIVE FOR ALL TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('planner_events', 'planner_events_insert', 'CREATE POLICY "planner_events_insert" ON public."planner_events" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
    FROM planner_runs r
   WHERE ((r.id = planner_events.run_id) AND (r.shop_id = ( SELECT profiles.shop_id
@@ -859,10 +861,10 @@ BEGIN
       ('shopreel_integrations', 'shopreel_integrations_insert_member', 'CREATE POLICY "shopreel_integrations_insert_member" ON public."shopreel_integrations" AS PERMISSIVE FOR INSERT TO PUBLIC WITH CHECK (is_shop_member(shop_id));'),
       ('shopreel_integrations', 'shopreel_integrations_select_member', 'CREATE POLICY "shopreel_integrations_select_member" ON public."shopreel_integrations" AS PERMISSIVE FOR SELECT TO PUBLIC USING (is_shop_member(shop_id));'),
       ('shopreel_integrations', 'shopreel_integrations_update_member', 'CREATE POLICY "shopreel_integrations_update_member" ON public."shopreel_integrations" AS PERMISSIVE FOR UPDATE TO PUBLIC USING (is_shop_member(shop_id)) WITH CHECK (is_shop_member(shop_id));'),
-      ('shopreel_manual_assets', 'shopreel_manual_assets_delete_shop', 'CREATE POLICY "shopreel_manual_assets_delete_shop" ON public."shopreel_manual_assets" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('shopreel_manual_assets', 'shopreel_manual_assets_insert_shop', 'CREATE POLICY "shopreel_manual_assets_insert_shop" ON public."shopreel_manual_assets" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('shopreel_manual_assets', 'shopreel_manual_assets_select_shop', 'CREATE POLICY "shopreel_manual_assets_select_shop" ON public."shopreel_manual_assets" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('shopreel_manual_assets', 'shopreel_manual_assets_update_shop', 'CREATE POLICY "shopreel_manual_assets_update_shop" ON public."shopreel_manual_assets" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('shopreel_manual_assets', 'shopreel_manual_assets_delete_shop', 'CREATE POLICY "shopreel_manual_assets_delete_shop" ON public."shopreel_manual_assets" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_manual_assets', 'shopreel_manual_assets_insert_shop', 'CREATE POLICY "shopreel_manual_assets_insert_shop" ON public."shopreel_manual_assets" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_manual_assets', 'shopreel_manual_assets_select_shop', 'CREATE POLICY "shopreel_manual_assets_select_shop" ON public."shopreel_manual_assets" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_manual_assets', 'shopreel_manual_assets_update_shop', 'CREATE POLICY "shopreel_manual_assets_update_shop" ON public."shopreel_manual_assets" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('shopreel_opportunities', 'owner-read-shopreel-opportunities', 'CREATE POLICY "owner-read-shopreel-opportunities" ON public."shopreel_opportunities" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM shop_members sm
   WHERE ((sm.shop_id = shopreel_opportunities.shop_id) AND (sm.user_id = auth.uid()) AND (sm.role = ''owner''::text)))));'),
@@ -879,20 +881,20 @@ BEGIN
    FROM shop_members sm
   WHERE ((sm.shop_id = shopreel_opportunity_status_history.shop_id) AND (sm.user_id = auth.uid()) AND (sm.role = ''owner''::text)))));'),
       ('shopreel_opportunity_status_history', 'service-role-manage-shopreel-opportunity-history', 'CREATE POLICY "service-role-manage-shopreel-opportunity-history" ON public."shopreel_opportunity_status_history" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
-      ('shopreel_publications', 'shopreel_publications_delete_shop', 'CREATE POLICY "shopreel_publications_delete_shop" ON public."shopreel_publications" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('shopreel_publications', 'shopreel_publications_insert_shop', 'CREATE POLICY "shopreel_publications_insert_shop" ON public."shopreel_publications" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('shopreel_publications', 'shopreel_publications_select_shop', 'CREATE POLICY "shopreel_publications_select_shop" ON public."shopreel_publications" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('shopreel_publications', 'shopreel_publications_update_shop', 'CREATE POLICY "shopreel_publications_update_shop" ON public."shopreel_publications" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('shopreel_publications', 'shopreel_publications_delete_shop', 'CREATE POLICY "shopreel_publications_delete_shop" ON public."shopreel_publications" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_publications', 'shopreel_publications_insert_shop', 'CREATE POLICY "shopreel_publications_insert_shop" ON public."shopreel_publications" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_publications', 'shopreel_publications_select_shop', 'CREATE POLICY "shopreel_publications_select_shop" ON public."shopreel_publications" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_publications', 'shopreel_publications_update_shop', 'CREATE POLICY "shopreel_publications_update_shop" ON public."shopreel_publications" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('shopreel_publish_jobs', 'shopreel_publish_jobs_deny_all', 'CREATE POLICY "shopreel_publish_jobs_deny_all" ON public."shopreel_publish_jobs" AS PERMISSIVE FOR ALL TO PUBLIC USING (false) WITH CHECK (false);'),
-      ('shopreel_social_connections', 'shopreel_social_connections_delete_shop', 'CREATE POLICY "shopreel_social_connections_delete_shop" ON public."shopreel_social_connections" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('shopreel_social_connections', 'shopreel_social_connections_insert_shop', 'CREATE POLICY "shopreel_social_connections_insert_shop" ON public."shopreel_social_connections" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('shopreel_social_connections', 'shopreel_social_connections_select_shop', 'CREATE POLICY "shopreel_social_connections_select_shop" ON public."shopreel_social_connections" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('shopreel_social_connections', 'shopreel_social_connections_update_shop', 'CREATE POLICY "shopreel_social_connections_update_shop" ON public."shopreel_social_connections" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('shopreel_social_connections', 'shopreel_social_connections_delete_shop', 'CREATE POLICY "shopreel_social_connections_delete_shop" ON public."shopreel_social_connections" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_social_connections', 'shopreel_social_connections_insert_shop', 'CREATE POLICY "shopreel_social_connections_insert_shop" ON public."shopreel_social_connections" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_social_connections', 'shopreel_social_connections_select_shop', 'CREATE POLICY "shopreel_social_connections_select_shop" ON public."shopreel_social_connections" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('shopreel_social_connections', 'shopreel_social_connections_update_shop', 'CREATE POLICY "shopreel_social_connections_update_shop" ON public."shopreel_social_connections" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('shopreel_story_sources', 'owner-read-shopreel-story-sources', 'CREATE POLICY "owner-read-shopreel-story-sources" ON public."shopreel_story_sources" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM shop_members sm
   WHERE ((sm.shop_id = shopreel_story_sources.shop_id) AND (sm.user_id = auth.uid()) AND (sm.role = ''owner''::text)))));'),
       ('shopreel_story_sources', 'service-role-manage-shopreel-story-sources', 'CREATE POLICY "service-role-manage-shopreel-story-sources" ON public."shopreel_story_sources" AS PERMISSIVE FOR ALL TO "service_role" USING ((auth.role() = ''service_role''::text)) WITH CHECK ((auth.role() = ''service_role''::text));'),
-      ('staff_certifications', 'staff_certifications_shop_all', 'CREATE POLICY "staff_certifications_shop_all" ON public."staff_certifications" AS PERMISSIVE FOR ALL TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));'),
+      ('staff_certifications', 'staff_certifications_shop_all', 'CREATE POLICY "staff_certifications_shop_all" ON public."staff_certifications" AS PERMISSIVE FOR ALL TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));'),
       ('staff_invite_candidates', 'staff_invite_candidates_delete_owner_admin', 'CREATE POLICY "staff_invite_candidates_delete_owner_admin" ON public."staff_invite_candidates" AS PERMISSIVE FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = staff_invite_candidates.shop_id) AND (COALESCE(p.role, ''''::text) = ANY (ARRAY[''owner''::text, ''admin''::text]))))));'),
@@ -947,11 +949,34 @@ BEGIN
   WHERE ((p.id = auth.uid()) AND (p.shop_id = work_order_line_dtc_threads.shop_id))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM profiles p
   WHERE ((p.id = auth.uid()) AND (p.shop_id = work_order_line_dtc_threads.shop_id)))));'),
-      ('workforce_document_requirements', 'workforce_document_requirements_shop_insert', 'CREATE POLICY "workforce_document_requirements_shop_insert" ON public."workforce_document_requirements" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((shop_id = current_shop_id()));'),
-      ('workforce_document_requirements', 'workforce_document_requirements_shop_select', 'CREATE POLICY "workforce_document_requirements_shop_select" ON public."workforce_document_requirements" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((shop_id = current_shop_id()));'),
-      ('workforce_document_requirements', 'workforce_document_requirements_shop_update', 'CREATE POLICY "workforce_document_requirements_shop_update" ON public."workforce_document_requirements" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((shop_id = current_shop_id())) WITH CHECK ((shop_id = current_shop_id()));')
+      ('workforce_document_requirements', 'workforce_document_requirements_shop_insert', 'CREATE POLICY "workforce_document_requirements_shop_insert" ON public."workforce_document_requirements" AS PERMISSIVE FOR INSERT TO "authenticated" WITH CHECK ((is_shop_member_v2(shop_id)));'),
+      ('workforce_document_requirements', 'workforce_document_requirements_shop_select', 'CREATE POLICY "workforce_document_requirements_shop_select" ON public."workforce_document_requirements" AS PERMISSIVE FOR SELECT TO "authenticated" USING ((is_shop_member_v2(shop_id)));'),
+      ('workforce_document_requirements', 'workforce_document_requirements_shop_update', 'CREATE POLICY "workforce_document_requirements_shop_update" ON public."workforce_document_requirements" AS PERMISSIVE FOR UPDATE TO "authenticated" USING ((is_shop_member_v2(shop_id))) WITH CHECK ((is_shop_member_v2(shop_id)));')
     ) AS definitions(table_name, policy_name, definition)
   LOOP
+    -- P0-001 established that the request-local app.current_shop_id setting is
+    -- not an authorization boundary. Replace only deployed policies that still
+    -- use that legacy helper; already-hardened policies remain untouched.
+    IF EXISTS (
+      SELECT 1
+      FROM pg_policy p
+      JOIN pg_class c ON c.oid = p.polrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+        AND c.relname = item.table_name
+        AND p.polname = item.policy_name
+        AND (
+          COALESCE(pg_get_expr(p.polqual, p.polrelid), '') LIKE '%current_shop_id()%'
+          OR COALESCE(pg_get_expr(p.polwithcheck, p.polrelid), '') LIKE '%current_shop_id()%'
+        )
+    ) THEN
+      EXECUTE format(
+        'DROP POLICY %I ON public.%I',
+        item.policy_name,
+        item.table_name
+      );
+    END IF;
+
     IF NOT EXISTS (
       SELECT 1
       FROM pg_policy p

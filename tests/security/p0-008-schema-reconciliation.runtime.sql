@@ -320,6 +320,48 @@ begin
     raise exception 'P0-008 recovered tables without RLS: %', unsafe;
   end if;
 
+  select array_agg(c.relname || '.' || p.polname order by c.relname, p.polname)
+    into unsafe
+  from pg_policy p
+  join pg_class c on c.oid = p.polrelid
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relname = any(
+      ARRAY[
+        'ai_action_previews',
+        'ai_events',
+        'ai_evidence_snapshots',
+        'ai_recommendations',
+        'content_assets',
+        'content_events',
+        'content_pieces',
+        'content_platform_accounts',
+        'content_publications',
+        'dashboard_layouts',
+        'guided_onboarding_events',
+        'guided_onboarding_sessions',
+        'guided_onboarding_steps',
+        'inspection_smart_match_history',
+        'menu_repair_item_parts',
+        'menu_repair_item_pricing_snapshots',
+        'optimization_actions',
+        'people_workforce_profiles',
+        'shopreel_manual_assets',
+        'shopreel_publications',
+        'shopreel_social_connections',
+        'staff_certifications',
+        'workforce_document_requirements'
+      ]::text[]
+    )
+    and (
+      coalesce(pg_get_expr(p.polqual, p.polrelid), '') like '%current_shop_id()%'
+      or coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') like '%current_shop_id()%'
+    );
+
+  if unsafe is not null then
+    raise exception 'P0-008 recovered policies still trust request-local shop context: %', unsafe;
+  end if;
+
   if not exists (
     select 1
     from pg_policies
