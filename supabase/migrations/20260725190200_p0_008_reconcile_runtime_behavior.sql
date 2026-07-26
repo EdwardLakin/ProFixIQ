@@ -1635,6 +1635,120 @@ begin
 end;
 $function$
 ;
+CREATE OR REPLACE FUNCTION public.touch_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'public'
+AS $function$
+begin
+  if to_jsonb(new) is distinct from to_jsonb(old) then
+    new.updated_at := now();
+  end if;
+  return new;
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.enforce_invoice_amount_consistency()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+declare
+  computed_total numeric;
+begin
+  computed_total :=
+      coalesce(new.subtotal, 0)
+    - coalesce(new.discount_total, 0)
+    + coalesce(new.tax_total, 0);
+
+  if abs(coalesce(new.total, 0) - computed_total) > 0.01 then
+    raise exception
+      'invoice % total mismatch: total=% computed=%',
+      new.id,
+      coalesce(new.total, 0),
+      computed_total;
+  end if;
+
+  return new;
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.invoices_compute_totals_biu()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+declare
+  v_labor numeric;
+  v_parts numeric;
+  v_tax numeric;
+  v_disc numeric;
+  v_sub numeric;
+  v_total numeric;
+begin
+  v_labor := coalesce(new.labor_cost,0);
+  v_parts := coalesce(new.parts_cost,0);
+  v_tax   := coalesce(new.tax_total,0);
+  v_disc  := coalesce(new.discount_total,0);
+
+  v_sub := greatest(0, v_labor + v_parts - v_disc);
+  v_total := greatest(0, v_sub + v_tax);
+
+  new.subtotal := v_sub;
+  new.total := v_total;
+
+  return new;
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.invoices_sync_work_orders_aiu()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+begin
+  update public.work_orders wo
+  set
+    labor_total   = new.labor_cost,
+    parts_total   = new.parts_cost,
+    invoice_total = new.total
+  where wo.id = new.work_order_id;
+
+  return null;
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.recalc_menu_items_for_shop()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+begin
+  if new.labor_rate is distinct from old.labor_rate then
+    update public.menu_items
+      set total_price = coalesce(part_cost,0) + (coalesce(labor_time,0) * coalesce(new.labor_rate,0)),
+          labor_hours = coalesce(labor_time, labor_hours)
+    where shop_id = new.id;
+  end if;
+  return new;
+end;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.set_shop_ownership_defaults()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  if new.created_by is null then
+    new.created_by := auth.uid();
+  end if;
+
+  if new.owner_id is null then
+    new.owner_id := auth.uid();
+  end if;
+
+  return new;
+end;
+$function$
+;
 CREATE OR REPLACE FUNCTION public.update_pricing_snapshot_status()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2070,6 +2184,7 @@ REVOKE ALL ON FUNCTION public.enforce_ai_suggestion_feedback_consistency() FROM 
 REVOKE ALL ON FUNCTION public.enforce_assistant_daily_summary_consistency() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.enforce_content_asset_consistency() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.enforce_content_event_consistency() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.enforce_invoice_amount_consistency() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.enforce_invoice_work_order_for_active_invoices() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.enforce_property_inspection_signature_shop_id() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.enforce_supplier_quote_batch_row_consistency() FROM PUBLIC, anon, authenticated, service_role;
@@ -2079,6 +2194,8 @@ REVOKE ALL ON FUNCTION public.fleet_inspection_schedules_set_next() FROM PUBLIC,
 REVOKE ALL ON FUNCTION public.get_work_order_assignments(uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.invoice_is_historical_import(jsonb) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.invoices_compute_totals_biu() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.invoices_sync_work_orders_aiu() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.match_learned_job_templates(uuid,vector,integer) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.match_work_order_intelligence(uuid,vector,integer) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.menu_repair_items_set_updated_at() FROM PUBLIC, anon, authenticated, service_role;
@@ -2088,10 +2205,12 @@ REVOKE ALL ON FUNCTION public.plan_user_limit(text,text) FROM PUBLIC, anon, auth
 REVOKE ALL ON FUNCTION public.process_ai_event_for_shopreel() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.property_portal_invites_set_updated_at() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.property_portal_invites_validate_hierarchy() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.recalc_menu_items_for_shop() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.receive_po_part_and_allocate(uuid,uuid,uuid,numeric) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.replace_shop_hours_atomic(uuid,jsonb) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_part_request_status(uuid,part_request_status) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_quickbooks_updated_at() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.set_shop_ownership_defaults() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_shop_maintenance_service_map_updated_at() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_updated_at_now() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.set_updated_at_shopreel_event_deliveries() FROM PUBLIC, anon, authenticated, service_role;
@@ -2104,6 +2223,7 @@ REVOKE ALL ON FUNCTION public.start_canonical_shift(uuid,uuid,uuid,timestamp wit
 REVOKE ALL ON FUNCTION public.sync_shop_brand_logo_to_profile() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.sync_shop_user_limit_from_billing() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.tg_set_updated_at() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.touch_updated_at() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.update_pricing_snapshot_status() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.validate_property_assets_tenant_consistency() FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.validate_property_inspections_tenant_consistency() FROM PUBLIC, anon, authenticated, service_role;
@@ -2129,6 +2249,7 @@ GRANT EXECUTE ON FUNCTION public.enforce_ai_suggestion_feedback_consistency() TO
 GRANT EXECUTE ON FUNCTION public.enforce_assistant_daily_summary_consistency() TO service_role;
 GRANT EXECUTE ON FUNCTION public.enforce_content_asset_consistency() TO service_role;
 GRANT EXECUTE ON FUNCTION public.enforce_content_event_consistency() TO service_role;
+GRANT EXECUTE ON FUNCTION public.enforce_invoice_amount_consistency() TO service_role;
 GRANT EXECUTE ON FUNCTION public.enforce_invoice_work_order_for_active_invoices() TO service_role;
 GRANT EXECUTE ON FUNCTION public.enforce_property_inspection_signature_shop_id() TO service_role;
 GRANT EXECUTE ON FUNCTION public.enforce_supplier_quote_batch_row_consistency() TO service_role;
@@ -2138,6 +2259,8 @@ GRANT EXECUTE ON FUNCTION public.fleet_inspection_schedules_set_next() TO servic
 GRANT EXECUTE ON FUNCTION public.get_work_order_assignments(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.invoice_is_historical_import(jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.invoices_compute_totals_biu() TO service_role;
+GRANT EXECUTE ON FUNCTION public.invoices_sync_work_orders_aiu() TO service_role;
 GRANT EXECUTE ON FUNCTION public.match_learned_job_templates(uuid,vector,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.match_work_order_intelligence(uuid,vector,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.menu_repair_items_set_updated_at() TO service_role;
@@ -2147,10 +2270,12 @@ GRANT EXECUTE ON FUNCTION public.plan_user_limit(text,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.process_ai_event_for_shopreel() TO service_role;
 GRANT EXECUTE ON FUNCTION public.property_portal_invites_set_updated_at() TO service_role;
 GRANT EXECUTE ON FUNCTION public.property_portal_invites_validate_hierarchy() TO service_role;
+GRANT EXECUTE ON FUNCTION public.recalc_menu_items_for_shop() TO service_role;
 GRANT EXECUTE ON FUNCTION public.receive_po_part_and_allocate(uuid,uuid,uuid,numeric) TO service_role;
 GRANT EXECUTE ON FUNCTION public.replace_shop_hours_atomic(uuid,jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_part_request_status(uuid,part_request_status) TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_quickbooks_updated_at() TO service_role;
+GRANT EXECUTE ON FUNCTION public.set_shop_ownership_defaults() TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_shop_maintenance_service_map_updated_at() TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_updated_at_now() TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_updated_at_shopreel_event_deliveries() TO service_role;
@@ -2163,6 +2288,7 @@ GRANT EXECUTE ON FUNCTION public.start_canonical_shift(uuid,uuid,uuid,timestamp 
 GRANT EXECUTE ON FUNCTION public.sync_shop_brand_logo_to_profile() TO service_role;
 GRANT EXECUTE ON FUNCTION public.sync_shop_user_limit_from_billing() TO service_role;
 GRANT EXECUTE ON FUNCTION public.tg_set_updated_at() TO service_role;
+GRANT EXECUTE ON FUNCTION public.touch_updated_at() TO service_role;
 GRANT EXECUTE ON FUNCTION public.update_pricing_snapshot_status() TO service_role;
 GRANT EXECUTE ON FUNCTION public.validate_property_assets_tenant_consistency() TO service_role;
 GRANT EXECUTE ON FUNCTION public.validate_property_inspections_tenant_consistency() TO service_role;
