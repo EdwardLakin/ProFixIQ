@@ -297,7 +297,7 @@ begin
     raise exception 'P0-008 missing application schema columns: %', missing;
   end if;
 
-  select array_agg(column_name order by column_name)
+  select array_agg(expected.column_name order by expected.column_name)
     into unsafe
   from unnest(
     ARRAY[

@@ -40,6 +40,7 @@ const shift = {
   status: "active",
   type: "shift",
   created_at: null,
+  excluded_from_payroll: false,
 };
 const line = {
   id: "line-1",
