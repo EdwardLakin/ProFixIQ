@@ -227,6 +227,7 @@ declare
 begin
   foreach v_relation in array array[
     'apps',
+    'parts',
     'parts_barcodes',
     'shop_profiles',
     'warranties',
