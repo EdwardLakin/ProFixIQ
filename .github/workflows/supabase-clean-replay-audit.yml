@@ -195,6 +195,29 @@ jobs:
             -f tests/security/p0-006-stripe-identity.runtime.sql \
             2>&1 | tee p0-006-stripe-identity-runtime.log
 
+      - name: Execute P0 financial outbox idempotency integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p0-007-financial-outbox.runtime.sql \
+            2>&1 | tee p0-007-financial-outbox-runtime.log
+
+      - name: Execute P0 financial outbox concurrent-worker integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash tests/security/p0-007-financial-outbox-concurrency.sh \
+            2>&1 | tee p0-007-financial-outbox-concurrency.log
+
       - name: Verify bootstrap and existing-database baseline paths
         shell: bash
         env:
@@ -262,6 +285,8 @@ jobs:
             p0-004-vehicle-recall-fetch-runtime.log
             p0-005-ai-route-governance-runtime.log
             p0-006-stripe-identity-runtime.log
+            p0-007-financial-outbox-runtime.log
+            p0-007-financial-outbox-concurrency.log
             supabase/config.toml
           if-no-files-found: warn
 

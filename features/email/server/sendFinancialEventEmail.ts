@@ -14,6 +14,11 @@ function configure() {
   configured = true;
 }
 
+export function assertFinancialEventEmailConfigured() {
+  requiredEnv("SENDGRID_API_KEY");
+  requiredEnv("SENDGRID_FROM_EMAIL");
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -30,8 +35,12 @@ export async function sendFinancialEventEmail(input: {
   heading: string;
   body: string;
   portalUrl?: string | null;
+  deliveryKey: string;
+  outboxId: string;
+  recipientKind: "customer" | "staff";
   metadata?: Record<string, unknown>;
-}) {
+}): Promise<{ providerMessageId: string | null }> {
+  assertFinancialEventEmailConfigured();
   configure();
   const heading = escapeHtml(input.heading);
   const body = escapeHtml(input.body);
@@ -40,16 +49,26 @@ export async function sendFinancialEventEmail(input: {
     ? `<p style="margin-top:24px"><a href="${escapeHtml(portalUrl)}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#c57a4a;color:#fff;text-decoration:none">View in portal</a></p>`
     : "";
 
-  await sgMail.send({
-    to: input.to,
+  const [response] = await sgMail.send({
+    to: input.to.trim().toLowerCase(),
     from: requiredEnv("SENDGRID_FROM_EMAIL"),
     subject: input.subject,
     text: `${input.heading}\n\n${input.body}${portalUrl ? `\n\n${portalUrl}` : ""}`,
     html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;color:#111827"><h1 style="font-size:22px">${heading}</h1><p style="font-size:15px;line-height:1.6">${body}</p>${action}<p style="margin-top:28px;color:#6b7280;font-size:12px">Sent by ProFixIQ</p></div>`,
     customArgs: {
-      shop_id: input.shopId,
+      financial_delivery_key: input.deliveryKey,
+      financial_outbox_id: input.outboxId,
+      financial_recipient_kind: input.recipientKind,
       event_type: String(input.metadata?.event_type ?? "financial_event"),
-      dedupe_key: String(input.metadata?.dedupe_key ?? ""),
     },
   });
+
+  const headerValue =
+    response.headers["x-message-id"] ?? response.headers["X-Message-Id"] ?? null;
+
+  return {
+    providerMessageId: Array.isArray(headerValue)
+      ? (headerValue[0] ?? null)
+      : headerValue,
+  };
 }
