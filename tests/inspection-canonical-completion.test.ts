@@ -5,6 +5,10 @@ const migration = readFileSync(
   "supabase/migrations/20260726222401_retire_legacy_inspection_session_writes.sql",
   "utf8",
 );
+const permissions = readFileSync(
+  "supabase/migrations/20260726223413_restrict_legacy_inspection_permissions.sql",
+  "utf8",
+);
 const optimizer = readFileSync(
   "features/optimization/server/buildOptimizationOpportunities.ts",
   "utf8",
@@ -77,6 +81,28 @@ describe("canonical inspection completion", () => {
     expect(optimizer).not.toContain('| "inspection_session_id"');
     expect(optimizer).not.toContain(
       "inspection_template_id, inspection_session_id, created_at",
+    );
+  });
+
+  it("removes legacy write policies and keeps finalization server-only", () => {
+    expect(permissions).toContain(
+      "drop policy if exists inspection_sessions_insert_auth",
+    );
+    expect(permissions).toContain(
+      "drop policy if exists inspection_sessions_update_complete",
+    );
+    expect(permissions).toContain(
+      "drop policy if exists inspection_sessions_wo_insert",
+    );
+    expect(permissions).toContain(
+      "drop policy if exists inspection_sessions_wo_update",
+    );
+    expect(permissions).toContain("from public, anon, authenticated");
+    expect(permissions).toContain(
+      ") to service_role;",
+    );
+    expect(permissions).not.toContain(
+      ") to authenticated, service_role;",
     );
   });
 });
