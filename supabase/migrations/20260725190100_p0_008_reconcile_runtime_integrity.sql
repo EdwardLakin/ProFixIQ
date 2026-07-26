@@ -6,6 +6,11 @@ BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '15min';
 
+-- Production already has pg_trgm in public, while clean Supabase projects
+-- conventionally install optional extensions in extensions. Preserve either
+-- layout and resolve the operator-class schema explicitly below.
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+
 DO $p0_008$
 DECLARE
   item record;
@@ -764,7 +769,26 @@ CREATE INDEX IF NOT EXISTS idx_inspection_results_wol ON public.inspection_resul
 CREATE INDEX IF NOT EXISTS idx_inspection_smart_match_feedback_shop_created ON public.inspection_smart_match_feedback USING btree (shop_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_smart_match_history_shop_created ON public.inspection_smart_match_history USING btree (shop_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_smart_match_history_shop_vehicle ON public.inspection_smart_match_history USING btree (shop_id, vehicle_year, vehicle_make, vehicle_model);
-CREATE INDEX IF NOT EXISTS idx_smart_match_note_trgm ON public.inspection_smart_match_history USING gin (note gin_trgm_ops);
+DO $p0_008$
+DECLARE
+  v_pg_trgm_schema name;
+BEGIN
+  SELECT n.nspname
+  INTO v_pg_trgm_schema
+  FROM pg_extension e
+  JOIN pg_namespace n ON n.oid = e.extnamespace
+  WHERE e.extname = 'pg_trgm';
+
+  IF v_pg_trgm_schema IS NULL THEN
+    RAISE EXCEPTION 'P0-008 requires the pg_trgm extension';
+  END IF;
+
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_smart_match_note_trgm ON public.inspection_smart_match_history USING gin (note %I.gin_trgm_ops)',
+    v_pg_trgm_schema
+  );
+END
+$p0_008$;
 CREATE INDEX IF NOT EXISTS idx_smart_match_shop_note ON public.inspection_smart_match_history USING btree (shop_id, note);
 CREATE INDEX IF NOT EXISTS idx_inspection_template_suggestions__shop_id ON public.inspection_template_suggestions USING btree (shop_id);
 CREATE INDEX IF NOT EXISTS inspection_template_suggestions_intake_id_idx ON public.inspection_template_suggestions USING btree (intake_id);

@@ -434,6 +434,14 @@ begin
     raise exception 'P0-008 SECURITY DEFINER functions lack fixed search_path: %', unsafe;
   end if;
 
+  if not exists (
+    select 1
+    from pg_extension
+    where extname = 'pg_trgm'
+  ) or to_regclass('public.idx_smart_match_note_trgm') is null then
+    raise exception 'P0-008 trigram search dependency or index is missing';
+  end if;
+
   if public.plan_user_limit('complete_10', null) <> 10
     or public.plan_user_limit('complete_50', null) <> 50
     or public.plan_user_limit('complete_100', null) <> 100
