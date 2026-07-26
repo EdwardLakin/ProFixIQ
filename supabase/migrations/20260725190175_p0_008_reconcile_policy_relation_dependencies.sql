@@ -3,6 +3,8 @@
 -- These two tables exist in the deployed schema but were absent from the
 -- canonical baseline. Keeping them in the shape layer lets the later
 -- authorization migration compile on an empty replay without weakening RLS.
+-- This layer follows integrity recovery because org_members references the
+-- organizations primary key restored there.
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
