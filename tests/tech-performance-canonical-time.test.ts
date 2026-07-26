@@ -18,8 +18,53 @@ describe("technician performance canonical time contract", () => {
 
     expect(range).toEqual({
       start: "2026-07-20T07:00:00.000Z",
+      endInclusive: "2026-07-27T06:59:59.999Z",
       endExclusive: "2026-07-27T07:00:00.000Z",
     });
+  });
+
+  it("falls back to UTC when the saved shop timezone is invalid", () => {
+    const range = getShopPerformanceRange(
+      "monthly",
+      "not/a-timezone",
+      new Date("2026-07-26T18:00:00.000Z"),
+    );
+
+    expect(range).toEqual({
+      start: "2026-07-01T00:00:00.000Z",
+      endInclusive: "2026-07-31T23:59:59.999Z",
+      endExclusive: "2026-08-01T00:00:00.000Z",
+    });
+  });
+
+  it("excludes unbounded legacy cards but lets canonical open shifts run to now", () => {
+    const rangeStart = "2026-07-20T00:00:00.000Z";
+    const rangeEnd = "2026-07-27T00:00:00.000Z";
+    const now = new Date("2026-07-22T20:00:00.000Z");
+
+    expect(
+      mergedIntervalHours(
+        [{ start: "2026-01-01T00:00:00.000Z", end: null }],
+        rangeStart,
+        rangeEnd,
+        now,
+      ),
+    ).toBe(0);
+
+    expect(
+      mergedIntervalHours(
+        [
+          {
+            start: "2026-07-22T16:00:00.000Z",
+            end: null,
+            useNowWhenOpen: true,
+          },
+        ],
+        rangeStart,
+        rangeEnd,
+        now,
+      ),
+    ).toBe(4);
   });
 
   it("merges overlapping canonical shifts and legacy timecards without dropping history", () => {
