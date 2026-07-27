@@ -1,5 +1,3 @@
-import type { CSSProperties } from "react";
-
 export function ProFixIQInstallIcon({
   size,
   maskable = false,
@@ -8,7 +6,6 @@ export function ProFixIQInstallIcon({
   maskable?: boolean;
 }) {
   const markSize = maskable ? size * 0.58 : size * 0.68;
-  const strokeWidth = 13;
 
   return (
     <div
@@ -20,49 +17,38 @@ export function ProFixIQInstallIcon({
         height: size,
         justifyContent: "center",
         overflow: "hidden",
-        position: "relative",
         width: size,
       }}
     >
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          height: markSize,
-          justifyContent: "center",
-          width: markSize,
-        }}
+      <svg
+        height={markSize}
+        viewBox="0 0 96 96"
+        width={markSize}
+        xmlns="http://www.w3.org/2000/svg"
       >
-        <svg
-          height={markSize}
-          viewBox="0 0 96 96"
-          width={markSize}
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <linearGradient id="install-mark-gradient" x1="12" y1="82" x2="82" y2="10" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#1747FF" />
-              <stop offset="1" stopColor="#0BB7FF" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M18 78V43C18 25.327 32.327 11 50 11h15c11.598 0 21 9.402 21 21S76.598 53 65 53H43"
-            fill="none"
-            stroke="url(#install-mark-gradient)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={strokeWidth}
-          />
-          <path
-            d="M43 78V60c0-8.284 6.716-15 15-15h7"
-            fill="none"
-            stroke="url(#install-mark-gradient)"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={strokeWidth}
-          />
-        </svg>
-      </div>
+        <defs>
+          <linearGradient id="install-mark-gradient" x1="12" y1="82" x2="82" y2="10" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#1747FF" />
+            <stop offset="1" stopColor="#0BB7FF" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M18 78V43C18 25.327 32.327 11 50 11h15c11.598 0 21 9.402 21 21S76.598 53 65 53H43"
+          fill="none"
+          stroke="url(#install-mark-gradient)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="13"
+        />
+        <path
+          d="M43 78V60c0-8.284 6.716-15 15-15h7"
+          fill="none"
+          stroke="url(#install-mark-gradient)"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="13"
+        />
+      </svg>
     </div>
   );
 }
@@ -70,9 +56,3 @@ export function ProFixIQInstallIcon({
 export const installIconResponseHeaders = {
   "Cache-Control": "public, max-age=31536000, immutable",
 } satisfies Record<string, string>;
-
-export const installIconContentType = "image/png";
-
-export const installIconResponseStyle: CSSProperties = {
-  display: "flex",
-};
