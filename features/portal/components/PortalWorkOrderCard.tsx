@@ -8,16 +8,16 @@ import {
 import type { PortalWorkOrderSummary } from "@/features/portal/server/portalWorkOrders";
 
 const STATUS_STYLE: Record<PortalWorkOrderSummary["status"]["key"], string> = {
-  appointment_confirmed: "border-sky-400/35 bg-sky-500/10 text-sky-100",
-  vehicle_received: "border-blue-400/35 bg-blue-500/10 text-blue-100",
-  inspection_underway: "border-violet-400/35 bg-violet-500/10 text-violet-100",
-  approval_needed: "border-amber-400/45 bg-amber-500/15 text-amber-100",
-  work_underway: "border-cyan-400/35 bg-cyan-500/10 text-cyan-100",
-  waiting_for_parts: "border-orange-400/40 bg-orange-500/10 text-orange-100",
-  final_checks: "border-indigo-400/35 bg-indigo-500/10 text-indigo-100",
-  ready_for_pickup: "border-emerald-400/40 bg-emerald-500/12 text-emerald-100",
+  appointment_confirmed: "border-sky-500 bg-sky-200 text-sky-950 shadow-sm shadow-sky-900/10",
+  vehicle_received: "border-blue-600 bg-blue-200 text-blue-950 shadow-sm shadow-blue-900/10",
+  inspection_underway: "border-violet-600 bg-violet-200 text-violet-950 shadow-sm shadow-violet-900/10",
+  approval_needed: "border-amber-600 bg-amber-200 text-amber-950 shadow-sm shadow-amber-900/10",
+  work_underway: "border-cyan-600 bg-cyan-200 text-cyan-950 shadow-sm shadow-cyan-900/10",
+  waiting_for_parts: "border-orange-600 bg-orange-200 text-orange-950 shadow-sm shadow-orange-900/10",
+  final_checks: "border-indigo-600 bg-indigo-200 text-indigo-950 shadow-sm shadow-indigo-900/10",
+  ready_for_pickup: "border-emerald-600 bg-emerald-200 text-emerald-950 shadow-sm shadow-emerald-900/10",
   completed:
-    "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]",
+    "border-slate-500 bg-slate-200 text-slate-900 shadow-sm shadow-slate-900/10",
 };
 
 function dateLabel(value: string | null): string | null {

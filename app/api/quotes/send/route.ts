@@ -142,6 +142,11 @@ function isSendableQuoteLine(line: Pick<QuoteLineRow, "status" | "stage" | "sent
   return SEND_READY_STATUSES.has(status) || SEND_READY_STAGES.has(stage);
 }
 
+function isResendableQuoteLine(line: Pick<QuoteLineRow, "status" | "sent_to_customer_at" | "approved_at" | "declined_at" | "work_order_line_id">): boolean {
+  const status = safeStr(line.status).trim().toLowerCase();
+  return Boolean(line.sent_to_customer_at) && !line.approved_at && !line.declined_at && !line.work_order_line_id && status === "sent";
+}
+
 export async function POST(req: Request) {
   const trace = `quotes-send:${Date.now()}:${Math.random().toString(16).slice(2)}`;
 
@@ -350,7 +355,10 @@ export async function POST(req: Request) {
       >
     >;
 
-    const sendableQuoteLines = quoteLineRows.filter(isSendableQuoteLine);
+    const requestAllowsResend = req.headers.get("x-profix-resend") === "1";
+    const sendableQuoteLines = quoteLineRows.filter((line) =>
+      isSendableQuoteLine(line) || (requestAllowsResend && isResendableQuoteLine(line)),
+    );
 
     if (sendableQuoteLines.length === 0) {
       return NextResponse.json(
@@ -402,7 +410,6 @@ export async function POST(req: Request) {
       ? `${normalizedAppUrl}/portal/quotes/${workOrderId}`
       : null;
 
-    const requestAllowsResend = req.headers.get("x-profix-resend") === "1";
     const quoteUrlForSend = portalQuoteUrl ?? pdfUrl ?? wo.quote_url ?? "";
     const shouldSkipAsDuplicate = Boolean(wo.quote_url) && wo.quote_url === quoteUrlForSend && !requestAllowsResend;
 

@@ -86,7 +86,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
   );
   const [message, setMessage] = useState("");
   const [subject, setSubject] = useState("");
-  const [contextKey, setContextKey] = useState("");
+  const [contextKey, setContextKey] = useState(requestedContextKey);
   const [contextOptions, setContextOptions] = useState<ContextOption[]>([]);
   const [recipientUserId, setRecipientUserId] = useState("");
   const [recipientOptions, setRecipientOptions] = useState<RecipientOption[]>(
@@ -237,9 +237,16 @@ export default function PortalMessagesWorkspace(): JSX.Element {
       return;
     }
 
-    const selectedContext = contextOptions.find(
-      (option) => `${option.type}:${option.id}` === contextKey,
-    );
+    const selectedContext =
+      contextOptions.find((option) => `${option.type}:${option.id}` === contextKey) ??
+      (requestedWorkOrderId && contextKey === requestedContextKey
+        ? {
+            type: "work_order" as const,
+            id: requestedWorkOrderId,
+            label: `Work Order ${requestedWorkOrderId.slice(0, 8)}`,
+            secondary: null,
+          }
+        : null);
     const requestId = ensureUuid(newThreadDraft?.conversationRequestId);
     const clientMessageId = ensureUuid(newThreadDraft?.clientMessageId);
     if (
@@ -295,7 +302,7 @@ export default function PortalMessagesWorkspace(): JSX.Element {
 
       setMessage("");
       setSubject("");
-      setContextKey("");
+      setContextKey(requestedContextKey);
       setRecipientUserId("");
       setNewThread(false);
       setActiveId(created.id);
