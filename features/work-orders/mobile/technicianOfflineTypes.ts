@@ -1,4 +1,5 @@
 import type { Database } from "@shared/types/types/supabase";
+import type { CanonicalWorkOrderLineContext } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 
 type DB = Database;
 
@@ -9,6 +10,8 @@ export type TechnicianOfflineWorkOrder = {
   vehicle: DB["public"]["Tables"]["vehicles"]["Row"] | null;
   customer: DB["public"]["Tables"]["customers"]["Row"] | null;
   techNamesById: Record<string, string>;
+  lineContext: CanonicalWorkOrderLineContext;
+  shopLaborRate: number | null;
   assignedLineIds: string[];
 };
 

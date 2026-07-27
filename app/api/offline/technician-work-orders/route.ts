@@ -11,6 +11,10 @@ import type {
   TechnicianOfflineBundle,
   TechnicianOfflineWorkOrder,
 } from "@/features/work-orders/mobile/technicianOfflineTypes";
+import {
+  emptyCanonicalWorkOrderLineContext,
+  loadCanonicalWorkOrderLineContexts,
+} from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -173,7 +177,7 @@ export async function GET() {
   const customerIds = [
     ...new Set(workOrders.map((row) => row.customer_id).filter(Boolean)),
   ] as string[];
-  const [linesResult, quotesResult, vehiclesResult, customersResult] =
+  const [linesResult, quotesResult, vehiclesResult, customersResult, shopResult] =
     await Promise.all([
       authClient
         .from("work_order_lines")
@@ -200,12 +204,18 @@ export async function GET() {
             .eq("shop_id", profile.shop_id)
             .in("id", customerIds)
         : Promise.resolve({ data: [], error: null }),
+      authClient
+        .from("shops")
+        .select("labor_rate")
+        .eq("id", profile.shop_id)
+        .maybeSingle<{ labor_rate: number | null }>(),
     ]);
   const supportingReadError =
     linesResult.error ??
     quotesResult.error ??
     vehiclesResult.error ??
-    customersResult.error;
+    customersResult.error ??
+    shopResult.error;
   if (supportingReadError) {
     return NextResponse.json(
       { error: supportingReadError.message },
@@ -240,6 +250,38 @@ export async function GET() {
     ]),
   );
 
+  let lineContextsByWorkOrder = new Map<
+    string,
+    ReturnType<typeof emptyCanonicalWorkOrderLineContext>
+  >();
+  try {
+    lineContextsByWorkOrder = await loadCanonicalWorkOrderLineContexts({
+      supabase: authClient,
+      shopId: profile.shop_id,
+      workOrders: workOrders.map((workOrder) => ({
+        workOrderId: workOrder.id,
+        lineIds: lines
+          .filter((line) => line.work_order_id === workOrder.id)
+          .map((line) => line.id),
+      })),
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Canonical work-order context could not be loaded.",
+      },
+      { status: 500 },
+    );
+  }
+
+  const shopLaborRate =
+    typeof shopResult.data?.labor_rate === "number"
+      ? shopResult.data.labor_rate
+      : null;
+
   const bundle: TechnicianOfflineBundle = {
     scope: { userId: user.id, shopId: profile.shop_id },
     downloadedAt: new Date().toISOString(),
@@ -255,6 +297,10 @@ export async function GET() {
         customers.find((customer) => customer.id === workOrder.customer_id) ??
         null,
       techNamesById,
+      lineContext:
+        lineContextsByWorkOrder.get(workOrder.id) ??
+        emptyCanonicalWorkOrderLineContext(),
+      shopLaborRate,
       assignedLineIds: lines
         .filter(
           (line) =>

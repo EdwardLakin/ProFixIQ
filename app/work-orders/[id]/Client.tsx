@@ -34,6 +34,13 @@ import { formatDecisionStatus, resolveDecisionStatus } from "@/features/shared/l
 import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents";
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
+import {
+  getPartsRequestStatusLabel,
+  loadCanonicalWorkOrderLineContext,
+  type CanonicalWorkOrderPartRow as WorkOrderPartRow,
+  type WorkOrderAllocationRow as AllocationRow,
+  type WorkOrderPartRequestRow as PartRequestRow,
+} from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
@@ -57,25 +64,6 @@ type WorkOrderShopRateRow = Pick<DB["public"]["Tables"]["shops"]["Row"], "labor_
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
-type AllocationRow =
-  DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
-    parts?: { name: string | null } | null;
-  };
-type WorkOrderPartRow = DB["public"]["Tables"]["work_order_parts"]["Row"] & {
-  description_snapshot?: string | null;
-  manufacturer_snapshot?: string | null;
-  part_number_snapshot?: string | null;
-  unit_sell_price_snapshot?: number | null;
-  lifecycle_status?: string | null;
-  is_active?: boolean | null;
-  source_parts_request_item_id?: string | null;
-  parts?: { name: string | null; sku?: string | null; part_number?: string | null; manufacturer?: string | null } | null;
-};
-type LineTechRow = DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
-type PartRequestRow = Pick<
-  DB["public"]["Tables"]["part_requests"]["Row"],
-  "id" | "quote_line_id" | "job_id" | "status"
->;
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   // real DB column
@@ -695,88 +683,17 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         // allocations + line techs
         if (lineRows.length) {
-          const [allocsQuery, stagedQuery, lineTechsQuery, partRequestsQuery] = await Promise.all([
-            supabase
-              .from("work_order_part_allocations")
-              .select("*, parts(name)")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-
-            // ✅ staged/quoted parts from menu quick add (NOT allocated inventory)
-            supabase
-              .from("work_order_parts")
-              .select("*, parts(name, sku, part_number, manufacturer, supplier)")
-              .eq("work_order_id", woRow.id)
-              .eq("shop_id", woRow.shop_id)
-              .eq("is_active", true)
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-
-            supabase
-              .from("work_order_line_technicians")
-              .select("work_order_line_id, technician_id")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-
-            supabase
-              .from("part_requests")
-              .select("id, quote_line_id, job_id, status")
-              .eq("work_order_id", woRow.id)
-              .eq("shop_id", woRow.shop_id),
-          ]);
-
-          const byLine: Record<string, AllocationRow[]> = {};
-          (allocsQuery.data ?? []).forEach((a) => {
-            const row = a as AllocationRow;
-            const key = row.work_order_line_id;
-            if (!byLine[key]) byLine[key] = [];
-            byLine[key].push(row);
+          const lineContext = await loadCanonicalWorkOrderLineContext({
+            supabase,
+            workOrderId: woRow.id,
+            shopId: woRow.shop_id,
+            lineIds: lineRows.map((line) => line.id),
           });
-          setAllocsByLine(byLine);
-
-          const stagedByLine: Record<string, WorkOrderPartRow[]> = {};
-          (stagedQuery.data ?? []).forEach((p) => {
-            const row = p as WorkOrderPartRow;
-            const key = row.work_order_line_id;
-            if (!key) return;
-            if (!stagedByLine[key]) stagedByLine[key] = [];
-            stagedByLine[key].push(row);
-          });
-          setStagedPartsByLine(stagedByLine);
-
-          const techMap: Record<string, string[]> = {};
-          (lineTechsQuery.data as LineTechRow[] | null)?.forEach((lt) => {
-            const lnId = lt.work_order_line_id;
-            const techId = lt.technician_id;
-            if (!techMap[lnId]) techMap[lnId] = [];
-            if (!techMap[lnId].includes(techId)) {
-              techMap[lnId].push(techId);
-            }
-          });
-          setLineTechsByLine(techMap);
-
-          const requestsByQuote: Record<string, PartRequestRow[]> = {};
-          const requestsByLine: Record<string, PartRequestRow[]> = {};
-          (partRequestsQuery.data as PartRequestRow[] | null)?.forEach((request) => {
-            const quoteLineId = request.quote_line_id;
-            if (quoteLineId) {
-              if (!requestsByQuote[quoteLineId]) requestsByQuote[quoteLineId] = [];
-              requestsByQuote[quoteLineId].push(request);
-            }
-            const lineId = request.job_id;
-            if (lineId) {
-              if (!requestsByLine[lineId]) requestsByLine[lineId] = [];
-              requestsByLine[lineId].push(request);
-            }
-          });
-          setPartRequestsByQuoteLine(requestsByQuote);
-          setPartRequestsByLine(requestsByLine);
+          setAllocsByLine(lineContext.allocationsByLine);
+          setStagedPartsByLine(lineContext.canonicalPartsByLine);
+          setLineTechsByLine(lineContext.technicianIdsByLine);
+          setPartRequestsByQuoteLine(lineContext.partRequestsByQuoteLine);
+          setPartRequestsByLine(lineContext.partRequestsByLine);
         } else {
           setAllocsByLine({});
           setStagedPartsByLine({});
@@ -868,6 +785,16 @@ export default function WorkOrderIdClient(): JSX.Element {
           event: "*",
           schema: "public",
           table: "work_order_line_technicians",
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "part_requests",
+          filter: `work_order_id=eq.${wo.id}`,
         },
         () => fetchAll(),
       )
@@ -987,7 +914,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [quoteLines]);
 
   const pricingByLine = useMemo(() => {
-    const byLine: Record<string, { laborTotal: number; partsTotal: number; lineTotal: number }> = {};
+    const byLine: Record<string, { laborTotal: number; partsTotal: number; lineTotal: number; partsCount: number }> = {};
     for (const line of lines) {
       const quoteCandidates = activeQuotesByLine[line.id] ?? [];
       const quote = quoteCandidates[quoteCandidates.length - 1];
@@ -1002,6 +929,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         laborTotal: resolved.laborTotal,
         partsTotal: resolved.partsTotal,
         lineTotal: resolved.lineTotal,
+        partsCount: resolved.partsCount,
       };
     }
     return byLine;
@@ -2052,6 +1980,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                         index={idx}
                         line={ln}
                         parts={partsForLine}
+                        partsCount={pricingByLine[ln.id]?.partsCount ?? 0}
+                        partsStatusLabel={getPartsRequestStatusLabel(linePartRequests)}
                         technicians={assignables}
                         canAssign={canAssign}
                         isPunchedIn={isPunchedIn}

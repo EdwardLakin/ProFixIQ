@@ -7,6 +7,10 @@ describe("parts package handoff source contracts", () => {
   const mapper = readFileSync("features/parts/components/request-workbench/mapToWorkbenchModel.ts", "utf8");
   const row = readFileSync("features/parts/components/request-workbench/PartsRequestWorkbenchRow.tsx", "utf8");
   const workOrderClient = readFileSync("app/work-orders/[id]/Client.tsx", "utf8");
+  const workOrderContext = readFileSync(
+    "features/work-orders/lib/data/loadCanonicalWorkOrderLineContext.ts",
+    "utf8",
+  );
   const focusedJob = readFileSync("features/work-orders/components/workorders/FocusedJobModal.tsx", "utf8");
   const appShell = readFileSync("features/shared/components/AppShell.tsx", "utf8");
 
@@ -33,9 +37,10 @@ describe("parts package handoff source contracts", () => {
   });
 
   it("uses active canonical work_order_parts for work-order display before allocation", () => {
-    expect(workOrderClient).toContain('.from("work_order_parts")');
-    expect(workOrderClient).toContain('.eq("work_order_id", woRow.id)');
-    expect(workOrderClient).toContain('.eq("is_active", true)');
+    expect(workOrderClient).toContain("loadCanonicalWorkOrderLineContext");
+    expect(workOrderContext).toContain('.from("work_order_parts")');
+    expect(workOrderContext).toContain('.in("work_order_id", workOrderIds)');
+    expect(workOrderContext).toContain('.eq("is_active", true)');
     expect(focusedJob).toContain("requiredParts");
     expect(focusedJob).toContain('.from("work_order_parts")');
     expect(focusedJob).toContain('.eq("is_active", true)');
