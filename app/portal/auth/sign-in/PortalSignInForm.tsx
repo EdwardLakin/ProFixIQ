@@ -128,14 +128,14 @@ export default function PortalSignInForm() {
       <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
         <div>
           <label htmlFor="portal-identifier" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
-            {isFleet ? "Email or fleet username" : "Email"}
+            {isFleet ? "Email or fleet username" : "Email or username"}
           </label>
           <input
             id="portal-identifier"
             className={inputClass}
-            type={isFleet ? "text" : "email"}
+            type="text"
             autoComplete="username"
-            placeholder={isFleet ? "dispatch@fleet.com or username" : "you@example.com"}
+            placeholder={isFleet ? "dispatch@fleet.com or username" : "you@example.com or username"}
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
             required

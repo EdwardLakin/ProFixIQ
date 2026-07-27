@@ -60,6 +60,15 @@ type PartRequestHeader = {
 type ApprovalsPayload = {
   lines: ApprovalLine[];
   partRequestHeaders: PartRequestHeader[];
+  quoteApprovals: QuoteApprovalSummary[];
+};
+
+type QuoteApprovalSummary = {
+  workOrderId: string;
+  reference: string;
+  createdAt: string | null;
+  lineCount: number;
+  total: number;
 };
 
 function cx(...parts: Array<string | false | null | undefined>) {
@@ -97,17 +106,21 @@ async function readJson(res: Response): Promise<unknown> {
 }
 
 function safePayload(v: unknown): ApprovalsPayload {
-  if (!isRecord(v)) return { lines: [], partRequestHeaders: [] };
+  if (!isRecord(v)) return { lines: [], partRequestHeaders: [], quoteApprovals: [] };
 
   const linesRaw = v.lines;
   const headersRaw = v.partRequestHeaders;
+  const quoteApprovalsRaw = v.quoteApprovals;
 
   const lines = Array.isArray(linesRaw) ? (linesRaw as ApprovalLine[]) : [];
   const partRequestHeaders = Array.isArray(headersRaw)
     ? (headersRaw as PartRequestHeader[])
     : [];
+  const quoteApprovals = Array.isArray(quoteApprovalsRaw)
+    ? (quoteApprovalsRaw as QuoteApprovalSummary[])
+    : [];
 
-  return { lines, partRequestHeaders };
+  return { lines, partRequestHeaders, quoteApprovals };
 }
 
 export default function PortalApprovalsPage() {
@@ -115,6 +128,7 @@ export default function PortalApprovalsPage() {
 
   const [lines, setLines] = useState<ApprovalLine[]>([]);
   const [headers, setHeaders] = useState<PartRequestHeader[]>([]);
+  const [quoteApprovals, setQuoteApprovals] = useState<QuoteApprovalSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,16 +153,19 @@ export default function PortalApprovalsPage() {
         setError(msg);
         setLines([]);
         setHeaders([]);
+        setQuoteApprovals([]);
         return;
       }
 
       const payload = safePayload(parsed);
       setLines(payload.lines);
       setHeaders(payload.partRequestHeaders);
+      setQuoteApprovals(payload.quoteApprovals);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load approvals");
       setLines([]);
       setHeaders([]);
+      setQuoteApprovals([]);
     } finally {
       if (!silent) setLoading(false);
       else setRefreshing(false);
@@ -163,8 +180,18 @@ export default function PortalApprovalsPage() {
   const flattenedCount = useMemo(() => {
     let n = 0;
     lines.forEach((ln) => (n += Array.isArray(ln.part_request_items) ? ln.part_request_items.length : 0));
+    quoteApprovals.forEach((quote) => (n += quote.lineCount));
     return n;
-  }, [lines]);
+  }, [lines, quoteApprovals]);
+
+  const pendingJobCount = useMemo(
+    () =>
+      new Set([
+        ...lines.map((line) => line.work_order_id),
+        ...quoteApprovals.map((quote) => quote.workOrderId),
+      ]).size,
+    [lines, quoteApprovals],
+  );
 
   const runLineDecision = async (
     itemId: string,
@@ -237,7 +264,7 @@ export default function PortalApprovalsPage() {
                 APPROVALS
               </div>
               <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                Review and approve parts for jobs awaiting your confirmation.
+                Review estimates and approve work waiting for your confirmation.
               </div>
               <div className="mt-2 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
                 When all items on a job are approved, the job automatically moves forward.
@@ -247,7 +274,7 @@ export default function PortalApprovalsPage() {
             <div className="flex shrink-0 flex-col items-end gap-2">
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)]">
-                  {lines.length} jobs
+                  {pendingJobCount} jobs
                 </span>
                 <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[0.7rem] text-[color:var(--theme-text-primary)]">
                   {flattenedCount} items
@@ -298,7 +325,40 @@ export default function PortalApprovalsPage() {
             </div>
           ) : null}
 
-          {!loading && !error && lines.length === 0 ? (
+          {!loading && !error && quoteApprovals.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {quoteApprovals.map((quote) => (
+                <div key={quote.workOrderId} className={glass}>
+                  <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                          Estimate {quote.reference}
+                        </div>
+                        <StatusBadge variant="warning">Awaiting approval</StatusBadge>
+                      </div>
+                      <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
+                        {quote.lineCount} quote item{quote.lineCount === 1 ? "" : "s"} ready for your decision
+                        {quote.total > 0 ? ` · ${fmtMoney(quote.total)}` : ""}.
+                      </div>
+                      <div className="mt-1 text-[0.7rem] text-[color:var(--theme-text-muted)]">
+                        Sent {fmtDate(quote.createdAt)}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/portal/quotes/${quote.workOrderId}`)}
+                      className="inline-flex min-h-10 items-center rounded-full border border-[var(--accent-copper)] bg-[color:color-mix(in_srgb,var(--accent-copper)_14%,transparent)] px-4 py-2 text-xs font-semibold text-[var(--accent-copper-light)]"
+                    >
+                      Review estimate
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {!loading && !error && lines.length === 0 && quoteApprovals.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6 text-center">
               <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Nothing to approve</div>
               <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">

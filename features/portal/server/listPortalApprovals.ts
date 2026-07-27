@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import type { PortalCustomer } from "@/features/portal/server/portalAuth";
+import {
+  isPendingCustomerQuoteLine,
+  quoteLineTotal,
+} from "@/features/portal/lib/quoteApprovalPresentation";
 
 type DB = Database;
 
@@ -40,6 +44,19 @@ export type PortalApprovalLine = {
 export type PortalApprovalsPayload = {
   lines: PortalApprovalLine[];
   partRequestHeaders: PartRequestHeaderPick[];
+  quoteApprovals: PortalQuoteApprovalSummary[];
+};
+
+export type PortalQuoteApprovalSummary = {
+  workOrderId: string;
+  reference: string;
+  createdAt: string | null;
+  lineCount: number;
+  total: number;
+};
+
+type QuoteApprovalAccumulator = PortalQuoteApprovalSummary & {
+  seenLineIds: Set<string>;
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -143,6 +160,34 @@ function normalizeLines(rowsUnknown: unknown): PortalApprovalLine[] {
   return out;
 }
 
+export function normalizeQuoteApprovals(rowsUnknown: unknown): PortalQuoteApprovalSummary[] {
+  const grouped = new Map<string, QuoteApprovalAccumulator>();
+
+  for (const raw of asArray(rowsUnknown)) {
+    if (!isRecord(raw) || !isPendingCustomerQuoteLine(raw)) continue;
+    const lineId = asString(raw.id);
+    const workOrderId = asString(raw.work_order_id);
+    const workOrder = pickWorkOrder(raw.work_orders);
+    if (!lineId || !workOrderId || workOrder?.id !== workOrderId) continue;
+
+    const current = grouped.get(workOrderId) ?? {
+      workOrderId,
+      reference: workOrder.custom_id?.trim() || `#${workOrderId.slice(0, 8).toUpperCase()}`,
+      createdAt: asString(raw.sent_to_customer_at) ?? workOrder.created_at,
+      lineCount: 0,
+      total: 0,
+      seenLineIds: new Set<string>(),
+    };
+    if (current.seenLineIds.has(lineId)) continue;
+    current.seenLineIds.add(lineId);
+    current.lineCount += 1;
+    current.total += quoteLineTotal(raw);
+    grouped.set(workOrderId, current);
+  }
+
+  return [...grouped.values()].map(({ seenLineIds: _seenLineIds, ...summary }) => summary);
+}
+
 export async function listPortalApprovalsForCustomer({
   supabase,
   customer,
@@ -150,9 +195,8 @@ export async function listPortalApprovalsForCustomer({
   supabase: SupabaseClient<DB>;
   customer: Pick<PortalCustomer, "id">;
 }): Promise<{ ok: true; data: PortalApprovalsPayload } | { ok: false; error: string; status: number }> {
-  const { data: rows, error } = await supabase
-    .from("work_order_lines")
-    .select(
+  const [lineResult, quoteResult] = await Promise.all([
+    supabase.from("work_order_lines").select(
       `
       id,
       description,
@@ -179,13 +223,42 @@ export async function listPortalApprovalsForCustomer({
       )
     `,
     )
-    .eq("work_orders.customer_id", customer.id)
-    .eq("approval_state", "pending")
-    .order("created_at", { ascending: false });
+      .eq("work_orders.customer_id", customer.id)
+      .eq("approval_state", "pending")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("work_order_quote_lines")
+      .select(
+        `
+        id,
+        work_order_id,
+        status,
+        stage,
+        sent_to_customer_at,
+        approved_at,
+        declined_at,
+        work_order_line_id,
+        labor_total,
+        parts_total,
+        subtotal,
+        grand_total,
+        work_orders!inner (
+          id,
+          custom_id,
+          created_at
+        )
+      `,
+      )
+      .eq("work_orders.customer_id", customer.id)
+      .order("created_at", { ascending: false })
+      .limit(200),
+  ]);
 
-  if (error) return { ok: false, error: error.message, status: 400 };
+  if (lineResult.error) return { ok: false, error: lineResult.error.message, status: 400 };
+  if (quoteResult.error) return { ok: false, error: quoteResult.error.message, status: 400 };
 
-  const lines = normalizeLines(rows as unknown);
+  const lines = normalizeLines(lineResult.data as unknown);
+  const quoteApprovals = normalizeQuoteApprovals(quoteResult.data as unknown);
   const requestIds = uniqStrings(lines.flatMap((ln) => ln.part_request_items.map((it) => it.request_id)));
 
   let partRequestHeaders: PartRequestHeaderPick[] = [];
@@ -201,6 +274,7 @@ export async function listPortalApprovalsForCustomer({
     data: {
       lines,
       partRequestHeaders,
+      quoteApprovals,
     },
   };
 }

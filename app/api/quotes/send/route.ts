@@ -458,6 +458,20 @@ export async function POST(req: Request) {
                 if (error) throw new Error(error.message);
               },
             },
+            {
+              step: "work_order_quote_approval_state_update",
+              run: async () => {
+                const { error } = await supabaseAdmin
+                  .from("work_orders")
+                  .update({
+                    approval_state: "pending",
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", workOrderId)
+                  .eq("shop_id", wo.shop_id);
+                if (error) throw new Error(error.message);
+              },
+            },
           ]
         : []),
       ...(portalUserId
