@@ -40,6 +40,8 @@ type JobCardProps = {
   index: number;
   line: WorkOrderLine;
   parts: WorkOrderPartAllocation[];
+  partsCount?: number;
+  partsStatusLabel?: string | null;
   technicians: Pick<ProfileRow, "id" | "full_name">[];
   canAssign: boolean;
   canDelete?: boolean;
@@ -299,6 +301,8 @@ export function JobCard({
   index,
   line,
   parts,
+  partsCount,
+  partsStatusLabel,
   technicians,
   canAssign,
   canDelete,
@@ -356,10 +360,15 @@ export function JobCard({
 
   const linePriority = toLinePriority(line);
   const quietPriority = linePriority === "urgent" || linePriority === "high" ? linePriority : null;
+  const effectivePartsCount = Math.max(
+    parts.length,
+    partsCount ?? 0,
+    Number(pricing?.partsTotal ?? 0) > 0 ? 1 : 0,
+  );
 
   const reviewFlags = computeReviewFlags({
     line,
-    partsCount: parts.length,
+    partsCount: effectivePartsCount,
     reviewIssues,
   });
 
@@ -572,10 +581,13 @@ export function JobCard({
                   />
                   <MetaTile
                     label="Parts"
-                    value={formatPartsSummary({
-                      partsCount: Math.max(parts.length, Number(pricing?.partsTotal ?? 0) > 0 ? 1 : 0),
-                      partsTotal: Number(pricing?.partsTotal ?? 0),
-                    })}
+                    value={[
+                      formatPartsSummary({
+                        partsCount: effectivePartsCount,
+                        partsTotal: Number(pricing?.partsTotal ?? 0),
+                      }),
+                      partsStatusLabel,
+                    ].filter(Boolean).join(" · ")}
                   />
                   <MetaTile label="Line Total" value={lineTotal > 0 ? formatCurrency(lineTotal) : "Estimate pending"} />
                 </div>

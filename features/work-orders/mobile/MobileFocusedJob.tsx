@@ -322,6 +322,12 @@ export default function MobileFocusedJob(props: {
       setWorkOrder(cached.snapshot.workOrder);
       setVehicle(cached.snapshot.vehicle);
       setCustomer(cached.snapshot.customer);
+      setAllocs(
+        (cached.snapshot.lineContext?.allocationsByLine[id] ?? []) as AllocationRow[],
+      );
+      setRequiredParts(
+        (cached.snapshot.lineContext?.canonicalPartsByLine[id] ?? []) as RequiredPartRow[],
+      );
       const editorDraft = await getTechnicianJobEditorDraft({
         scope,
         lineId: id,
@@ -375,8 +381,16 @@ export default function MobileFocusedJob(props: {
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
     if (!navigator.onLine) {
-      setAllocs([]);
-      setRequiredParts([]);
+      const scope = getOfflineMutationScope();
+      const cached = scope
+        ? await findProjectedTechnicianJob({ scope, lineId: workOrderLineId })
+        : null;
+      setAllocs(
+        (cached?.snapshot.lineContext?.allocationsByLine[workOrderLineId] ?? []) as AllocationRow[],
+      );
+      setRequiredParts(
+        (cached?.snapshot.lineContext?.canonicalPartsByLine[workOrderLineId] ?? []) as RequiredPartRow[],
+      );
       return;
     }
     setAllocsLoading(true);

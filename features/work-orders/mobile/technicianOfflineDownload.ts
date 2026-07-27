@@ -71,6 +71,8 @@ export async function cacheTechnicianOfflineBundle(
           vehicle: item.vehicle,
           customer: item.customer,
           techNamesById: item.techNamesById,
+          lineContext: item.lineContext,
+          shopLaborRate: item.shopLaborRate,
         },
       }),
     );
