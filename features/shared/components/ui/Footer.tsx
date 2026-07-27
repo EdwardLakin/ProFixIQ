@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@shared/lib/utils";
+import { ProFixIQMark, ProFixIQWordmark } from "@shared/components/brand/ProFixIQBrand";
 
 const groups = [
   {
@@ -32,8 +33,8 @@ export default function Footer({ className }: { className?: string }) {
         <div className="grid gap-12 lg:grid-cols-[1.35fr_0.65fr_0.65fr]">
           <div className="max-w-xl">
             <Link href="/" className="flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-[10px] font-blackops tracking-[0.12em] text-[color:var(--marketing-ink)]">PFQ</span>
-              <span className="text-lg font-bold">ProFixIQ</span>
+              <span className="grid h-11 w-11 place-items-center rounded-xl bg-white"><ProFixIQMark className="h-8 w-8" /></span>
+              <ProFixIQWordmark className="text-xl text-white" />
             </Link>
             <h2 className="mt-8 text-3xl font-semibold leading-tight tracking-[-0.04em] sm:text-4xl">See how ProFixIQ fits your shop.</h2>
             <p className="mt-4 max-w-lg text-base leading-7 text-slate-400">Bring inspections, repair building, approvals, parts, workforce operations, invoicing, and portals into one connected system.</p>
@@ -52,7 +53,7 @@ export default function Footer({ className }: { className?: string }) {
 
         <div className="mt-16 flex flex-col gap-3 border-t border-white/10 pt-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <span>© {new Date().getFullYear()} ProFixIQ Technologies. All rights reserved.</span>
-          <span>Heavy-Duty • Automotive • Fleet</span>
+          <span>The AI Operating System for Repair Shops</span>
         </div>
       </div>
     </footer>
