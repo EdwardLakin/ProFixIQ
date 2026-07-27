@@ -20,6 +20,11 @@ import {
   postPaymentEvent,
   type PaymentEventKind,
 } from "@/features/invoices/server/financialLifecycle";
+import {
+  claimStripeWebhookEvent,
+  completeStripeWebhookEvent,
+  failStripeWebhookEvent,
+} from "@/features/stripe/lib/server/stripe-webhook-receipts";
 
 type DB = Database;
 type AdminClient = ReturnType<typeof createAdminSupabase>;
@@ -470,6 +475,7 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
       const customerId = toStripeId(subscription.customer, "cus_");
+      if (!customerId) return;
       const shopId = await resolveShopIdForSubscription({
         stripe,
         supabase,
@@ -483,6 +489,10 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
         shopId,
         customerId,
         subscriptionId: subscription.id,
+        webhookEvent: {
+          id: event.id,
+          createdAt: new Date(event.created * 1000).toISOString(),
+        },
       });
       return;
     }
@@ -515,12 +525,54 @@ export async function handleStripeWebhook(req: Request): Promise<Response> {
     return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 });
   }
 
+  let claimToken: string | null = null;
   try {
+    const claim = await claimStripeWebhookEvent({ supabase, event });
+    if (!claim.claimed) {
+      if (claim.inProgress) {
+        return NextResponse.json(
+          { received: false, retry: true },
+          { status: 409, headers: { "Retry-After": "300" } },
+        );
+      }
+      return NextResponse.json(
+        {
+          received: true,
+          duplicate: claim.alreadyProcessed,
+        },
+        { status: 200 },
+      );
+    }
+    if (!claim.claimToken) {
+      throw new Error("Stripe webhook claim token missing");
+    }
+
+    claimToken = claim.claimToken;
     await processStripeWebhookEvent({ event, stripe, supabase });
+    await completeStripeWebhookEvent({
+      supabase,
+      eventId: event.id,
+      claimToken,
+    });
     return NextResponse.json({ received: true }, { status: 200 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[stripe/webhook] processing error:", message);
+    if (claimToken) {
+      try {
+        await failStripeWebhookEvent({
+          supabase,
+          eventId: event.id,
+          claimToken,
+          error,
+        });
+      } catch (receiptError) {
+        console.error(
+          "[stripe/webhook] failure receipt error:",
+          receiptError instanceof Error ? receiptError.message : "Unknown error",
+        );
+      }
+    }
     return NextResponse.json({ error: "Webhook handler failure" }, { status: 500 });
   }
 }

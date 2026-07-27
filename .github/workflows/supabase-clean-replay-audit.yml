@@ -221,6 +221,29 @@ jobs:
           bash tests/security/p0-007-financial-outbox-concurrency.sh \
             2>&1 | tee p0-007-financial-outbox-concurrency.log
 
+      - name: Execute P1 Stripe webhook receipt integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/p1-012-stripe-webhook-receipts.runtime.sql \
+            2>&1 | tee p1-012-stripe-webhook-receipts-runtime.log
+
+      - name: Execute P1 Stripe webhook concurrent-delivery integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          bash tests/security/p1-012-stripe-webhook-concurrency.sh \
+            2>&1 | tee p1-012-stripe-webhook-concurrency.log
+
       - name: Execute P0 schema reconciliation integration
         shell: bash
         env:
@@ -315,6 +338,8 @@ jobs:
             p0-006-stripe-identity-runtime.log
             p0-007-financial-outbox-runtime.log
             p0-007-financial-outbox-concurrency.log
+            p1-012-stripe-webhook-receipts-runtime.log
+            p1-012-stripe-webhook-concurrency.log
             p0-008-schema-reconciliation-runtime.log
             p0-008-generated-types.diff
             generated-supabase-types.ts

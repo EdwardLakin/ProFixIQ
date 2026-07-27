@@ -111,24 +111,63 @@ export async function syncCanonicalShopBilling(params: {
   customerId: string | null;
   subscriptionId: string;
   checkoutSessionId?: string | null;
-}): Promise<void> {
-  const { stripe, supabase, shopId, customerId, subscriptionId, checkoutSessionId } = params;
+  webhookEvent?: {
+    id: string;
+    createdAt: string;
+  };
+}): Promise<{ applied: boolean }> {
+  const {
+    stripe,
+    supabase,
+    shopId,
+    customerId,
+    subscriptionId,
+    checkoutSessionId,
+    webhookEvent,
+  } = params;
   const sub = await stripe.subscriptions.retrieve(subscriptionId);
+  const update = toCanonicalShopBillingUpdate({
+    customerId,
+    subscription: sub,
+    checkoutSessionId,
+  });
+
+  if (webhookEvent) {
+    if (!customerId) {
+      throw new Error("Stripe subscription webhook is missing its customer identity");
+    }
+    const { data, error } = await supabase.rpc("apply_stripe_subscription_webhook_snapshot", {
+      p_shop_id: shopId,
+      p_customer_id: customerId,
+      p_subscription_id: sub.id,
+      p_event_id: webhookEvent.id,
+      p_event_created_at: webhookEvent.createdAt,
+      p_snapshot: {
+        stripe_subscription_status: update.stripe_subscription_status ?? null,
+        stripe_trial_end: update.stripe_trial_end ?? null,
+        stripe_current_period_end: update.stripe_current_period_end ?? null,
+        plan: update.plan ?? null,
+        stripe_checkout_session_id: checkoutSessionId ?? null,
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { applied: data === true };
+  }
 
   const { error } = await supabase
     .from("shops")
-    .update(
-      toCanonicalShopBillingUpdate({
-        customerId,
-        subscription: sub,
-        checkoutSessionId,
-      }),
-    )
+    .update(update)
     .eq("id", shopId);
 
   if (error) {
     throw new Error(error.message);
   }
+
+  return { applied: true };
 }
 
 export async function reconcileShopBillingFromUser(params: {
