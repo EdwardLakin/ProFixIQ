@@ -770,7 +770,7 @@ export default function QuoteReviewView(props: {
     }
   }
 
-  async function sendQuoteToCustomer() {
+  async function sendQuoteToCustomer(resend = false) {
     if (!woId || sending) return;
     setSending(true);
     try {
@@ -779,7 +779,10 @@ export default function QuoteReviewView(props: {
 
       const res = await fetch(`/api/work-orders/${woId}/send-quote`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(resend ? { "x-profix-resend": "1" } : {}),
+        },
         body: JSON.stringify({}),
       });
       const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; detail?: string } | null;
@@ -792,7 +795,7 @@ export default function QuoteReviewView(props: {
       }
 
       setSendBlocker(null);
-      toast.success("Quote sent to customer using canonical quote lines.");
+      toast.success(resend ? "Quote resent to customer." : "Quote sent to customer using canonical quote lines.");
       await reload();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to send quote.");
@@ -839,9 +842,14 @@ export default function QuoteReviewView(props: {
             </button>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => void sendQuoteToCustomer()} disabled={sending || quoteTotals.sendable === 0} className={actionBtnCls} title="Email the ready canonical quote lines to the customer">
+            <button onClick={() => void sendQuoteToCustomer(false)} disabled={sending || quoteTotals.sendable === 0} className={actionBtnCls} title="Email the ready canonical quote lines to the customer">
               {sending ? "Sending…" : "Send Quote"}
             </button>
+            {quoteTotals.sent > 0 ? (
+              <button onClick={() => void sendQuoteToCustomer(true)} disabled={sending || missingCustomerEmail} className={actionBtnCls} title="Resend the current customer portal quote email">
+                {sending ? "Sending…" : "Resend Quote"}
+              </button>
+            ) : null}
             <button onClick={() => void saveAllDirty()} disabled={saving} className={saveBtnCls} title="Save canonical quote line changes">
               {saving ? "Saving…" : "Save"}
             </button>
@@ -1180,9 +1188,14 @@ export default function QuoteReviewView(props: {
                     </div>
                   </div>
                 ) : null}
-                <button onClick={() => void sendQuoteToCustomer()} disabled={sending || savingCustomerEmail || quoteTotals.sendable === 0} className="desktop-btn-secondary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-60">
+                <button onClick={() => void sendQuoteToCustomer(false)} disabled={sending || savingCustomerEmail || quoteTotals.sendable === 0} className="desktop-btn-secondary mt-3 w-full rounded-xl px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-60">
                   {sending ? "Sending…" : "Send ready quote lines"}
                 </button>
+                {quoteTotals.sent > 0 ? (
+                  <button onClick={() => void sendQuoteToCustomer(true)} disabled={sending || savingCustomerEmail || missingCustomerEmail} className="desktop-btn-secondary mt-2 w-full rounded-xl px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-60">
+                    {sending ? "Sending…" : "Resend quote"}
+                  </button>
+                ) : null}
                 <div className="mt-3 text-xs text-[color:var(--theme-text-muted)]">Portal link will be: <span className="text-[color:var(--theme-text-secondary)]">/portal/quotes/{woId}</span></div>
                 <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Customer portal decisions and shop-recorded phone decisions use the same canonical approval lifecycle.</div>
               </div>

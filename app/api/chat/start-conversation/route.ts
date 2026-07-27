@@ -126,16 +126,20 @@ export async function POST(req: Request): Promise<NextResponse> {
   let recipientUserIds = createAccess.recipientUserIds;
   let participantKindByUserId = createAccess.participantKinds;
 
+  const requestedWorkOrderId =
+    body?.context_type === "work_order" && body?.context_id ? body.context_id : null;
+  const routedWorkOrderId = context.anchors.work_order_id ?? requestedWorkOrderId;
+
   if (
     createAccess.actor.kind === "customer" &&
     createAccess.customerId &&
-    context.anchors.work_order_id &&
+    routedWorkOrderId &&
     requestedParticipantIds.length === 0
   ) {
     const { data: workOrder, error: workOrderError } = await admin
       .from("work_orders")
       .select("advisor_id")
-      .eq("id", context.anchors.work_order_id)
+      .eq("id", routedWorkOrderId)
       .eq("shop_id", createAccess.actorShopId)
       .eq("customer_id", createAccess.customerId)
       .maybeSingle();
@@ -160,6 +164,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       .from("profiles")
       .select("id,user_id,role")
       .eq("shop_id", createAccess.actorShopId)
+      .in("role", ["owner", "admin", "manager"])
       .limit(100);
 
     const recipientError = advisorError ?? coverageError;
@@ -174,7 +179,6 @@ export async function POST(req: Request): Promise<NextResponse> {
       ? assignedAdvisor.user_id ?? assignedAdvisor.id
       : null;
     const coverageUserIds = (coverage ?? [])
-      .filter((profile) => isCustomerMessagingRole(profile.role))
       .map((profile) => profile.user_id ?? profile.id)
       .filter((id): id is string => Boolean(id) && id !== user.id);
 
@@ -242,7 +246,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     _shop_id: createAccess.actorShopId,
     _channel: createAccess.channel,
     _customer_id: context.anchors.customer_id,
-    _work_order_id: context.anchors.work_order_id,
+    _work_order_id: routedWorkOrderId,
     _vehicle_id: context.anchors.vehicle_id,
     _booking_id: context.anchors.booking_id,
     _context_type: context.anchors.context_type,
