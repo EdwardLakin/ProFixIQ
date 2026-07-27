@@ -5,10 +5,19 @@ on:
     paths:
       - "features/shared/lib/offline/**"
       - "features/work-orders/lib/jobPunchTransitionsClient.ts"
+      - "features/work-orders/lib/data/loadCanonicalWorkOrderLineContext.ts"
+      - "features/work-orders/lib/data/loadCanonicalWorkOrderLineContext.test.ts"
+      - "features/work-orders/lib/display/workOrderParts.ts"
+      - "features/work-orders/lib/display/linePresentation.test.ts"
+      - "features/work-orders/mobile/MobileWorkOrderClient.tsx"
+      - "app/api/offline/technician-work-orders/route.ts"
+      - "app/work-orders/[id]/Client.tsx"
       - "features/inspections/lib/inspection/save.ts"
       - "app/api/inspections/save/route.ts"
       - "supabase/migrations/20260715070*.sql"
       - "tests/phase6-*.test.ts"
+      - "tests/technician-offline-download.test.ts"
+      - "tests/work-order-cross-device-source-of-truth.test.ts"
       - ".github/workflows/phase-6-technician-mobile-reliability.yml"
   workflow_dispatch:
 
@@ -31,6 +40,13 @@ jobs:
           pnpm exec eslint
           features/shared/lib/offline/mutations.ts
           features/work-orders/lib/jobPunchTransitionsClient.ts
+          features/work-orders/lib/data/loadCanonicalWorkOrderLineContext.ts
+          features/work-orders/lib/data/loadCanonicalWorkOrderLineContext.test.ts
+          features/work-orders/lib/display/workOrderParts.ts
+          features/work-orders/lib/display/linePresentation.test.ts
+          features/work-orders/mobile/MobileWorkOrderClient.tsx
+          app/api/offline/technician-work-orders/route.ts
+          app/work-orders/[id]/Client.tsx
           features/inspections/lib/inspection/save.ts
           app/api/inspections/save/route.ts
           tests/phase6-job-punch-client.test.ts
@@ -38,6 +54,8 @@ jobs:
           tests/phase6-inspection-progress-route.test.ts
           tests/phase6-inspection-progress-sql-contract.test.ts
           tests/phase6-job-photo-evidence-sql-contract.test.ts
+          tests/technician-offline-download.test.ts
+          tests/work-order-cross-device-source-of-truth.test.ts
       - run: >-
           pnpm exec vitest run
           tests/phase6-job-punch-client.test.ts
@@ -45,3 +63,7 @@ jobs:
           tests/phase6-inspection-progress-route.test.ts
           tests/phase6-inspection-progress-sql-contract.test.ts
           tests/phase6-job-photo-evidence-sql-contract.test.ts
+          features/work-orders/lib/data/loadCanonicalWorkOrderLineContext.test.ts
+          features/work-orders/lib/display/linePresentation.test.ts
+          tests/technician-offline-download.test.ts
+          tests/work-order-cross-device-source-of-truth.test.ts
