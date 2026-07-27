@@ -26,6 +26,7 @@ import PricingSection from "@shared/components/ui/PricingSection";
 import Footer from "@shared/components/ui/Footer";
 import LandingChatbot from "@/features/landing/LandingChatbot";
 import type { PlanKey } from "@/features/stripe/lib/stripe/constants";
+import { ProFixIQMark, ProFixIQWordmark } from "@shared/components/brand/ProFixIQBrand";
 
 type Interval = "monthly" | "yearly";
 
@@ -169,11 +170,11 @@ export default function ProFixIQLanding() {
 
   return (
     <div className="pfq-marketing min-h-screen bg-[color:var(--marketing-bg)] text-[color:var(--marketing-ink)]">
-      <header className="sticky top-0 z-40 border-b border-[color:var(--marketing-border)] bg-[rgba(247,245,241,0.92)] backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-[color:var(--marketing-border)] bg-[rgba(247,249,252,0.92)] backdrop-blur-xl">
         <div className="mx-auto flex h-[72px] max-w-[1400px] items-center justify-between px-5 sm:px-8">
           <Link href="/" className="flex items-center gap-3" aria-label="ProFixIQ home">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-[color:var(--marketing-ink)] text-[10px] font-blackops tracking-[0.12em] text-white">PFQ</span>
-            <span><span className="block text-base font-bold tracking-[-0.02em]">ProFixIQ</span><span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--marketing-muted)]">Shop operating system</span></span>
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-[#07111f] shadow-sm"><ProFixIQMark className="h-8 w-8" /></span>
+            <span><ProFixIQWordmark className="block text-xl text-[color:var(--marketing-ink)]" /><span className="block text-[10px] font-bold uppercase tracking-[0.15em] text-[color:var(--marketing-muted)]">AI operating system</span></span>
           </Link>
 
           <nav className="hidden items-center gap-7 lg:flex" aria-label="Primary navigation">
