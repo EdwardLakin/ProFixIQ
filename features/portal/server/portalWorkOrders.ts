@@ -4,12 +4,14 @@ import {
   toPortalWorkOrderStatus,
   type PortalWorkOrderStatus,
 } from "@/features/portal/lib/workOrderPresentation";
+import { isPendingCustomerQuoteLine } from "@/features/portal/lib/quoteApprovalPresentation";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type QuoteLineRow = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 
 type WorkOrderSummaryRow = Pick<
   WorkOrderRow,
@@ -44,6 +46,20 @@ type AdvisorSummaryRow = Pick<ProfileRow, "id" | "full_name">;
 type LineSummaryRow = Pick<
   WorkOrderLineRow,
   "id" | "work_order_id" | "line_no" | "description" | "complaint"
+>;
+type QuoteLineSummaryRow = Pick<
+  QuoteLineRow,
+  | "id"
+  | "work_order_id"
+  | "description"
+  | "ai_complaint"
+  | "notes"
+  | "status"
+  | "stage"
+  | "sent_to_customer_at"
+  | "approved_at"
+  | "declined_at"
+  | "work_order_line_id"
 >;
 
 export type PortalWorkOrderSummary = {
@@ -160,7 +176,7 @@ export async function listPortalWorkOrdersForCustomer({
     ),
   );
 
-  const [vehicleResult, advisorResult, lineResult] = await Promise.all([
+  const [vehicleResult, advisorResult, lineResult, quoteLineResult] = await Promise.all([
     vehicleIds.length
       ? supabase
           .from("vehicles")
@@ -184,10 +200,21 @@ export async function listPortalWorkOrdersForCustomer({
       .in("work_order_id", workOrderIds)
       .order("line_no", { ascending: true })
       .returns<LineSummaryRow[]>(),
+    supabase
+      .from("work_order_quote_lines")
+      .select(
+        "id,work_order_id,description,ai_complaint,notes,status,stage,sent_to_customer_at,approved_at,declined_at,work_order_line_id",
+      )
+      .in("work_order_id", workOrderIds)
+      .order("created_at", { ascending: true })
+      .returns<QuoteLineSummaryRow[]>(),
   ]);
 
   const queryError =
-    vehicleResult.error ?? advisorResult.error ?? lineResult.error;
+    vehicleResult.error ??
+    advisorResult.error ??
+    lineResult.error ??
+    quoteLineResult.error;
   if (queryError) throw new Error(queryError.message);
 
   const vehiclesById = new Map(
@@ -197,6 +224,8 @@ export async function listPortalWorkOrdersForCustomer({
     (advisorResult.data ?? []).map((advisor) => [advisor.id, advisor]),
   );
   const linesByWorkOrder = new Map<string, string[]>();
+  const pendingQuoteWorkOrderIds = new Set<string>();
+  const quoteLinesByWorkOrder = new Map<string, string[]>();
 
   for (const line of lineResult.data ?? []) {
     const summary =
@@ -207,10 +236,27 @@ export async function listPortalWorkOrdersForCustomer({
     linesByWorkOrder.set(line.work_order_id, current);
   }
 
+  for (const line of quoteLineResult.data ?? []) {
+    if (!isPendingCustomerQuoteLine(line as unknown as Record<string, unknown>)) {
+      continue;
+    }
+    pendingQuoteWorkOrderIds.add(line.work_order_id);
+    const summary =
+      compactText(line.description) ??
+      compactText(line.ai_complaint) ??
+      compactText(line.notes);
+    if (!summary) continue;
+    const current = quoteLinesByWorkOrder.get(line.work_order_id) ?? [];
+    if (!current.includes(summary) && current.length < 3) current.push(summary);
+    quoteLinesByWorkOrder.set(line.work_order_id, current);
+  }
+
   return rows.map((workOrder) => {
     const status = toPortalWorkOrderStatus({
       status: workOrder.status,
-      approvalState: workOrder.approval_state,
+      approvalState: pendingQuoteWorkOrderIds.has(workOrder.id)
+        ? "pending"
+        : workOrder.approval_state,
       scheduledAt: workOrder.scheduled_at,
       invoiceSentAt: workOrder.invoice_sent_at,
     });
@@ -226,7 +272,10 @@ export async function listPortalWorkOrdersForCustomer({
         `#${workOrder.id.slice(0, 8).toUpperCase()}`,
       vehicleLabel: vehicle.label,
       vehicleDetail: vehicle.detail,
-      serviceSummary: linesByWorkOrder.get(workOrder.id) ?? ["Service visit"],
+      serviceSummary:
+        linesByWorkOrder.get(workOrder.id) ??
+        quoteLinesByWorkOrder.get(workOrder.id) ??
+        ["Service visit"],
       advisorName: workOrder.advisor_id
         ? compactText(advisorsById.get(workOrder.advisor_id)?.full_name)
         : null,
