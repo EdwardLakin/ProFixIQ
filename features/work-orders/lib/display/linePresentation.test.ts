@@ -132,18 +132,19 @@ describe("linePresentation", () => {
     expect(activeParts.reduce((sum, part) => sum + getCanonicalPartTotal(part), 0)).toBeCloseTo(1636.81, 2);
   });
 
-  it("does not double-count allocations backed by canonical request items and does not require allocation for display", () => {
+  it("does not double-count allocations linked to canonical parts or request items", () => {
     const canonicalParts = [
-      { source_parts_request_item_id: "request-item-1" },
-      { source_parts_request_item_id: "request-item-2" },
+      { id: "canonical-direct", source_parts_request_item_id: null },
+      { id: "canonical-request", source_parts_request_item_id: "request-item-1" },
     ];
     const allocations = [
-      { source_request_item_id: "request-item-1", qty: 1, unit_cost: 260.47 },
-      { source_request_item_id: null, qty: 1, unit_cost: 20 },
+      { work_order_part_id: null, source_request_item_id: "request-item-1", qty: 1, unit_cost: 260.47 },
+      { work_order_part_id: "canonical-direct", source_request_item_id: null, qty: 1, unit_cost: 50 },
+      { work_order_part_id: null, source_request_item_id: null, qty: 1, unit_cost: 20 },
     ];
 
     expect(filterAllocationsNotBackedByCanonicalParts(allocations, canonicalParts)).toEqual([
-      { source_request_item_id: null, qty: 1, unit_cost: 20 },
+      { work_order_part_id: null, source_request_item_id: null, qty: 1, unit_cost: 20 },
     ]);
   });
 });

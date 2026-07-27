@@ -35,6 +35,7 @@ import { deriveEventsFromWorkOrder } from "@/features/shared/lib/decisionEvents"
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 import {
+  getPartsRequestDisplayState,
   getPartsRequestStatusLabel,
   loadCanonicalWorkOrderLineContext,
   type CanonicalWorkOrderPartRow as WorkOrderPartRow,
@@ -115,22 +116,14 @@ function isCompletedLineStatus(status: string | null | undefined): boolean {
 }
 
 function partsRequestActionLabel(requests: PartRequestRow[]): string {
-  if (requests.length === 0) return "Request all parts";
-  const statuses = new Set(
-    requests.map((request) => String(request.status ?? "requested").toLowerCase()),
-  );
-  if (statuses.has("fulfilled")) return "Parts handed off";
-  if (
-    statuses.has("approved") ||
-    statuses.has("partially_ordered") ||
-    statuses.has("partially_consumed") ||
-    statuses.has("partially_returned")
-  ) {
-    return "Open Pick / Order";
+  switch (getPartsRequestDisplayState(requests)) {
+    case "none": return "Request all parts";
+    case "pick_order": return "Open Pick / Order";
+    case "awaiting_approval": return "Awaiting approval";
+    case "requested": return "Parts requested";
+    case "handoff": return "Parts handed off";
+    case "history": return "View parts history";
   }
-  if (statuses.has("quoted")) return "Awaiting approval";
-  if (statuses.has("rejected") || statuses.has("cancelled")) return "View parts history";
-  return "Parts requested";
 }
 
 /** Normalize “where is the inspection template id stored for this line?” */
@@ -270,8 +263,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
 
-  // per-line technicians
-  const [lineTechsByLine, setLineTechsByLine] = useState<Record<string, string[]>>({});
+  const [activeTechsByLine, setActiveTechsByLine] = useState<Record<string, string[]>>({});
 
   // ✅ AI review state for status icons
   const [, setReviewChecked] = useState<boolean>(false);
@@ -537,7 +529,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             setAllocsByLine({});
             setStagedPartsByLine({});
             setPartRequestsByQuoteLine({});
-            setLineTechsByLine({});
+            setActiveTechsByLine({});
           }
 
           // ✅ reset review state
@@ -691,7 +683,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           });
           setAllocsByLine(lineContext.allocationsByLine);
           setStagedPartsByLine(lineContext.canonicalPartsByLine);
-          setLineTechsByLine(lineContext.technicianIdsByLine);
+          setActiveTechsByLine(lineContext.activeTechnicianIdsByLine);
           setPartRequestsByQuoteLine(lineContext.partRequestsByQuoteLine);
           setPartRequestsByLine(lineContext.partRequestsByLine);
         } else {
@@ -699,7 +691,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setStagedPartsByLine({});
           setPartRequestsByQuoteLine({});
           setPartRequestsByLine({});
-          setLineTechsByLine({});
+          setActiveTechsByLine({});
         }
 
         // ✅ load latest AI invoice review (drives status icons in JobCard)
@@ -785,6 +777,16 @@ export default function WorkOrderIdClient(): JSX.Element {
           event: "*",
           schema: "public",
           table: "work_order_line_technicians",
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_line_labor_segments",
+          filter: `work_order_id=eq.${wo.id}`,
         },
         () => fetchAll(),
       )
@@ -1042,17 +1044,14 @@ export default function WorkOrderIdClient(): JSX.Element {
     });
 
     const activeForCurrentTech = baseSorted.find((line) => {
-      const punchedIn = Boolean(line.punched_in_at) && !line.punched_out_at;
+      const activeTechnicianIds = activeTechsByLine[line.id] ?? [];
+      const punchedIn =
+        activeTechnicianIds.length > 0 ||
+        (Boolean(line.punched_in_at) && !line.punched_out_at);
       if (!punchedIn || isCompletedLineStatus(line.status)) return false;
 
       if (!currentUserId) return true;
-
-      const assignedTechId =
-        typeof (line as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
-          ? (line as { assigned_tech_id?: string | null }).assigned_tech_id
-          : null;
-      const linkedTechIds = lineTechsByLine[line.id] ?? [];
-      return assignedTechId === currentUserId || linkedTechIds.includes(currentUserId);
+      return activeTechnicianIds.includes(currentUserId);
     });
 
     const pinnedActiveId = activeForCurrentTech?.id ?? null;
@@ -1067,7 +1066,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       return [activeForCurrentTech, ...nonCompleted, ...completed];
     }
     return [...nonCompleted, ...completed];
-  }, [activeJobLines, currentUserId, lineTechsByLine]);
+  }, [activeJobLines, activeTechsByLine, currentUserId]);
 
   useEffect(() => {
     if (!prefersPanel) return;
@@ -1918,7 +1917,10 @@ export default function WorkOrderIdClient(): JSX.Element {
               ) : (
                 <div className="space-y-2.5">
                   {sortedLines.map((ln, idx) => {
-                    const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
+                    const activeTechnicianIds = activeTechsByLine[ln.id] ?? [];
+                    const punchedIn =
+                      activeTechnicianIds.length > 0 ||
+                      (!!ln.punched_in_at && !ln.punched_out_at);
 
                     const allocPartsForLine = allocsByLine[ln.id] ?? [];
                     const stagedForLine = stagedPartsByLine[ln.id] ?? [];
@@ -1942,33 +1944,19 @@ export default function WorkOrderIdClient(): JSX.Element {
 
                     const partsForLine = [...allocPartsForLine, ...stagedAsAllocShape];
 
-                    const lineTechIds = lineTechsByLine[ln.id] ?? [];
-                    const primaryId =
-                      typeof (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id === "string"
-                        ? (ln as unknown as { assigned_tech_id?: string | null }).assigned_tech_id
-                        : null;
-
-                    const orderedTechIds: string[] = [];
-                    if (primaryId) orderedTechIds.push(primaryId);
-                    lineTechIds.forEach((tid) => {
-                      if (!orderedTechIds.includes(tid)) orderedTechIds.push(tid);
-                    });
-
                     const isPunchedIn = punchedIn;
                     const isCurrentUserWorkingThisLine = Boolean(
                       isPunchedIn &&
                         currentUserId &&
-                        (primaryId === currentUserId || lineTechIds.includes(currentUserId)),
+                        activeTechnicianIds.includes(currentUserId),
                     );
-                    const activeTechnicianNames = isPunchedIn
-                      ? orderedTechIds
-                          .map(
-                            (techId) =>
-                              assignables.find((tech) => tech.id === techId)?.full_name?.trim() ??
-                              null,
-                          )
-                          .filter((name): name is string => Boolean(name))
-                      : [];
+                    const activeTechnicianNames = activeTechnicianIds
+                      .map(
+                        (techId) =>
+                          assignables.find((tech) => tech.id === techId)?.full_name?.trim() ??
+                          null,
+                      )
+                      .filter((name): name is string => Boolean(name));
                     const isSelectedForPanel = panelLineId === ln.id;
                     const linePartRequests = partRequestsByLine[ln.id] ?? [];
                     const hasRequestableParts =

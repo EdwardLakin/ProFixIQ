@@ -14,7 +14,7 @@ const contextLoader = read(
   "features/work-orders/lib/data/loadCanonicalWorkOrderLineContext.ts",
 );
 const migration = read(
-  "supabase/migrations/20260726231759_work_order_detail_source_of_truth.sql",
+  "supabase/migrations/20260727030911_restore_work_order_parts_portal_policy.sql",
 );
 
 describe("cross-device work-order source of truth", () => {
@@ -25,7 +25,10 @@ describe("cross-device work-order source of truth", () => {
     expect(contextLoader).toContain('.from("work_order_part_allocations")');
     expect(contextLoader).toContain('.from("part_requests")');
     expect(contextLoader).toContain('.from("work_order_line_technicians")');
-    expect(contextLoader).toContain('.in("work_order_id", workOrderIds)');
+    expect(contextLoader).toContain('.from("work_order_line_labor_segments")');
+    expect(contextLoader).toContain('.in("work_order_id", ids)');
+    expect(contextLoader).toContain("loadRowsForIdChunks");
+    expect(contextLoader).toContain(".range(from, to)");
     expect(contextLoader).toContain('.eq("shop_id", input.shopId)');
     expect(contextLoader).toContain('.eq("is_active", true)');
   });
@@ -44,6 +47,7 @@ describe("cross-device work-order source of truth", () => {
       "work_order_part_allocations",
       "part_requests",
       "work_order_line_technicians",
+      "work_order_line_labor_segments",
     ]) {
       expect(mobile).toContain(`table: "${table}"`);
     }
@@ -65,17 +69,13 @@ describe("cross-device work-order source of truth", () => {
     );
   });
 
-  it("allows only role-authorized staff or assigned mechanics to read parts", () => {
-    expect(migration).toContain("create policy work_order_parts_role_select");
-    expect(migration).toContain("shop_id = (select public.current_shop_id())");
-    expect(migration).toContain(
-      "(select public.profixiq_current_role()) = 'mechanic'",
-    );
-    expect(migration).toContain("public.profixiq_is_assigned_to_line");
-    expect(migration).toContain("public.profixiq_is_assigned_to_work_order");
+  it("uses the canonical security-definer helper for portal part reads", () => {
     expect(migration).toContain(
       "create policy work_order_parts_customer_portal_select",
     );
-    expect(migration).not.toContain("for update\nto authenticated");
+    expect(migration).toContain(
+      "public.profixiq_is_portal_customer_work_order(work_order_id)",
+    );
+    expect(migration).not.toContain("join public.customers");
   });
 });

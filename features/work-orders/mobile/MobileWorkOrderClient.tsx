@@ -32,6 +32,7 @@ import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewa
 import { resolveWorkOrderLinePricing } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import { filterAllocationsNotBackedByCanonicalParts } from "@/features/work-orders/lib/display/workOrderParts";
 import {
+  collectTechnicianIdsForLineContexts,
   emptyCanonicalWorkOrderLineContext,
   getPartsRequestStatusLabel,
   loadCanonicalWorkOrderLineContext,
@@ -519,13 +520,9 @@ export default function MobileWorkOrderClient({
         setShopLaborRate(freshShopLaborRate);
 
         // Populate names for every visible primary or shared assignment.
-        const techIds = Array.from(
-          new Set(
-            [
-              ...lineRows.map((line) => line.assigned_tech_id),
-              ...Object.values(freshLineContext.technicianIdsByLine).flat(),
-            ].filter((id): id is string => Boolean(id)),
-          ),
+        const techIds = collectTechnicianIdsForLineContexts(
+          [freshLineContext],
+          lineRows.map((line) => line.assigned_tech_id),
         );
 
         const techMap: Record<string, string> = {};
@@ -697,6 +694,16 @@ export default function MobileWorkOrderClient({
           event: "*",
           schema: "public",
           table: "work_order_line_technicians",
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_line_labor_segments",
+          filter: `work_order_id=eq.${wo.id}`,
         },
         () => fetchAll(),
       )
@@ -1630,7 +1637,11 @@ export default function MobileWorkOrderClient({
             ) : (
               <div className="space-y-2">
                 {displayLines.map((ln, idx) => {
-                  const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
+                  const activeTechnicianIds =
+                    lineContext.activeTechnicianIdsByLine?.[ln.id] ?? [];
+                  const punchedIn =
+                    activeTechnicianIds.length > 0 ||
+                    (!!ln.punched_in_at && !ln.punched_out_at);
 
                   const openFocused = () => {
                     setFocusedJobId(ln.id);
@@ -1651,11 +1662,9 @@ export default function MobileWorkOrderClient({
                   const pricing = pricingByLine[ln.id];
                   const partRequests =
                     lineContext.partRequestsByLine[ln.id] ?? [];
-                  const activeTechnicianNames = punchedIn
-                    ? technicianIds
-                        .map((id) => techNamesById[id])
-                        .filter((name): name is string => Boolean(name))
-                    : [];
+                  const activeTechnicianNames = activeTechnicianIds
+                    .map((id) => techNamesById[id])
+                    .filter((name): name is string => Boolean(name));
 
                   return (
                     <div
@@ -1676,7 +1685,7 @@ export default function MobileWorkOrderClient({
                         isCurrentUserWorkingThisLine={Boolean(
                           punchedIn &&
                             currentUserId &&
-                            technicianIds.includes(currentUserId),
+                            activeTechnicianIds.includes(currentUserId),
                         )}
                         activeTechnicianNames={activeTechnicianNames}
                         onOpen={openFocused}
