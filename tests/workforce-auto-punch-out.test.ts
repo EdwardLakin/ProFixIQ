@@ -179,7 +179,7 @@ describe("workforce auto punch-out route contract", () => {
     "utf8",
   );
   const migration = readFileSync(
-    "supabase/migrations/20260728201500_workforce_atomic_scheduled_shift_end.sql",
+    "supabase/migrations/20260728181241_workforce_atomic_scheduled_shift_end.sql",
     "utf8",
   );
   const vercel = readFileSync("vercel.json", "utf8");
