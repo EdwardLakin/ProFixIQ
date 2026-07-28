@@ -3674,6 +3674,270 @@ export type Database = {
           },
         ]
       }
+      fleet_pm_due_events: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          deferred_until: string | null
+          due_reasons: string[]
+          due_snapshot: Json
+          evidence_snapshot_id: string | null
+          first_due_at: string
+          fleet_id: string
+          id: string
+          last_evaluated_at: string
+          policy_id: string
+          program_id: string
+          service_request_id: string | null
+          shop_id: string
+          status: string
+          triggering_reading_id: string | null
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          deferred_until?: string | null
+          due_reasons?: string[]
+          due_snapshot?: Json
+          evidence_snapshot_id?: string | null
+          first_due_at?: string
+          fleet_id: string
+          id?: string
+          last_evaluated_at?: string
+          policy_id: string
+          program_id: string
+          service_request_id?: string | null
+          shop_id: string
+          status?: string
+          triggering_reading_id?: string | null
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          deferred_until?: string | null
+          due_reasons?: string[]
+          due_snapshot?: Json
+          evidence_snapshot_id?: string | null
+          first_due_at?: string
+          fleet_id?: string
+          id?: string
+          last_evaluated_at?: string
+          policy_id?: string
+          program_id?: string
+          service_request_id?: string | null
+          shop_id?: string
+          status?: string
+          triggering_reading_id?: string | null
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_pm_due_events_evidence_snapshot_id_fkey"
+            columns: ["evidence_snapshot_id"]
+            isOneToOne: false
+            referencedRelation: "ai_evidence_snapshots"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_due_events_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_due_events_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_pm_policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_due_events_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_due_events_service_request_id_fkey"
+            columns: ["service_request_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_service_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_due_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_due_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_due_events_triggering_reading_id_fkey"
+            columns: ["triggering_reading_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_unit_readings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_due_events_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_pm_policies: {
+        Row: {
+          active: boolean
+          anchor_date: string
+          anchor_engine_hours: number | null
+          anchor_odometer_km: number | null
+          created_at: string
+          created_by: string
+          fleet_id: string
+          id: string
+          interval_days: number | null
+          interval_hours: number | null
+          interval_km: number | null
+          last_completed_at: string | null
+          last_completed_work_order_id: string | null
+          name: string
+          program_id: string
+          requires_fleet_approval: boolean
+          shop_id: string
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          anchor_date?: string
+          anchor_engine_hours?: number | null
+          anchor_odometer_km?: number | null
+          created_at?: string
+          created_by?: string
+          fleet_id: string
+          id?: string
+          interval_days?: number | null
+          interval_hours?: number | null
+          interval_km?: number | null
+          last_completed_at?: string | null
+          last_completed_work_order_id?: string | null
+          name: string
+          program_id: string
+          requires_fleet_approval?: boolean
+          shop_id: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          anchor_date?: string
+          anchor_engine_hours?: number | null
+          anchor_odometer_km?: number | null
+          created_at?: string
+          created_by?: string
+          fleet_id?: string
+          id?: string
+          interval_days?: number | null
+          interval_hours?: number | null
+          interval_km?: number | null
+          last_completed_at?: string | null
+          last_completed_work_order_id?: string | null
+          name?: string
+          program_id?: string
+          requires_fleet_approval?: boolean
+          shop_id?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_pm_policies_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_last_completed_work_order_id_fkey"
+            columns: ["last_completed_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_last_completed_work_order_id_fkey"
+            columns: ["last_completed_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_last_completed_work_order_id_fkey"
+            columns: ["last_completed_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_last_completed_work_order_id_fkey"
+            columns: ["last_completed_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_last_completed_work_order_id_fkey"
+            columns: ["last_completed_work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pm_policies_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_portal_invites: {
         Row: {
           accepted_at: string | null
@@ -3922,6 +4186,146 @@ export type Database = {
           },
         ]
       }
+      fleet_service_request_lines: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string
+          fleet_id: string
+          id: string
+          line_kind: string
+          notes: string | null
+          price_status: string
+          quantity: number
+          requested_labor_hours: number | null
+          service_request_id: string
+          shop_id: string
+          source_fleet_program_id: string | null
+          source_inspection_template_id: string | null
+          source_menu_item_id: string | null
+          source_snapshot: Json
+          unit_price_snapshot: number | null
+          updated_at: string
+          vehicle_id: string
+          work_order_line_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          description: string
+          fleet_id: string
+          id?: string
+          line_kind: string
+          notes?: string | null
+          price_status?: string
+          quantity?: number
+          requested_labor_hours?: number | null
+          service_request_id: string
+          shop_id: string
+          source_fleet_program_id?: string | null
+          source_inspection_template_id?: string | null
+          source_menu_item_id?: string | null
+          source_snapshot?: Json
+          unit_price_snapshot?: number | null
+          updated_at?: string
+          vehicle_id: string
+          work_order_line_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string
+          fleet_id?: string
+          id?: string
+          line_kind?: string
+          notes?: string | null
+          price_status?: string
+          quantity?: number
+          requested_labor_hours?: number | null
+          service_request_id?: string
+          shop_id?: string
+          source_fleet_program_id?: string | null
+          source_inspection_template_id?: string | null
+          source_menu_item_id?: string | null
+          source_snapshot?: Json
+          unit_price_snapshot?: number | null
+          updated_at?: string
+          vehicle_id?: string
+          work_order_line_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_service_request_lines_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_service_request_id_fkey"
+            columns: ["service_request_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_service_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_source_fleet_program_id_fkey"
+            columns: ["source_fleet_program_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_source_inspection_template_id_fkey"
+            columns: ["source_inspection_template_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_source_menu_item_id_fkey"
+            columns: ["source_menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_service_request_lines_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_service_requests: {
         Row: {
           created_at: string
@@ -4013,6 +4417,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fleet_service_requests_source_pm_due_event_id_fkey"
+            columns: ["source_pm_due_event_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_pm_due_events"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "fleet_service_requests_source_pretrip_id_fkey"
             columns: ["source_pretrip_id"]
             isOneToOne: false
@@ -4070,75 +4481,6 @@ export type Database = {
           },
         ]
       }
-      fleet_service_request_lines: {
-        Row: {
-          created_at: string
-          created_by: string
-          description: string
-          fleet_id: string
-          id: string
-          line_kind: string
-          notes: string | null
-          price_status: string
-          quantity: number
-          requested_labor_hours: number | null
-          service_request_id: string
-          shop_id: string
-          source_fleet_program_id: string | null
-          source_inspection_template_id: string | null
-          source_menu_item_id: string | null
-          source_snapshot: Json
-          unit_price_snapshot: number | null
-          updated_at: string
-          vehicle_id: string
-          work_order_line_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string
-          description: string
-          fleet_id: string
-          id?: string
-          line_kind: string
-          notes?: string | null
-          price_status?: string
-          quantity?: number
-          requested_labor_hours?: number | null
-          service_request_id: string
-          shop_id: string
-          source_fleet_program_id?: string | null
-          source_inspection_template_id?: string | null
-          source_menu_item_id?: string | null
-          source_snapshot?: Json
-          unit_price_snapshot?: number | null
-          updated_at?: string
-          vehicle_id: string
-          work_order_line_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          created_by?: string
-          description?: string
-          fleet_id?: string
-          id?: string
-          line_kind?: string
-          notes?: string | null
-          price_status?: string
-          quantity?: number
-          requested_labor_hours?: number | null
-          service_request_id?: string
-          shop_id?: string
-          source_fleet_program_id?: string | null
-          source_inspection_template_id?: string | null
-          source_menu_item_id?: string | null
-          source_snapshot?: Json
-          unit_price_snapshot?: number | null
-          updated_at?: string
-          vehicle_id?: string
-          work_order_line_id?: string | null
-        }
-        Relationships: []
-      }
       fleet_unit_readings: {
         Row: {
           confidence: number
@@ -4188,136 +4530,36 @@ export type Database = {
           source_type?: string
           vehicle_id?: string
         }
-        Relationships: []
-      }
-      fleet_pm_policies: {
-        Row: {
-          active: boolean
-          anchor_date: string
-          anchor_engine_hours: number | null
-          anchor_odometer_km: number | null
-          created_at: string
-          created_by: string
-          fleet_id: string
-          id: string
-          interval_days: number | null
-          interval_hours: number | null
-          interval_km: number | null
-          last_completed_at: string | null
-          last_completed_work_order_id: string | null
-          name: string
-          program_id: string
-          requires_fleet_approval: boolean
-          shop_id: string
-          updated_at: string
-          vehicle_id: string | null
-        }
-        Insert: {
-          active?: boolean
-          anchor_date?: string
-          anchor_engine_hours?: number | null
-          anchor_odometer_km?: number | null
-          created_at?: string
-          created_by?: string
-          fleet_id: string
-          id?: string
-          interval_days?: number | null
-          interval_hours?: number | null
-          interval_km?: number | null
-          last_completed_at?: string | null
-          last_completed_work_order_id?: string | null
-          name: string
-          program_id: string
-          requires_fleet_approval?: boolean
-          shop_id: string
-          updated_at?: string
-          vehicle_id?: string | null
-        }
-        Update: {
-          active?: boolean
-          anchor_date?: string
-          anchor_engine_hours?: number | null
-          anchor_odometer_km?: number | null
-          created_at?: string
-          created_by?: string
-          fleet_id?: string
-          id?: string
-          interval_days?: number | null
-          interval_hours?: number | null
-          interval_km?: number | null
-          last_completed_at?: string | null
-          last_completed_work_order_id?: string | null
-          name?: string
-          program_id?: string
-          requires_fleet_approval?: boolean
-          shop_id?: string
-          updated_at?: string
-          vehicle_id?: string | null
-        }
-        Relationships: []
-      }
-      fleet_pm_due_events: {
-        Row: {
-          completed_at: string | null
-          created_at: string
-          deferred_until: string | null
-          due_reasons: string[]
-          due_snapshot: Json
-          evidence_snapshot_id: string | null
-          first_due_at: string
-          fleet_id: string
-          id: string
-          last_evaluated_at: string
-          policy_id: string
-          program_id: string
-          service_request_id: string | null
-          shop_id: string
-          status: string
-          triggering_reading_id: string | null
-          updated_at: string
-          vehicle_id: string
-        }
-        Insert: {
-          completed_at?: string | null
-          created_at?: string
-          deferred_until?: string | null
-          due_reasons?: string[]
-          due_snapshot?: Json
-          evidence_snapshot_id?: string | null
-          first_due_at?: string
-          fleet_id: string
-          id?: string
-          last_evaluated_at?: string
-          policy_id: string
-          program_id: string
-          service_request_id?: string | null
-          shop_id: string
-          status?: string
-          triggering_reading_id?: string | null
-          updated_at?: string
-          vehicle_id: string
-        }
-        Update: {
-          completed_at?: string | null
-          created_at?: string
-          deferred_until?: string | null
-          due_reasons?: string[]
-          due_snapshot?: Json
-          evidence_snapshot_id?: string | null
-          first_due_at?: string
-          fleet_id?: string
-          id?: string
-          last_evaluated_at?: string
-          policy_id?: string
-          program_id?: string
-          service_request_id?: string | null
-          shop_id?: string
-          status?: string
-          triggering_reading_id?: string | null
-          updated_at?: string
-          vehicle_id?: string
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fleet_unit_readings_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_readings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_readings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_readings_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       fleet_vehicles: {
         Row: {
@@ -19659,9 +19901,9 @@ export type Database = {
           quoted_at: string | null
           service_code: string | null
           shop_id: string
+          source_fleet_service_request_line_id: string | null
           source_inspection_id: string | null
           source_inspection_item_key: string | null
-          source_fleet_service_request_line_id: string | null
           source_intake_id: string | null
           source_row_id: string | null
           status: string
@@ -19724,9 +19966,9 @@ export type Database = {
           quoted_at?: string | null
           service_code?: string | null
           shop_id: string
+          source_fleet_service_request_line_id?: string | null
           source_inspection_id?: string | null
           source_inspection_item_key?: string | null
-          source_fleet_service_request_line_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
           status?: string
@@ -19789,9 +20031,9 @@ export type Database = {
           quoted_at?: string | null
           service_code?: string | null
           shop_id?: string
+          source_fleet_service_request_line_id?: string | null
           source_inspection_id?: string | null
           source_inspection_item_key?: string | null
-          source_fleet_service_request_line_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
           status?: string
@@ -19843,6 +20085,13 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_source_fleet_service_request_line_id_fkey"
+            columns: ["source_fleet_service_request_line_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_service_request_lines"
             referencedColumns: ["id"]
           },
           {
@@ -22026,37 +22275,6 @@ export type Database = {
     }
     Functions: {
       _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
-      convert_fleet_service_request_to_work_order_atomic: {
-        Args: { p_service_request_id: string }
-        Returns: {
-          conversion_status: string
-          work_order_id: string
-        }[]
-      }
-      create_fleet_service_request_atomic: {
-        Args: {
-          p_fleet_id: string
-          p_lines: Json
-          p_operation_key: string
-          p_requested_for_date: string | null
-          p_summary: string
-          p_title: string
-          p_vehicle_id: string
-        }
-        Returns: string
-      }
-      evaluate_fleet_pm_due_events: {
-        Args: {
-          p_fleet_id: string
-          p_vehicle_id?: string | null
-        }
-        Returns: {
-          created: boolean
-          due_event_id: string
-          policy_id: string
-          vehicle_id: string
-        }[]
-      }
       accept_customer_portal_invite_atomic: {
         Args: {
           p_actor_email: string
@@ -22650,6 +22868,13 @@ export type Database = {
           retry_after_seconds: number
         }[]
       }
+      convert_fleet_service_request_to_work_order_atomic: {
+        Args: { p_service_request_id: string }
+        Returns: {
+          conversion_status: string
+          work_order_id: string
+        }[]
+      }
       correct_work_order_line_labor_segment: {
         Args: {
           p_action: string
@@ -22663,6 +22888,18 @@ export type Database = {
           p_work_order_line_id: string
         }
         Returns: Json
+      }
+      create_fleet_service_request_atomic: {
+        Args: {
+          p_fleet_id: string
+          p_lines: Json
+          p_operation_key: string
+          p_requested_for_date: string
+          p_summary: string
+          p_title: string
+          p_vehicle_id: string
+        }
+        Returns: string
       }
       create_messaging_conversation: {
         Args: {
@@ -22799,6 +23036,15 @@ export type Database = {
         }
       }
       current_shop_id: { Args: never; Returns: string }
+      evaluate_fleet_pm_due_events: {
+        Args: { p_fleet_id: string; p_vehicle_id?: string }
+        Returns: {
+          created: boolean
+          due_event_id: string
+          policy_id: string
+          vehicle_id: string
+        }[]
+      }
       fail_stripe_webhook_event: {
         Args: { p_claim_token: string; p_error: string; p_event_id: string }
         Returns: boolean
@@ -24439,3 +24685,4 @@ export const Constants = {
     },
   },
 } as const
+
