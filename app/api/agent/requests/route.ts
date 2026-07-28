@@ -4,18 +4,16 @@ import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-// Normalize URL so we don't get `//feature-requests`
-const AGENT_SERVICE_URL =
-  process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
-  "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
+const AGENT_SERVICE_URL = String(process.env.PROFIXIQ_AGENT_URL ?? "")
+  .trim()
+  .replace(/\/+$/, "");
 
-// Service-role client used ONLY to sign private screenshot URLs
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   {
     auth: { persistSession: false },
-  }
+  },
 );
 
 type AgentGithubMeta = {
@@ -36,15 +34,28 @@ type AgentLLMMeta = {
   summary?: string | null;
 };
 
-type AgentServiceResponse = {
-  message?: string;
-  intent?: string | null;
-  request?: Record<string, unknown> | null;
-  github?: AgentGithubMeta | null;
-  llm?: AgentLLMMeta | null;
+type AgentWorkerKick = {
+  attempted?: boolean;
+  ok?: boolean;
+  status?: number;
 };
 
-// DB enum values
+type AgentServiceResponse = {
+  ok?: boolean;
+  message?: string;
+  requestId?: string | null;
+  intent?: string | null;
+  request?: Record<string, unknown> | null;
+  engineeringCaseId?: string | null;
+  currentStage?: string | null;
+  status?: string | null;
+  intakeJobId?: string | null;
+  workerKick?: AgentWorkerKick | null;
+  github?: AgentGithubMeta | null;
+  llm?: AgentLLMMeta | null;
+  analysis?: AgentLLMMeta | null;
+};
+
 type AgentIntent =
   | "feature_request"
   | "bug_report"
@@ -71,13 +82,28 @@ const AGENT_INTENTS: AgentIntent[] = [
 
 function normalizeIntent(raw: unknown): AgentIntent {
   if (typeof raw === "string") {
-    const match = AGENT_INTENTS.find((v) => v === raw);
+    const match = AGENT_INTENTS.find((value) => value === raw);
     if (match) return match;
   }
   return "feature_request";
 }
 
+function asNullableString(value: unknown): string | null {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || null;
+}
+
+function agentApiSecret(): string {
+  return String(
+    process.env.PROFIXIQ_AGENT_API_SECRET
+      ?? process.env.AGENT_API_SECRET
+      ?? "",
+  ).trim();
+}
+
 type CreateAgentRequestBody = {
+  requestId?: string;
+  reporterId?: string;
   description?: string;
   intent?: string;
   context?: Record<string, unknown>;
@@ -91,7 +117,6 @@ type CreateAgentRequestBody = {
 
 export async function GET() {
   const supabase = createServerSupabaseRoute();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -110,7 +135,7 @@ export async function GET() {
     console.error("agent_requests GET error", error);
     return NextResponse.json(
       { error: "Failed to load agent requests" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -119,7 +144,6 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -132,23 +156,21 @@ export async function POST(req: NextRequest) {
     | CreateAgentRequestBody
     | null;
 
-  if (!body || !body.description || !body.description.trim()) {
+  if (!body?.description?.trim()) {
     return NextResponse.json(
       {
         error: "description is required",
         example: {
-          description:
-            "tabbing is not working in corner grids; focus jumps out",
+          description: "tabbing is not working in corner grids; focus jumps out",
         },
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const description = body.description.trim();
   const intent = normalizeIntent(body.intent);
 
-  // Load profile
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, shop_id, role")
@@ -160,45 +182,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Profile not found" }, { status: 400 });
   }
 
-  // ---------------------------------------------------------------------------
-  // Create SHORT-LIVED SIGNED URLS for uploaded screenshots
-  // (bucket `agent_uploads` stays private, RLS unchanged)
-  // ---------------------------------------------------------------------------
   const attachmentIds = Array.isArray(body.attachmentIds)
     ? body.attachmentIds
     : [];
 
   let signedAttachments: { path: string; url: string; name: string }[] = [];
-
   if (attachmentIds.length > 0) {
     const { data, error } = await supabaseAdmin.storage
       .from("agent_uploads")
-      .createSignedUrls(attachmentIds, 60 * 60 * 24); // 24 hours
+      .createSignedUrls(attachmentIds, 60 * 60 * 24);
 
     if (error) {
       console.error("createSignedUrls error for agent_uploads:", error);
     } else if (data) {
-      signedAttachments = data.map((row, i) => ({
-        path: attachmentIds[i],
+      signedAttachments = data.map((row, index) => ({
+        path: attachmentIds[index],
         url: row.signedUrl,
-        name: attachmentIds[i].split("/").pop() ?? attachmentIds[i],
+        name: attachmentIds[index].split("/").pop() ?? attachmentIds[index],
       }));
     }
   }
 
-  // Structured context (what we store in DB)
+  const submittedRequestId = asNullableString(body.requestId)
+    ?? asNullableString(body.context?.requestId);
+
   const structuredContext = {
-    location: body.location ?? null,
-    steps: body.steps ?? null,
-    expected: body.expected ?? null,
-    actual: body.actual ?? null,
-    device: body.device ?? null,
+    requestId: submittedRequestId,
+    location: asNullableString(body.location),
+    steps: asNullableString(body.steps),
+    expected: asNullableString(body.expected),
+    actual: asNullableString(body.actual),
+    device: asNullableString(body.device),
     attachmentIds,
     attachments: signedAttachments,
     rawContext: body.context ?? {},
   };
 
-  // Insert initial request
   const { data: inserted, error: insertError } = await supabase
     .from("agent_requests")
     .insert({
@@ -217,120 +236,184 @@ export async function POST(req: NextRequest) {
     console.error("agent_requests insert error", insertError);
     return NextResponse.json(
       { error: "Failed to create agent request" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
   const requestId = inserted.id;
+  const signedScreenshotUrls = signedAttachments.map((attachment) => attachment.url);
+  const expectedBehavior = asNullableString(body.expected);
+  const actualBehavior = asNullableString(body.actual) ?? description;
+  const route = asNullableString(body.location);
+  const browser = asNullableString(body.device);
+  const agentSecret = agentApiSecret();
 
-  // Context we send to the Agent service (includes signed attachment URLs)
   const contextForAgent = {
     ...structuredContext,
     requestId,
+    expectedBehavior,
+    actualBehavior,
+    route,
+    browser,
+    platform: browser,
+    screenshots: signedScreenshotUrls,
+    role: profile.role,
+    shopId: profile.shop_id,
   };
 
-  // ---------------------------------------------------------------------------
-  // Call agent service
-  // - For "refactor" we call /refactors (agent will auto-infer file paths)
-  // - Otherwise we call /feature-requests
-  // ---------------------------------------------------------------------------
   let agentResponse: AgentServiceResponse | null = null;
+  let agentFailure: { status: number | null; detail: string } | null = null;
 
   try {
+    if (!AGENT_SERVICE_URL) {
+      throw new Error("PROFIXIQ_AGENT_URL is not configured");
+    }
+    if (!agentSecret) {
+      throw new Error("PROFIXIQ_AGENT_API_SECRET is not configured");
+    }
+
     const endpoint = intent === "refactor" ? "/refactors" : "/feature-requests";
+    const payload = intent === "refactor"
+      ? {
+          requestId,
+          source: profile.role ?? "user",
+          reporterId: profile.id,
+          shopId: profile.shop_id,
+          title: `Refactor: ${description.slice(0, 80)}`,
+          description,
+          context: contextForAgent,
+        }
+      : {
+          requestId,
+          source: profile.role ?? "user",
+          reporterId: profile.id,
+          shopId: profile.shop_id,
+          role: profile.role,
+          description,
+          intent,
+          expectedBehavior,
+          actualBehavior,
+          route,
+          browser,
+          platform: browser,
+          screenshots: signedScreenshotUrls,
+          context: contextForAgent,
+        };
 
-    const payload =
-      intent === "refactor"
-        ? {
-            requestId,
-            source: profile.role ?? "user",
-            reporterId: profile.id,
-            shopId: profile.shop_id,
-            title: `Refactor: ${description.slice(0, 80)}`,
-            description,
-            // IMPORTANT: Option B means NO paths required.
-            // Agent service will auto-select relevant files.
-            context: contextForAgent,
-          }
-        : {
-            requestId,
-            source: profile.role ?? "user",
-            reporterId: profile.id,
-            shopId: profile.shop_id,
-            description,
-            intent,
-            context: contextForAgent,
-          };
-
-    const res = await fetch(`${AGENT_SERVICE_URL}${endpoint}`, {
+    const response = await fetch(`${AGENT_SERVICE_URL}${endpoint}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-agent-api-secret": agentSecret,
+      },
       body: JSON.stringify(payload),
+      cache: "no-store",
     });
 
-    if (res.ok) {
-      agentResponse = (await res.json()) as AgentServiceResponse;
-      console.log(
-        "ProFixIQ-Agent response",
-        inserted.id,
-        JSON.stringify(agentResponse, null, 2)
-      );
+    const rawResponse = await response.text();
+    if (!response.ok) {
+      agentFailure = {
+        status: response.status,
+        detail: rawResponse.slice(0, 2_000) || `HTTP ${response.status}`,
+      };
     } else {
-      console.error(
-        "ProFixIQ-Agent returned non-OK",
-        res.status,
-        await res.text()
-      );
+      try {
+        agentResponse = JSON.parse(rawResponse) as AgentServiceResponse;
+      } catch {
+        agentFailure = {
+          status: response.status,
+          detail: "ProFixIQ-Agent returned invalid JSON",
+        };
+      }
     }
-  } catch (err) {
-    console.error("Error calling ProFixIQ-Agent", err);
+  } catch (error) {
+    agentFailure = {
+      status: null,
+      detail: error instanceof Error ? error.message : String(error),
+    };
   }
 
-  // Extract GitHub + LLM
+  if (agentFailure) {
+    const failureNote = [
+      "ProFixIQ-Agent request failed",
+      agentFailure.status ? `HTTP ${agentFailure.status}` : null,
+      agentFailure.detail,
+    ].filter(Boolean).join(": ");
+
+    const { data: failedRequest, error: failureUpdateError } = await supabase
+      .from("agent_requests")
+      .update({
+        status: "failed" as AgentRequestStatus,
+        normalized_json: {
+          ...structuredContext,
+          agentRequest: {
+            ok: false,
+            status: agentFailure.status,
+            error: agentFailure.detail,
+          },
+        },
+        llm_notes: failureNote,
+      })
+      .eq("id", requestId)
+      .select("*")
+      .single();
+
+    if (failureUpdateError) {
+      console.error("agent_requests failure update error", failureUpdateError);
+    }
+    console.error("Error calling ProFixIQ-Agent", agentFailure);
+
+    return NextResponse.json(
+      {
+        error: "ProFixIQ-Agent request failed",
+        detail: agentFailure.detail,
+        request: failedRequest ?? inserted,
+      },
+      { status: 502 },
+    );
+  }
+
   const github = agentResponse?.github ?? null;
-  const llmMeta = agentResponse?.llm ?? null;
-  const llm_confidence = llmMeta?.confidence ?? null;
+  const llmMeta = agentResponse?.llm ?? agentResponse?.analysis ?? null;
+  const llmConfidence = llmMeta?.confidence ?? null;
+  const llmNotes =
+    llmMeta?.notes
+    ?? llmMeta?.commentary
+    ?? llmMeta?.summary
+    ?? agentResponse?.message
+    ?? null;
 
-  const llm_notes =
-    llmMeta?.notes ??
-    llmMeta?.commentary ??
-    llmMeta?.summary ??
-    agentResponse?.message ??
-    null;
-
-  // -----------------------------------------------------
-  // Final intent logic (UI choice wins unless LLM switched
-  // into one of the catalog-add flows)
-  // -----------------------------------------------------
   let finalIntent: AgentIntent = intent;
   const agentIntent = agentResponse?.intent as AgentIntent | null | undefined;
-
   if (
-    agentIntent === "inspection_catalog_add" ||
-    agentIntent === "service_catalog_add"
+    agentIntent === "inspection_catalog_add"
+    || agentIntent === "service_catalog_add"
   ) {
     finalIntent = agentIntent;
   }
 
-  // Status selection
-  const status: AgentRequestStatus =
-    github?.prUrl
-      ? "awaiting_approval"
-      : github?.issueUrl
+  const hasPersistedEngineeringCase = Boolean(
+    agentResponse?.engineeringCaseId
+    || agentResponse?.intakeJobId,
+  );
+  const status: AgentRequestStatus = github?.prUrl
+    ? "awaiting_approval"
+    : github?.issueUrl
       ? "in_progress"
-      : finalIntent === "inspection_catalog_add" ||
-        finalIntent === "service_catalog_add"
-      ? "merged"
-      : "submitted";
+      : hasPersistedEngineeringCase
+        ? "in_progress"
+        : finalIntent === "inspection_catalog_add"
+            || finalIntent === "service_catalog_add"
+          ? "merged"
+          : "submitted";
 
-  // Update row with agent details
   const { data: updated, error: updateError } = await supabase
     .from("agent_requests")
     .update({
       intent: finalIntent,
       normalized_json: {
         ...structuredContext,
-        agentRequest: agentResponse?.request ?? {},
+        agentRequest: agentResponse ?? {},
       },
       github_issue_number: github?.issueNumber ?? null,
       github_issue_url: github?.issueUrl ?? null,
@@ -339,11 +422,11 @@ export async function POST(req: NextRequest) {
       github_branch: github?.branchName ?? null,
       github_commit_sha: github?.commitSha ?? null,
       llm_model: llmMeta?.model ?? null,
-      llm_confidence,
-      llm_notes: llm_notes ?? null,
+      llm_confidence: llmConfidence,
+      llm_notes: llmNotes,
       status,
     })
-    .eq("id", inserted.id)
+    .eq("id", requestId)
     .select("*")
     .single();
 
