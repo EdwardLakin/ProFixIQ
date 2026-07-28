@@ -1,7 +1,7 @@
 // app/portal/request/build/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Toaster, toast } from "sonner";
@@ -10,13 +10,15 @@ import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import LinkButton from "@shared/components/ui/LinkButton";
 
-import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
+import SignaturePad, {
+  openSignaturePad,
+} from "@/features/shared/signaturePad/controller";
 import LegalTerms from "@/features/shared/components/LegalTerms";
 import { uploadSignatureImage } from "@/features/shared/lib/utils/uploadSignature";
-import {
-  buildDiagnosticRequestNotes,
-  diagnosticRequestIsComplete,
-} from "@/features/portal/lib/request/diagnosticDetails";
+import SharedServiceRequestBuilder, {
+  type DiagnosticRequestDraft,
+  type RequestCatalogItem,
+} from "@/features/portal/components/request/SharedServiceRequestBuilder";
 
 type DB = Database;
 
@@ -39,14 +41,20 @@ function inputClass() {
 }
 
 function sectionTitle(s: string) {
-  return <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">{s}</div>;
+  return (
+    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+      {s}
+    </div>
+  );
 }
 
 async function postJson<TResp>(
   url: string,
   body: unknown,
   idempotencyKey?: string,
-): Promise<{ ok: true; data: TResp } | { ok: false; error: string; status: number }> {
+): Promise<
+  { ok: true; data: TResp } | { ok: false; error: string; status: number }
+> {
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -57,7 +65,10 @@ async function postJson<TResp>(
     cache: "no-store",
   });
 
-  const j = (await res.json().catch(() => ({}))) as { error?: string } & Record<string, unknown>;
+  const j = (await res.json().catch(() => ({}))) as { error?: string } & Record<
+    string,
+    unknown
+  >;
 
   if (!res.ok)
     return {
@@ -76,7 +87,10 @@ function fmtMoney(n: number | null | undefined) {
 
 function ymm(v: VehicleRow | null) {
   if (!v) return "";
-  return [v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ").trim();
+  return [v.year ?? "", v.make ?? "", v.model ?? ""]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 }
 
 function safeTrim(s: unknown) {
@@ -84,7 +98,9 @@ function safeTrim(s: unknown) {
 }
 
 function rec(row: unknown): Record<string, unknown> {
-  return (row && typeof row === "object" ? (row as Record<string, unknown>) : {}) as Record<string, unknown>;
+  return (
+    row && typeof row === "object" ? (row as Record<string, unknown>) : {}
+  ) as Record<string, unknown>;
 }
 
 function getOptString(row: unknown, key: string): string | null {
@@ -120,7 +136,10 @@ function modalShell(open: boolean) {
 }
 
 function modalBackdrop(open: boolean) {
-  return cx("absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm transition-opacity", open ? "opacity-100" : "opacity-0");
+  return cx(
+    "absolute inset-0 bg-[color:var(--theme-surface-overlay)] backdrop-blur-sm transition-opacity",
+    open ? "opacity-100" : "opacity-0",
+  );
 }
 
 function modalCard(open: boolean) {
@@ -138,9 +157,19 @@ function fmtBookingRange(b: BookingRow | null) {
 
   const sd = new Date(s);
   const ed = new Date(e);
-  const date = sd.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  const st = sd.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  const et = ed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const date = sd.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  const st = sd.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const et = ed.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
   return `${date} • ${st} – ${et}`;
 }
 
@@ -159,14 +188,10 @@ export default function PortalRequestBuildPage() {
   const [booking, setBooking] = useState<BookingRow | null>(null);
 
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
-  const [menuSearch, setMenuSearch] = useState("");
 
   const [lines, setLines] = useState<WorkOrderLineRow[]>([]);
   const [quoteLines, setQuoteLines] = useState<QuoteLineRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [customDesc, setCustomDesc] = useState("");
-  const [customNotes, setCustomNotes] = useState("");
 
   const [qoDesc, setQoDesc] = useState("");
   const [qoNotes, setQoNotes] = useState("");
@@ -174,12 +199,10 @@ export default function PortalRequestBuildPage() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  const [diagnosticTiming, setDiagnosticTiming] = useState("");
-  const [diagnosticFrequency, setDiagnosticFrequency] = useState("");
-  const [diagnosticConditions, setDiagnosticConditions] = useState("");
-  const [diagnosticWarnings, setDiagnosticWarnings] = useState("");
-  const [diagnosticDrivable, setDiagnosticDrivable] = useState<"yes" | "no" | "unsure">("unsure");
   const [addingLine, setAddingLine] = useState(false);
+  const [busyCatalogItemId, setBusyCatalogItemId] = useState<string | null>(
+    null,
+  );
 
   const [quoteKind, setQuoteKind] = useState<"repair" | "parts_only">("repair");
   const [addingQuote, setAddingQuote] = useState(false);
@@ -189,18 +212,6 @@ export default function PortalRequestBuildPage() {
   const [agreed, setAgreed] = useState(false);
   const [sigUrl, setSigUrl] = useState<string | null>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
-
-  const filteredMenu = useMemo(() => {
-    const q = menuSearch.trim().toLowerCase();
-    if (!q) return menuItems.slice(0, 40);
-
-    return menuItems
-      .filter((m) => {
-        const hay = [menuTitle(m), m.description ?? "", m.category ?? "", m.service_key ?? ""].join(" ").toLowerCase();
-        return hay.includes(q);
-      })
-      .slice(0, 40);
-  }, [menuItems, menuSearch]);
 
   async function loadAll() {
     if (!workOrderId) {
@@ -284,7 +295,9 @@ export default function PortalRequestBuildPage() {
       if (w.vehicle_id) {
         const { data: v, error: vErr } = await supabase
           .from("vehicles")
-          .select("id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at")
+          .select(
+            "id,customer_id,shop_id,year,make,model,vin,license_plate,mileage,color,created_at",
+          )
           .eq("id", w.vehicle_id)
           .maybeSingle();
 
@@ -338,7 +351,8 @@ export default function PortalRequestBuildPage() {
 
           const yearOk = my == null || (vy != null && my === vy);
           const makeOk = !mm || (vm && mm.toLowerCase() === vm.toLowerCase());
-          const modelOk = !mmo || (vmo && mmo.toLowerCase() === vmo.toLowerCase());
+          const modelOk =
+            !mmo || (vmo && mmo.toLowerCase() === vmo.toLowerCase());
 
           return yearOk && makeOk && modelOk;
         });
@@ -361,48 +375,40 @@ export default function PortalRequestBuildPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workOrderId, bookingId]);
 
-  async function addMenuLine(menuItemId: string) {
+  async function addMenuLine(item: RequestCatalogItem) {
     if (!wo?.id) return;
+    setBusyCatalogItemId(item.id);
 
-    const r = await postJson<{ line?: unknown }>("/api/portal/request/add-menu-line", {
-      workOrderId: wo.id,
-      menuItemId,
-    }, crypto.randomUUID());
+    const r = await postJson<{ line?: unknown }>(
+      "/api/portal/request/add-menu-line",
+      {
+        workOrderId: wo.id,
+        menuItemId: item.id,
+      },
+      crypto.randomUUID(),
+    );
 
     if (!r.ok) {
       toast.error(r.error);
+      setBusyCatalogItemId(null);
       return;
     }
 
     toast.success("Added menu item.");
     await loadAll();
+    setBusyCatalogItemId(null);
   }
 
-  async function addCustomLine() {
+  async function addCustomLine(draft: DiagnosticRequestDraft) {
     if (!wo?.id || addingLine) return;
-
-    const desc = customDesc.trim();
-    const details = {
-      concern: desc,
-      timing: diagnosticTiming,
-      frequency: diagnosticFrequency,
-      conditions: diagnosticConditions,
-      warningLights: diagnosticWarnings,
-      drivable: diagnosticDrivable,
-      additionalNotes: customNotes,
-    };
-    if (!diagnosticRequestIsComplete(details)) {
-      toast.error("Describe the concern that needs diagnosis.");
-      return;
-    }
 
     setAddingLine(true);
     const r = await postJson<{ line?: unknown }>(
       "/api/portal/request/add-custom-line",
       {
         workOrderId: wo.id,
-        description: `Diagnose: ${desc}`,
-        notes: buildDiagnosticRequestNotes(details),
+        description: draft.description,
+        notes: draft.notes,
         lineType: "job",
         diagnostic: true,
       },
@@ -416,13 +422,6 @@ export default function PortalRequestBuildPage() {
     }
 
     toast.success("Diagnostic concern added.");
-    setCustomDesc("");
-    setCustomNotes("");
-    setDiagnosticTiming("");
-    setDiagnosticFrequency("");
-    setDiagnosticConditions("");
-    setDiagnosticWarnings("");
-    setDiagnosticDrivable("unsure");
     await loadAll();
     setAddingLine(false);
   }
@@ -437,7 +436,9 @@ export default function PortalRequestBuildPage() {
     }
 
     const qtyN = Number(qoQty);
-    const qty = Number.isFinite(qtyN) ? Math.max(1, Math.min(99, Math.trunc(qtyN))) : 1;
+    const qty = Number.isFinite(qtyN)
+      ? Math.max(1, Math.min(99, Math.trunc(qtyN)))
+      : 1;
 
     setAddingQuote(true);
     const r = await postJson<{ quoteLineId?: string }>(
@@ -561,7 +562,16 @@ export default function PortalRequestBuildPage() {
   }
 
   if (loading) {
-    return <div className={cardClass() + " mx-auto max-w-3xl text-sm text-[color:var(--theme-text-primary)]"}>Loading…</div>;
+    return (
+      <div
+        className={
+          cardClass() +
+          " mx-auto max-w-3xl text-sm text-[color:var(--theme-text-primary)]"
+        }
+      >
+        Loading…
+      </div>
+    );
   }
 
   if (!wo?.id || !customer?.id) {
@@ -569,8 +579,12 @@ export default function PortalRequestBuildPage() {
       <div className="mx-auto max-w-3xl space-y-3 text-[color:var(--theme-text-primary)]">
         <Toaster position="top-center" />
         <div className={cardClass()}>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">Build request</h1>
-          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">This request is missing or expired.</p>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
+            Build request
+          </h1>
+          <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+            This request is missing or expired.
+          </p>
           <div className="mt-4">
             <LinkButton href="/portal/request/when" size="sm">
               Start again
@@ -582,7 +596,10 @@ export default function PortalRequestBuildPage() {
   }
 
   const name =
-    [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() || "Customer";
+    [customer.first_name ?? "", customer.last_name ?? ""]
+      .filter(Boolean)
+      .join(" ")
+      .trim() || "Customer";
 
   const bookingLabel = fmtBookingRange(booking);
 
@@ -604,13 +621,22 @@ export default function PortalRequestBuildPage() {
             </h1>
             <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"} • WO{" "}
-              <span className="font-mono text-[color:var(--theme-text-secondary)]">{wo.id.slice(0, 8)}…</span>
-              {bookingLabel ? <span className="ml-2">• {bookingLabel}</span> : null}
+              <span className="font-mono text-[color:var(--theme-text-secondary)]">
+                {wo.id.slice(0, 8)}…
+              </span>
+              {bookingLabel ? (
+                <span className="ml-2">• {bookingLabel}</span>
+              ) : null}
             </p>
           </div>
 
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => void loadAll()} disabled={refreshing}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void loadAll()}
+              disabled={refreshing}
+            >
               {refreshing ? "Refreshing…" : "Refresh"}
             </Button>
             <LinkButton href="/portal/request/when" variant="outline" size="sm">
@@ -622,7 +648,9 @@ export default function PortalRequestBuildPage() {
 
       <section className={cardClass()}>
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Current draft</h2>
+          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            Current draft
+          </h2>
           <div className="text-[0.75rem] text-[color:var(--theme-text-muted)]">
             Lines: {lines.length} • Quote requests: {quoteLines.length}
           </div>
@@ -630,7 +658,8 @@ export default function PortalRequestBuildPage() {
 
         {lines.length === 0 && quoteLines.length === 0 ? (
           <div className="mt-3 rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
-            Nothing added yet. Add menu items, custom lines, or quote requests below.
+            Nothing added yet. Add menu items, custom lines, or quote requests
+            below.
           </div>
         ) : (
           <div className="mt-3 space-y-2">
@@ -640,12 +669,20 @@ export default function PortalRequestBuildPage() {
               const est = getOptNumber(l, "price_estimate");
 
               return (
-                <div key={l.id} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <div
+                  key={l.id}
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                        {title}
+                      </div>
                       <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
-                        Status: <span className="text-[color:var(--theme-text-secondary)]">{status}</span>
+                        Status:{" "}
+                        <span className="text-[color:var(--theme-text-secondary)]">
+                          {status}
+                        </span>
                         {l.menu_item_id ? (
                           <span className="ml-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
                             menu
@@ -657,12 +694,17 @@ export default function PortalRequestBuildPage() {
                         )}
                       </div>
 
-                      {typeof l.notes === "string" && l.notes.trim().length > 0 ? (
-                        <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">{l.notes}</div>
+                      {typeof l.notes === "string" &&
+                      l.notes.trim().length > 0 ? (
+                        <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
+                          {l.notes}
+                        </div>
                       ) : null}
                     </div>
 
-                    <div className="text-right text-xs text-[color:var(--theme-text-secondary)]">Est: {fmtMoney(est)}</div>
+                    <div className="text-right text-xs text-[color:var(--theme-text-secondary)]">
+                      Est: {fmtMoney(est)}
+                    </div>
                   </div>
                 </div>
               );
@@ -671,23 +713,38 @@ export default function PortalRequestBuildPage() {
             {quoteLines.map((q) => {
               const title = (q.description ?? "Quote request").toString();
               const stage = (q.stage ?? "advisor_pending").toString();
-              const qty = typeof q.qty === "number" && Number.isFinite(q.qty) ? q.qty : 1;
+              const qty =
+                typeof q.qty === "number" && Number.isFinite(q.qty) ? q.qty : 1;
 
               return (
-                <div key={q.id} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                <div
+                  key={q.id}
+                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                        {title}
+                      </div>
                       <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
-                        Stage: <span className="text-[color:var(--theme-text-secondary)]">{stage}</span> • Qty{" "}
-                        <span className="text-[color:var(--theme-text-secondary)]">{qty}</span>
+                        Stage:{" "}
+                        <span className="text-[color:var(--theme-text-secondary)]">
+                          {stage}
+                        </span>{" "}
+                        • Qty{" "}
+                        <span className="text-[color:var(--theme-text-secondary)]">
+                          {qty}
+                        </span>
                         <span className="ml-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
                           quote
                         </span>
                       </div>
 
-                      {typeof q.notes === "string" && q.notes.trim().length > 0 ? (
-                        <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">{q.notes}</div>
+                      {typeof q.notes === "string" &&
+                      q.notes.trim().length > 0 ? (
+                        <div className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+                          {q.notes}
+                        </div>
                       ) : null}
                     </div>
                   </div>
@@ -698,117 +755,66 @@ export default function PortalRequestBuildPage() {
         )}
       </section>
 
-      <section className={cardClass() + " space-y-3"}>
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            {sectionTitle("Add menu items")}
-            <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Fixed pricing lines your shop already offers.</div>
-          </div>
-          <div className="w-full max-w-sm">
-            <input className={inputClass()} placeholder="Search menu…" value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} />
-          </div>
-        </div>
-
-        {filteredMenu.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm text-[color:var(--theme-text-secondary)]">
-            No menu items found.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {filteredMenu.map((m) => {
-              const title = menuTitle(m);
-              const hrs = (m.base_labor_hours ?? m.labor_hours ?? null) as number | null;
-              const price = (m.total_price ?? m.base_price ?? null) as number | null;
-
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => void addMenuLine(m.id)}
-                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-left transition hover:bg-[color:var(--theme-surface-inset)] active:scale-[0.99]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{title}</div>
-                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                        {m.category ? <span>{String(m.category)}</span> : <span>Menu</span>}
-                        {hrs != null ? <span className="ml-2">• {hrs}h</span> : null}
-                      </div>
-                    </div>
-                    <div className="text-xs text-[color:var(--theme-text-secondary)]">{fmtMoney(price)}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <section className={cardClass() + " space-y-3"}>
-        {sectionTitle("Something needs diagnosis")}
-        <div className="text-xs text-[color:var(--theme-text-muted)]">
-          These details are added only to this diagnostic line so the technician gets a useful complaint instead of a generic diagnosis request.
-        </div>
-
-        <input
-          className={inputClass()}
-          placeholder="What is the vehicle doing? Example: Steering wheel shakes at highway speed"
-          value={customDesc}
-          onChange={(e) => setCustomDesc(e.target.value)}
-        />
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <input className={inputClass()} placeholder="When does it happen?" value={diagnosticTiming} onChange={(e) => setDiagnosticTiming(e.target.value)} />
-          <select className={inputClass()} value={diagnosticFrequency} onChange={(e) => setDiagnosticFrequency(e.target.value)}>
-            <option value="">How often?</option>
-            <option value="Every time">Every time</option>
-            <option value="Often">Often</option>
-            <option value="Sometimes">Sometimes</option>
-            <option value="Happened once">Happened once</option>
-          </select>
-          <input className={inputClass()} placeholder="Speed, temperature, braking, turning…" value={diagnosticConditions} onChange={(e) => setDiagnosticConditions(e.target.value)} />
-          <input className={inputClass()} placeholder="Warning lights or fault codes" value={diagnosticWarnings} onChange={(e) => setDiagnosticWarnings(e.target.value)} />
-        </div>
-        <label className="block space-y-2 text-xs text-[color:var(--theme-text-secondary)]">
-          <span>Does it feel safe to drive?</span>
-          <select className={inputClass()} value={diagnosticDrivable} onChange={(e) => setDiagnosticDrivable(e.target.value as "yes" | "no" | "unsure")}>
-            <option value="unsure">Unsure</option>
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </select>
-        </label>
-        <textarea
-          className={inputClass() + " min-h-[92px] resize-none"}
-          placeholder="Anything else the technician should know?"
-          value={customNotes}
-          onChange={(e) => setCustomNotes(e.target.value)}
-        />
-
-        <div className="flex gap-2">
-          <Button type="button" onClick={() => void addCustomLine()} disabled={addingLine}>
-            {addingLine ? "Adding…" : "Add diagnostic concern"}
-          </Button>
-        </div>
-      </section>
+      <SharedServiceRequestBuilder
+        menuItems={menuItems.map((item) => ({
+          id: item.id,
+          kind: "menu",
+          title: menuTitle(item),
+          description: item.description,
+          category: item.category,
+          laborHours: item.base_labor_hours ?? item.labor_hours ?? null,
+          price: item.total_price ?? item.base_price ?? null,
+        }))}
+        busyItemId={busyCatalogItemId}
+        diagnosticBusy={addingLine}
+        onAddCatalogItem={addMenuLine}
+        onAddDiagnostic={addCustomLine}
+      />
 
       <section className={cardClass() + " space-y-3"}>
         {sectionTitle("Request pricing instead")}
         <div className="text-xs text-[color:var(--theme-text-muted)]">
-          Ask for a repair estimate or send a parts-only request directly to Parts for pickup.
+          Ask for a repair estimate or send a parts-only request directly to
+          Parts for pickup.
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => setQuoteKind("repair")} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${quoteKind === "repair" ? "border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)]" : "border-[color:var(--theme-border-soft)]"}`}>Repair quote</button>
-          <button type="button" onClick={() => setQuoteKind("parts_only")} className={`rounded-xl border px-3 py-3 text-sm font-semibold ${quoteKind === "parts_only" ? "border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)]" : "border-[color:var(--theme-border-soft)]"}`}>Parts for pickup</button>
+          <button
+            type="button"
+            onClick={() => setQuoteKind("repair")}
+            className={`rounded-xl border px-3 py-3 text-sm font-semibold ${quoteKind === "repair" ? "border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)]" : "border-[color:var(--theme-border-soft)]"}`}
+          >
+            Repair quote
+          </button>
+          <button
+            type="button"
+            onClick={() => setQuoteKind("parts_only")}
+            className={`rounded-xl border px-3 py-3 text-sm font-semibold ${quoteKind === "parts_only" ? "border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)]" : "border-[color:var(--theme-border-soft)]"}`}
+          >
+            Parts for pickup
+          </button>
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px]">
           <input
             className={inputClass()}
-            placeholder={quoteKind === "repair" ? "Example: Front brake pads and rotors" : "Example: Four winter tires, 275/65R18"}
+            placeholder={
+              quoteKind === "repair"
+                ? "Example: Front brake pads and rotors"
+                : "Example: Four winter tires, 275/65R18"
+            }
             value={qoDesc}
             onChange={(e) => setQoDesc(e.target.value)}
           />
-          {quoteKind === "parts_only" ? <input className={inputClass()} inputMode="numeric" placeholder="Qty" value={qoQty} onChange={(e) => setQoQty(e.target.value)} /> : null}
+          {quoteKind === "parts_only" ? (
+            <input
+              className={inputClass()}
+              inputMode="numeric"
+              placeholder="Qty"
+              value={qoQty}
+              onChange={(e) => setQoQty(e.target.value)}
+            />
+          ) : null}
         </div>
 
         <textarea
@@ -819,8 +825,17 @@ export default function PortalRequestBuildPage() {
         />
 
         <div className="flex gap-2">
-          <Button type="button" onClick={() => void addQuoteOnly()} variant="outline" disabled={addingQuote}>
-            {addingQuote ? "Sending…" : quoteKind === "parts_only" ? "Send to Parts" : "Request repair quote"}
+          <Button
+            type="button"
+            onClick={() => void addQuoteOnly()}
+            variant="outline"
+            disabled={addingQuote}
+          >
+            {addingQuote
+              ? "Sending…"
+              : quoteKind === "parts_only"
+                ? "Send to Parts"
+                : "Request repair quote"}
           </Button>
         </div>
       </section>
@@ -828,9 +843,12 @@ export default function PortalRequestBuildPage() {
       <section className={cardClass()}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Review &amp; submit</div>
+            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              Review &amp; submit
+            </div>
             <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              Review the selected services and send the appointment request to the shop.
+              Review the selected services and send the appointment request to
+              the shop.
             </div>
           </div>
 
@@ -841,20 +859,28 @@ export default function PortalRequestBuildPage() {
       </section>
 
       <div className="pb-2 text-[0.75rem] text-[color:var(--theme-text-muted)]">
-        Known services stay fast. Diagnostic questions appear only when a concern needs diagnosis.
+        Known services stay fast. Diagnostic questions appear only when a
+        concern needs diagnosis.
       </div>
 
       {/* Review & Sign modal */}
       <div className={modalShell(reviewOpen)} aria-hidden={!reviewOpen}>
-        <div className={modalBackdrop(reviewOpen)} onClick={() => setReviewOpen(false)} />
+        <div
+          className={modalBackdrop(reviewOpen)}
+          onClick={() => setReviewOpen(false)}
+        />
         <div className={modalCard(reviewOpen)} role="dialog" aria-modal="true">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="font-blackops text-[0.9rem] uppercase tracking-[0.18em]" style={{ color: COPPER }}>
+              <div
+                className="font-blackops text-[0.9rem] uppercase tracking-[0.18em]"
+                style={{ color: COPPER }}
+              >
                 Review &amp; sign
               </div>
               <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                Confirm your requested services and agree to terms before submitting.
+                Confirm your requested services and agree to terms before
+                submitting.
               </div>
             </div>
 
@@ -869,24 +895,39 @@ export default function PortalRequestBuildPage() {
 
           <div className="mt-4 grid gap-3">
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Summary</div>
+              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                Summary
+              </div>
               <div className="mt-2 text-sm text-[color:var(--theme-text-primary)]">
                 {name} • {vehicle ? ymm(vehicle) : "Vehicle not set"}
               </div>
               <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                 {bookingLabel ? <span>{bookingLabel} • </span> : null}
-                WO <span className="font-mono text-[color:var(--theme-text-secondary)]">{wo.id}</span> • Lines {lines.length} • Quote requests{" "}
-                {quoteLines.length}
+                WO{" "}
+                <span className="font-mono text-[color:var(--theme-text-secondary)]">
+                  {wo.id}
+                </span>{" "}
+                • Lines {lines.length} • Quote requests {quoteLines.length}
               </div>
-
             </div>
 
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
-              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">Disclaimers</div>
+              <div className="text-[0.7rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                Disclaimers
+              </div>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-[color:var(--theme-text-secondary)]">
-                <li>Prices and estimates are subject to change after inspection and diagnosis.</li>
-                <li>This is a request and is not confirmed until the shop approves the appointment.</li>
-                <li>Parts availability and additional findings may affect timing and total cost.</li>
+                <li>
+                  Prices and estimates are subject to change after inspection
+                  and diagnosis.
+                </li>
+                <li>
+                  This is a request and is not confirmed until the shop approves
+                  the appointment.
+                </li>
+                <li>
+                  Parts availability and additional findings may affect timing
+                  and total cost.
+                </li>
               </ul>
             </div>
 
@@ -897,31 +938,49 @@ export default function PortalRequestBuildPage() {
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs text-[color:var(--theme-text-secondary)]">
-                  Signature <span className="text-[color:var(--theme-text-muted)]">(recommended)</span>
+                  Signature{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">
+                    (recommended)
+                  </span>
                 </div>
                 <div className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                   {sigUrl ? (
                     <span className="text-emerald-200">Saved</span>
                   ) : (
-                    <span className="text-[color:var(--theme-text-secondary)]">Not provided</span>
+                    <span className="text-[color:var(--theme-text-secondary)]">
+                      Not provided
+                    </span>
                   )}
                 </div>
               </div>
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => void captureSignature()} disabled={reviewBusy}>
-                  {reviewBusy ? "Working…" : sigUrl ? "Re-sign" : "Add signature"}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void captureSignature()}
+                  disabled={reviewBusy}
+                >
+                  {reviewBusy
+                    ? "Working…"
+                    : sigUrl
+                      ? "Re-sign"
+                      : "Add signature"}
                 </Button>
 
                 <Button
                   type="button"
-                  onClick={() => void finalizeSubmit({ requireSignature: false })}
+                  onClick={() =>
+                    void finalizeSubmit({ requireSignature: false })
+                  }
                   disabled={submitting || reviewBusy || !agreed}
                 >
                   {submitting ? "Submitting…" : "Agree & Submit request"}
                 </Button>
 
-                <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">Staff will review and approve the appointment.</span>
+                <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
+                  Staff will review and approve the appointment.
+                </span>
               </div>
             </div>
           </div>

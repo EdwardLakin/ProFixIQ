@@ -47,9 +47,9 @@ type ListPretripBody = {
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
 
-  const raw = (await req
-    .json()
-    .catch(() => ({}))) as Partial<CreatePretripBody & ListPretripBody>;
+  const raw = (await req.json().catch(() => ({}))) as Partial<
+    CreatePretripBody & ListPretripBody
+  >;
 
   // ───────── Creation mode (mobile / portal pre-trip) ─────────
   if (typeof raw.unitId === "string") {
@@ -105,6 +105,15 @@ export async function POST(req: NextRequest) {
 
       const hasDefects =
         Object.values(body.defects ?? {}).some((v) => v === "defect") ?? false;
+      const odometer =
+        body.odometer && body.odometer.trim() ? Number(body.odometer) : null;
+
+      if (odometer != null && (!Number.isFinite(odometer) || odometer < 0)) {
+        return NextResponse.json(
+          { error: "Odometer must be a valid non-negative number." },
+          { status: 400 },
+        );
+      }
 
       const checklist = {
         defects: body.defects ?? {},
@@ -125,7 +134,7 @@ export async function POST(req: NextRequest) {
           vehicle_id: vehicle.id,
           driver_profile_id: actor.userId,
           driver_name: body.driverName,
-          odometer_km: body.odometer ? Number(body.odometer) : null,
+          odometer_km: odometer,
           checklist,
           notes: body.notes,
           has_defects: hasDefects,
@@ -143,10 +152,28 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const { error: pmEvaluationError } = await supabase.rpc(
+        "evaluate_fleet_pm_due_events",
+        {
+          p_fleet_id: scope.fleetId,
+          p_vehicle_id: vehicle.id,
+        },
+      );
+
+      if (pmEvaluationError) {
+        // The pre-trip and reading are already durable. PM evaluation is replay-safe.
+        // eslint-disable-next-line no-console
+        console.error(
+          "[fleet/pretrip] PM evaluation deferred",
+          pmEvaluationError,
+        );
+      }
+
       return NextResponse.json({
         id: inserted.id,
         hasDefects: inserted.has_defects ?? hasDefects,
         status: inserted.status ?? status,
+        pmEvaluationQueued: !pmEvaluationError,
       });
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -228,7 +255,8 @@ export async function POST(req: NextRequest) {
         null;
 
       // Fallback to derived status if null (for legacy rows)
-      const derivedStatus = row.status ?? (row.has_defects ? "open" : "reviewed");
+      const derivedStatus =
+        row.status ?? (row.has_defects ? "open" : "reviewed");
 
       return {
         id: row.id,
