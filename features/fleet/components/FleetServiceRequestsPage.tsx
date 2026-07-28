@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { Database } from "@shared/types/types/supabase";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
@@ -17,8 +18,9 @@ export default function FleetServiceRequestsPage({
   const [requests, setRequests] = useState<FleetServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] =
-    useState<FleetServiceRequest["status"] | "all">("open");
+  const [statusFilter, setStatusFilter] = useState<
+    FleetServiceRequest["status"] | "all"
+  >("open");
 
   useEffect(() => {
     let cancelled = false;
@@ -61,15 +63,27 @@ export default function FleetServiceRequestsPage({
   return (
     <main className="min-h-[calc(100vh-3rem)] px-4 py-6 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto w-full max-w-5xl">
-        <h1
-          className="mb-2 text-3xl text-sky-300"
-          style={{ fontFamily: "var(--font-blackops)" }}
-        >
-          Fleet Service Requests
-        </h1>
-        <p className="mb-4 text-xs text-[color:var(--theme-text-muted)]">
-          Actor surface: {uiContext.actorLabel}
-        </p>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1
+              className="mb-2 text-3xl text-sky-300"
+              style={{ fontFamily: "var(--font-blackops)" }}
+            >
+              Fleet Service Requests
+            </h1>
+            <p className="text-xs text-[color:var(--theme-text-muted)]">
+              Actor surface: {uiContext.actorLabel}
+            </p>
+          </div>
+          {uiContext.capabilities.canCreateFleetWorkOrders ? (
+            <Link
+              href="/portal/fleet/request/build"
+              className="rounded-xl bg-sky-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sky-200"
+            >
+              Build service request
+            </Link>
+          ) : null}
+        </div>
 
         <div className="mb-4 flex flex-wrap gap-3">
           {(["all", "open", "scheduled", "completed"] as const).map((st) => (
@@ -90,12 +104,15 @@ export default function FleetServiceRequestsPage({
         {error && <p className="text-sm text-red-400">Error: {error}</p>}
 
         {loading && (
-          <p className="text-sm text-[color:var(--theme-text-secondary)]">Loading requests…</p>
+          <p className="text-sm text-[color:var(--theme-text-secondary)]">
+            Loading requests…
+          </p>
         )}
 
         {!loading && requests.length === 0 && (
           <p className="mt-4 text-sm text-[color:var(--theme-text-secondary)]">
-            No service requests {statusFilter !== "all" ? `(${statusFilter})` : ""}.
+            No service requests{" "}
+            {statusFilter !== "all" ? `(${statusFilter})` : ""}.
           </p>
         )}
 
@@ -107,7 +124,9 @@ export default function FleetServiceRequestsPage({
             >
               <div className="flex justify-between gap-3">
                 <div>
-                  <p className="font-medium text-[color:var(--theme-text-primary)]">{req.title}</p>
+                  <p className="font-medium text-[color:var(--theme-text-primary)]">
+                    {req.title}
+                  </p>
                   <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                     {req.severity.toUpperCase()} •{" "}
                     {new Date(req.created_at).toLocaleString()}

@@ -3,10 +3,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 
-
 type ConvertBody = {
   serviceRequestId: string;
 };
+
+type ConversionResult = {
+  conversion_status: string;
+  work_order_id: string;
+};
+
+function firstConversionResult(value: unknown): ConversionResult | null {
+  if (!Array.isArray(value)) return null;
+  const row = value[0];
+  if (
+    typeof row !== "object" ||
+    row === null ||
+    typeof (row as { work_order_id?: unknown }).work_order_id !== "string" ||
+    typeof (row as { conversion_status?: unknown }).conversion_status !==
+      "string"
+  ) {
+    return null;
+  }
+  return row as ConversionResult;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,94 +45,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Load the service request (fleet-scoped row; RLS enforces membership)
-    const { data: sr, error: srError } = await supabase
-      .from("fleet_service_requests")
-      .select(
-        `
-        id,
-        fleet_id,
-        shop_id,
-        vehicle_id,
-        status,
-        work_order_id,
-        title,
-        summary
-      `,
-      )
-      .eq("id", serviceRequestId)
-      .single();
-
-    if (srError || !sr) {
-      return NextResponse.json(
-        { error: "Service request not found." },
-        { status: 404 },
-      );
-    }
-
-    const fleetScopedActor = await resolveFleetActorContext(supabase, {
-      userId: actor.userId,
-      requestedFleetId: sr.fleet_id,
-    });
-
-    if (!fleetScopedActor.capabilities.canConvertServiceRequestToWorkOrder) {
+    if (!actor.capabilities.canConvertServiceRequestToWorkOrder) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (sr.work_order_id) {
-      return NextResponse.json({
-        workOrderId: sr.work_order_id,
-        status: "already_linked",
-      });
-    }
+    const { data, error } = await supabase.rpc(
+      "convert_fleet_service_request_to_work_order_atomic",
+      {
+        p_service_request_id: serviceRequestId,
+      },
+    );
 
-    // Create a new work order sourced from this service request
-    // NOTE: work_orders are still shop-scoped in your current schema.
-    const { data: workOrder, error: woError } = await supabase
-      .from("work_orders")
-      .insert({
-        shop_id: sr.shop_id,
-        vehicle_id: sr.vehicle_id,
-        status: "awaiting_approval",
-        approval_state: "pending",
-        source_fleet_service_request_id: sr.id,
-      })
-      .select("id")
-      .single();
-
-    if (woError || !workOrder) {
+    const conversion = firstConversionResult(data);
+    if (error || !conversion?.work_order_id) {
       // eslint-disable-next-line no-console
       console.error(
-        "[service-requests/convert-to-work-order] insert error",
-        woError,
+        "[service-requests/convert-to-work-order] rpc error",
+        error,
       );
       return NextResponse.json(
-        { error: "Failed to create work order from service request." },
+        {
+          error:
+            error?.message ??
+            "Failed to create a structured work order from this request.",
+        },
         { status: 500 },
       );
     }
 
-    // Link back on the service request
-    const { error: linkError } = await supabase
-      .from("fleet_service_requests")
-      .update({
-        work_order_id: workOrder.id,
-        status: "scheduled",
-      })
-      .eq("id", sr.id);
-
-    if (linkError) {
-      // eslint-disable-next-line no-console
-      console.error(
-        "[service-requests/convert-to-work-order] link error",
-        linkError,
-      );
-      // still return the WO id
-    }
-
     return NextResponse.json({
-      workOrderId: workOrder.id,
-      status: "converted",
+      workOrderId: conversion.work_order_id,
+      status: conversion.conversion_status,
     });
   } catch (err) {
     // eslint-disable-next-line no-console

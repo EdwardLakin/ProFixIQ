@@ -3928,11 +3928,15 @@ export type Database = {
           created_by_profile_id: string | null
           fleet_id: string
           id: string
+          operation_key: string | null
+          requested_for_date: string | null
           scheduled_for_date: string | null
           severity: string
           shop_id: string
+          source_pm_due_event_id: string | null
           source_pretrip_id: string | null
           status: string
+          submitted_at: string | null
           summary: string
           title: string
           updated_at: string
@@ -3944,11 +3948,15 @@ export type Database = {
           created_by_profile_id?: string | null
           fleet_id: string
           id?: string
+          operation_key?: string | null
+          requested_for_date?: string | null
           scheduled_for_date?: string | null
           severity: string
           shop_id: string
+          source_pm_due_event_id?: string | null
           source_pretrip_id?: string | null
           status?: string
+          submitted_at?: string | null
           summary: string
           title: string
           updated_at?: string
@@ -3960,11 +3968,15 @@ export type Database = {
           created_by_profile_id?: string | null
           fleet_id?: string
           id?: string
+          operation_key?: string | null
+          requested_for_date?: string | null
           scheduled_for_date?: string | null
           severity?: string
           shop_id?: string
+          source_pm_due_event_id?: string | null
           source_pretrip_id?: string | null
           status?: string
+          submitted_at?: string | null
           summary?: string
           title?: string
           updated_at?: string
@@ -4057,6 +4069,255 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      fleet_service_request_lines: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string
+          fleet_id: string
+          id: string
+          line_kind: string
+          notes: string | null
+          price_status: string
+          quantity: number
+          requested_labor_hours: number | null
+          service_request_id: string
+          shop_id: string
+          source_fleet_program_id: string | null
+          source_inspection_template_id: string | null
+          source_menu_item_id: string | null
+          source_snapshot: Json
+          unit_price_snapshot: number | null
+          updated_at: string
+          vehicle_id: string
+          work_order_line_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          description: string
+          fleet_id: string
+          id?: string
+          line_kind: string
+          notes?: string | null
+          price_status?: string
+          quantity?: number
+          requested_labor_hours?: number | null
+          service_request_id: string
+          shop_id: string
+          source_fleet_program_id?: string | null
+          source_inspection_template_id?: string | null
+          source_menu_item_id?: string | null
+          source_snapshot?: Json
+          unit_price_snapshot?: number | null
+          updated_at?: string
+          vehicle_id: string
+          work_order_line_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string
+          fleet_id?: string
+          id?: string
+          line_kind?: string
+          notes?: string | null
+          price_status?: string
+          quantity?: number
+          requested_labor_hours?: number | null
+          service_request_id?: string
+          shop_id?: string
+          source_fleet_program_id?: string | null
+          source_inspection_template_id?: string | null
+          source_menu_item_id?: string | null
+          source_snapshot?: Json
+          unit_price_snapshot?: number | null
+          updated_at?: string
+          vehicle_id?: string
+          work_order_line_id?: string | null
+        }
+        Relationships: []
+      }
+      fleet_unit_readings: {
+        Row: {
+          confidence: number
+          created_at: string
+          engine_hours: number | null
+          fleet_id: string
+          id: string
+          metadata: Json
+          odometer_km: number | null
+          operation_key: string | null
+          recorded_at: string
+          recorded_by: string | null
+          shop_id: string
+          source_id: string | null
+          source_type: string
+          vehicle_id: string
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          engine_hours?: number | null
+          fleet_id: string
+          id?: string
+          metadata?: Json
+          odometer_km?: number | null
+          operation_key?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          shop_id: string
+          source_id?: string | null
+          source_type: string
+          vehicle_id: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          engine_hours?: number | null
+          fleet_id?: string
+          id?: string
+          metadata?: Json
+          odometer_km?: number | null
+          operation_key?: string | null
+          recorded_at?: string
+          recorded_by?: string | null
+          shop_id?: string
+          source_id?: string | null
+          source_type?: string
+          vehicle_id?: string
+        }
+        Relationships: []
+      }
+      fleet_pm_policies: {
+        Row: {
+          active: boolean
+          anchor_date: string
+          anchor_engine_hours: number | null
+          anchor_odometer_km: number | null
+          created_at: string
+          created_by: string
+          fleet_id: string
+          id: string
+          interval_days: number | null
+          interval_hours: number | null
+          interval_km: number | null
+          last_completed_at: string | null
+          last_completed_work_order_id: string | null
+          name: string
+          program_id: string
+          requires_fleet_approval: boolean
+          shop_id: string
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          anchor_date?: string
+          anchor_engine_hours?: number | null
+          anchor_odometer_km?: number | null
+          created_at?: string
+          created_by?: string
+          fleet_id: string
+          id?: string
+          interval_days?: number | null
+          interval_hours?: number | null
+          interval_km?: number | null
+          last_completed_at?: string | null
+          last_completed_work_order_id?: string | null
+          name: string
+          program_id: string
+          requires_fleet_approval?: boolean
+          shop_id: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          anchor_date?: string
+          anchor_engine_hours?: number | null
+          anchor_odometer_km?: number | null
+          created_at?: string
+          created_by?: string
+          fleet_id?: string
+          id?: string
+          interval_days?: number | null
+          interval_hours?: number | null
+          interval_km?: number | null
+          last_completed_at?: string | null
+          last_completed_work_order_id?: string | null
+          name?: string
+          program_id?: string
+          requires_fleet_approval?: boolean
+          shop_id?: string
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: []
+      }
+      fleet_pm_due_events: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          deferred_until: string | null
+          due_reasons: string[]
+          due_snapshot: Json
+          evidence_snapshot_id: string | null
+          first_due_at: string
+          fleet_id: string
+          id: string
+          last_evaluated_at: string
+          policy_id: string
+          program_id: string
+          service_request_id: string | null
+          shop_id: string
+          status: string
+          triggering_reading_id: string | null
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          deferred_until?: string | null
+          due_reasons?: string[]
+          due_snapshot?: Json
+          evidence_snapshot_id?: string | null
+          first_due_at?: string
+          fleet_id: string
+          id?: string
+          last_evaluated_at?: string
+          policy_id: string
+          program_id: string
+          service_request_id?: string | null
+          shop_id: string
+          status?: string
+          triggering_reading_id?: string | null
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          deferred_until?: string | null
+          due_reasons?: string[]
+          due_snapshot?: Json
+          evidence_snapshot_id?: string | null
+          first_due_at?: string
+          fleet_id?: string
+          id?: string
+          last_evaluated_at?: string
+          policy_id?: string
+          program_id?: string
+          service_request_id?: string | null
+          shop_id?: string
+          status?: string
+          triggering_reading_id?: string | null
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: []
       }
       fleet_vehicles: {
         Row: {
@@ -19400,6 +19661,7 @@ export type Database = {
           shop_id: string
           source_inspection_id: string | null
           source_inspection_item_key: string | null
+          source_fleet_service_request_line_id: string | null
           source_intake_id: string | null
           source_row_id: string | null
           status: string
@@ -19464,6 +19726,7 @@ export type Database = {
           shop_id: string
           source_inspection_id?: string | null
           source_inspection_item_key?: string | null
+          source_fleet_service_request_line_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
           status?: string
@@ -19528,6 +19791,7 @@ export type Database = {
           shop_id?: string
           source_inspection_id?: string | null
           source_inspection_item_key?: string | null
+          source_fleet_service_request_line_id?: string | null
           source_intake_id?: string | null
           source_row_id?: string | null
           status?: string
@@ -21762,6 +22026,37 @@ export type Database = {
     }
     Functions: {
       _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
+      convert_fleet_service_request_to_work_order_atomic: {
+        Args: { p_service_request_id: string }
+        Returns: {
+          conversion_status: string
+          work_order_id: string
+        }[]
+      }
+      create_fleet_service_request_atomic: {
+        Args: {
+          p_fleet_id: string
+          p_lines: Json
+          p_operation_key: string
+          p_requested_for_date: string | null
+          p_summary: string
+          p_title: string
+          p_vehicle_id: string
+        }
+        Returns: string
+      }
+      evaluate_fleet_pm_due_events: {
+        Args: {
+          p_fleet_id: string
+          p_vehicle_id?: string | null
+        }
+        Returns: {
+          created: boolean
+          due_event_id: string
+          policy_id: string
+          vehicle_id: string
+        }[]
+      }
       accept_customer_portal_invite_atomic: {
         Args: {
           p_actor_email: string
@@ -23581,6 +23876,7 @@ export type Database = {
         | "work_order"
         | "customer"
         | "vehicle"
+        | "fleet"
       analytics_event_type:
         | "impression"
         | "view"
@@ -23939,6 +24235,7 @@ export const Constants = {
         "work_order",
         "customer",
         "vehicle",
+        "fleet",
       ],
       analytics_event_type: [
         "impression",
@@ -24142,4 +24439,3 @@ export const Constants = {
     },
   },
 } as const
-

@@ -10,9 +10,13 @@ const source = (path: string) => readFileSync(path, "utf8");
 describe("customer portal service and quote requests", () => {
   it("keeps known services fast and stores detail on only the diagnostic line", () => {
     const page = source("app/portal/request/build/page.tsx");
-    expect(page).toContain("Add menu items");
-    expect(page).toContain("Something needs diagnosis");
-    expect(page).toContain("buildDiagnosticRequestNotes");
+    const sharedBuilder = source(
+      "features/portal/components/request/SharedServiceRequestBuilder.tsx",
+    );
+    expect(page).toContain("SharedServiceRequestBuilder");
+    expect(sharedBuilder).toContain('title="Menu services"');
+    expect(sharedBuilder).toContain("Something needs diagnosis");
+    expect(sharedBuilder).toContain("buildDiagnosticRequestNotes");
     expect(page).not.toContain("Please complete the intake form first");
     expect(page).not.toContain("PORTAL INTAKE");
   });
@@ -28,19 +32,23 @@ describe("customer portal service and quote requests", () => {
       additionalNotes: "Started last week",
     };
     expect(diagnosticRequestIsComplete(details)).toBe(true);
-    expect(buildDiagnosticRequestNotes(details)).toBe([
-      "When it happens: At 90–110 km/h",
-      "How often: Every time",
-      "Conditions: Light acceleration",
-      "Warning lights / codes: None",
-      "Safe to drive: unsure",
-      "Customer notes: Started last week",
-    ].join("\n"));
+    expect(buildDiagnosticRequestNotes(details)).toBe(
+      [
+        "When it happens: At 90–110 km/h",
+        "How often: Every time",
+        "Conditions: Light acceleration",
+        "Warning lights / codes: None",
+        "Safe to drive: unsure",
+        "Customer notes: Started last week",
+      ].join("\n"),
+    );
     expect(buildDiagnosticRequestNotes({ concern: "Noise" })).toBe("");
   });
 
   it("creates repair and parts-only quote requests atomically and tenant-scoped", () => {
-    const migration = source("supabase/migrations/20260723010000_portal_service_quote_requests.sql");
+    const migration = source(
+      "supabase/migrations/20260723010000_portal_service_quote_requests.sql",
+    );
     expect(migration).toContain("create_portal_quote_request_atomic");
     expect(migration).toContain("add_portal_diagnostic_line_atomic");
     expect(migration).toContain("set job_type = 'diagnostic'");
@@ -57,7 +65,9 @@ describe("customer portal service and quote requests", () => {
   });
 
   it("books an approved repair quote on its existing work order", () => {
-    const migration = source("supabase/migrations/20260723010000_portal_service_quote_requests.sql");
+    const migration = source(
+      "supabase/migrations/20260723010000_portal_service_quote_requests.sql",
+    );
     const startRoute = source("app/api/portal/request/start/route.ts");
     expect(migration).toContain("book_portal_repair_quote_atomic");
     expect(migration).toContain("Approve this repair quote before booking it.");
@@ -82,8 +92,12 @@ describe("customer portal service and quote requests", () => {
   });
 
   it("uses the canonical quote approval and invoice payment paths", () => {
-    const approval = source("features/portal/components/QuoteApprovalActions.tsx");
-    const quotePage = source("features/portal/app/quotes/[id]/QuotePageClient.tsx");
+    const approval = source(
+      "features/portal/components/QuoteApprovalActions.tsx",
+    );
+    const quotePage = source(
+      "features/portal/app/quotes/[id]/QuotePageClient.tsx",
+    );
     const submit = source("app/api/portal/request/submit/route.ts");
     expect(approval).toContain('"Idempotency-Key": operationKey');
     expect(quotePage).toContain("PortalInvoicePayButton");

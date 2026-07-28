@@ -1,11 +1,11 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-07-25T23:33:03.315Z
+Generated: 2026-07-28T02:45:31.646Z
 
 ## Summary
-- Total route count: **381**
-- Routes exporting GET: **122**
-- Routes exporting POST: **269**
+- Total route count: **386**
+- Routes exporting GET: **124**
+- Routes exporting POST: **273**
 - Routes exporting PUT: **10**
 - Routes exporting PATCH: **22**
 - Routes exporting DELETE: **12**
@@ -27,7 +27,10 @@ Generated: 2026-07-25T23:33:03.315Z
 - `app/api/demo/shop-boost/share/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/demo/shop-boost/uploads/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/diag/log/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/fleet/pm/evaluate/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/fleet/request-builder/submit/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/fleet/service-requests/convert-to-work-order/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/fleet/unit-economics/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/inspections/build/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/integrations/quickbooks/connect/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/integrations/quickbooks/disconnect/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -141,7 +144,11 @@ Generated: 2026-07-25T23:33:03.315Z
 - `app/api/demo/shop-boost/share/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/demo/shop-boost/uploads/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/diag/log/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/fleet/pm/evaluate/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/fleet/request-builder/context/route.ts` | methods: GET | riskFlags: none
+- `app/api/fleet/request-builder/submit/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/fleet/service-requests/convert-to-work-order/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/fleet/unit-economics/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/inspections/build/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/integrations/quickbooks/connect/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/integrations/quickbooks/disconnect/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
