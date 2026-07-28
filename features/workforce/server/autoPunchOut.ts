@@ -25,7 +25,9 @@ export type AutoPunchScheduleOverride = ScheduleIdentity & {
   status: string | null;
 };
 
-export function isValidShopTimezone(timezone: string | null | undefined) {
+export function isValidShopTimezone(
+  timezone: string | null | undefined,
+): timezone is string {
   if (!timezone) return false;
   try {
     new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format();
