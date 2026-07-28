@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase.rpc("evaluate_fleet_pm_due_events", {
     p_fleet_id: parsed.data.fleetId,
-    p_vehicle_id: parsed.data.vehicleId ?? null,
+    p_vehicle_id: parsed.data.vehicleId ?? undefined,
   });
 
   if (error) {
