@@ -220,3 +220,63 @@ html[data-theme-mode="light"] {
   --theme-input-bg: rgba(255, 255, 255, 0.94) !important;
   --theme-input-border: rgba(59, 99, 140, 0.38) !important;
 }
+
+/* Some older routes still carry hard-coded white form classes. Normalize all
+   signed-in controls to semantic tokens in dark mode until those routes are
+   migrated individually. Native colour/file controls are intentionally left alone. */
+html[data-theme-mode="dark"] body :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  select,
+  textarea
+) {
+  background-color: var(--theme-input-bg) !important;
+  border-color: var(--theme-input-border) !important;
+  color: var(--theme-input-text) !important;
+  color-scheme: dark;
+  caret-color: var(--brand-accent);
+}
+
+html[data-theme-mode="dark"] body :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  textarea
+)::placeholder {
+  color: var(--theme-text-muted) !important;
+  opacity: 1;
+}
+
+html[data-theme-mode="dark"] body :where(input, select, textarea):focus {
+  border-color: color-mix(in srgb, var(--brand-primary) 72%, var(--brand-accent)) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 22%, transparent) !important;
+  outline: none;
+}
+
+html[data-theme-mode="dark"] body :where(input, select, textarea):disabled {
+  background-color: color-mix(in srgb, var(--theme-input-bg) 78%, #000000) !important;
+  color: var(--theme-text-muted) !important;
+  opacity: 0.72;
+}
+
+html[data-theme-mode="dark"] body select option {
+  background: var(--theme-surface-panel-strong);
+  color: var(--theme-text-primary);
+}
+
+html[data-theme-mode="dark"] body input:-webkit-autofill,
+html[data-theme-mode="dark"] body input:-webkit-autofill:hover,
+html[data-theme-mode="dark"] body input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--theme-input-text) !important;
+  box-shadow: 0 0 0 1000px var(--theme-input-bg) inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* Preserve the intentionally light public marketing controls. */
+.pfq-marketing :where(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea
+) {
+  background-color: var(--theme-input-bg) !important;
+  border-color: var(--theme-input-border) !important;
+  color: var(--theme-input-text) !important;
+  color-scheme: light;
+}
