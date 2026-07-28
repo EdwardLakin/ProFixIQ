@@ -10,7 +10,7 @@ type Item = {
   name: string | null;
   expiresAt: string | null;
   status: "expired" | "expiring_soon" | "active";
-  href: string;
+  href: string | null;
 };
 
 type Payload = {
@@ -21,8 +21,17 @@ type Payload = {
     peopleAtRisk: number;
   };
   items: Item[];
+  permissions: {
+    canManagePeople: boolean;
+  };
   generatedAt: string;
 };
+
+const formatDateOnly = (value: string): string =>
+  new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value.slice(0, 10)}T00:00:00.000Z`));
 
 export default function WorkforceCertificationsClient() {
   const [data, setData] = useState<Payload | null>(null);
@@ -65,8 +74,11 @@ export default function WorkforceCertificationsClient() {
     [data],
   );
 
-  const renderSection = (label: string, rows: Item[]) => (
-    <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
+  const renderSection = (id: string, label: string, rows: Item[]) => (
+    <section
+      id={id}
+      className="scroll-mt-40 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4"
+    >
       <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
         {label}
       </h2>
@@ -91,16 +103,22 @@ export default function WorkforceCertificationsClient() {
                 <div className="text-xs text-[color:var(--theme-text-secondary)]">
                   Expires:{" "}
                   {row.expiresAt
-                    ? new Date(row.expiresAt).toLocaleDateString()
+                    ? formatDateOnly(row.expiresAt)
                     : "—"}
                 </div>
               </div>
-              <Link
-                href={row.href}
-                className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--theme-accent-text)]"
-              >
-                Edit
-              </Link>
+              {data?.permissions.canManagePeople && row.href ? (
+                <Link
+                  href={row.href}
+                  className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--theme-accent-text)]"
+                >
+                  Edit record
+                </Link>
+              ) : (
+                <span className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                  View only
+                </span>
+              )}
             </div>
           ))
         )}
@@ -160,10 +178,10 @@ export default function WorkforceCertificationsClient() {
       </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        {renderSection("Expired", grouped.expired)}
-        {renderSection("Expiring soon", grouped.expiring)}
+        {renderSection("expired", "Expired", grouped.expired)}
+        {renderSection("expiring-soon", "Expiring soon", grouped.expiring)}
       </div>
-      {renderSection("Active", grouped.active)}
+      {renderSection("active", "Active", grouped.active)}
     </div>
   );
 }

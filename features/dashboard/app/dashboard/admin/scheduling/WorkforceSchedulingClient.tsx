@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AdminPageHeader, AdminPanel, AdminPanelTitle } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
+import { shopLocalDateTimeToUtc } from "@/features/shared/lib/utils/shopDayWindow";
 
 type Staff = {
   id: string;
   full_name: string | null;
+  display_name: string;
   role: string | null;
   weekly_recurring_minutes: number;
   recurring_template_rows: number;
@@ -50,6 +52,16 @@ type TemplateRow = {
   unpaid_break_minutes: number;
 };
 
+type ScheduleOverride = {
+  id: string;
+  schedule_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  unpaid_break_minutes: number;
+  notes: string | null;
+  status: string;
+};
+
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function minsToHours(mins: number) {
@@ -60,12 +72,21 @@ function emptyTemplate(): TemplateRow[] {
   return DAYS.map((_, day_of_week) => ({ day_of_week, is_working_day: day_of_week >= 1 && day_of_week <= 5, start_time: "08:00", end_time: "17:00", unpaid_break_minutes: 30 }));
 }
 
-export default function WorkforceSchedulingClient() {
+export default function WorkforceSchedulingClient({
+  canAccessPeople,
+}: {
+  canAccessPeople: boolean;
+}) {
   const searchParams = useSearchParams();
+  const requestedStaffId =
+    searchParams.get("person_id") ?? searchParams.get("user_id");
   const [staff, setStaff] = useState<Staff[]>([]);
   const [pending, setPending] = useState<TimeOffRequest[]>([]);
+  const [timezone, setTimezone] = useState("UTC");
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
   const [templates, setTemplates] = useState<TemplateRow[]>(emptyTemplate());
+  const [overrides, setOverrides] = useState<ScheduleOverride[]>([]);
+  const [detailRefreshKey, setDetailRefreshKey] = useState(0);
   const [overrideDate, setOverrideDate] = useState("");
   const [overrideStart, setOverrideStart] = useState("");
   const [overrideEnd, setOverrideEnd] = useState("");
@@ -75,9 +96,10 @@ export default function WorkforceSchedulingClient() {
   const [requestEnd, setRequestEnd] = useState("");
   const [requestReason, setRequestReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     const now = new Date();
     const to = new Date(now);
     to.setDate(now.getDate() + 7);
@@ -90,23 +112,55 @@ export default function WorkforceSchedulingClient() {
     }
     setStaff(body?.staff ?? []);
     setPending(body?.pending_time_off_requests ?? []);
-    if (!selectedStaffId && body?.staff?.length) setSelectedStaffId(body.staff[0].id);
-  }
+    setTimezone(
+      typeof body?.timezone === "string" && body.timezone
+        ? body.timezone
+        : "UTC",
+    );
+    if (body?.staff?.length) {
+      setSelectedStaffId((current) => current || body.staff[0].id);
+    }
+  }, []);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    if (
+      requestedStaffId &&
+      staff.some((person) => person.id === requestedStaffId)
+    ) {
+      setSelectedStaffId(requestedStaffId);
+    }
+  }, [requestedStaffId, staff]);
+
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener("workforce:shift-state", refresh);
+    return () =>
+      window.removeEventListener("workforce:shift-state", refresh);
+  }, [load]);
 
   useEffect(() => {
     if (!selectedStaffId) return;
     (async () => {
       const res = await fetch(`/api/scheduling/staff/${selectedStaffId}`, { cache: "no-store" });
       const body = await res.json().catch(() => null);
-      if (!res.ok) return;
+      if (!res.ok) {
+        setError(body?.error ?? "Failed to load employee schedule");
+        return;
+      }
       const fromApi = (body?.templates ?? []) as TemplateRow[];
+      const overrideRows = (body?.overrides ?? []) as ScheduleOverride[];
       setTemplates(fromApi.length ? fromApi : emptyTemplate());
+      setOverrides(
+        overrideRows
+          .filter((row) => row.status !== "cancelled")
+          .sort((a, b) => a.schedule_date.localeCompare(b.schedule_date)),
+      );
     })();
-  }, [selectedStaffId]);
+  }, [detailRefreshKey, selectedStaffId]);
 
   const selected = useMemo(() => staff.find((s) => s.id === selectedStaffId) ?? null, [staff, selectedStaffId]);
   const coverage = useMemo(() => {
@@ -133,7 +187,7 @@ export default function WorkforceSchedulingClient() {
   const status = searchParams.get("status");
   const conflictType = searchParams.get("type");
   const awayDate = searchParams.get("date");
-  const personId = searchParams.get("person_id");
+  const personId = requestedStaffId;
   const filterLabel = useMemo(() => {
     if (focus === "time-off" && status === "pending") return "Pending time off";
     if (focus === "away" && awayDate === "today") return "Away today";
@@ -147,6 +201,8 @@ export default function WorkforceSchedulingClient() {
   async function saveTemplate() {
     if (!selectedStaffId) return;
     setBusy(true);
+    setError(null);
+    setNotice(null);
     const res = await fetch(`/api/scheduling/staff/${selectedStaffId}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -158,12 +214,16 @@ export default function WorkforceSchedulingClient() {
       setError(body?.error ?? "Failed to save template");
       return;
     }
+    setNotice("Recurring schedule saved.");
+    setDetailRefreshKey((current) => current + 1);
     await load();
   }
 
   async function addOverride() {
     if (!selectedStaffId || !overrideDate) return;
     setBusy(true);
+    setError(null);
+    setNotice(null);
     const startLocal = overrideStart || null;
     const endLocal = overrideEnd || null;
     const res = await fetch(`/api/scheduling/staff/${selectedStaffId}/overrides`, {
@@ -177,7 +237,40 @@ export default function WorkforceSchedulingClient() {
     setOverrideDate("");
     setOverrideStart("");
     setOverrideEnd("");
+    setNotice("One-off override saved for the selected employee.");
+    setDetailRefreshKey((current) => current + 1);
     await load();
+  }
+
+  async function cancelOverride(overrideId: string) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const res = await fetch(
+      `/api/scheduling/staff/overrides/${overrideId}`,
+      { method: "DELETE" },
+    );
+    const body = await res.json().catch(() => null);
+    setBusy(false);
+    if (!res.ok) {
+      setError(body?.error ?? "Failed to cancel override");
+      return;
+    }
+    setNotice("One-off override cancelled.");
+    setDetailRefreshKey((current) => current + 1);
+    await load();
+  }
+
+  function overrideTimeLabel(row: ScheduleOverride) {
+    if (!row.start_time || !row.end_time) return "Off day";
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      timeZone: timezone,
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `${formatter.format(new Date(row.start_time))}–${formatter.format(
+      new Date(row.end_time),
+    )}`;
   }
 
   async function reviewRequest(id: string, statusValue: "approved" | "declined") {
@@ -187,6 +280,8 @@ export default function WorkforceSchedulingClient() {
     );
     if (reviewNote === null) return;
     setBusy(true);
+    setError(null);
+    setNotice(null);
     const res = await fetch(`/api/time-off/requests/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -195,6 +290,11 @@ export default function WorkforceSchedulingClient() {
     const body = await res.json().catch(() => null);
     setBusy(false);
     if (!res.ok) return setError(body?.error ?? "Failed to review request");
+    setNotice(
+      statusValue === "approved"
+        ? "Time-away request approved."
+        : "Time-away request declined.",
+    );
     await load();
   }
 
@@ -202,14 +302,33 @@ export default function WorkforceSchedulingClient() {
     if (!selectedStaffId || !requestStart || !requestEnd) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
+    let startsAt: string;
+    let endsAt: string;
+    try {
+      startsAt = shopLocalDateTimeToUtc(
+        requestStart.slice(0, 10),
+        requestStart.slice(11),
+        timezone,
+      );
+      endsAt = shopLocalDateTimeToUtc(
+        requestEnd.slice(0, 10),
+        requestEnd.slice(11),
+        timezone,
+      );
+    } catch {
+      setBusy(false);
+      setError("Choose valid shop-local start and end times.");
+      return;
+    }
     const res = await fetch("/api/time-off/requests", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         user_id: selectedStaffId,
         request_type: requestType,
-        starts_at: new Date(requestStart).toISOString(),
-        ends_at: new Date(requestEnd).toISOString(),
+        starts_at: startsAt,
+        ends_at: endsAt,
         is_partial_day: requestStart.slice(0, 10) === requestEnd.slice(0, 10),
         reason: requestReason.trim() || null,
       }),
@@ -224,6 +343,7 @@ export default function WorkforceSchedulingClient() {
     setRequestEnd("");
     setRequestReason("");
     setShowCreateRequest(false);
+    setNotice("Time-away request created.");
     await load();
   }
 
@@ -238,6 +358,14 @@ export default function WorkforceSchedulingClient() {
         <div className="mb-4 flex items-center justify-between rounded-lg border border-orange-400/40 bg-orange-500/10 px-4 py-2 text-xs text-[color:var(--theme-accent-text)]">
           <span>Filtered from Workforce Overview: {filterLabel}</span>
           <Link href="/dashboard/workforce/scheduling" className="font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]">Clear filter</Link>
+        </div>
+      ) : null}
+      {notice ? (
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm text-[color:var(--theme-success-text)]"
+        >
+          {notice}
         </div>
       ) : null}
 
@@ -272,7 +400,7 @@ export default function WorkforceSchedulingClient() {
             {staff.length === 0 ? <p className="text-[color:var(--theme-text-secondary)]">No staff in current range.</p> : staff.map((s) => (
               <div key={`today-${s.id}`} className="flex items-center justify-between rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
                 <span>
-                  <span className="block">{s.full_name ?? "Unnamed"}</span>
+                  <span className="block">{s.display_name}</span>
                   {s.current_job ? <span className="block text-xs text-[color:var(--theme-text-secondary)]">{s.current_job.work_order_number ?? "Work order"} · {s.current_job.line_description ?? "Active job"}</span> : null}
                 </span>
                 <span className={todayPosture(s).tone}>{todayPosture(s).label}</span>
@@ -286,7 +414,7 @@ export default function WorkforceSchedulingClient() {
           <div className="space-y-2 p-4 text-sm">
             {staff.map((s) => (
               <div key={`tomorrow-${s.id}`} className="flex items-center justify-between rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2">
-                <span>{s.full_name ?? "Unnamed"}</span>
+                <span>{s.display_name}</span>
                 <span className={s.is_away_tomorrow ? "text-[color:var(--theme-warning-text)]" : s.is_scheduled_tomorrow ? "text-[color:var(--theme-success-text)]" : "text-[color:var(--theme-text-muted)]"}>{s.is_away_tomorrow ? "Away tomorrow" : s.is_scheduled_tomorrow ? "Scheduled" : "Off tomorrow"}</span>
               </div>
             ))}
@@ -308,7 +436,7 @@ export default function WorkforceSchedulingClient() {
               <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
                 Employee
                 <select value={selectedStaffId} onChange={(event) => setSelectedStaffId(event.target.value)} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2">
-                  {staff.map((person) => <option key={person.id} value={person.id}>{person.full_name ?? "Unnamed"} · {person.role ?? "staff"}</option>)}
+                  {staff.map((person) => <option key={person.id} value={person.id}>{person.display_name} · {person.role ?? "staff"}</option>)}
                 </select>
               </label>
               <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
@@ -361,13 +489,13 @@ export default function WorkforceSchedulingClient() {
                 <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
                   {staff.map((s) => (
                     <tr key={s.id} onClick={() => setSelectedStaffId(s.id)} className={`cursor-pointer ${selectedStaffId === s.id ? "bg-[color:var(--theme-surface-subtle)]" : "hover:bg-[color:var(--theme-surface-subtle)]"} ${focus === "schedule-gaps" && s.recurring_template_rows === 0 ? "bg-amber-500/10 ring-1 ring-amber-400/40" : ""} ${focus === "away" && awayDate === "today" && s.is_away_today ? "ring-1 ring-amber-400/40" : ""} ${focus === "workload" && personId === s.id ? "ring-1 ring-orange-400/40" : ""}`}>
-                      <td className="py-2">{s.full_name ?? "Unnamed"}</td>
+                      <td className="py-2">{s.display_name}</td>
                       <td>{s.role ?? "staff"}</td>
                       <td>{minsToHours(s.weekly_recurring_minutes)}</td>
                       <td className={s.recurring_template_rows === 0 ? "text-[color:var(--theme-warning-text)]" : ""}>{s.recurring_template_rows}</td>
                       <td>{s.override_count_in_range}</td>
                       <td>{s.approved_away_blocks_in_range}</td>
-                      <td className={s.is_away_today ? "text-[color:var(--theme-warning-text)]" : "text-[color:var(--theme-success-text)]"}>{s.is_away_today ? "Away today" : "Available"}</td>
+                      <td className={todayPosture(s).tone}>{todayPosture(s).label}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -382,14 +510,14 @@ export default function WorkforceSchedulingClient() {
             <div className="space-y-4 p-4">
               <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-sm">
                 <p className="text-xs text-[color:var(--theme-text-secondary)]">Selected Staff</p>
-                <p className="font-medium">{selected?.full_name ?? "None"}</p>
+                <p className="font-medium">{selected?.display_name ?? "None"}</p>
                 <p className="text-xs text-[color:var(--theme-text-secondary)]">{selected?.role ?? "staff"}</p>
               </div>
 
               <div>
                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Weekly Template</p>
                 <div className="space-y-2">
-                  {templates.sort((a, b) => a.day_of_week - b.day_of_week).map((row, i) => (
+                  {[...templates].sort((a, b) => a.day_of_week - b.day_of_week).map((row, i) => (
                     <div key={row.day_of_week} className="grid grid-cols-12 items-center gap-2 text-xs">
                       <div className="col-span-2">{DAYS[row.day_of_week]}</div>
                       <label className="col-span-2 flex items-center gap-1">
@@ -415,7 +543,62 @@ export default function WorkforceSchedulingClient() {
                 <label className="text-xs text-[color:var(--theme-text-secondary)]" htmlFor="override-end">End time</label>
                 <input id="override-end" type="time" value={overrideEnd} onChange={(e) => setOverrideEnd(e.target.value)} className="w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1" />
                 <button type="button" disabled={busy || !selectedStaffId || !overrideDate} onClick={() => void addOverride()} className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs">Add override</button>
-                <div className="text-xs text-[color:var(--theme-text-secondary)]">Related: <Link className="text-[color:var(--theme-accent-text)]" href="/dashboard/workforce/people">People</Link> · <Link className="text-[color:var(--theme-accent-text)]" href="/dashboard/workforce/payroll-review">Payroll</Link></div>
+                <div className="space-y-2 pt-2">
+                  <p className="text-xs font-medium text-[color:var(--theme-text-primary)]">
+                    Active one-off overrides
+                  </p>
+                  {overrides.length === 0 ? (
+                    <p className="text-xs text-[color:var(--theme-text-muted)]">
+                      No active one-off overrides for {selected?.display_name ?? "this employee"}.
+                    </p>
+                  ) : (
+                    overrides.slice(0, 12).map((row) => (
+                      <div
+                        key={row.id}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
+                      >
+                        <div>
+                          <p className="font-medium text-[color:var(--theme-text-primary)]">
+                            {row.schedule_date}
+                          </p>
+                          <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                            {overrideTimeLabel(row)}
+                            {row.unpaid_break_minutes > 0
+                              ? ` · ${row.unpaid_break_minutes}m unpaid break`
+                              : ""}
+                          </p>
+                          {row.notes ? (
+                            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                              {row.notes}
+                            </p>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void cancelOverride(row.id)}
+                          className="rounded border border-red-400/35 px-2 py-1 text-xs text-[color:var(--theme-danger-text)] disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="text-xs text-[color:var(--theme-text-secondary)]">
+                  Related:{" "}
+                  {canAccessPeople ? (
+                    <>
+                      <Link className="text-[color:var(--theme-accent-text)]" href="/dashboard/workforce/people">
+                        People
+                      </Link>
+                      {" · "}
+                    </>
+                  ) : null}
+                  <Link className="text-[color:var(--theme-accent-text)]" href="/dashboard/workforce/payroll-review">
+                    Payroll
+                  </Link>
+                </div>
               </div>
             </div>
             {error ? <p className="px-4 pb-4 text-xs text-[color:var(--theme-danger-text)]">{error}</p> : null}

@@ -11,7 +11,11 @@ type Credit = {
   actual_job_seconds: number;
   credited_at: string;
   adjustment_reason: string | null;
-  technician?: { full_name?: string | null } | null;
+  technician?: {
+    full_name?: string | null;
+    username?: string | null;
+    email?: string | null;
+  } | null;
   line?: {
     description?: string | null;
     labor_time?: number | null;
@@ -165,13 +169,13 @@ export function FlatRateCreditReview({
             >
               <div>
                 <p className="text-sm font-medium">
-                  {line.line?.description || `Line ${line.lineId.slice(0, 8)}`}
+                  {line.line?.description || "Work-order labor line"}
                 </p>
                 <p className="text-xs text-[color:var(--theme-text-muted)]">
                   {line.credits
                     .map(
                       (credit) =>
-                        `${credit.technician?.full_name || credit.technician_id.slice(0, 8)} ${Number(credit.credit_hours).toFixed(2)}h`,
+                        `${credit.technician?.full_name || credit.technician?.username || credit.technician?.email || "Employee name unavailable"} ${Number(credit.credit_hours).toFixed(2)}h`,
                     )
                     .join(" · ")}
                 </p>
@@ -208,7 +212,10 @@ export function FlatRateCreditReview({
                 key={credit.technician_id}
                 className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]"
               >
-                {source?.technician?.full_name || credit.technician_id}
+                {source?.technician?.full_name ||
+                  source?.technician?.username ||
+                  source?.technician?.email ||
+                  "Employee name unavailable"}
                 <input
                   type="number"
                   min="0"

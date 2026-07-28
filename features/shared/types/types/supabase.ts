@@ -3224,35 +3224,47 @@ export type Database = {
       employee_documents: {
         Row: {
           bucket_id: string
+          content_type: string | null
           doc_type: string
           expires_at: string | null
+          file_size_bytes: number | null
           file_path: string
           id: string
+          original_filename: string | null
           shop_id: string
           status: string
           uploaded_at: string
+          uploaded_by: string | null
           user_id: string
         }
         Insert: {
           bucket_id?: string
+          content_type?: string | null
           doc_type: string
           expires_at?: string | null
+          file_size_bytes?: number | null
           file_path: string
           id?: string
+          original_filename?: string | null
           shop_id: string
           status?: string
           uploaded_at?: string
+          uploaded_by?: string | null
           user_id: string
         }
         Update: {
           bucket_id?: string
+          content_type?: string | null
           doc_type?: string
           expires_at?: string | null
+          file_size_bytes?: number | null
           file_path?: string
           id?: string
+          original_filename?: string | null
           shop_id?: string
           status?: string
           uploaded_at?: string
+          uploaded_by?: string | null
           user_id?: string
         }
         Relationships: [
@@ -3273,6 +3285,13 @@ export type Database = {
           {
             foreignKeyName: "employee_documents_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -7097,6 +7116,7 @@ export type Database = {
           cause: string | null
           complaint: string | null
           correction: string | null
+          creation_request_id: string | null
           created_at: string | null
           description: string | null
           drivetrain: string | null
@@ -7131,6 +7151,7 @@ export type Database = {
           cause?: string | null
           complaint?: string | null
           correction?: string | null
+          creation_request_id?: string | null
           created_at?: string | null
           description?: string | null
           drivetrain?: string | null
@@ -7165,6 +7186,7 @@ export type Database = {
           cause?: string | null
           complaint?: string | null
           correction?: string | null
+          creation_request_id?: string | null
           created_at?: string | null
           description?: string | null
           drivetrain?: string | null
@@ -8306,6 +8328,7 @@ export type Database = {
           requested_manufacturer: string | null
           requested_part_number: string | null
           shop_id: string | null
+          source_menu_item_part_id: string | null
           source_work_order_part_id: string | null
           status: Database["public"]["Enums"]["part_request_item_status"]
           unit_cost: number | null
@@ -8342,6 +8365,7 @@ export type Database = {
           requested_manufacturer?: string | null
           requested_part_number?: string | null
           shop_id?: string | null
+          source_menu_item_part_id?: string | null
           source_work_order_part_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
           unit_cost?: number | null
@@ -8378,6 +8402,7 @@ export type Database = {
           requested_manufacturer?: string | null
           requested_part_number?: string | null
           shop_id?: string | null
+          source_menu_item_part_id?: string | null
           source_work_order_part_id?: string | null
           status?: Database["public"]["Enums"]["part_request_item_status"]
           unit_cost?: number | null
@@ -8395,6 +8420,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stock_locations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_request_items_menu_item_shop_fkey"
+            columns: ["shop_id", "menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["shop_id", "id"]
           },
           {
             foreignKeyName: "part_request_items_part_id_fkey"
@@ -8436,6 +8468,13 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_request_items_source_menu_part_fkey"
+            columns: ["source_menu_item_part_id"]
+            isOneToOne: false
+            referencedRelation: "menu_item_parts"
             referencedColumns: ["id"]
           },
           {
@@ -8558,6 +8597,7 @@ export type Database = {
           quote_line_id: string | null
           requested_by: string | null
           shop_id: string
+          source_menu_item_id: string | null
           status: Database["public"]["Enums"]["part_request_status"]
           work_order_id: string | null
         }
@@ -8572,6 +8612,7 @@ export type Database = {
           quote_line_id?: string | null
           requested_by?: string | null
           shop_id: string
+          source_menu_item_id?: string | null
           status?: Database["public"]["Enums"]["part_request_status"]
           work_order_id?: string | null
         }
@@ -8586,6 +8627,7 @@ export type Database = {
           quote_line_id?: string | null
           requested_by?: string | null
           shop_id?: string
+          source_menu_item_id?: string | null
           status?: Database["public"]["Enums"]["part_request_status"]
           work_order_id?: string | null
         }
@@ -8617,6 +8659,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_requests_source_menu_item_shop_fkey"
+            columns: ["shop_id", "source_menu_item_id"]
+            isOneToOne: true
+            referencedRelation: "menu_items"
+            referencedColumns: ["shop_id", "id"]
           },
           {
             foreignKeyName: "part_requests_work_order_id_fkey"
@@ -9923,47 +9972,81 @@ export type Database = {
       payroll_export_batches: {
         Row: {
           created_at: string
+          download_count: number
           exported_at: string | null
           exported_by: string | null
+          file_sha256: string | null
+          file_size_bytes: number | null
+          handoff_status: string
           id: string
+          last_downloaded_at: string | null
+          last_downloaded_by: string | null
           payload: Json
           period_id: string
+          provider_template_version: string | null
           provider_type: string
           row_count: number
           shop_id: string
           status: string
+          storage_bucket: string | null
+          storage_path: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
+          download_count?: number
           exported_at?: string | null
           exported_by?: string | null
+          file_sha256?: string | null
+          file_size_bytes?: number | null
+          handoff_status?: string
           id?: string
+          last_downloaded_at?: string | null
+          last_downloaded_by?: string | null
           payload?: Json
           period_id: string
+          provider_template_version?: string | null
           provider_type?: string
           row_count?: number
           shop_id: string
           status?: string
+          storage_bucket?: string | null
+          storage_path?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
+          download_count?: number
           exported_at?: string | null
           exported_by?: string | null
+          file_sha256?: string | null
+          file_size_bytes?: number | null
+          handoff_status?: string
           id?: string
+          last_downloaded_at?: string | null
+          last_downloaded_by?: string | null
           payload?: Json
           period_id?: string
+          provider_template_version?: string | null
           provider_type?: string
           row_count?: number
           shop_id?: string
           status?: string
+          storage_bucket?: string | null
+          storage_path?: string | null
           updated_at?: string
         }
         Relationships: [
           {
             foreignKeyName: "payroll_export_batches_exported_by_fkey"
             columns: ["exported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_batches_last_downloaded_by_fkey"
+            columns: ["last_downloaded_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -22486,6 +22569,19 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_canonical_offline_shift_punch_atomic: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_event_type: string
+          p_note?: string
+          p_operation_key: string
+          p_shift_id: string
+          p_shop_id: string
+          p_timestamp: string
+        }
+        Returns: Json
+      }
       apply_offline_shift_punch_atomic: {
         Args: {
           p_actor_user_id: string
@@ -22621,6 +22717,14 @@ export type Database = {
       approve_inspection_form_import: {
         Args: { p_job_id: string; p_sections: Json; p_title: string }
         Returns: string
+      }
+      approve_payroll_period_atomic: {
+        Args: {
+          p_actor_profile_id: string
+          p_period_id: string
+          p_shop_id: string
+        }
+        Returns: Json
       }
       approve_lines: {
         Args: {
@@ -22913,6 +23017,17 @@ export type Database = {
         }
         Returns: string
       }
+      create_menu_item_with_parts_intake: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_idempotency_key: string
+          p_item: Json
+          p_parts: Json
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       create_messaging_conversation: {
         Args: {
           _booking_id: string
@@ -23070,6 +23185,20 @@ export type Database = {
           p_pdf_storage_path: string
           p_pdf_url: string
           p_work_order_line_id: string
+        }
+        Returns: Json
+      }
+      finalize_payroll_export_atomic: {
+        Args: {
+          p_actor_profile_id: string
+          p_batch_id: string
+          p_file_sha256: string
+          p_file_size_bytes: number
+          p_period_id: string
+          p_provider_template_version: string
+          p_shop_id: string
+          p_storage_bucket: string
+          p_storage_path: string
         }
         Returns: Json
       }
@@ -23670,7 +23799,9 @@ export type Database = {
         Args: { p_work_order_id: string }
         Returns: boolean
       }
+      profixiq_workforce_profile_id: { Args: never; Returns: string }
       profixiq_workforce_role: { Args: never; Returns: string }
+      profixiq_workforce_shop_id: { Args: never; Returns: string }
       receive_part_request_item: {
         Args: {
           p_idempotency_key?: string
@@ -23706,6 +23837,14 @@ export type Database = {
           p_payload: Json
           p_shop_id: string
           p_work_order_line_id: string
+        }
+        Returns: Json
+      }
+      record_payroll_export_download_atomic: {
+        Args: {
+          p_actor_profile_id: string
+          p_batch_id: string
+          p_shop_id: string
         }
         Returns: Json
       }
@@ -24697,4 +24836,3 @@ export const Constants = {
     },
   },
 } as const
-

@@ -40,6 +40,7 @@ export type WorkforceCurrentJob = {
   jobStartedAt: string;
   elapsedMinutes: number;
   assignedTechId: string | null;
+  assignedTechnicianIds?: string[];
 };
 export type WorkforceTodayMetrics = {
   shiftMinutes: number;
@@ -71,6 +72,7 @@ export type WorkforceTechnicianActivity = {
 export type WorkforceActivityFeedItem = {
   id: string;
   timestamp: string;
+  userId: string | null;
   employeeName: string;
   action: string;
   workOrderNumber?: string | null;

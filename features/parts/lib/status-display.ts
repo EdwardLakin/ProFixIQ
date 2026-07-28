@@ -92,6 +92,42 @@ export function isPartsRequestItemPriced(item: PartsRequestStageItem): boolean {
   return description.length > 0 && hasPart && requestedQty(item) > 0 && hasPrice;
 }
 
+/**
+ * Service-menu intake is complete only when the catalog link, reusable
+ * quantity, and canonical unit price persisted by the intake RPC are present.
+ * A legacy quoted price alone must not make the recipe look reviewed.
+ */
+export function isMenuIntakeItemReviewed(
+  item: PartsRequestStageItem,
+): boolean {
+  const hasPart = String(item.partId ?? "").trim().length > 0;
+  return hasPart && requestedQty(item) > 0 && item.unitPrice != null;
+}
+
+export function toMenuIntakeStage(input: {
+  rawStatus?: string | null;
+  items?: PartsRequestStageItem[];
+}): PartsRequestStage {
+  const status = String(input.rawStatus ?? "")
+    .trim()
+    .toLowerCase();
+  const items = (input.items ?? []).filter(
+    (item) => String(item.rawStatus ?? "").toLowerCase() !== "cancelled",
+  );
+
+  if (
+    ["fulfilled", "rejected", "cancelled", "deferred", "returned"].includes(
+      status,
+    )
+  ) {
+    return "completed";
+  }
+
+  return items.length > 0 && items.every(isMenuIntakeItemReviewed)
+    ? "completed"
+    : "needs_quote";
+}
+
 export function isPartsRequestItemStaged(item: PartsRequestStageItem): boolean {
   const target = targetQty(item);
   const netConsumed = Math.max(asNum(item.qtyConsumed) - asNum(item.qtyReturned), 0);

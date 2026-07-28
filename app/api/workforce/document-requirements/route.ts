@@ -75,12 +75,23 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  void admin.from("audit_logs").insert({
+  const { error: auditError } = await admin.from("audit_logs").insert({
     actor_id: access.profile.id ?? null,
     action: "workforce.document_requirement.override.created",
     target: data.id,
     metadata: { shop_id: access.profile.shop_id },
   });
 
-  return NextResponse.json(data, { status: 201 });
+  return NextResponse.json(
+    {
+      ...data,
+      ...(auditError
+        ? {
+            warning:
+              "The requirement was created, but its Activity entry could not be recorded.",
+          }
+        : {}),
+    },
+    { status: 201 },
+  );
 }

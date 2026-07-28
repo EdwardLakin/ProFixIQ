@@ -1,17 +1,17 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-07-28T02:45:31.646Z
+Generated: 2026-07-28T20:38:19.027Z
 
 ## Summary
-- Total route count: **386**
-- Routes exporting GET: **124**
+- Total route count: **388**
+- Routes exporting GET: **125**
 - Routes exporting POST: **273**
 - Routes exporting PUT: **10**
-- Routes exporting PATCH: **22**
+- Routes exporting PATCH: **23**
 - Routes exporting DELETE: **12**
-- Routes with service-role pattern: **24**
-- Routes using requireShopScopedApiAccess: **123**
-- Routes with auth.getUser references: **144**
+- Routes with service-role pattern: **22**
+- Routes using requireShopScopedApiAccess: **132**
+- Routes with auth.getUser references: **137**
 
 ## High-Risk Routes
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -80,7 +80,6 @@ Generated: 2026-07-28T02:45:31.646Z
 ## Medium-Risk Routes
 - `app/api/admin/reset-user-password/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/agent/requests/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
-- `app/api/assignables/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/integrations/quickbooks/callback/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/invoice-versions/[id]/pdf/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/invoices/send/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -90,7 +89,6 @@ Generated: 2026-07-28T02:45:31.646Z
 - `app/api/planner/uploads/sign/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/quotes/apply-ai/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/quotes/send/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
-- `app/api/time/labor-segments/backfill/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/work-orders/[id]/corrections/[sessionId]/close/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/work-orders/[id]/corrections/open/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/work-orders/[id]/financial-lock/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -104,7 +102,6 @@ Generated: 2026-07-28T02:45:31.646Z
 - `app/api/admin/reset-user-password/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/agent/requests/[id]/notify-discord/route.ts` | methods: POST | riskFlags: none
 - `app/api/agent/requests/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
-- `app/api/assignables/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/demo/shop-boost/run/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
 - `app/api/integrations/quickbooks/callback/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/invoice-versions/[id]/pdf/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -116,7 +113,6 @@ Generated: 2026-07-28T02:45:31.646Z
 - `app/api/portal/payments/session/[id]/route.ts` | methods: GET | riskFlags: none
 - `app/api/quotes/apply-ai/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/quotes/send/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
-- `app/api/time/labor-segments/backfill/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/work-orders/[id]/corrections/[sessionId]/close/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/work-orders/[id]/corrections/open/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/work-orders/[id]/financial-lock/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference

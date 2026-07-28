@@ -18,13 +18,18 @@ import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import PickOrderTaskModal from "@/features/parts/components/PickOrderTaskModal";
+import MenuItemPartsIntakeModal, {
+  type MenuIntakeQueueItem,
+} from "@/features/parts/components/MenuItemPartsIntakeModal";
 import { isDismissibleEmptyPartRequestBucket } from "@/features/parts/lib/requests/empty-request";
 import {
   earliestPartsRequestStage,
   isPartsRequestItemHandedOff,
+  isMenuIntakeItemReviewed,
   isPartsRequestItemPriced,
   isPartsRequestItemStaged,
   partsRequestStageLabel,
+  toMenuIntakeStage,
   toPartsRequestStage,
   type PartsRequestStage,
   type PartsRequestStageItem,
@@ -33,6 +38,7 @@ import {
 type DB = Database;
 type PartRequest = DB["public"]["Tables"]["part_requests"]["Row"];
 type PartRequestItem = DB["public"]["Tables"]["part_request_items"]["Row"];
+type MenuItemLite = { id: string; name: string | null };
 
 type QueueItem = Pick<
   PartRequestItem,
@@ -51,6 +57,7 @@ type QueueItem = Pick<
   | "qty_consumed"
   | "qty_returned"
   | "status"
+  | "unit_cost"
   | "updated_at"
 >;
 
@@ -82,7 +89,10 @@ type WorkOrderListRow = {
 };
 
 type WoBucket = {
-  workOrderId: string;
+  bucketId: string;
+  workOrderId: string | null;
+  menuItemId: string | null;
+  menuItemName: string | null;
   customId: string | null;
   customerName: string | null;
   vehicleLabel: string | null;
@@ -208,17 +218,27 @@ function vehicleLabel(row: WorkOrderListRow | undefined): string | null {
 function buildBuckets(
   models: RequestModel[],
   workOrders: Record<string, WorkOrderListRow>,
+  menuItems: Record<string, MenuItemLite>,
 ): WoBucket[] {
   const grouped = new Map<string, RequestModel[]>();
   for (const model of models) {
     const workOrderId = model.request.work_order_id;
-    if (!workOrderId) continue;
-    grouped.set(workOrderId, [...(grouped.get(workOrderId) ?? []), model]);
+    const menuItemId = model.request.source_menu_item_id ?? null;
+    const bucketId = workOrderId
+      ? `work-order:${workOrderId}`
+      : menuItemId
+        ? `menu-item:${menuItemId}`
+        : `request:${model.request.id}`;
+    grouped.set(bucketId, [...(grouped.get(bucketId) ?? []), model]);
   }
 
   return [...grouped.entries()]
-    .map(([workOrderId, requestModels]) => {
-      const workOrder = workOrders[workOrderId];
+    .map(([bucketId, requestModels]) => {
+      const workOrderId = requestModels[0]?.request.work_order_id ?? null;
+      const menuItemId =
+        requestModels[0]?.request.source_menu_item_id ?? null;
+      const workOrder = workOrderId ? workOrders[workOrderId] : undefined;
+      const menuItem = menuItemId ? menuItems[menuItemId] : undefined;
       const items = requestModels.flatMap((model) => model.items);
       const latestAt =
         [...requestModels]
@@ -237,6 +257,9 @@ function buildBuckets(
       const searchBlob = [
         workOrderId,
         workOrder?.custom_id,
+        menuItem?.name,
+        "menu intake",
+        ...requestModels.map((model) => model.request.notes),
         customer,
         vehicle,
         ...requestModels.map((model) => model.request.id),
@@ -247,7 +270,10 @@ function buildBuckets(
         .toLowerCase();
 
       return {
+        bucketId,
         workOrderId,
+        menuItemId,
+        menuItemName: menuItem?.name?.trim() || null,
         customId: workOrder?.custom_id ?? null,
         customerName: customer,
         vehicleLabel: vehicle,
@@ -264,10 +290,20 @@ function buildBuckets(
 }
 
 function workOrderLabel(bucket: WoBucket): string {
-  return bucket.customId || `#${bucket.workOrderId.slice(0, 8)}`;
+  if (bucket.workOrderId) {
+    return bucket.customId || `#${bucket.workOrderId.slice(0, 8)}`;
+  }
+  if (bucket.menuItemId) {
+    return `Menu intake · ${bucket.menuItemName || "Service menu item"}`;
+  }
+  return "Internal parts request";
 }
 
 function requestHref(bucket: WoBucket): string {
+  if (bucket.menuItemId && !bucket.workOrderId) {
+    return `/menu/item/${encodeURIComponent(bucket.menuItemId)}`;
+  }
+  if (!bucket.workOrderId) return "/parts";
   return `/parts/requests/${encodeURIComponent(
     bucket.customId || bucket.workOrderId,
   )}`;
@@ -284,6 +320,11 @@ function completedSteps(bucket: WoBucket): number {
 
 function itemStateSummary(bucket: WoBucket): string {
   const items = bucket.items.map(stageItem);
+  if (bucket.menuItemId && !bucket.workOrderId) {
+    if (bucket.stage === "completed") return "Recipe linked and priced";
+    const reviewed = items.filter(isMenuIntakeItemReviewed).length;
+    return `${reviewed} of ${items.length} catalog linked and priced`;
+  }
   if (bucket.stage === "needs_quote") {
     const missing = items.filter(
       (item) => !isPartsRequestItemPriced(item),
@@ -373,6 +414,7 @@ function QueueCard({
   onDismissEmpty,
   onHandoff,
   onOpenPickOrder,
+  onOpenMenuIntake,
 }: {
   bucket: WoBucket;
   dismissingEmpty: boolean;
@@ -380,9 +422,11 @@ function QueueCard({
   onDismissEmpty: (bucket: WoBucket) => Promise<void>;
   onHandoff: (bucket: WoBucket) => Promise<void>;
   onOpenPickOrder: (bucket: WoBucket) => void;
+  onOpenMenuIntake: (bucket: WoBucket) => void;
 }) {
   const meta = bucket.stage === "completed" ? null : STAGE_META[bucket.stage];
   const href = requestHref(bucket);
+  const isMenuIntake = Boolean(bucket.menuItemId && !bucket.workOrderId);
   const canDismissEmpty = isDismissibleEmptyPartRequestBucket(
     bucket.models.map((model) => ({
       status: model.request.status,
@@ -391,6 +435,8 @@ function QueueCard({
   );
   const nextAction = canDismissEmpty
     ? "No parts were added. Dismiss this abandoned request or open it to review."
+    : bucket.menuItemId && !bucket.workOrderId
+      ? "Link each requested part to the inventory catalog and confirm its cost on the menu item."
     : (meta?.next ?? "Review the completed request history.");
 
   return (
@@ -419,7 +465,7 @@ function QueueCard({
           <span
             className={`max-w-[48%] truncate rounded-md border px-2 py-1 text-[10px] font-semibold ${meta.pill}`}
           >
-            Next: {meta.action}
+            Next: {isMenuIntake ? "Review recipe" : meta.action}
           </span>
         ) : (
           <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
@@ -470,7 +516,7 @@ function QueueCard({
         </span>
       </div>
 
-      <ProgressRail bucket={bucket} />
+      {!isMenuIntake ? <ProgressRail bucket={bucket} /> : null}
 
       {canDismissEmpty ? (
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -489,7 +535,16 @@ function QueueCard({
             Review <span aria-hidden>→</span>
           </Link>
         </div>
-      ) : bucket.stage === "ready_for_tech" ? (
+      ) : isMenuIntake && bucket.stage !== "completed" ? (
+        <button
+          type="button"
+          onClick={() => onOpenMenuIntake(bucket)}
+          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-orange-400/45 bg-orange-500/10 px-3 py-2 text-xs font-semibold text-[color:var(--theme-accent-text)] transition hover:bg-orange-500/20"
+        >
+          <PackageCheck className="h-4 w-4" />
+          Review menu parts
+        </button>
+      ) : bucket.stage === "ready_for_tech" && bucket.workOrderId ? (
         <button
           type="button"
           onClick={() => void onHandoff(bucket)}
@@ -499,7 +554,7 @@ function QueueCard({
           <Wrench className="h-4 w-4" />
           {handingOff ? "Completing handoff…" : "Complete handoff"}
         </button>
-      ) : bucket.stage === "order_receive" ? (
+      ) : bucket.stage === "order_receive" && bucket.workOrderId ? (
         <button
           type="button"
           onClick={() => onOpenPickOrder(bucket)}
@@ -515,7 +570,10 @@ function QueueCard({
             "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]"
           }`}
         >
-          {meta?.action ?? "Open history"} <span aria-hidden>→</span>
+          {isMenuIntake
+            ? "Open completed menu item"
+            : (meta?.action ?? "Open history")}{" "}
+          <span aria-hidden>→</span>
         </Link>
       )}
     </article>
@@ -566,6 +624,7 @@ export default function PartsRequestsPage(): JSX.Element {
   const [workOrders, setWorkOrders] = useState<
     Record<string, WorkOrderListRow>
   >({});
+  const [menuItems, setMenuItems] = useState<Record<string, MenuItemLite>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -578,6 +637,9 @@ export default function PartsRequestsPage(): JSX.Element {
     null,
   );
   const [pickOrderBucket, setPickOrderBucket] = useState<WoBucket | null>(null);
+  const [menuIntakeBucket, setMenuIntakeBucket] = useState<WoBucket | null>(
+    null,
+  );
 
   const reload = useCallback(async () => {
     const sequence = ++reloadSequence.current;
@@ -616,7 +678,7 @@ export default function PartsRequestsPage(): JSX.Element {
             const { data: items, error: itemError } = await supabase
               .from("part_request_items")
               .select(
-                "id,request_id,description,part_id,quoted_price,unit_price,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
+                "id,request_id,description,part_id,quoted_price,unit_price,unit_cost,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
               )
               .in("request_id", requestChunk)
               .order("id", { ascending: true })
@@ -639,13 +701,21 @@ export default function PartsRequestsPage(): JSX.Element {
 
       const nextModels = requestRows.map((request) => {
         const items = itemsByRequest.get(request.id) ?? [];
+        const stageItems = items.map(stageItem);
+        const isMenuIntake =
+          Boolean(request.source_menu_item_id) && !request.work_order_id;
         return {
           request,
           items,
-          stage: toPartsRequestStage({
-            rawStatus: request.status,
-            items: items.map(stageItem),
-          }),
+          stage: isMenuIntake
+            ? toMenuIntakeStage({
+                rawStatus: request.status,
+                items: stageItems,
+              })
+            : toPartsRequestStage({
+                rawStatus: request.status,
+                items: stageItems,
+              }),
         } satisfies RequestModel;
       });
 
@@ -677,9 +747,35 @@ export default function PartsRequestsPage(): JSX.Element {
         }
       }
 
+      const menuItemIds = [
+        ...new Set(
+          requestRows
+            .map((request) => request.source_menu_item_id ?? null)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ];
+      const nextMenuItems: Record<string, MenuItemLite> = {};
+      if (menuItemIds.length > 0) {
+        for (
+          let chunkStart = 0;
+          chunkStart < menuItemIds.length;
+          chunkStart += 200
+        ) {
+          const { data: rows, error: menuItemError } = await supabase
+            .from("menu_items")
+            .select("id, name")
+            .in("id", menuItemIds.slice(chunkStart, chunkStart + 200));
+          if (menuItemError) throw menuItemError;
+          for (const row of rows ?? []) {
+            nextMenuItems[row.id] = row;
+          }
+        }
+      }
+
       if (sequence === reloadSequence.current) {
         setModels(nextModels);
         setWorkOrders(nextWorkOrders);
+        setMenuItems(nextMenuItems);
       }
     } catch (error) {
       if (sequence === reloadSequence.current) {
@@ -734,18 +830,18 @@ export default function PartsRequestsPage(): JSX.Element {
     [models],
   );
   const activeBuckets = useMemo(
-    () => buildBuckets(activeModels, workOrders),
-    [activeModels, workOrders],
+    () => buildBuckets(activeModels, workOrders, menuItems),
+    [activeModels, menuItems, workOrders],
   );
   const completedBuckets = useMemo(
-    () => buildBuckets(completedModels, workOrders),
-    [completedModels, workOrders],
+    () => buildBuckets(completedModels, workOrders, menuItems),
+    [completedModels, menuItems, workOrders],
   );
 
   useEffect(() => {
     if (loading || tab !== "active" || pickOrderBucket) return;
     const next = activeBuckets.find(
-      (bucket) => bucket.stage === "order_receive",
+      (bucket) => bucket.stage === "order_receive" && bucket.workOrderId,
     );
     if (!next) return;
     const fingerprint = next.models
@@ -803,7 +899,7 @@ export default function PartsRequestsPage(): JSX.Element {
       );
       if (!confirmed) return;
 
-      setDismissingWorkOrder(bucket.workOrderId);
+      setDismissingWorkOrder(bucket.bucketId);
       const toastId = toast.loading("Dismissing empty parts requests…");
       try {
         for (const model of bucket.models) {
@@ -854,7 +950,11 @@ export default function PartsRequestsPage(): JSX.Element {
         return;
       }
 
-      setHandingOffWorkOrder(bucket.workOrderId);
+      if (!bucket.workOrderId) {
+        toast.error("A work order is required before technician handoff.");
+        return;
+      }
+      setHandingOffWorkOrder(bucket.bucketId);
       const toastId = toast.loading("Completing technician handoff…");
       try {
         for (const model of readyRequests) {
@@ -983,9 +1083,7 @@ export default function PartsRequestsPage(): JSX.Element {
           <Metric
             icon={ClipboardList}
             value={metricBuckets.length}
-            label={
-              tab === "active" ? "Active work orders" : "Completed work orders"
-            }
+            label={tab === "active" ? "Active request groups" : "Completed groups"}
             tone="copper"
           />
           <Metric
@@ -1044,15 +1142,16 @@ export default function PartsRequestsPage(): JSX.Element {
                   {stageBuckets.length ? (
                     stageBuckets.map((bucket) => (
                       <QueueCard
-                        key={bucket.workOrderId}
+                        key={bucket.bucketId}
                         bucket={bucket}
                         dismissingEmpty={
-                          dismissingWorkOrder === bucket.workOrderId
+                          dismissingWorkOrder === bucket.bucketId
                         }
-                        handingOff={handingOffWorkOrder === bucket.workOrderId}
+                        handingOff={handingOffWorkOrder === bucket.bucketId}
                         onDismissEmpty={dismissEmptyRequests}
                         onHandoff={completeHandoff}
                         onOpenPickOrder={setPickOrderBucket}
+                        onOpenMenuIntake={setMenuIntakeBucket}
                       />
                     ))
                   ) : (
@@ -1069,13 +1168,14 @@ export default function PartsRequestsPage(): JSX.Element {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {visibleBuckets.map((bucket) => (
             <QueueCard
-              key={bucket.workOrderId}
+              key={bucket.bucketId}
               bucket={bucket}
               dismissingEmpty={false}
               handingOff={false}
               onDismissEmpty={dismissEmptyRequests}
               onHandoff={completeHandoff}
               onOpenPickOrder={setPickOrderBucket}
+              onOpenMenuIntake={setMenuIntakeBucket}
             />
           ))}
         </div>
@@ -1097,6 +1197,31 @@ export default function PartsRequestsPage(): JSX.Element {
         customerName={pickOrderBucket?.customerName}
         vehicleLabel={pickOrderBucket?.vehicleLabel}
         onClose={() => setPickOrderBucket(null)}
+        onChanged={reload}
+      />
+      <MenuItemPartsIntakeModal
+        open={menuIntakeBucket !== null}
+        menuItemName={
+          menuIntakeBucket?.menuItemName || "Service menu item"
+        }
+        items={(menuIntakeBucket?.items ?? []).map(
+          (item): MenuIntakeQueueItem => ({
+            id: item.id,
+            description: item.description,
+            partId: item.part_id,
+            quantity: Math.max(
+              Number(item.qty_requested ?? item.qty ?? 1),
+              1,
+            ),
+            unitCost:
+              item.unit_cost === null ? null : Number(item.unit_cost),
+            unitPrice:
+              item.unit_price === null ? null : Number(item.unit_price),
+            quotedPrice:
+              item.quoted_price === null ? null : Number(item.quoted_price),
+          }),
+        )}
+        onClose={() => setMenuIntakeBucket(null)}
         onChanged={reload}
       />
     </main>

@@ -11,6 +11,7 @@ import {
   type CvipGroup,
   type VehicleType,
 } from "@inspections/lib/inspection/masterInspectionList";
+import { buttonClasses } from "@/features/shared/components/ui/Button";
 
 type DutyClass = "light" | "medium" | "heavy";
 type GridMode = "hyd" | "air" | "none";
@@ -873,8 +874,6 @@ export default function CustomBuilderPage() {
   /* Theme alignment with shared dashboard surfaces                      */
   /* ------------------------------------------------------------------ */
 
-  const COPPER_45 = "rgba(176,141,112,0.34)";
-  const COPPER_GLOW_16 = "rgba(176,141,112,0.16)";
   const FOCUS_RING = "rgba(125,211,252,0.38)";
 
   const headerCard =
@@ -886,12 +885,12 @@ export default function CustomBuilderPage() {
     "bg-[color:var(--desktop-panel-bg-soft,var(--theme-surface-inset))] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 
   const pillBase =
-    "px-3 py-1 text-[10px] uppercase tracking-[0.16em] rounded-full border transition-colors";
+    "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--desktop-focus-ring,var(--brand-primary))] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--theme-surface-page)]";
 
   const pillActive =
-    "border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)]";
+    "border-[color:var(--brand-primary)] bg-[color:var(--brand-primary)] text-[color:var(--theme-text-on-accent)] shadow-[var(--theme-shadow-soft)]";
   const pillInactive =
-    "border-transparent bg-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-panel)]";
+    "border-transparent bg-transparent text-[color:var(--theme-text-secondary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-panel)] hover:text-[color:var(--theme-text-primary)]";
 
   const inputBase =
     "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 " +
@@ -901,15 +900,17 @@ export default function CustomBuilderPage() {
     "w-full rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 " +
     `focus:ring-[${FOCUS_RING}]`;
 
-  const actionBtn =
-    "rounded-full border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] " +
-    "bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] " +
-    "text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]";
+  const actionBtn = buttonClasses({
+    variant: "secondary",
+    size: "sm",
+    className: "rounded-full text-[11px] uppercase tracking-[0.14em]",
+  });
 
-  const primaryBtn =
-    "rounded-full bg-[linear-gradient(to_right,rgba(191,141,99,0.72),rgba(160,116,82,0.66))] " +
-    "px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] " +
-    `shadow-[0_0_14px_${COPPER_GLOW_16}] hover:shadow-[0_0_18px_${COPPER_GLOW_16}] disabled:opacity-60`;
+  const primaryBtn = buttonClasses({
+    variant: "default",
+    size: "sm",
+    className: "rounded-full text-[11px] uppercase tracking-[0.16em]",
+  });
 
   return (
     <div className="px-4 py-6 text-[color:var(--theme-text-primary)]">
@@ -1008,6 +1009,7 @@ export default function CustomBuilderPage() {
                 <button
                   type="button"
                   onClick={() => setIncludeOil((v) => !v)}
+                  aria-pressed={includeOil}
                   className={
                     pillBase + " " + (includeOil ? pillActive : pillInactive)
                   }
@@ -1018,6 +1020,7 @@ export default function CustomBuilderPage() {
                 <button
                   type="button"
                   onClick={() => setIncludeTireGrid((v) => !v)}
+                  aria-pressed={includeTireGrid}
                   className={
                     pillBase +
                     " " +
@@ -1029,6 +1032,7 @@ export default function CustomBuilderPage() {
                 <button
                   type="button"
                   onClick={() => setIncludeBatteryGrid((v) => !v)}
+                  aria-pressed={includeBatteryGrid}
                   className={
                     pillBase +
                     " " +
@@ -1040,6 +1044,7 @@ export default function CustomBuilderPage() {
                 <button
                   type="button"
                   onClick={() => setIncludeGreaseChassis((v) => !v)}
+                  aria-pressed={includeGreaseChassis}
                   className={
                     pillBase +
                     " " +
@@ -1083,6 +1088,7 @@ export default function CustomBuilderPage() {
                     <button
                       key={opt.value}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => {
                         setGridTouched(true);
                         setGridMode(opt.value);
@@ -1226,12 +1232,14 @@ export default function CustomBuilderPage() {
                   <button
                     key={key}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => applyAiPreset(key)}
-                    className={cx(
-                      actionBtn,
-                      "px-3 py-1",
-                      active && `border-[${COPPER_45}] text-[color:var(--theme-text-primary)]`,
-                    )}
+                    className={buttonClasses({
+                      variant: active ? "default" : "secondary",
+                      size: "sm",
+                      className:
+                        "rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.14em]",
+                    })}
                   >
                     {CVIP_PRESETS[key].label}
                   </button>
@@ -1342,14 +1350,15 @@ export default function CustomBuilderPage() {
                           key={label}
                           className={cx(
                             "group flex min-h-10 items-center gap-3 rounded-xl border border-[color:var(--desktop-border,var(--metal-border-soft,var(--theme-border-soft)))] bg-[color:var(--desktop-item-bg,var(--theme-surface-inset))] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] transition-colors hover:bg-[color:var(--theme-surface-panel)]",
-                            checked && `border-[${COPPER_45}]`,
+                            checked &&
+                              "border-[color:var(--brand-primary)] bg-[color:var(--theme-surface-panel)] ring-1 ring-[color:var(--brand-primary)]",
                           )}
                         >
                           <input
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggle(sec.title, label)}
-                            className="h-4 w-4 accent-[rgba(200,122,67,0.85)]"
+                            className="h-4 w-4 accent-[color:var(--brand-primary)]"
                           />
                           <span className="text-sm leading-snug text-[color:var(--theme-text-primary)]">
                             {label}

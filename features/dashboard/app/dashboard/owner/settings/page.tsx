@@ -472,7 +472,8 @@ export default function OwnerSettingsPage() {
     }
     setPayrollSettings((prev) => ({ ...prev, ...(body?.settings ?? {}) }));
     setPayrollDirty(false);
-    toast.success("Payroll & timekeeping settings saved.");
+    if (body?.warning) toast.warning(body.warning);
+    else toast.success("Payroll & timekeeping settings saved.");
   }
 
   const maybeToastSeatInfo = (

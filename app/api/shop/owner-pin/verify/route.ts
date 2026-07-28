@@ -6,6 +6,7 @@ import {
   setOwnerPinVerifiedCookie,
 } from "@/features/shared/lib/server/owner-pin";
 import { normalizeOwnerPin, verifyOwnerPin } from "@/features/shared/lib/server/owner-pin-crypto";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 
 
 type Body = {
@@ -41,15 +42,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "shopId and pin required" }, { status: 400 });
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, shop_id, completed_onboarding")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (!profile) {
+    const { profile: resolvedProfile } =
+      await resolveAuthenticatedStaffProfile(supabase, user.id);
+    if (!resolvedProfile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
+    const { data: completion } = await supabase
+      .from("profiles")
+      .select("completed_onboarding")
+      .eq("id", resolvedProfile.id)
+      .maybeSingle();
+    const profile = { ...resolvedProfile, ...completion };
 
     if (!profile.shop_id) {
       return NextResponse.json({ error: "No shop linked to your account" }, { status: 409 });

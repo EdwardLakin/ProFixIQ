@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminSupabase, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 import { requirePayrollReviewer } from "../_lib/auth";
 
@@ -25,9 +25,9 @@ export async function PUT(req: NextRequest) {
   if (!auth.ok) return auth.response;
   if (!['owner','admin'].includes(String(auth.me.role ?? ''))) return NextResponse.json({ error: "Owner/admin required" }, { status: 403 });
 
-  const pin = await requireOwnerPinVerified(req, createServerSupabaseRoute() as never, {
+  const pin = await requireOwnerPinVerified(req, auth.supabase as never, {
     shopId: auth.me.shop_id!,
-    userId: auth.me.id,
+    userId: auth.authUserId,
     allowedPurposes: [OWNER_PIN_PURPOSES.SETTINGS, OWNER_PIN_PURPOSES.PRIVILEGED],
   });
   if (!pin.ok) return pin.response;
@@ -57,13 +57,19 @@ export async function PUT(req: NextRequest) {
     const admin = createAdminSupabase() as any;
     const { data, error } = await admin.from("shop_payroll_settings").upsert(payload, { onConflict: "shop_id" }).select("*").single();
     if (error) throw new Error(error.message);
-    void admin.from("audit_logs").insert({
+    const { error: auditError } = await admin.from("audit_logs").insert({
       actor_id: auth.me.id,
       action: "payroll.settings.updated",
       target: data.id,
       metadata: { ...payload, shop_id: auth.me.shop_id },
     });
-    return NextResponse.json({ ok: true, settings: data });
+    return NextResponse.json({
+      ok: true,
+      settings: data,
+      warning: auditError
+        ? "Payroll settings were saved, but the Activity entry could not be recorded. No retry is needed."
+        : null,
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid payroll settings" }, { status: 400 });
   }

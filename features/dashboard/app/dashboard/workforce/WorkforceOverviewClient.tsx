@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { MyWorkforceCard } from "@/features/workforce/components/MyWorkforceCard";
 
 type InboxSeverity = "blocking" | "warning" | "info";
 
@@ -102,7 +103,6 @@ function roleSafeHref(href: string, canAccessPeople: boolean): string {
   const blocked = [
     "/dashboard/workforce/people",
     "/dashboard/workforce/documents",
-    "/dashboard/workforce/certifications",
     "/dashboard/workforce/required-document-matrix",
   ];
   return blocked.some((prefix) => href.startsWith(prefix)) ? "/dashboard/workforce/overview" : href;
@@ -190,6 +190,13 @@ export default function WorkforceOverviewClient() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener("workforce:shift-state", refresh);
+    return () =>
+      window.removeEventListener("workforce:shift-state", refresh);
   }, [load]);
 
   const panelEntries = useMemo(() => {
@@ -294,6 +301,8 @@ export default function WorkforceOverviewClient() {
       </header>
 
       {loadWarning ? <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm text-[color:var(--theme-warning-text)]">{loadWarning}</div> : null}
+
+      <MyWorkforceCard />
 
       <section className="overflow-x-auto pb-1" aria-label="Workforce key metrics">
         <div className="grid min-w-[680px] gap-3 md:grid-cols-2 lg:min-w-0 lg:grid-cols-3">

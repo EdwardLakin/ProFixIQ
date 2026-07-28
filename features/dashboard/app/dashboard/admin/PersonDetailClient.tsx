@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@shared/components/ui/Button";
 import {
@@ -30,9 +30,21 @@ type Certification = {
   lifecycle_group?: "expired" | "expiring_soon" | "active";
 };
 
+type EmployeeDocument = {
+  id: string;
+  doc_type: string;
+  status: string;
+  uploaded_at: string;
+  expires_at: string | null;
+  original_filename: string | null;
+  content_type: string | null;
+  file_size_bytes: number | null;
+};
+
 type PersonDetail = {
   id: string;
   full_name: string | null;
+  username: string | null;
   email: string | null;
   phone: string | null;
   role: string | null;
@@ -74,8 +86,15 @@ type PersonDetail = {
     action_href: string;
   }>;
   action_counts: { blocking: number; warning: number; informational: number };
-  audit_preview: Array<{ id: string; action: string | null; created_at: string | null; target: string | null; actor_id: string | null; metadata: unknown }>;
+  audit_preview: Array<{
+    id: string;
+    action: string | null;
+    created_at: string | null;
+    actor_name: string;
+    affected_person_name: string;
+  }>;
   certifications: Certification[];
+  documents: EmployeeDocument[];
 };
 
 type CertificationDraft = Omit<Certification, "id">;
@@ -110,14 +129,30 @@ const APP_ROLE_OPTIONS = [
 function certPosture(cert: Certification) {
   if (cert.status === "revoked") return "Revoked";
   if (cert.status === "pending") return "Pending";
-  const now = Date.now();
-  const in30 = now + 1000 * 60 * 60 * 24 * 30;
-  const in60 = now + 1000 * 60 * 60 * 24 * 60;
-  const expiry = cert.expiry_date ? new Date(cert.expiry_date).getTime() : null;
-  if (expiry && expiry < now) return "Expired";
-  if (expiry && expiry <= in30) return "Expiring ≤30 days";
-  if (expiry && expiry <= in60) return "Expiring 31-60 days";
-  return cert.status === "expired" ? "Expired" : "Active";
+  if (
+    cert.lifecycle_group === "expired" ||
+    cert.status === "expired" ||
+    (cert.days_remaining !== null &&
+      cert.days_remaining !== undefined &&
+      cert.days_remaining < 0)
+  ) {
+    return "Expired";
+  }
+  if (
+    cert.days_remaining !== null &&
+    cert.days_remaining !== undefined &&
+    cert.days_remaining <= 30
+  ) {
+    return "Expiring ≤30 days";
+  }
+  if (
+    cert.days_remaining !== null &&
+    cert.days_remaining !== undefined &&
+    cert.days_remaining <= 60
+  ) {
+    return "Expiring 31-60 days";
+  }
+  return "Active";
 }
 
 function statusTone(status: "active" | "inactive" | "on_leave") {
@@ -126,19 +161,32 @@ function statusTone(status: "active" | "inactive" | "on_leave") {
   return "text-[color:var(--theme-success-text)]";
 }
 
+function formatDocumentSize(value: number | null) {
+  if (!value || value < 1) return "Size unavailable";
+  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function PersonDetailClient({ personId, from }: { personId: string; from?: string | null }) {
   const searchParams = useSearchParams();
   const [detail, setDetail] = useState<PersonDetail | null>(null);
   const [persistedRole, setPersistedRole] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [certSaving, setCertSaving] = useState(false);
   const [newCert, setNewCert] = useState<CertificationDraft>(EMPTY_CERT);
   const [editingCertId, setEditingCertId] = useState<string | null>(null);
   const [editingCert, setEditingCert] = useState<CertificationDraft>(EMPTY_CERT);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentType, setDocumentType] = useState("other");
+  const [documentExpiry, setDocumentExpiry] = useState("");
+  const [documentUploading, setDocumentUploading] = useState(false);
+  const [documentInputKey, setDocumentInputKey] = useState(0);
 
-  useEffect(() => {
-    (async () => {
+  const loadDetail = useCallback(async () => {
+    setError(null);
+    try {
       const res = await fetch(`/api/admin/people/${personId}`, { cache: "no-store" });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
@@ -147,8 +195,14 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
       }
       setDetail(body as PersonDetail);
       setPersistedRole((body as PersonDetail).role ?? null);
-    })();
+    } catch {
+      setError("Failed to load person detail");
+    }
   }, [personId]);
+
+  useEffect(() => {
+    void loadDetail();
+  }, [loadDetail]);
 
   const missingChecklist = useMemo(() => {
     if (!detail) return [];
@@ -194,6 +248,7 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
     if (!detail) return;
     setSaving(true);
     setError(null);
+    setNotice(null);
     const payload: Record<string, unknown> = {
       full_name: detail.full_name,
       phone: detail.phone,
@@ -208,9 +263,9 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
+    const saveBody = await res.json().catch(() => null);
     if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      setError(body?.error ?? "Save failed");
+      setError(saveBody?.error ?? "Save failed");
       setSaving(false);
       return;
     }
@@ -219,6 +274,13 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
     if (refreshed.ok && body) {
       setDetail(body as PersonDetail);
       setPersistedRole((body as PersonDetail).role ?? null);
+      setNotice(
+        saveBody?.warning ?? "Employee profile and workforce settings saved.",
+      );
+    } else {
+      setError(
+        "The employee record was saved, but the refreshed record could not be loaded. Reload this page before editing again.",
+      );
     }
     setSaving(false);
   }
@@ -226,6 +288,8 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
   async function addCertification() {
     if (!newCert.cert_name.trim()) return;
     setCertSaving(true);
+    setError(null);
+    setNotice(null);
     const res = await fetch(`/api/admin/people/${personId}/certifications`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -239,11 +303,14 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
     }
     setDetail((prev) => (prev ? { ...prev, certifications: [body.certification as Certification, ...prev.certifications] } : prev));
     setNewCert(EMPTY_CERT);
+    setNotice(body?.warning ?? "Certification added.");
   }
 
   async function saveEditedCertification() {
     if (!editingCertId || !editingCert.cert_name.trim()) return;
     setCertSaving(true);
+    setError(null);
+    setNotice(null);
     const res = await fetch(`/api/admin/people/${personId}/certifications/${editingCertId}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
@@ -265,10 +332,13 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
     );
     setEditingCertId(null);
     setEditingCert(EMPTY_CERT);
+    setNotice(body?.warning ?? "Certification updated.");
   }
 
   async function deleteCertification(certId: string) {
     if (!confirm("Delete this certification?")) return;
+    setError(null);
+    setNotice(null);
     const res = await fetch(`/api/admin/people/${personId}/certifications/${certId}`, { method: "DELETE" });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
@@ -276,9 +346,86 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
       return;
     }
     setDetail((prev) => (prev ? { ...prev, certifications: prev.certifications.filter((item) => item.id !== certId) } : prev));
+    setNotice(body?.warning ?? "Certification deleted.");
+  }
+
+  async function uploadDocument() {
+    if (!documentFile) {
+      setError("Choose a document file first.");
+      return;
+    }
+    setDocumentUploading(true);
+    setError(null);
+    setNotice(null);
+
+    const form = new FormData();
+    form.set("file", documentFile);
+    form.set("doc_type", documentType);
+    if (documentExpiry) form.set("expires_at", documentExpiry);
+
+    const response = await fetch(
+      `/api/admin/people/${personId}/documents`,
+      {
+        method: "POST",
+        body: form,
+      },
+    );
+    const body = await response.json().catch(() => null);
+    setDocumentUploading(false);
+
+    if (!response.ok || !body?.document) {
+      setError(body?.error ?? "Document upload failed.");
+      return;
+    }
+
+    setDetail((current) =>
+      current
+        ? {
+            ...current,
+            documents: [
+              body.document as EmployeeDocument,
+              ...current.documents,
+            ],
+          }
+        : current,
+    );
+    setDocumentFile(null);
+    setDocumentType("other");
+    setDocumentExpiry("");
+    setDocumentInputKey((value) => value + 1);
+    setNotice(body?.warning ?? "Employee document uploaded securely.");
+  }
+
+  async function openDocument(documentId: string) {
+    setError(null);
+    const response = await fetch(
+      `/api/workforce/documents-readiness/${documentId}/signed-url`,
+      { cache: "no-store" },
+    );
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body?.signedUrl) {
+      setError(body?.error ?? "Secure document access is unavailable.");
+      return;
+    }
+    window.open(String(body.signedUrl), "_blank", "noopener,noreferrer");
   }
 
   if (!detail) {
+    if (error) {
+      return (
+        <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-[color:var(--theme-danger-text)]">
+          <h2 className="text-lg font-semibold">Unable to load person workspace</h2>
+          <p className="mt-2 text-sm">{error}</p>
+          <Button
+            type="button"
+            className="mt-3"
+            onClick={() => void loadDetail()}
+          >
+            Retry
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="space-y-4">
         <AdminEmptyState title="Loading person workspace" body="Pulling identity, workforce, certifications, payroll posture, and audit context." />
@@ -290,9 +437,19 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
     <div className="space-y-4">
       <AdminPageHeader
         eyebrow="People Record Workspace"
-        title={detail.full_name ?? "Person record"}
+        title={
+          detail.full_name?.trim() ||
+          detail.username?.trim() ||
+          detail.email?.trim() ||
+          "Employee profile unavailable"
+        }
         subtitle="Manage identity/access, workforce profile, certifications/licensing, payroll posture, and activity from one canonical staff record."
       />
+      {notice ? (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-[color:var(--theme-success-text)]">
+          {notice}
+        </div>
+      ) : null}
       {fromWorkforceOverview ? (
         <AdminPanel>
           <div className="px-4 py-3 text-xs text-[color:var(--theme-accent-text)]">Opened from Workforce Overview for workload review.</div>
@@ -555,7 +712,13 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
         <div className="grid gap-3 p-4 text-xs md:grid-cols-2">
           <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
             <p className="font-medium text-[color:var(--theme-text-primary)]">Readiness posture</p>
-            <p className={`mt-1 font-medium ${detail.payroll_posture.is_payroll_ready ? "text-[color:var(--theme-success-text)]" : "text-[color:var(--theme-danger-text)]"}`}>{detail.payroll_posture.is_payroll_ready ? "Ready for payroll processing" : `Not payroll ready — ${Math.max(1, detail.payroll_posture.blocking_exceptions)} blocking issue${Math.max(1, detail.payroll_posture.blocking_exceptions) > 1 ? "s" : ""}`}</p>
+            <p className={`mt-1 font-medium ${detail.payroll_posture.is_payroll_ready ? "text-[color:var(--theme-success-text)]" : detail.payroll_posture.in_current_period ? "text-[color:var(--theme-danger-text)]" : "text-[color:var(--theme-warning-text)]"}`}>
+              {detail.payroll_posture.is_payroll_ready
+                ? "Ready for payroll processing"
+                : detail.payroll_posture.in_current_period
+                  ? "Recorded time is blocked until payroll setup is complete"
+                  : "Payroll setup incomplete — no open-period time recorded"}
+            </p>
             <p>{detail.payroll_posture.blocking_exceptions} blocking • {detail.payroll_posture.warning_exceptions} warning</p>
             <p>{detail.payroll_posture.in_current_period ? "Included in current open period" : "No open-period entries yet"}</p>
           </div>
@@ -580,8 +743,14 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
           <div className="space-y-2 p-4 text-sm text-[color:var(--theme-text-secondary)]">
             {detail.audit_preview.map((row) => (
               <div key={row.id} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                <p className="font-medium text-[color:var(--theme-text-primary)]">{row.action ?? "event"}</p>
-                <p className="text-xs text-[color:var(--theme-text-secondary)]">{row.created_at ? new Date(row.created_at).toLocaleString() : "Unknown time"} • target: {row.target ?? "—"} • actor: {row.actor_id ?? "—"}</p>
+                <p className="font-medium capitalize text-[color:var(--theme-text-primary)]">
+                  {(row.action ?? "Workforce event").replaceAll(/[._]/g, " ")}
+                </p>
+                <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                  {row.created_at ? new Date(row.created_at).toLocaleString() : "Unknown time"}
+                  {" • "}
+                  {row.actor_name} updated {row.affected_person_name}
+                </p>
               </div>
             ))}
           </div>
@@ -589,8 +758,99 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
       </AdminPanel>
 
       <AdminPanel>
-        <AdminPanelTitle title="Documents" description="Document workflows will be added once upload/index foundation lands in People." />
-        <div className="p-4 text-xs text-[color:var(--theme-text-secondary)]">Documents are intentionally deferred in this pass to avoid placeholder-only records without retrieval and governance controls.</div>
+        <AdminPanelTitle
+          title="Documents"
+          description="Upload employee-specific records and retrieve them through short-lived secure links."
+          action={
+            <Link
+              href="/dashboard/workforce/documents"
+              className="text-xs font-medium text-[color:var(--theme-accent-text)]"
+            >
+              Open Documents Command →
+            </Link>
+          }
+        />
+        <div className="grid gap-3 border-b border-[color:var(--theme-border-soft)] p-4 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.45fr)_minmax(160px,0.4fr)_auto] md:items-end">
+          <AdminField label="Document file">
+            <input
+              key={documentInputKey}
+              type="file"
+              accept="application/pdf,image/jpeg,image/png,image/webp"
+              className="block w-full text-xs text-[color:var(--theme-text-secondary)] file:mr-3 file:rounded-lg file:border file:border-[color:var(--theme-border-soft)] file:bg-[color:var(--theme-surface-inset)] file:px-3 file:py-2 file:text-xs file:text-[color:var(--theme-text-primary)]"
+              onChange={(event) =>
+                setDocumentFile(event.target.files?.[0] ?? null)
+              }
+            />
+          </AdminField>
+          <AdminField label="Document type">
+            <select
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+              value={documentType}
+              onChange={(event) => setDocumentType(event.target.value)}
+            >
+              <option value="drivers_license">Driver&apos;s license</option>
+              <option value="certification">Certification record</option>
+              <option value="tax_form">Tax form</option>
+              <option value="other">Other</option>
+            </select>
+          </AdminField>
+          <AdminField label="Expires (optional)">
+            <input
+              type="date"
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+              value={documentExpiry}
+              onChange={(event) => setDocumentExpiry(event.target.value)}
+            />
+          </AdminField>
+          <Button
+            type="button"
+            variant="default"
+            disabled={documentUploading || !documentFile}
+            onClick={() => void uploadDocument()}
+          >
+            {documentUploading ? "Uploading…" : "Upload document"}
+          </Button>
+        </div>
+        {detail.documents.length === 0 ? (
+          <AdminEmptyState
+            title="No employee documents"
+            body="Upload the first PDF or image to start this employee’s secure document history."
+          />
+        ) : (
+          <div className="divide-y divide-[color:var(--theme-border-soft)]">
+            {detail.documents.map((document) => (
+              <div
+                key={document.id}
+                className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <p className="font-medium capitalize text-[color:var(--theme-text-primary)]">
+                    {document.doc_type.replaceAll("_", " ")}
+                  </p>
+                  <p className="text-xs text-[color:var(--theme-text-secondary)]">
+                    {document.original_filename ?? "Employee document"} ·{" "}
+                    {formatDocumentSize(document.file_size_bytes)} ·{" "}
+                    {document.status.replaceAll("_", " ")}
+                  </p>
+                  <p className="text-xs text-[color:var(--theme-text-muted)]">
+                    Uploaded{" "}
+                    {new Date(document.uploaded_at).toLocaleDateString()}
+                    {document.expires_at
+                      ? ` · Expires ${new Date(`${document.expires_at}T00:00:00.000Z`).toLocaleDateString([], { timeZone: "UTC" })}`
+                      : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-medium text-[color:var(--theme-accent-text)]"
+                  onClick={() => void openDocument(document.id)}
+                >
+                  Open secure document
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </AdminPanel>
 
       <AdminToolbar>

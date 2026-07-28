@@ -60,6 +60,7 @@ type Props = {
   open: boolean;
   channel?: string;
   initialSearch?: string;
+  initialQty?: number;
   workOrderId?: string;
   workOrderLineId?: string | null;
   vehicleSummary?: {
@@ -117,6 +118,7 @@ export function PartPicker({
   open,
   channel = "partpicker",
   initialSearch = "",
+  initialQty = 1,
   workOrderId,
   workOrderLineId,
   vehicleSummary,
@@ -270,13 +272,17 @@ export function PartPicker({
     if (!open) return;
     setSelectedPartId(null);
     setSelectedLocId(null);
-    setQtyStr("1");
+    setQtyStr(
+      Number.isFinite(initialQty) && initialQty > 0
+        ? String(initialQty)
+        : "1",
+    );
     setUnitCostStr("");
     setSearch(initialSearch);
     setSubmitting(false);
     submittingRef.current = false;
     operationRef.current = null;
-  }, [open, initialSearch]);
+  }, [open, initialQty, initialSearch]);
 
   // ✅ LINT FIX: stabilize selectedStocks
   const selectedStocks = useMemo(() => {

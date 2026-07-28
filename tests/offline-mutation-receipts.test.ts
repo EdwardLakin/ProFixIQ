@@ -5,6 +5,9 @@ const read = (path: string) => readFileSync(path, "utf8");
 const migration = read(
   "supabase/migrations/20260716090000_phase2_offline_mutation_receipts.sql",
 );
+const canonicalPunchMigration = read(
+  "supabase/migrations/20260728213600_canonical_offline_shift_punch.sql",
+);
 
 describe("offline mutation receipts", () => {
   it("stores tenant and actor scoped receipts with one operation-key owner", () => {
@@ -33,8 +36,27 @@ describe("offline mutation receipts", () => {
     for (const source of [offlineRoute, punchRoute]) {
       expect(source).toContain('headers.get("Idempotency-Key")');
       expect(source).toContain("A stable Idempotency-Key is required.");
-      expect(source).toContain("auth.getUser()");
     }
+    expect(offlineRoute).toContain("auth.getUser()");
+    expect(punchRoute).toContain("requireShopScopedApiAccess");
+    expect(punchRoute).toContain(
+      "apply_canonical_offline_shift_punch_atomic",
+    );
+    expect(canonicalPunchMigration).toContain(
+      "profile.user_id = p_actor_auth_user_id",
+    );
+    expect(canonicalPunchMigration).toContain(
+      "actor_user_id,\n    operation_key",
+    );
+    expect(canonicalPunchMigration).toContain(
+      "p_actor_auth_user_id,\n    p_operation_key",
+    );
+    expect(canonicalPunchMigration).toContain(
+      "coalesce(v_shift.user_id, p_actor_profile_id),\n    v_event,",
+    );
+    expect(canonicalPunchMigration).not.toContain(
+      "v_event::public.punch_event_type",
+    );
   });
 
   it("routes every remaining queued write through server receipts", () => {

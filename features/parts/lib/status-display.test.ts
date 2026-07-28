@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   earliestPartsRequestStage,
+  isMenuIntakeItemReviewed,
+  toMenuIntakeStage,
   toPartsRequestStage,
   type PartsRequestStageItem,
 } from "./status-display";
@@ -118,5 +120,27 @@ describe("parts request operational stages", () => {
         "awaiting_approval",
       ]),
     ).toBe("awaiting_approval");
+  });
+
+  it("keeps service-menu intake aligned with its persisted review contract", () => {
+    expect(
+      isMenuIntakeItemReviewed({
+        ...pricedItem,
+        unitPrice: null,
+        quotedPrice: 18.5,
+      }),
+    ).toBe(false);
+    expect(
+      toMenuIntakeStage({
+        rawStatus: "requested",
+        items: [{ ...pricedItem, unitPrice: 18.5 }],
+      }),
+    ).toBe("completed");
+    expect(
+      toMenuIntakeStage({
+        rawStatus: "requested",
+        items: [{ ...pricedItem, unitPrice: null, quotedPrice: 18.5 }],
+      }),
+    ).toBe("needs_quote");
   });
 });

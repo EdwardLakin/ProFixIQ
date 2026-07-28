@@ -18,6 +18,7 @@ import {
 type PersonRow = {
   id: string;
   full_name: string | null;
+  username: string | null;
   email: string | null;
   phone: string | null;
   role: string | null;
@@ -106,7 +107,7 @@ export default function PeoplePageClient() {
           : actionFilter === "payroll_issues"
             ? row.payroll_blocking_exceptions > 0 || row.payroll_warning_exceptions > 0 || !row.payroll_ready
             : row.expired_certifications > 0 || row.expiring_certifications > 0;
-      const text = `${row.full_name ?? ""} ${row.email ?? ""} ${row.phone ?? ""} ${row.role ?? ""} ${row.workforce_role ?? ""}`.toLowerCase();
+      const text = `${row.full_name ?? ""} ${row.username ?? ""} ${row.email ?? ""} ${row.phone ?? ""} ${row.role ?? ""} ${row.workforce_role ?? ""}`.toLowerCase();
       const matchesWorkforceAction = workforceAction === "cert_expired"
         ? row.expired_certifications > 0
         : workforceAction === "cert_expiring"
@@ -257,7 +258,12 @@ export default function PeoplePageClient() {
                       }}
                     >
                       <td className="px-4 py-2.5">
-                        <p className="font-medium text-[color:var(--theme-text-primary)]">{row.full_name ?? "Unnamed"}</p>
+                        <p className="font-medium text-[color:var(--theme-text-primary)]">
+                          {row.full_name?.trim() ||
+                            row.username?.trim() ||
+                            row.email?.trim() ||
+                            "Employee profile unavailable"}
+                        </p>
                         <p className="text-xs text-[color:var(--theme-text-muted)]">{row.email ?? "No email"}</p>
                         <p className="text-xs text-[color:var(--theme-text-secondary)]">{row.action_counts.blocking} blocking • {row.action_counts.warning} warning</p>
                       </td>

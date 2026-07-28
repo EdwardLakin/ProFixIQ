@@ -94,6 +94,7 @@ describe("Phase D2 operational dashboard evolution", () => {
             jobStartedAt: "2026-07-10T12:30:00.000Z",
             elapsedMinutes: 45,
             assignedTechId: "tech-1",
+            assignedTechnicianIds: ["tech-1"],
           },
           today: { shiftMinutes: 120, breakMinutes: 0, lunchMinutes: 0, jobMinutes: 45, productiveMinutes: 45, idleMinutes: 75, soldLaborHours: 1.5, completedJobCount: 1 },
           operationalState: "working_on_job",

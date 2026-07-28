@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePayrollReviewer } from "../_lib/auth";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { workforceDisplayName } from "@/features/workforce/lib/roster";
 
 const DEFAULT_LIMIT = 20;
 
@@ -8,7 +9,7 @@ export async function GET(req: Request) {
   const auth = await requirePayrollReviewer();
   if (!auth.ok) return auth.response;
 
-  const supabase = createServerSupabaseRoute();
+  const supabase = createAdminSupabase();
   const { searchParams } = new URL(req.url);
   const periodId = searchParams.get("period_id")?.trim() ?? "";
 
@@ -32,5 +33,41 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Failed to load export history" }, { status: 500 });
   }
 
-  return NextResponse.json({ batches: data ?? [] });
+  const batches = data ?? [];
+  const exporterIds = [
+    ...new Set(
+      batches
+        .map((batch) => batch.exported_by)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const { data: exporters, error: exporterError } = exporterIds.length
+    ? await supabase
+        .from("profiles")
+        .select("id, full_name, username, email")
+        .eq("shop_id", auth.me.shop_id)
+        .in("id", exporterIds)
+    : { data: [], error: null };
+  if (exporterError) {
+    return NextResponse.json(
+      { error: "Failed to resolve export history identities" },
+      { status: 500 },
+    );
+  }
+  const exporterNameById = new Map(
+    (exporters ?? []).map((profile) => [
+      profile.id,
+      workforceDisplayName(profile),
+    ]),
+  );
+
+  return NextResponse.json({
+    batches: batches.map((batch) => ({
+      ...batch,
+      exported_by_name: batch.exported_by
+        ? exporterNameById.get(batch.exported_by) ??
+          "Employee profile unavailable"
+        : null,
+    })),
+  });
 }

@@ -2,7 +2,11 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import type { Database } from "@shared/types/types/supabase";
-import { createServerSupabaseRSC, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRSC,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities, type ActorCapabilities, type CanonicalRole } from "@/features/shared/lib/rbac";
 import { OWNER_PIN_PURPOSES, type OwnerPinPurpose, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 import { NextResponse } from "next/server";
@@ -12,6 +16,51 @@ type ProfileScope = Pick<DB["public"]["Tables"]["profiles"]["Row"], "id" | "role
 type ShopScopedProfile = Omit<ProfileScope, "shop_id"> & { shop_id: string };
 
 type CapabilityKey = keyof ActorCapabilities;
+type ServerSupabase =
+  | ReturnType<typeof createServerSupabaseRSC>
+  | ReturnType<typeof createServerSupabaseRoute>;
+
+/**
+ * Resolve the canonical staff profile for an authenticated user.
+ *
+ * New profiles normally use the auth user id as their profile id, while
+ * imported/legacy profiles can retain a separate profile id and link through
+ * profiles.user_id. Workforce records reference profiles.id, so callers must
+ * always receive the canonical profile row rather than assume both ids match.
+ */
+export async function resolveAuthenticatedStaffProfile(
+  supabase: ServerSupabase,
+  authUserId: string,
+): Promise<{ profile: ProfileScope | null; error: string | null }> {
+  const byId = await supabase
+    .from("profiles")
+    .select("id, role, shop_id")
+    .eq("id", authUserId)
+    .maybeSingle<ProfileScope>();
+
+  if (byId.error) {
+    return { profile: null, error: byId.error.message };
+  }
+  if (byId.data) {
+    return { profile: byId.data, error: null };
+  }
+
+  // profiles.self.read historically only matched profiles.id = auth.uid().
+  // Imported staff can instead retain a canonical profile id while linking
+  // their Supabase account through profiles.user_id. The auth subject above is
+  // server-verified, and user_id is unique, so the service client is used only
+  // for this exact fallback lookup.
+  const byAuthUser = await createAdminSupabase()
+    .from("profiles")
+    .select("id, role, shop_id")
+    .eq("user_id", authUserId)
+    .maybeSingle<ProfileScope>();
+
+  return {
+    profile: byAuthUser.data ?? null,
+    error: byAuthUser.error?.message ?? null,
+  };
+}
 
 type ShopPageAccessOptions = {
   allowRoles?: readonly CanonicalRole[];
@@ -31,11 +80,10 @@ export async function requireShopPageAccess(options: ShopPageAccessOptions): Pro
     redirect("/sign-in");
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<ProfileScope>();
+  const { profile } = await resolveAuthenticatedStaffProfile(
+    supabase,
+    user.id,
+  );
 
   const actor = getActorCapabilities({ role: profile?.role });
   const role = actor.canonicalRole;
@@ -86,6 +134,7 @@ export async function requireShopScopedApiAccess(options: ApiAccessOptions = {})
       ok: true;
       profile: ShopScopedProfile;
       canonicalRole: CanonicalRole;
+      authUserId: string;
       supabase: ReturnType<typeof createServerSupabaseRoute>;
     }
   | { ok: false; response: NextResponse }
@@ -97,11 +146,8 @@ export async function requireShopScopedApiAccess(options: ApiAccessOptions = {})
     return { ok: false, response: NextResponse.json({ error: "Not authenticated" }, { status: 401 }) };
   }
 
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<ProfileScope>();
+  const { profile, error: profileErr } =
+    await resolveAuthenticatedStaffProfile(supabase, user.id);
 
   if (profileErr || !profile || !profile.shop_id) {
     return { ok: false, response: NextResponse.json({ error: "Profile for current user not found" }, { status: 403 }) };
@@ -150,6 +196,7 @@ export async function requireShopScopedApiAccess(options: ApiAccessOptions = {})
     ok: true,
     profile: { ...profile, shop_id: profile.shop_id },
     canonicalRole,
+    authUserId: user.id,
     supabase,
   };
 }
