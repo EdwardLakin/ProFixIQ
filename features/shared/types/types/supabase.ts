@@ -21910,17 +21910,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      apply_stripe_subscription_webhook_snapshot: {
-        Args: {
-          p_customer_id: string
-          p_event_created_at: string
-          p_event_id: string
-          p_shop_id: string
-          p_snapshot: Json
-          p_subscription_id: string
-        }
-        Returns: boolean
-      }
       apply_approval_compatibility_bundle_atomic: {
         Args: {
           p_actor_user_id: string
@@ -22105,6 +22094,17 @@ export type Database = {
             }
             Returns: string
           }
+      apply_stripe_subscription_webhook_snapshot: {
+        Args: {
+          p_customer_id: string
+          p_event_created_at: string
+          p_event_id: string
+          p_shop_id: string
+          p_snapshot: Json
+          p_subscription_id: string
+        }
+        Returns: boolean
+      }
       approve_inspection_form_import: {
         Args: { p_job_id: string; p_sections: Json; p_title: string }
         Returns: string
