@@ -12,15 +12,15 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         className={cn(
           "h-10 w-full rounded-[var(--theme-radius-md,0.5rem)] border px-3 py-2 text-sm",
           "border-[color:var(--desktop-border,var(--theme-input-border,var(--theme-border-soft)))]",
-          "bg-[color:var(--theme-input-bg,var(--theme-surface-inset))]",
-          "text-[color:var(--theme-input-text,var(--theme-text-primary))]",
-          "placeholder:text-[color:var(--theme-text-muted)] placeholder:opacity-100",
+          "bg-[color:var(--theme-surface-inset)]",
+          "text-[var(--theme-input-text,var(--theme-text-inverse))]",
+          "placeholder:text-[var(--theme-text-secondary,var(--theme-text-muted))]",
           "backdrop-blur-sm",
           "focus:outline-none focus:ring-2",
-          "focus:ring-[var(--desktop-focus-ring,var(--brand-primary,#1747FF))]",
-          "focus:border-[color:color-mix(in_srgb,var(--brand-primary,#1747FF)_66%,#60a5fa)]",
+          "focus:ring-[var(--desktop-focus-ring,var(--brand-primary,#C97A3D))]",
+          "focus:border-[color:color-mix(in_srgb,var(--brand-primary,#C97A3D)_66%,#93c5fd)]",
           "transition-all duration-200 ease-in-out",
-          "disabled:cursor-not-allowed disabled:bg-[color:var(--theme-surface-subtle)] disabled:text-[color:var(--theme-text-secondary)] disabled:opacity-100",
+          "disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
         {...props}

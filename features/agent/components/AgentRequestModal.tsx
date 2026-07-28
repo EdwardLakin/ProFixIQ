@@ -1,25 +1,26 @@
+// features/agent/components/AgentRequestModal.tsx (FULL FILE REPLACEMENT)
+
 "use client";
 
-import { useEffect, useState, type ChangeEvent } from "react";
-import { toast } from "sonner";
+import { useState, useEffect, ChangeEvent } from "react";
 import { Button } from "@shared/components/ui/Button";
-import { Input } from "@shared/components/ui/input";
 import { Textarea } from "@shared/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@shared/components/ui/dialog";
+import { toast } from "sonner";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type Props = {
   open: boolean;
-  onOpenChange: (value: boolean) => void;
+  onOpenChange: (v: boolean) => void;
 };
 
+// UI intent values → backend enum-ish strings
 type AgentIntentUi =
   | "feature_request"
   | "bug_report"
@@ -29,34 +30,42 @@ type AgentIntentUi =
   | "unclear";
 
 function newRequestId(): string {
-  const cryptoApi = (globalThis as unknown as { crypto?: Crypto }).crypto;
-  if (cryptoApi?.randomUUID) return cryptoApi.randomUUID();
+  // Works in modern browsers; safe fallback included.
+  const c = (globalThis as unknown as { crypto?: Crypto }).crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  // fallback: not perfect, but better than missing ids
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
-
-const labelClass =
-  "text-xs font-medium uppercase tracking-wider text-[color:var(--theme-text-secondary)]";
-const selectClass =
-  "h-10 w-full rounded-[var(--theme-radius-md,0.5rem)] border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 text-sm text-[color:var(--theme-input-text)] outline-none transition focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-primary)_22%,transparent)]";
 
 export default function AgentRequestModal({ open, onOpenChange }: Props) {
   const [description, setDescription] = useState("");
   const [intent, setIntent] = useState<AgentIntentUi>("unclear");
+
+  // v2 structured QA context
   const [location, setLocation] = useState("");
   const [steps, setSteps] = useState("");
   const [expected, setExpected] = useState("");
   const [actual, setActual] = useState("");
   const [device, setDevice] = useState("");
+
+  // Local files → uploaded to Supabase on submit
   const [files, setFiles] = useState<File[]>([]);
+
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
+  // Avoid “click before hydration” doing nothing
   useEffect(() => {
     setHydrated(true);
   }, []);
 
-  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setFiles(event.target.files ? Array.from(event.target.files) : []);
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const list = e.target.files;
+    if (!list) {
+      setFiles([]);
+      return;
+    }
+    setFiles(Array.from(list));
   }
 
   async function uploadScreenshots(): Promise<string[]> {
@@ -64,14 +73,18 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
 
     const supabase = createBrowserSupabase();
     const uploadedPaths: string[] = [];
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     const userId = user?.id ?? "anonymous";
 
     for (const file of files) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const path = `${userId}/${Date.now()}-${safeName}`;
+      const timestamp = Date.now();
+      const path = `${userId}/${timestamp}-${safeName}`;
+
       const { error } = await supabase.storage
         .from("agent_uploads")
         .upload(path, file, { cacheControl: "3600", upsert: false });
@@ -81,21 +94,11 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         toast.error(`Failed to upload ${file.name}`);
         continue;
       }
+
       uploadedPaths.push(path);
     }
 
     return uploadedPaths;
-  }
-
-  function resetForm() {
-    setDescription("");
-    setIntent("unclear");
-    setLocation("");
-    setSteps("");
-    setExpected("");
-    setActual("");
-    setDevice("");
-    setFiles([]);
   }
 
   async function submit() {
@@ -105,14 +108,24 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
     }
 
     setLoading(true);
+
     try {
       const supabase = createBrowserSupabase();
+
+      // Generate a stable requestId here so EVERYTHING can correlate.
       const requestId = newRequestId();
+
+      // Get reporterId (user id) if available.
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
+      const reporterId = user?.id ?? null;
+
+      // 1) Upload screenshots first (if any)
       const attachmentIds = await uploadScreenshots();
 
+      // 2) Build context
       const context: Record<string, unknown> = { requestId };
       if (location.trim()) context.location = location.trim();
       if (steps.trim()) context.steps = steps.trim();
@@ -121,15 +134,22 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
       if (device.trim()) context.device = device.trim();
       if (attachmentIds.length) context.attachmentIds = attachmentIds;
 
-      const response = await fetch("/api/agent/requests", {
+      const res = await fetch("/api/agent/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // ✅ critical correlation fields
           requestId,
           context,
+
+          // request info
           description: description.trim(),
           intent,
-          reporterId: user?.id ?? undefined,
+
+          // useful metadata (optional but helpful)
+          reporterId: reporterId ?? undefined,
+
+          // these top-level fields match your CreateAgentRequestBody (if you support them)
           location: location.trim() || undefined,
           steps: steps.trim() || undefined,
           expected: expected.trim() || undefined,
@@ -139,47 +159,58 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         }),
       });
 
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        console.error("Agent request POST failed", response.status, text);
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error("Agent request POST failed", res.status, text);
         toast.error("Failed to submit request");
         return;
       }
 
       toast.success("Request submitted to ProFixIQ-Agent");
-      resetForm();
+
+      // reset
+      setDescription("");
+      setIntent("unclear");
+      setLocation("");
+      setSteps("");
+      setExpected("");
+      setActual("");
+      setDevice("");
+      setFiles([]);
       onOpenChange(false);
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
       toast.error("Something went wrong.");
+      console.error(err);
     } finally {
       setLoading(false);
     }
   }
 
-  const canSubmit = hydrated && Boolean(description.trim()) && !loading;
+  const canSubmit = hydrated && !!description.trim() && !loading;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto">
+      <DialogContent className="bg-[color:var(--theme-surface-overlay)] border border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] backdrop-blur-xl">
         <DialogHeader>
-          <DialogTitle>Submit a Request</DialogTitle>
-          <DialogDescription>
-            Use this for QA or feature ideas. Be specific so the agent and developers
-            know exactly where to look.
-          </DialogDescription>
+          <DialogTitle className="font-blackops tracking-[0.15em] text-[color:var(--theme-text-primary)] uppercase">
+            Submit a Request
+          </DialogTitle>
+          <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+            Use this for QA or feature ideas. Be specific so the agent and
+            developers know exactly where to look.
+          </p>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4 py-1">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="agent-request-type" className={labelClass}>
+        <div className="flex flex-col gap-4">
+          {/* INTENT SELECTOR */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
               Type
             </label>
             <select
-              id="agent-request-type"
               value={intent}
-              onChange={(event) => setIntent(event.target.value as AgentIntentUi)}
-              className={selectClass}
+              onChange={(e) => setIntent(e.target.value as AgentIntentUi)}
+              className="rounded-md bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm"
             >
               <option value="feature_request">Feature Request</option>
               <option value="bug_report">Bug Report</option>
@@ -190,110 +221,108 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
             </select>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="agent-request-description" className={labelClass}>
+          {/* DESCRIPTION */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
               Description
             </label>
             <Textarea
-              id="agent-request-description"
               value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="Example: In inspections > work order #24, the corner grid tabbing jumps out of the grid and moves focus to the footer."
-              className="h-32 resize-y"
+              className="bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] h-32"
             />
             <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
-              Include which screen, what you were doing, and what went wrong. Mention
-              specific grids, buttons, or rows when possible.
+              Include which screen, what you were doing, and what went wrong.
+              Mention specific grids, buttons, or rows when possible.
             </p>
           </div>
 
+          {/* CONTEXT: LOCATION + DEVICE */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="agent-request-location" className={labelClass}>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
                 Where in the app?
               </label>
-              <Input
-                id="agent-request-location"
+              <input
                 value={location}
-                onChange={(event) => setLocation(event.target.value)}
-                placeholder="Ex: Inspections → Corner grid, top-right card"
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Ex: Inspections → Corner grid step, top-right card"
+                className="rounded-md bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm"
               />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="agent-request-device" className={labelClass}>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
                 Device / Browser
               </label>
-              <Input
-                id="agent-request-device"
+              <input
                 value={device}
-                onChange={(event) => setDevice(event.target.value)}
+                onChange={(e) => setDevice(e.target.value)}
                 placeholder="Ex: iPad 11” (Safari), MacBook (Chrome)"
+                className="rounded-md bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border border-[color:var(--theme-border-soft)] px-2 py-1 text-sm"
               />
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="agent-request-steps" className={labelClass}>
+          {/* STEPS */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
               Steps to Reproduce
             </label>
             <Textarea
-              id="agent-request-steps"
               value={steps}
-              onChange={(event) => setSteps(event.target.value)}
-              placeholder={
-                "1. Open work order #...\n2. Go to Inspections tab\n3. Click into corner grids section\n4. Press Tab key from first field..."
-              }
-              className="h-28 resize-y"
+              onChange={(e) => setSteps(e.target.value)}
+              placeholder={`1. Open work order #...\n2. Go to Inspections tab\n3. Click into corner grids section\n4. Press Tab key from first field...`}
+              className="bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] h-28"
             />
           </div>
 
+          {/* EXPECTED vs ACTUAL */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="agent-request-expected" className={labelClass}>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
                 Expected
               </label>
               <Textarea
-                id="agent-request-expected"
                 value={expected}
-                onChange={(event) => setExpected(event.target.value)}
+                onChange={(e) => setExpected(e.target.value)}
                 placeholder="What you expected to happen."
-                className="h-24 resize-y"
+                className="bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] h-20"
               />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="agent-request-actual" className={labelClass}>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
                 Actual
               </label>
               <Textarea
-                id="agent-request-actual"
                 value={actual}
-                onChange={(event) => setActual(event.target.value)}
+                onChange={(e) => setActual(e.target.value)}
                 placeholder="What actually happened, including any errors."
-                className="h-24 resize-y"
+                className="bg-[color:var(--theme-surface-panel)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)] h-20"
               />
             </div>
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="agent-request-screenshots" className={labelClass}>
+          {/* Screenshots */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-[color:var(--theme-text-secondary)] uppercase tracking-wider">
               Screenshots
             </label>
             <input
-              id="agent-request-screenshots"
               type="file"
               accept="image/*"
               multiple
               onChange={handleFileChange}
-              className="text-xs text-[color:var(--theme-text-secondary)] file:mr-3 file:rounded-[var(--theme-radius-md,0.5rem)] file:border file:border-[color:var(--theme-input-border)] file:bg-[color:var(--theme-surface-subtle)] file:px-3 file:py-2 file:text-[color:var(--theme-text-primary)]"
+              className="text-xs text-[color:var(--theme-text-secondary)]"
             />
-            {files.length > 0 ? (
-              <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
+            {files.length > 0 && (
+              <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
                 {files.length} file{files.length > 1 ? "s" : ""} selected
               </p>
-            ) : null}
+            )}
             <p className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
-              Attach clear screenshots of the issue. They are stored securely and
-              linked to this request.
+              Attach clear screenshots of the issue. These will be stored in the
+              secure <code>agent_uploads</code> bucket and linked to this request.
             </p>
           </div>
         </div>
@@ -303,17 +332,18 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
             variant="outline"
             type="button"
             onClick={() => onOpenChange(false)}
+            className="border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)]"
           >
             Cancel
           </Button>
+
           <Button
             type="button"
-            onClick={() => void submit()}
+            onClick={submit}
             disabled={!canSubmit}
-            isLoading={loading}
-            className="border border-[color:var(--brand-primary)] bg-[color:var(--theme-button-primary-bg)] text-[color:var(--theme-button-primary-text)] hover:brightness-105"
+            className="bg-orange-600 hover:bg-orange-500 text-[color:var(--theme-text-on-accent)] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Submit
+            {loading ? "Submitting…" : "Submit"}
           </Button>
         </DialogFooter>
       </DialogContent>
