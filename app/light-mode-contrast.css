@@ -1,0 +1,58 @@
+/*
+ * Several operational surfaces use translucent semantic badges that were
+ * originally authored for the dark shell. In light mode, the pastel 100/200
+ * text utilities become nearly invisible. These overrides keep the same badge
+ * meaning while providing readable contrast without changing dark mode.
+ */
+html[data-theme-mode="light"] body .text-sky-100,
+html[data-theme-mode="light"] body .text-sky-200 {
+  color: #075985 !important;
+}
+
+html[data-theme-mode="light"] body .text-blue-100,
+html[data-theme-mode="light"] body .text-blue-200 {
+  color: #1d4ed8 !important;
+}
+
+html[data-theme-mode="light"] body .text-cyan-100,
+html[data-theme-mode="light"] body .text-cyan-200 {
+  color: #0e7490 !important;
+}
+
+html[data-theme-mode="light"] body .text-emerald-100,
+html[data-theme-mode="light"] body .text-emerald-200 {
+  color: #047857 !important;
+}
+
+html[data-theme-mode="light"] body .text-teal-100,
+html[data-theme-mode="light"] body .text-teal-200 {
+  color: #0f766e !important;
+}
+
+html[data-theme-mode="light"] body .text-amber-100,
+html[data-theme-mode="light"] body .text-amber-200 {
+  color: #92400e !important;
+}
+
+html[data-theme-mode="light"] body .text-orange-100,
+html[data-theme-mode="light"] body .text-orange-200,
+html[data-theme-mode="light"] body .text-orange-300 {
+  color: #c2410c !important;
+}
+
+html[data-theme-mode="light"] body .text-red-100,
+html[data-theme-mode="light"] body .text-red-200,
+html[data-theme-mode="light"] body .text-rose-100,
+html[data-theme-mode="light"] body .text-rose-200 {
+  color: #b91c1c !important;
+}
+
+html[data-theme-mode="light"] body .text-purple-100,
+html[data-theme-mode="light"] body .text-purple-200 {
+  color: #6b21a8 !important;
+}
+
+html[data-theme-mode="light"] body .text-indigo-100,
+html[data-theme-mode="light"] body .text-indigo-200 {
+  color: #4338ca !important;
+}

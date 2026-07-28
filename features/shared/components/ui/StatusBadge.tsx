@@ -23,12 +23,15 @@ type StatusBadgeProps = {
 const variantClasses: Record<StatusBadgeVariant, string> = {
   neutral:
     "border-[var(--theme-card-border,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--theme-surface-2,var(--theme-surface-page))_84%,transparent)] text-[var(--theme-text-secondary,var(--theme-text-muted))]",
-  info: "border-sky-500/40 bg-sky-500/10 text-sky-200",
+  info: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-200",
   active:
-    "border-sky-400/60 bg-sky-500/10 text-sky-100",
-  warning: "border-amber-500/60 bg-amber-500/10 text-amber-200",
-  success: "border-emerald-500/60 bg-emerald-500/10 text-emerald-200",
-  danger: "border-rose-500/60 bg-rose-500/10 text-rose-200",
+    "border-sky-400/60 bg-sky-500/10 text-sky-700 dark:text-sky-100",
+  warning:
+    "border-amber-500/60 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+  success:
+    "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200",
+  danger:
+    "border-rose-500/60 bg-rose-500/10 text-rose-700 dark:text-rose-200",
 };
 
 const sizeClasses: Record<StatusBadgeSize, string> = {
