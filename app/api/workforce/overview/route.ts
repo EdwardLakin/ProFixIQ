@@ -3,7 +3,15 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getShopTodayTomorrowRanges } from "@/features/shared/lib/utils/shopDayWindow";
 import { buildWorkforceActivity } from "@/features/workforce/server/buildWorkforceActivity";
-import { resolveWorkforceSchedulePosture } from "@/features/workforce/lib/schedulePosture";
+import {
+  getShopScheduleDateContext,
+  resolveWorkforceSchedulePosture,
+} from "@/features/workforce/lib/schedulePosture";
+import {
+  composeActiveWorkforceRoster,
+  workforceDisplayName,
+} from "@/features/workforce/lib/roster";
+import { addScheduleDateKeyDays } from "@/features/workforce/lib/scheduleValidation";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 type Severity = "blocking" | "warning" | "info";
@@ -35,7 +43,14 @@ type WorkforceOverviewResponse = {
     canAccessPeople: boolean;
   };
 };
-const ACTIVE_LINE_EXCLUDED = ["completed", "cancelled", "closed", "invoiced", "declined"];
+const ACTIVE_LINE_EXCLUDED = [
+  "completed",
+  "cancelled",
+  "closed",
+  "invoiced",
+  "declined",
+  "voided",
+];
 const OVERLOAD_THRESHOLD = 6;
 const OVERLOADED_INBOX_CAP = 10;
 const INBOX_MAX_ITEMS = 25;
@@ -61,7 +76,6 @@ export async function GET() {
   const admin: AdminClient = createAdminSupabase();
   const shopId = access.profile.shop_id!;
   const now = new Date();
-  const in30 = new Date(now); in30.setDate(in30.getDate() + 30);
   const shopRes = await admin.from("shops").select("timezone").eq("id", shopId).maybeSingle();
   if (shopRes.error) return NextResponse.json({ error: shopRes.error.message }, { status: 500 });
   // Workforce day views intentionally use shop-local timezone day boundaries.
@@ -69,16 +83,27 @@ export async function GET() {
   const todayStartIso = dayRanges.today.start;
   const todayEndIso = dayRanges.today.end;
   const tomorrowEndIso = dayRanges.tomorrow.end;
+  const todayDateKey = getShopScheduleDateContext(
+    now,
+    shopRes.data?.timezone,
+  ).dateKey;
+  const certificationHorizonDateKey = addScheduleDateKeyDays(
+    todayDateKey,
+    30,
+  );
 
   const [activity, profilesRes, workforceRes, timeOffRes, periodsRes, certsRes, templatesRes, overridesRes, blocksRes, linesRes] = await Promise.all([
     buildWorkforceActivity({ shopId, timezone: shopRes.data?.timezone ?? null }),
-    admin.from("profiles").select("id, full_name").eq("shop_id", shopId),
+    admin
+      .from("profiles")
+      .select("id, full_name, username, email, role")
+      .eq("shop_id", shopId),
     admin.from("people_workforce_profiles").select("user_id, employment_status").eq("shop_id", shopId),
     admin.from("staff_time_off_requests").select("id, created_at").eq("shop_id", shopId).eq("status", "pending").order("created_at", { ascending: true }),
     admin.from("payroll_pay_periods").select("id, period_start").eq("shop_id", shopId).order("period_start", { ascending: false }).limit(1),
-    admin.from("staff_certifications").select("expiry_date, status").eq("shop_id", shopId),
+    admin.from("staff_certifications").select("user_id, expiry_date, status").eq("shop_id", shopId),
     admin.from("staff_schedule_templates").select("user_id, day_of_week, is_working_day, start_time, end_time, effective_from, effective_to").eq("shop_id", shopId),
-    admin.from("staff_schedule_overrides").select("user_id, schedule_date, start_time, end_time, status").eq("shop_id", shopId).gte("schedule_date", todayStartIso.slice(0, 10)).lte("schedule_date", todayEndIso.slice(0, 10)),
+    admin.from("staff_schedule_overrides").select("user_id, schedule_date, start_time, end_time, status").eq("shop_id", shopId).eq("schedule_date", todayDateKey),
     admin.from("staff_availability_blocks").select("user_id, starts_at, ends_at").eq("shop_id", shopId).lte("starts_at", tomorrowEndIso).gte("ends_at", todayStartIso),
     admin.from("work_order_lines").select("id, assigned_tech_id, line_status, status, voided_at").eq("shop_id", shopId).is("voided_at", null),
   ]);
@@ -93,8 +118,17 @@ export async function GET() {
     : { data: [], error: null };
   if (lineTechRes.error) return NextResponse.json({ error: lineTechRes.error.message }, { status: 500 });
 
-  const profileName = new Map((profilesRes.data ?? []).map((p) => [p.id, p.full_name || "Unknown"]));
-  const activeStaff = new Set((workforceRes.data ?? []).filter((w) => w.employment_status === "active").map((w) => w.user_id));
+  const profileName = new Map(
+    (profilesRes.data ?? []).map((profile) => [
+      profile.id,
+      workforceDisplayName(profile),
+    ]),
+  );
+  const activeRoster = composeActiveWorkforceRoster({
+    profiles: profilesRes.data ?? [],
+    workforceProfiles: workforceRes.data ?? [],
+  });
+  const activeStaff = new Set(activeRoster.map((person) => person.id));
   const templateUsers = new Set((templatesRes.data ?? []).map((t) => t.user_id));
   const scheduledToday = [...activeStaff].filter((userId) =>
     resolveWorkforceSchedulePosture({
@@ -107,8 +141,34 @@ export async function GET() {
   ).length;
   const blocks = blocksRes.data ?? [];
   const overlap = (start: string, end: string, from: Date, to: Date) => new Date(start) < to && new Date(end) > from;
-  const awayTodayUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, new Date(todayStartIso), new Date(todayEndIso))).map((b) => b.user_id));
-  const awayTomorrowUsers = new Set(blocks.filter((b) => overlap(b.starts_at, b.ends_at, new Date(todayEndIso), new Date(tomorrowEndIso))).map((b) => b.user_id));
+  const awayTodayUsers = new Set(
+    blocks
+      .filter(
+        (block) =>
+          activeStaff.has(block.user_id) &&
+          overlap(
+            block.starts_at,
+            block.ends_at,
+            new Date(todayStartIso),
+            new Date(todayEndIso),
+          ),
+      )
+      .map((block) => block.user_id),
+  );
+  const awayTomorrowUsers = new Set(
+    blocks
+      .filter(
+        (block) =>
+          activeStaff.has(block.user_id) &&
+          overlap(
+            block.starts_at,
+            block.ends_at,
+            new Date(todayEndIso),
+            new Date(tomorrowEndIso),
+          ),
+      )
+      .map((block) => block.user_id),
+  );
 
   let payrollBlocking = 0; let payrollWarnings = 0;
   const periodId = periodsRes.data?.[0]?.id;
@@ -119,10 +179,25 @@ export async function GET() {
   }
 
   let expiredCertifications = 0; let expiringCertifications = 0;
-  for (const cert of certsRes.data ?? []) {
-    const expiry = cert.expiry_date ? new Date(cert.expiry_date) : null;
-    if (cert.status === "expired" || (expiry && expiry < now)) expiredCertifications += 1;
-    else if (expiry && expiry >= now && expiry <= in30) expiringCertifications += 1;
+  for (const cert of (certsRes.data ?? []).filter((row) =>
+    activeStaff.has(row.user_id),
+  )) {
+    const expiryDateKey =
+      typeof cert.expiry_date === "string"
+        ? cert.expiry_date.slice(0, 10)
+        : null;
+    if (
+      cert.status === "expired" ||
+      (expiryDateKey && expiryDateKey < todayDateKey)
+    ) {
+      expiredCertifications += 1;
+    } else if (
+      expiryDateKey &&
+      expiryDateKey >= todayDateKey &&
+      expiryDateKey <= certificationHorizonDateKey
+    ) {
+      expiringCertifications += 1;
+    }
   }
 
   const lineTechMap = new Map<string, string[]>();
@@ -137,7 +212,9 @@ export async function GET() {
     let lineHasUnavailableAssignee = false;
     for (const tech of assigned) {
       loadByTech.set(tech, (loadByTech.get(tech) ?? 0) + 1);
-      if (awayTodayUsers.has(tech)) lineHasUnavailableAssignee = true;
+      if (!activeStaff.has(tech) || awayTodayUsers.has(tech)) {
+        lineHasUnavailableAssignee = true;
+      }
     }
     if (lineHasUnavailableAssignee) assignedToUnavailable += 1;
   }
@@ -152,13 +229,13 @@ export async function GET() {
   if (pendingTimeOff > 0) add("timeOff", { id: "timeoff-pending", type: "pending_time_off", severity: "warning", title: "Pending time-off approvals", description: `${pendingTimeOff} request${pendingTimeOff > 1 ? "s" : ""} awaiting review.`, count: pendingTimeOff, href: "/dashboard/workforce/scheduling?focus=time-off&status=pending", createdAt: timeOffRes.data?.[0]?.created_at ?? undefined });
   if (payrollBlocking > 0) add("payroll", { id: "payroll-blocking", type: "payroll_blocking", severity: "blocking", title: "Payroll blocking exceptions", description: `${payrollBlocking} blocking exception${payrollBlocking > 1 ? "s" : ""} in active period.`, count: payrollBlocking, href: "/dashboard/workforce/payroll-review?severity=blocking" });
   if (payrollWarnings > 0) add("payroll", { id: "payroll-warnings", type: "payroll_warning", severity: "warning", title: "Payroll warnings", description: `${payrollWarnings} warning exception${payrollWarnings > 1 ? "s" : ""} in active period.`, count: payrollWarnings, href: "/dashboard/workforce/payroll-review?severity=warning" });
-  if (expiredCertifications > 0) add("certifications", { id: "cert-expired", type: "cert_expired", severity: "blocking", title: "Expired certifications", description: `${expiredCertifications} certification${expiredCertifications > 1 ? "s are" : " is"} expired.`, count: expiredCertifications, href: canAccessPeople ? "/dashboard/workforce/people?action=cert_expired" : "/dashboard/workforce/scheduling?focus=certifications" });
-  if (expiringCertifications > 0) add("certifications", { id: "cert-expiring", type: "cert_expiring", severity: "warning", title: "Certifications expiring soon", description: `${expiringCertifications} certification${expiringCertifications > 1 ? "s" : ""} expiring in 30 days.`, count: expiringCertifications, href: canAccessPeople ? "/dashboard/workforce/people?action=cert_expiring" : "/dashboard/workforce/scheduling?focus=certifications" });
+  if (expiredCertifications > 0) add("certifications", { id: "cert-expired", type: "cert_expired", severity: "blocking", title: "Expired certifications", description: `${expiredCertifications} certification${expiredCertifications > 1 ? "s are" : " is"} expired.`, count: expiredCertifications, href: "/dashboard/workforce/certifications#expired" });
+  if (expiringCertifications > 0) add("certifications", { id: "cert-expiring", type: "cert_expiring", severity: "warning", title: "Certifications expiring soon", description: `${expiringCertifications} certification${expiringCertifications > 1 ? "s" : ""} expiring in 30 days.`, count: expiringCertifications, href: "/dashboard/workforce/certifications#expiring-soon" });
   if (scheduleGaps > 0) add("scheduling", { id: "schedule-gaps", type: "schedule_gaps", severity: "warning", title: "Missing recurring schedule templates", description: `${scheduleGaps} active staff member${scheduleGaps > 1 ? "s" : ""} without a template.`, count: scheduleGaps, href: canAccessPeople ? "/dashboard/workforce/people?action=missing_schedule_template" : "/dashboard/workforce/scheduling?focus=schedule-gaps" });
   if (unassignedJobs > 0) add("operations", {
     id: "unassigned-jobs", type: "unassigned_jobs", severity: "warning", title: "Unassigned active jobs", description: `${unassignedJobs} active job line${unassignedJobs > 1 ? "s" : ""} without technician assignment.`, count: unassignedJobs, href: "/work-orders/view?assignment=unassigned&status=active&source=workforce",
   });
-  if (assignedToUnavailable > 0) add("operations", { id: "jobs-unavailable-tech", type: "assigned_to_unavailable", severity: "blocking", title: "Jobs assigned to unavailable techs", description: `${assignedToUnavailable} active assignment${assignedToUnavailable > 1 ? "s" : ""} conflict with time away today.`, count: assignedToUnavailable, href: "/dashboard/workforce/scheduling?focus=conflicts&type=assigned_to_unavailable" });
+  if (assignedToUnavailable > 0) add("operations", { id: "jobs-unavailable-tech", type: "assigned_to_unavailable", severity: "blocking", title: "Jobs assigned to unavailable techs", description: `${assignedToUnavailable} active assignment${assignedToUnavailable > 1 ? "s" : ""} conflict with the active roster or approved time away.`, count: assignedToUnavailable, href: "/dashboard/workforce/scheduling?focus=conflicts&type=assigned_to_unavailable" });
   if (activity.summary.activeExceptionCount > 0) add("operations", { id: "attendance-active-exceptions", type: "attendance_exceptions", severity: "blocking", title: "Live attendance exceptions", description: `${activity.summary.activeExceptionCount} active shop-floor exception${activity.summary.activeExceptionCount > 1 ? "s" : ""} need review.`, count: activity.summary.activeExceptionCount, href: "/dashboard/workforce/attendance?filter=exceptions" });
   for (const [personId, count] of overloaded.slice(0, OVERLOADED_INBOX_CAP)) add("operations", { id: `overloaded-${personId}`, type: "overloaded_tech", severity: "warning", title: "Technician workload is high", description: `${profileName.get(personId) ?? "A technician"} has ${count} active assigned jobs.`, count, personId, personName: profileName.get(personId) ?? undefined, href: canAccessPeople ? `/dashboard/workforce/people/${personId}?focus=workload&from=workforce-overview` : `/dashboard/workforce/scheduling?focus=workload&person_id=${personId}` });
 

@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { composeWorkforceRoster } from "@/features/workforce/lib/roster";
+import { getShopScheduleDateContext } from "@/features/workforce/lib/schedulePosture";
+import { addScheduleDateKeyDays } from "@/features/workforce/lib/scheduleValidation";
 
-const DAY = 1000 * 60 * 60 * 24;
 type ActionSeverity = "blocking" | "warning" | "informational";
 
 type ActionReason = {
@@ -32,17 +34,18 @@ export async function GET() {
 
   const [
     { data: profiles, error: profilesErr },
-    { data: workforce },
-    { data: exceptions },
-    { data: certs },
-    { data: periodEntries },
-    { data: scheduleTemplates },
-    { data: pendingTimeOff },
-    { data: upcomingTimeAway },
+    { data: workforce, error: workforceErr },
+    { data: exceptions, error: exceptionsErr },
+    { data: certs, error: certsErr },
+    { data: periodEntries, error: periodEntriesErr },
+    { data: scheduleTemplates, error: scheduleTemplatesErr },
+    { data: pendingTimeOff, error: pendingTimeOffErr },
+    { data: upcomingTimeAway, error: upcomingTimeAwayErr },
+    { data: shop, error: shopErr },
   ] = await Promise.all([
     admin
       .from("profiles")
-      .select("id, full_name, email, phone, role, completed_onboarding, last_active_at")
+      .select("id, full_name, username, email, phone, role, completed_onboarding, last_active_at")
       .eq("shop_id", shopId)
       .order("full_name", { ascending: true }),
     admin.from("people_workforce_profiles").select("user_id, workforce_role, employment_status, payroll_ready").eq("shop_id", shopId),
@@ -56,19 +59,41 @@ export async function GET() {
     admin.from("staff_schedule_templates").select("user_id").eq("shop_id", shopId),
     admin.from("staff_time_off_requests").select("user_id, status").eq("shop_id", shopId).eq("status", "pending"),
     admin.from("staff_availability_blocks").select("user_id, starts_at, ends_at").eq("shop_id", shopId).gte("ends_at", new Date().toISOString()),
+    admin.from("shops").select("timezone").eq("id", shopId).maybeSingle(),
   ]);
 
-  if (profilesErr) return NextResponse.json({ error: profilesErr.message }, { status: 500 });
+  const firstError =
+    profilesErr ??
+    workforceErr ??
+    exceptionsErr ??
+    certsErr ??
+    periodEntriesErr ??
+    scheduleTemplatesErr ??
+    pendingTimeOffErr ??
+    upcomingTimeAwayErr ??
+    shopErr;
+  if (firstError) {
+    return NextResponse.json({ error: firstError.message }, { status: 500 });
+  }
 
-  const now = Date.now();
-  const in30Days = now + DAY * 30;
-  const in60Days = now + DAY * 60;
+  const todayDateKey = getShopScheduleDateContext(
+    new Date(),
+    shop?.timezone,
+  ).dateKey;
+  const in30DaysDateKey = addScheduleDateKeyDays(todayDateKey, 30);
+  const in60DaysDateKey = addScheduleDateKeyDays(todayDateKey, 60);
 
   const workforceByUser = new Map<
     string,
     { workforce_role: string | null; employment_status: "active" | "inactive" | "on_leave" | null; payroll_ready: boolean | null }
   >();
   for (const row of workforce ?? []) workforceByUser.set(row.user_id, row);
+  const workforceRosterById = new Map(
+    composeWorkforceRoster({
+      profiles: profiles ?? [],
+      workforceProfiles: workforce ?? [],
+    }).map((person) => [person.id, person]),
+  );
 
   const exceptionByUser = new Map<string, { blocking: number; warning: number }>();
   for (const row of exceptions ?? []) {
@@ -99,12 +124,12 @@ export async function GET() {
     if (cert.status === "revoked") current.revoked += 1;
 
     if (cert.expiry_date) {
-      const ts = new Date(cert.expiry_date).getTime();
-      if (ts < now || cert.status === "expired") {
+      const expiryDateKey = cert.expiry_date.slice(0, 10);
+      if (expiryDateKey < todayDateKey || cert.status === "expired") {
         current.expired += 1;
-      } else if (ts <= in30Days) {
+      } else if (expiryDateKey <= in30DaysDateKey) {
         current.expiring30 += 1;
-      } else if (ts <= in60Days) {
+      } else if (expiryDateKey <= in60DaysDateKey) {
         current.expiring60 += 1;
       }
     }
@@ -112,14 +137,17 @@ export async function GET() {
     certByUser.set(cert.user_id, current);
   }
 
-  const people = (profiles ?? []).map((profile) => {
+  const people = (profiles ?? [])
+    .filter((profile) => workforceRosterById.has(profile.id))
+    .map((profile) => {
     const workforceRow = workforceByUser.get(profile.id);
+    const rosterMember = workforceRosterById.get(profile.id)!;
     const payrollExceptions = exceptionByUser.get(profile.id) ?? { blocking: 0, warning: 0 };
     const cert = certByUser.get(profile.id) ?? { open: 0, expiring30: 0, expiring60: 0, expired: 0, revoked: 0 };
     const openPeriodEntries = openEntriesByUser.get(profile.id) ?? 0;
     const pendingTimeOffCount = pendingTimeOffByUser.get(profile.id) ?? 0;
     const upcomingAwayCount = upcomingAwayByUser.get(profile.id) ?? 0;
-    const employmentStatus = workforceRow?.employment_status ?? "active";
+    const employmentStatus = rosterMember.employmentStatus;
     const missingWorkforceData = !workforceRow?.workforce_role;
     const reasons: ActionReason[] = [];
 
@@ -133,10 +161,13 @@ export async function GET() {
       });
     }
     if (!workforceRow?.payroll_ready) {
+      const hasRecordedPayrollEvidence = openPeriodEntries > 0;
       reasons.push({
         code: "payroll_not_ready",
-        severity: "blocking",
-        label: "Payroll profile is not ready",
+        severity: hasRecordedPayrollEvidence ? "blocking" : "warning",
+        label: hasRecordedPayrollEvidence
+          ? "Recorded time is blocked by incomplete payroll setup"
+          : "Payroll setup is incomplete",
         action_label: "Fix payroll data",
         action_href: `/dashboard/workforce/people/${profile.id}`,
       });
@@ -144,7 +175,7 @@ export async function GET() {
     if (missingWorkforceData) {
       reasons.push({
         code: "workforce_profile_missing",
-        severity: "blocking",
+        severity: "warning",
         label: "Workforce role is missing",
         action_label: "Complete workforce profile",
         action_href: `/dashboard/workforce/people/${profile.id}`,
@@ -192,7 +223,7 @@ export async function GET() {
         severity: "warning",
         label: "No recurring schedule configured",
         action_label: "Configure schedule",
-        action_href: `/dashboard/workforce/scheduling`,
+        action_href: `/dashboard/workforce/scheduling?focus=schedule-gaps&person_id=${profile.id}`,
       });
     }
     if (pendingTimeOffCount > 0) {
@@ -201,7 +232,7 @@ export async function GET() {
         severity: "informational",
         label: `${pendingTimeOffCount} pending time-off request${pendingTimeOffCount > 1 ? "s" : ""}`,
         action_label: "Review in scheduling",
-        action_href: `/dashboard/workforce/scheduling`,
+        action_href: `/dashboard/workforce/scheduling?focus=time-off&status=pending&person_id=${profile.id}`,
       });
     }
 

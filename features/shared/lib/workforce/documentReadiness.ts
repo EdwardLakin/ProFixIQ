@@ -1,4 +1,8 @@
 import { DEFAULT_DOCUMENT_REQUIREMENTS, type RequiredDocType, type RequirementRule } from "./documentRequirementsDefaults";
+import {
+  addScheduleDateKeyDays,
+  isValidScheduleDateKey,
+} from "@/features/workforce/lib/scheduleValidation";
 
 type WorkforcePerson = {
   id: string;
@@ -19,12 +23,44 @@ type WorkforceDocument = {
 };
 
 export type PersonReadiness = "missing_required" | "expired_required" | "needs_review" | "expiring_soon" | "ready";
+export type DocumentExpirationState =
+  | "none"
+  | "expired"
+  | "expiring_soon"
+  | "current";
 
 const ACCEPTED_STATUSES = new Set(["active", "approved", "accepted"]);
 const REVIEW_STATUSES = new Set(["received", "pending", "review", "needs_review"]);
 const ACTIVE_EMPLOYMENT = new Set(["active"]);
 
 const normalize = (value: string | null | undefined) => String(value ?? "").trim().toLowerCase();
+
+const expirationDateKey = (
+  value: string | null | undefined,
+): string | null => {
+  const dateKey = typeof value === "string" ? value.slice(0, 10) : "";
+  return isValidScheduleDateKey(dateKey) ? dateKey : null;
+};
+
+export function classifyDocumentExpiration({
+  expiresAt,
+  todayDateKey,
+  warningDays,
+}: {
+  expiresAt: string | null | undefined;
+  todayDateKey: string;
+  warningDays: number;
+}): DocumentExpirationState {
+  const expiryDateKey = expirationDateKey(expiresAt);
+  if (!expiryDateKey || !isValidScheduleDateKey(todayDateKey)) return "none";
+
+  if (expiryDateKey < todayDateKey) return "expired";
+  const warningDateKey = addScheduleDateKeyDays(
+    todayDateKey,
+    Math.max(0, Math.trunc(warningDays)),
+  );
+  return expiryDateKey <= warningDateKey ? "expiring_soon" : "current";
+}
 
 const docTypeLabel: Record<RequiredDocType, string> = {
   drivers_license: "Driver's License",
@@ -60,15 +96,14 @@ export function buildDocumentRequirementsReadiness({
   documents,
   requirements = DEFAULT_DOCUMENT_REQUIREMENTS,
   warningDays = 30,
+  todayDateKey = new Date().toISOString().slice(0, 10),
 }: {
   people: WorkforcePerson[];
   documents: WorkforceDocument[];
   requirements?: RequirementRule[];
   warningDays?: number;
+  todayDateKey?: string;
 }) {
-  const now = Date.now();
-  const warningCutoff = now + warningDays * 24 * 60 * 60 * 1000;
-
   const docsByUser = new Map<string, WorkforceDocument[]>();
   for (const doc of documents) {
     const userDocs = docsByUser.get(doc.user_id) ?? [];
@@ -99,18 +134,36 @@ export function buildDocumentRequirementsReadiness({
       }
 
       if (rule.expiresRequired) {
-        const acceptedWithTs = accepted
-          .map((doc) => ({ doc, ts: doc.expires_at ? new Date(doc.expires_at).getTime() : null }))
-          .filter((item) => item.ts !== null && Number.isFinite(item.ts)) as { doc: WorkforceDocument; ts: number }[];
+        const acceptedWithDateKey = accepted
+          .map((doc) => ({
+            doc,
+            dateKey: expirationDateKey(doc.expires_at),
+          }))
+          .filter(
+            (
+              item,
+            ): item is { doc: WorkforceDocument; dateKey: string } =>
+              item.dateKey !== null,
+          );
 
-        if (acceptedWithTs.length === 0) {
+        if (acceptedWithDateKey.length === 0) {
           missingDocTypes.push(rule.docType);
           continue;
         }
 
-        const bestAccepted = acceptedWithTs.sort((a, b) => b.ts - a.ts)[0];
-        if (bestAccepted.ts < now) expiredDocTypes.push(rule.docType);
-        else if (bestAccepted.ts <= warningCutoff) expiringDocTypes.push(rule.docType);
+        const bestAccepted = acceptedWithDateKey.sort((a, b) =>
+          b.dateKey.localeCompare(a.dateKey),
+        )[0];
+        const expirationState = classifyDocumentExpiration({
+          expiresAt: bestAccepted.dateKey,
+          todayDateKey,
+          warningDays: rule.warningDays ?? warningDays,
+        });
+        if (expirationState === "expired") {
+          expiredDocTypes.push(rule.docType);
+        } else if (expirationState === "expiring_soon") {
+          expiringDocTypes.push(rule.docType);
+        }
       }
     }
 

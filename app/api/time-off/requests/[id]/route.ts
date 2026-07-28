@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(req: NextRequest, context: Ctx) {
   const { id } = await context.params;
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [...WORKFORCE_STAFF_ROLES],
+  });
   if (!access.ok) return access.response;
 
   const body = await req.json().catch(() => null) as null | {

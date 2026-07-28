@@ -1,15 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 import {
   isPunchEventType,
   type PunchEventType,
 } from "@/features/workforce/lib/shift-status";
-
-type Caller = {
-  id: string;
-  role: string | null;
-  shop_id: string | null;
-};
 
 function isIsoDate(v: unknown): v is string {
   if (typeof v !== "string" || v.length < 10) return false;
@@ -21,37 +16,6 @@ type PunchEventTypeDb = PunchEventType;
 
 function isPunchEventTypeDb(v: unknown): v is PunchEventTypeDb {
   return isPunchEventType(v);
-}
-
-async function authz() {
-  const supabase = createServerSupabaseRoute();
-
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr || !user) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
-    };
-  }
-
-  const { data: me, error: meErr } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<Caller>();
-
-  if (meErr || !me || !me.shop_id) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Missing shop" }, { status: 403 }),
-    };
-  }
-
-  return { ok: true as const, me };
 }
 
 type PunchCreateBody = {
@@ -69,8 +33,10 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const a = await authz();
-  if (!a.ok) return a.res;
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [...WORKFORCE_STAFF_ROLES],
+  });
+  if (!access.ok) return access.response;
 
   const body = (await req.json().catch(() => null)) as PunchCreateBody | null;
   if (!body)
@@ -90,8 +56,14 @@ export async function POST(req: NextRequest) {
     typeof body.note === "string" && body.note.trim().length > 0
       ? body.note.trim()
       : null;
+  if (note && note.length > 2000) {
+    return NextResponse.json(
+      { error: "Punch note must be 2000 characters or fewer." },
+      { status: 400 },
+    );
+  }
 
-  const rpc = createServerSupabaseRoute() as unknown as {
+  const rpc = access.supabase as unknown as {
     rpc: (
       name: string,
       args: Record<string, unknown>,
@@ -104,15 +76,19 @@ export async function POST(req: NextRequest) {
       } | null;
     }>;
   };
-  const { data, error } = await rpc.rpc("apply_offline_shift_punch_atomic", {
-    p_shop_id: a.me.shop_id,
-    p_actor_user_id: a.me.id,
+  const { data, error } = await rpc.rpc(
+    "apply_canonical_offline_shift_punch_atomic",
+    {
+    p_shop_id: access.profile.shop_id,
+    p_actor_profile_id: access.profile.id,
+    p_actor_auth_user_id: access.authUserId,
     p_operation_key: operationKey,
     p_shift_id: body.shift_id,
     p_event_type: body.event_type,
     p_timestamp: body.timestamp,
     p_note: note,
-  });
+    },
+  );
   if (error) {
     const message = [error.message, error.details, error.hint]
       .filter(Boolean)

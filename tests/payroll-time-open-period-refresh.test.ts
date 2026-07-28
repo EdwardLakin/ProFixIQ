@@ -17,8 +17,12 @@ describe("payroll time open-period visibility contract", () => {
   it("does not hide source attendance behind workforce payroll_ready flags", () => {
     expect(payrollSource).toContain('.from("tech_shifts")');
     expect(payrollSource).toContain('.from("work_order_line_labor_segments")');
-    expect(payrollSource).not.toMatch(/from\("tech_shifts"\)[\s\S]{0,700}payroll_ready/);
-    expect(payrollSource).not.toMatch(/from\("work_order_line_labor_segments"\)[\s\S]{0,700}payroll_ready/);
+    expect(payrollSource).not.toMatch(
+      /from\("tech_shifts"\)[\s\S]{0,1200}\.eq\("payroll_ready",\s*true\)/,
+    );
+    expect(payrollSource).not.toMatch(
+      /from\("work_order_line_labor_segments"\)[\s\S]{0,1200}\.eq\("payroll_ready",\s*true\)/,
+    );
   });
 
   it("loads every shift and job segment that overlaps the period", () => {
@@ -88,5 +92,6 @@ describe("payroll time shop-local period boundaries", () => {
   it("builds period boundaries from shop-local calendar days", () => {
     expect(localDateToUtcBoundary("2026-07-01", "America/Edmonton")).toBe("2026-07-01T06:00:00.000Z");
     expect(localDateToUtcBoundary("2026-07-01", "UTC")).toBe("2026-07-01T00:00:00.000Z");
+    expect(localDateToUtcBoundary("2026-07-01", "Pacific/Kiritimati")).toBe("2026-06-30T10:00:00.000Z");
   });
 });

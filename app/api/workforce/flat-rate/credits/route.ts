@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     const { data: credits, error } = await admin
       .from("work_order_line_flat_rate_credits")
       .select(
-        "id, work_order_line_id, technician_id, credit_hours, credit_source, actual_job_seconds, credited_at, adjustment_reason, technician:technician_id(full_name), line:work_order_line_id(description, labor_time, status, work_order_id)",
+        "id, work_order_line_id, technician_id, credit_hours, credit_source, actual_job_seconds, credited_at, adjustment_reason, technician:technician_id(full_name, username, email), line:work_order_line_id(description, labor_time, status, work_order_id)",
       )
       .eq("shop_id", access.profile.shop_id)
       .gte("credited_at", `${from}T00:00:00.000Z`)
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
   const { data: credits, error: creditsError } = await admin
     .from("work_order_line_flat_rate_credits")
     .select(
-      "id, technician_id, credit_hours, credit_source, actual_job_seconds, credited_at, adjustment_reason, technician:technician_id(full_name)",
+      "id, technician_id, credit_hours, credit_source, actual_job_seconds, credited_at, adjustment_reason, technician:technician_id(full_name, username, email)",
     )
     .eq("shop_id", access.profile.shop_id)
     .eq("work_order_line_id", lineId)

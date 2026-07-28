@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 
 const REQUEST_TYPES = new Set(["vacation", "personal", "appointment", "sick", "other"]);
 
 export async function GET(req: NextRequest) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [...WORKFORCE_STAFF_ROLES],
+  });
   if (!access.ok) return access.response;
 
   const actor = getActorCapabilities({ role: access.profile.role });
@@ -17,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   let q = admin
     .from("staff_time_off_requests")
-    .select("*, employee:user_id(full_name, email), requester:requested_by(full_name, email), reviewer:reviewed_by(full_name, email)")
+    .select("*, employee:user_id(full_name, username, email), requester:requested_by(full_name, username, email), reviewer:reviewed_by(full_name, username, email)")
     .eq("shop_id", access.profile.shop_id)
     .order("created_at", { ascending: false })
     .limit(200);
@@ -37,7 +40,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [...WORKFORCE_STAFF_ROLES],
+  });
   if (!access.ok) return access.response;
 
   const body = await req.json().catch(() => null) as null | {
@@ -68,12 +73,15 @@ export async function POST(req: NextRequest) {
   if (!targetUserId) return NextResponse.json({ error: "Missing user context" }, { status: 400 });
 
   const admin = createAdminSupabase() as any;
-  const { data: target } = await admin
+  const { data: target, error: targetError } = await admin
     .from("profiles")
     .select("id")
     .eq("id", targetUserId)
     .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
+  if (targetError) {
+    return NextResponse.json({ error: targetError.message }, { status: 500 });
+  }
   if (!target) return NextResponse.json({ error: "Employee not found in this shop." }, { status: 404 });
 
   const { data, error } = await admin.rpc("submit_staff_time_off_request", {

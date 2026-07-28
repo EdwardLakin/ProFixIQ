@@ -416,22 +416,14 @@ export default function WorkOrderIdClient(): JSX.Element {
       if (uid) {
         const { data: prof } = await supabase
           .from("profiles")
-          .select("role")
-          .eq("id", uid)
+          .select("id, role")
+          .or(`id.eq.${uid},user_id.eq.${uid}`)
+          .limit(1)
           .maybeSingle();
+        const canonicalProfileId = prof?.id ?? uid;
+        setCurrentUserId(canonicalProfileId);
+        setUserId(canonicalProfileId);
         setCurrentUserRole(prof?.role ?? null);
-      }
-
-      try {
-        const res = await fetch("/api/assignables");
-        const json = (await res.json().catch(() => null)) as
-          | { data?: Array<Pick<Profile, "id" | "full_name" | "role">> }
-          | null;
-        if (res.ok && Array.isArray(json?.data)) {
-          setAssignables(json.data);
-        }
-      } catch {
-        // ignore
       }
 
       if (!uid) setLoading(false);
@@ -454,6 +446,37 @@ export default function WorkOrderIdClient(): JSX.Element {
       sub?.subscription?.unsubscribe?.();
     };
   }, [routeId, setCurrentUserId, setUserId]);
+
+  useEffect(() => {
+    if (!currentUserRole) return;
+    const actor = getActorCapabilities({ role: currentUserRole });
+    const assignablesUrl = actor.canAssignWork
+      ? "/api/assignables"
+      : wo?.id
+        ? `/api/assignables?scope=work_order&work_order_id=${encodeURIComponent(wo.id)}`
+        : null;
+    if (!assignablesUrl) return;
+
+    let cancelled = false;
+    const loadReadableTechnicians = async () => {
+      try {
+        const res = await fetch(assignablesUrl);
+        const json = (await res.json().catch(() => null)) as
+          | { data?: Array<Pick<Profile, "id" | "full_name" | "role">> }
+          | null;
+        if (!cancelled && res.ok && Array.isArray(json?.data)) {
+          setAssignables(json.data);
+        }
+      } catch {
+        // Existing work-order data remains available if the name lookup fails.
+      }
+    };
+
+    void loadReadableTechnicians();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserRole, wo?.id]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(

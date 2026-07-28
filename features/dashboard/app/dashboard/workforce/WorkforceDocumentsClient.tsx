@@ -14,6 +14,9 @@ type WorkforceDocument = {
   personName: string | null;
   personEmail: string | null;
   viewPath: string;
+  needsReview: boolean;
+  isRecent: boolean;
+  expirationState: "none" | "expired" | "expiring_soon" | "current";
 };
 
 type DocsResponsePayload = {
@@ -74,6 +77,13 @@ const num = (value: unknown): number => {
 };
 const safeString = (value: unknown): string => (typeof value === "string" ? value : "");
 const asStringArray = (value: unknown): string[] => asArray<unknown>(value).map((item) => safeString(item)).filter(Boolean);
+const formatDateOnly = (value: string): string => {
+  const dateKey = value.slice(0, 10);
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${dateKey}T00:00:00.000Z`));
+};
 
 const normalizeScopeChip = (workforceRole: string | null, workforceCategory: string | null): string => {
   if (workforceRole && workforceCategory) return "Role+Category";
@@ -162,7 +172,8 @@ const normalizeMatrixPayload = (value: unknown): { matrix: MatrixPayload | null;
       const row = isRecord(item) ? item : {};
       return {
         personId: safeString(row.personId) || `person-${idx}`,
-        personName: safeString(row.personName) || "Unknown",
+        personName:
+          safeString(row.personName) || "Employee profile unavailable",
         personEmail: safeString(row.personEmail) || null,
         workforceRole: safeString(row.workforceRole) || null,
         workforceCategory: safeString(row.workforceCategory) || null,
@@ -178,7 +189,8 @@ const normalizeMatrixPayload = (value: unknown): { matrix: MatrixPayload | null;
       const row = isRecord(item) ? item : {};
       return {
         personId: safeString(row.personId) || `missing-person-${idx}`,
-        personName: safeString(row.personName) || "Unknown",
+        personName:
+          safeString(row.personName) || "Employee profile unavailable",
         missingDocTypes: asStringArray(row.missingDocTypes),
         href: safeString(row.href) || "/dashboard/workforce/people",
       };
@@ -195,7 +207,8 @@ const normalizeMatrixPayload = (value: unknown): { matrix: MatrixPayload | null;
       const row = isRecord(item) ? item : {};
       return {
         personId: safeString(row.personId) || `expiring-person-${idx}`,
-        personName: safeString(row.personName) || "Unknown",
+        personName:
+          safeString(row.personName) || "Employee profile unavailable",
         expiredDocTypes: asStringArray(row.expiredDocTypes),
         expiringDocTypes: asStringArray(row.expiringDocTypes),
         href: safeString(row.href) || "/dashboard/workforce/people",
@@ -385,26 +398,18 @@ export default function WorkforceDocumentsClient() {
     setManagerMessage("Override disabled. Overrides are disabled, not deleted.");
   };
 
-  const now = Date.now();
-  const in30 = now + 1000 * 60 * 60 * 24 * 30;
-  const recentCutoff = now - 1000 * 60 * 60 * 24 * 14;
-
   const sections = useMemo(() => {
     const docs = data?.documents ?? [];
     return {
-      needsReview: docs.filter((doc) => ["received", "pending", "review", "needs_review"].includes(String(doc.status ?? "").toLowerCase())),
-      expiringSoon: docs.filter((doc) => {
-        const ts = doc.expiresAt ? new Date(doc.expiresAt).getTime() : null;
-        return ts !== null && Number.isFinite(ts) && ts >= now && ts <= in30;
-      }),
-      expired: docs.filter((doc) => {
-        const ts = doc.expiresAt ? new Date(doc.expiresAt).getTime() : null;
-        return ts !== null && Number.isFinite(ts) && ts < now;
-      }),
-      recent: docs.filter((doc) => (doc.uploadedAt ? new Date(doc.uploadedAt).getTime() >= recentCutoff : false)),
+      needsReview: docs.filter((doc) => doc.needsReview),
+      expiringSoon: docs.filter(
+        (doc) => doc.expirationState === "expiring_soon",
+      ),
+      expired: docs.filter((doc) => doc.expirationState === "expired"),
+      recent: docs.filter((doc) => doc.isRecent),
       all: docs,
     };
-  }, [data, in30, now, recentCutoff]);
+  }, [data]);
 
   const byRole = useMemo(() => {
     const map = new Map<string, { role: string; total: number; missing: number; expired: number; needsReview: number; expiring: number; ready: number }>();
@@ -434,7 +439,7 @@ export default function WorkforceDocumentsClient() {
 
   const renderRows = (rows: WorkforceDocument[]) => (
     <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
-      <table className="min-w-full text-sm text-[color:var(--theme-text-primary)]"><thead className="bg-[color:var(--theme-surface-subtle)] text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]"><tr><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Person</th><th className="px-3 py-2 text-left">Uploaded</th><th className="px-3 py-2 text-left">Expires</th><th className="px-3 py-2 text-right">Action</th></tr></thead><tbody>{rows.map((doc) => <tr key={doc.id} className="border-t border-[color:var(--theme-border-soft)]"><td className="px-3 py-2 capitalize">{(doc.docType ?? "other").replaceAll("_", " ")}</td><td className="px-3 py-2">{doc.status ?? "—"}</td><td className="px-3 py-2">{doc.personName ?? "Unknown"}<div className="text-xs text-[color:var(--theme-text-secondary)]">{doc.personEmail ?? doc.userId}</div></td><td className="px-3 py-2">{doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "—"}</td><td className="px-3 py-2">{doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString() : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => void openDoc(doc)} className="rounded border border-[color:var(--theme-border-soft)] px-2 py-1 hover:bg-[color:var(--theme-surface-subtle)]">Open secure link</button></td></tr>)}{rows.length === 0 ? <tr><td colSpan={6} className="px-3 py-4 text-center text-[color:var(--theme-text-secondary)]">No documents in this section yet. Uploads will appear here once received.</td></tr> : null}</tbody></table>
+      <table className="min-w-full text-sm text-[color:var(--theme-text-primary)]"><thead className="bg-[color:var(--theme-surface-subtle)] text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]"><tr><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-left">Status</th><th className="px-3 py-2 text-left">Person</th><th className="px-3 py-2 text-left">Uploaded</th><th className="px-3 py-2 text-left">Expires</th><th className="px-3 py-2 text-right">Action</th></tr></thead><tbody>{rows.map((doc) => <tr key={doc.id} className="border-t border-[color:var(--theme-border-soft)]"><td className="px-3 py-2 capitalize">{(doc.docType ?? "other").replaceAll("_", " ")}</td><td className="px-3 py-2">{doc.status ?? "—"}</td><td className="px-3 py-2">{doc.personName ?? doc.personEmail ?? "Employee profile unavailable"}{doc.personEmail && doc.personName ? <div className="text-xs text-[color:var(--theme-text-secondary)]">{doc.personEmail}</div> : null}</td><td className="px-3 py-2">{doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString() : "—"}</td><td className="px-3 py-2">{doc.expiresAt ? formatDateOnly(doc.expiresAt) : "—"}</td><td className="px-3 py-2 text-right"><button onClick={() => void openDoc(doc)} className="rounded border border-[color:var(--theme-border-soft)] px-2 py-1 hover:bg-[color:var(--theme-surface-subtle)]">Open secure link</button></td></tr>)}{rows.length === 0 ? <tr><td colSpan={6} className="px-3 py-4 text-center text-[color:var(--theme-text-secondary)]">No documents in this section yet. Uploads will appear here once received.</td></tr> : null}</tbody></table>
     </div>
   );
 

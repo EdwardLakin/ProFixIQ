@@ -64,12 +64,20 @@ export async function PATCH(req: NextRequest, context: Ctx) {
     ? "workforce.document_requirement.override.disabled"
     : "workforce.document_requirement.override.updated";
 
-  void admin.from("audit_logs").insert({
+  const { error: auditError } = await admin.from("audit_logs").insert({
     actor_id: access.profile.id ?? null,
     action,
     target: id,
     metadata: { shop_id: access.profile.shop_id },
   });
 
-  return NextResponse.json(data);
+  return NextResponse.json({
+    ...data,
+    ...(auditError
+      ? {
+          warning:
+            "The requirement was updated, but its Activity entry could not be recorded.",
+        }
+      : {}),
+  });
 }

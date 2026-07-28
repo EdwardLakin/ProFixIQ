@@ -1,32 +1,34 @@
 // app/api/scheduling/context/route.ts
 import { NextResponse } from "next/server";
-import {
-  createServerSupabaseRoute,
-  createAdminSupabase,
-} from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  WORKFORCE_STAFF_ROLES,
+  composeActiveWorkforceRoster,
+} from "@/features/workforce/lib/roster";
 
 export async function GET() {
-  const supabase = createServerSupabaseRoute();
+  const access = await requireShopScopedApiAccess({
+    allowRoles: [...WORKFORCE_STAFF_ROLES],
+  });
+  if (!access.ok) return access.response;
 
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-  if (userErr || !user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const { data: me, error: meErr } = await supabase
+  const admin = createAdminSupabase();
+  const { data: me, error: meErr } = await admin
     .from("profiles")
-    .select("id, full_name, role, shop_id")
-    .eq("id", user.id)
+    .select("id, full_name, username, email, role, shop_id")
+    .eq("id", access.profile.id)
+    .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
 
-  if (meErr || !me || !me.shop_id) {
+  if (meErr) {
+    return NextResponse.json({ error: meErr.message }, { status: 500 });
+  }
+  if (!me) {
     return NextResponse.json(
-      { error: "Profile not found or missing shop" },
-      { status: 403 },
+      { error: "Employee profile not found" },
+      { status: 404 },
     );
   }
 
@@ -42,22 +44,48 @@ export async function GET() {
   }> = [];
 
   if (canEditAll) {
-    const admin = createAdminSupabase();
-    const { data, error } = await admin
-      .from("profiles")
-      .select("id, full_name, role, shop_id")
-      .eq("shop_id", me.shop_id)
-      .order("created_at", { ascending: false })
-      .limit(500);
+    const [
+      { data: profiles, error: profilesError },
+      { data: workforceProfiles, error: workforceError },
+    ] = await Promise.all([
+      admin
+        .from("profiles")
+        .select("id, full_name, username, email, role")
+        .eq("shop_id", me.shop_id)
+        .order("created_at", { ascending: false })
+        .limit(500),
+      admin
+        .from("people_workforce_profiles")
+        .select("user_id, employment_status, payroll_ready")
+        .eq("shop_id", me.shop_id),
+    ]);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (profilesError || workforceError) {
+      return NextResponse.json(
+        { error: profilesError?.message ?? workforceError?.message },
+        { status: 500 },
+      );
     }
-    users = data ?? [];
+    users = composeActiveWorkforceRoster({
+      profiles: profiles ?? [],
+      workforceProfiles: workforceProfiles ?? [],
+    }).map((person) => ({
+      id: person.id,
+      full_name: person.displayName,
+      role: person.role,
+      shop_id: me.shop_id,
+    }));
   }
 
   return NextResponse.json({
-    me,
+    me: {
+      ...me,
+      full_name:
+        me.full_name?.trim() ||
+        me.username?.trim() ||
+        me.email?.trim() ||
+        "Employee profile unavailable",
+    },
     shopId: me.shop_id,
     canEditAll,
     users,

@@ -7,7 +7,7 @@
 
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
@@ -79,18 +79,6 @@ function includesText(haystack: string, needle: string): boolean {
   return normalize(haystack).includes(needle);
 }
 
-type PartsRequestBodyItem = {
-  description: string;
-  qty: number;
-};
-
-type PartsRequestBody = {
-  workOrderId: string;
-  jobId?: string | null;
-  items: PartsRequestBodyItem[];
-  notes?: string | null;
-};
-
 export default function MenuItemsPage() {
   const supabase = createBrowserSupabase();
   const router = useRouter();
@@ -118,13 +106,7 @@ export default function MenuItemsPage() {
 
   // saved items search (MUST be above any return)
   const [savedQuery, setSavedQuery] = useState<string>("");
-
-  // manual parts request (MUST be above any return)
-  const [requesting, setRequesting] = useState(false);
-  const [requestWorkOrderId, setRequestWorkOrderId] = useState<string>("");
-  const [requestNotes, setRequestNotes] = useState<string>("");
-  const [requestIncludeUnlinkedOnly, setRequestIncludeUnlinkedOnly] =
-    useState<boolean>(true);
+  const creationRequestIdRef = useRef<string | null>(null);
 
   const shopId = useMemo(() => getShopIdFromUser(user), [user]);
 
@@ -379,80 +361,6 @@ export default function MenuItemsPage() {
   );
 
   // ---------------------------
-  // MANUAL PARTS REQUEST DERIVED
-  // ---------------------------
-  const requestItemsPreview = useMemo(() => {
-    const rows = parts
-      .map((p) => {
-        const desc = p.name.trim();
-        const qty = Math.max(1, Math.floor(toNum(p.quantityStr) || 1));
-        const linked = typeof p.part_id === "string" && p.part_id.length > 0;
-        return { desc, qty, linked };
-      })
-      .filter((x) => x.desc.length > 0);
-
-    return requestIncludeUnlinkedOnly ? rows.filter((r) => !r.linked) : rows;
-  }, [parts, requestIncludeUnlinkedOnly]);
-
-  const canRequestParts = useMemo(() => {
-    return (
-      requestItemsPreview.length > 0 &&
-      requestWorkOrderId.trim().length > 0 &&
-      !requesting
-    );
-  }, [requestItemsPreview.length, requestWorkOrderId, requesting]);
-
-  const createPartsRequest = useCallback(async () => {
-    if (!canRequestParts) return;
-
-    const workOrderId = requestWorkOrderId.trim();
-    if (!workOrderId) return;
-
-    const items: PartsRequestBodyItem[] = requestItemsPreview.map((r) => ({
-      description: r.desc,
-      qty: r.qty,
-    }));
-
-    const body: PartsRequestBody = {
-      workOrderId,
-      items,
-      notes: requestNotes.trim().length > 0 ? requestNotes.trim() : null,
-    };
-
-    setRequesting(true);
-    try {
-      const res = await fetch("/api/parts/requests/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const json = (await res.json().catch(() => null)) as
-        | { requestId?: string; error?: string }
-        | null;
-
-      if (!res.ok) {
-        toast.error(
-          json?.error || `Failed to create parts request (HTTP ${res.status})`,
-        );
-        return;
-      }
-
-      if (!json?.requestId) {
-        toast.error("Parts request created, but no requestId returned.");
-        return;
-      }
-
-      toast.success("Parts request created (internal)");
-      setRequestNotes("");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to create parts request");
-    } finally {
-      setRequesting(false);
-    }
-  }, [canRequestParts, requestItemsPreview, requestWorkOrderId, requestNotes]);
-
-  // ---------------------------
   // CREATE (POST /api/menu/save)
   // ---------------------------
   const handleSubmit = useCallback(async () => {
@@ -480,7 +388,9 @@ export default function MenuItemsPage() {
       const itemLaborHours = effectiveLaborHours > 0 ? effectiveLaborHours : null;
       const computedTotal = partsTotal + (itemLaborHours ?? 0) * laborRate;
 
+      creationRequestIdRef.current ??= crypto.randomUUID();
       const payload = {
+        idempotency_key: creationRequestIdRef.current,
         item: {
           name: form.name.trim(),
           description: form.description.trim() || null,
@@ -501,6 +411,10 @@ export default function MenuItemsPage() {
 
       const json = (await res.json()) as {
         ok?: boolean;
+        id?: string;
+        partRequestId?: string | null;
+        partCount?: number;
+        replayed?: boolean;
         error?: string;
         detail?: string;
       };
@@ -510,7 +424,13 @@ export default function MenuItemsPage() {
         return;
       }
 
-      toast.success("Menu item created");
+      const partCount = json.partCount ?? cleanedParts.length;
+      toast.success(
+        partCount > 0
+          ? `Menu item created · ${partCount} part${partCount === 1 ? "" : "s"} sent to internal intake`
+          : "Menu item created",
+      );
+      creationRequestIdRef.current = null;
 
       setForm((f) => ({
         ...f,
@@ -572,11 +492,6 @@ export default function MenuItemsPage() {
   const btnGhost =
     "rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] " +
     `hover:border-[${COPPER_SOFT}] hover:bg-[color:var(--theme-surface-panel)]`;
-
-  const btnOutline =
-    "inline-flex items-center justify-center rounded-full border bg-[color:var(--theme-surface-overlay)] px-4 py-2 text-xs font-semibold " +
-    "text-[color:var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-50 " +
-    `border-[${COPPER_SOFT}] hover:bg-[rgba(59,130,246,0.12)]`;
 
   const btnPrimary =
     "inline-flex items-center justify-center rounded-full border px-6 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] " +
@@ -749,7 +664,9 @@ export default function MenuItemsPage() {
               <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                 Parts
               </h3>
-              <span className="text-[11px] text-[color:var(--theme-text-muted)]">Linked to parts catalog</span>
+              <span className="text-[11px] text-[color:var(--theme-text-muted)]">
+                Attached to this item · automatically sent to internal intake
+              </span>
             </div>
 
             <div className="space-y-3 p-4">
@@ -820,88 +737,11 @@ export default function MenuItemsPage() {
                 + Add part
               </button>
 
-              {/* Manual parts request */}
-              <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-md">
-                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                      Manual parts request
-                    </div>
-                    <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                      Internal (UI flag only). Creates a parts request from the current parts rows.
-                    </div>
-                  </div>
-
-                  <span className={pill}>
-                    Items:{" "}
-                    <span className="text-[color:var(--theme-text-primary)]">{requestItemsPreview.length}</span>
-                  </span>
-                </div>
-
-                <div className="mt-3 grid gap-2">
-                  <label className="text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    Work order ID (required)
-                  </label>
-                  <input
-                    value={requestWorkOrderId}
-                    onChange={(e) => setRequestWorkOrderId(e.target.value)}
-                    placeholder="Paste work_order_id"
-                    className={inputBase}
-                  />
-
-                  <div className="flex items-center gap-2 pt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
-                    <input
-                      id="unlinked-only"
-                      type="checkbox"
-                      checked={requestIncludeUnlinkedOnly}
-                      onChange={(e) => setRequestIncludeUnlinkedOnly(e.target.checked)}
-                      className="h-4 w-4 accent-[rgba(224,174,130,0.9)]"
-                    />
-                    <label htmlFor="unlinked-only" className="select-none">
-                      Only include unlinked/manual parts
-                    </label>
-                  </div>
-
-                  <label className="mt-1 text-[11px] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                    Notes (optional)
-                  </label>
-                  <textarea
-                    value={requestNotes}
-                    onChange={(e) => setRequestNotes(e.target.value)}
-                    placeholder="e.g. Urgent, customer waiting…"
-                    className={inputBase + " min-h-[70px]"}
-                  />
-
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-                      {requestItemsPreview.length ? (
-                        <span>
-                          Preview:{" "}
-                          <span className="text-[color:var(--theme-text-secondary)]">
-                            {requestItemsPreview
-                              .slice(0, 3)
-                              .map((r) => `${r.desc} ×${r.qty}`)
-                              .join(", ")}
-                            {requestItemsPreview.length > 3 ? "…" : ""}
-                          </span>
-                        </span>
-                      ) : (
-                        <span>No requestable items yet.</span>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={createPartsRequest}
-                      disabled={!canRequestParts}
-                      className={btnOutline}
-                    >
-                      {requesting ? "Requesting…" : "Create parts request (internal)"}
-                    </button>
-                  </div>
-                </div>
+              <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
+                Saving creates the reusable menu part rows and one internal parts-intake
+                request in the same transaction. No work-order number is needed until
+                this menu service is added to a job.
               </div>
-              {/* end manual parts request */}
             </div>
           </div>
 

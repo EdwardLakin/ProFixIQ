@@ -133,6 +133,41 @@ describe("buildDocumentRequirementsReadiness", () => {
     expect(result.readinessItems[0].readiness).toBe("ready");
   });
 
+  it("uses shop-local date keys so a document remains valid through its expiry day", () => {
+    const result = buildDocumentRequirementsReadiness({
+      people: [makePerson()],
+      documents: makeDocuments("accepted", "2026-07-28"),
+      todayDateKey: "2026-07-28",
+      warningDays: 30,
+    });
+
+    expect(result.readinessItems[0].readiness).toBe("expiring_soon");
+    expect(result.readinessItems[0].expiredDocTypes).toEqual([]);
+  });
+
+  it("honors a requirement's configured expiration warning window", () => {
+    const result = buildDocumentRequirementsReadiness({
+      people: [makePerson()],
+      documents: makeDocuments("accepted", "2026-08-07"),
+      todayDateKey: "2026-07-28",
+      warningDays: 30,
+      requirements: [
+        {
+          key: "custom:drivers_license",
+          docType: "drivers_license",
+          label: "Driver's License",
+          workforceCategory: "driver",
+          workforceRole: null,
+          required: true,
+          expiresRequired: true,
+          warningDays: 7,
+        },
+      ],
+    });
+
+    expect(result.readinessItems[0].readiness).toBe("ready");
+  });
+
   it("prioritizes missing_required over needs_review", () => {
     const result = buildDocumentRequirementsReadiness({
       people: [makePerson({ workforce_category: "technician" })],

@@ -36,6 +36,8 @@ export type PunchRow = {
 type AttendanceResponse = {
   shifts?: ShiftRow[];
   punches?: PunchRow[];
+  roster?: AttendanceRosterRow[];
+  isLiveDay?: boolean;
   billableMinutes?: number;
   activity?: WorkforceActivityResponse;
   activities?: WorkforceActivityResponse["activities"];
@@ -43,7 +45,33 @@ type AttendanceResponse = {
   activitySummary?: WorkforceActivityResponse["summary"];
 };
 
+type AttendanceRosterRow = {
+  userId: string;
+  employeeName: string;
+  employeeEmail: string | null;
+  role: string | null;
+  shiftCount: number;
+  grossMinutes: number;
+  breakMinutes: number;
+  lunchMinutes: number;
+  recordedMinutes: number;
+  jobMinutes: number;
+  punchCount: number;
+  status: string;
+};
+
 type NowBucket = "clocked_in" | "break" | "lunch" | "ended" | "no_activity";
+type ShiftCorrectionDraft = {
+  mode: "create_missing_shift" | "edit_shift" | "void_shift";
+  shiftId: string | null;
+  userId: string;
+  employeeName: string;
+  startLocal: string;
+  endLocal: string;
+  originalStartLocal: string;
+  originalEndLocal: string;
+  reason: string;
+};
 
 function safeDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -84,7 +112,7 @@ export function getEmployeeDisplayName(shift: Pick<ShiftRow, "employeeName" | "e
   const employeeEmail = shift.employeeEmail?.trim() || shift.employee?.email?.trim();
   if (employeeEmail) return employeeEmail;
 
-  return "Unknown employee";
+  return "Employee profile unavailable";
 }
 
 export function formatShiftRange(shift: Pick<ShiftRow, "start_time" | "end_time">, timezone?: string | null): string {
@@ -99,6 +127,11 @@ function normalizeEventType(p: PunchRow): string {
 
 function displayEventType(t: string): string {
   return t.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatMinutes(value: number) {
+  const minutes = Math.max(0, Math.round(value));
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
 function shiftStateFromPunches(punches: PunchRow[]): NowBucket {
@@ -153,6 +186,13 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
   const [correctionReason, setCorrectionReason] = useState("");
   const [correctionError, setCorrectionError] = useState<string | null>(null);
   const [savingPunch, setSavingPunch] = useState(false);
+  const [shiftCorrection, setShiftCorrection] =
+    useState<ShiftCorrectionDraft | null>(null);
+  const [savingShiftCorrection, setSavingShiftCorrection] = useState(false);
+  const [shiftCorrectionError, setShiftCorrectionError] = useState<
+    string | null
+  >(null);
+  const [correctionNotice, setCorrectionNotice] = useState<string | null>(null);
 
   const fetchAttendance = useCallback(async () => {
     setLoading(true);
@@ -183,8 +223,22 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
     void fetchAttendance();
   }, [fetchAttendance]);
 
+  useEffect(() => {
+    const refresh = () => void fetchAttendance();
+    window.addEventListener("workforce:shift-state", refresh);
+    return () =>
+      window.removeEventListener("workforce:shift-state", refresh);
+  }, [fetchAttendance]);
+
   const shifts = useMemo(() => (Array.isArray(data?.shifts) ? data?.shifts : []), [data?.shifts]);
   const punches = useMemo(() => (Array.isArray(data?.punches) ? data?.punches : []), [data?.punches]);
+  const roster = useMemo(
+    () => (Array.isArray(data?.roster) ? data.roster : []),
+    [data?.roster],
+  );
+  const selectedPersonName =
+    roster[0]?.employeeName ||
+    (shifts[0] ? getEmployeeDisplayName(shifts[0]) : null);
 
   const derived = useMemo(() => {
     const punchesByShift = new Map<string, PunchRow[]>();
@@ -275,6 +329,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
       if (!response.ok) throw new Error(body?.error ?? "Unable to save punch correction.");
       setPunchEdit(null);
       setCorrectionReason("");
+      setCorrectionNotice("Punch time corrected and payroll evidence refreshed.");
       await fetchAttendance();
     } catch (error) {
       setCorrectionError(error instanceof Error ? error.message : "Unable to save punch correction.");
@@ -283,15 +338,330 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
     }
   }
 
+  function openMissingShiftCorrection() {
+    const person =
+      roster.find((employee) => employee.userId === personId) ?? roster[0];
+    if (!person) {
+      setShiftCorrectionError(
+        "No active employee is available for a missing timecard.",
+      );
+      return;
+    }
+    setShiftCorrection({
+      mode: "create_missing_shift",
+      shiftId: null,
+      userId: person.userId,
+      employeeName: person.employeeName,
+      startLocal: `${selectedDate}T08:00`,
+      endLocal: `${selectedDate}T17:00`,
+      originalStartLocal: "",
+      originalEndLocal: "",
+      reason: "",
+    });
+    setShiftCorrectionError(null);
+    setCorrectionNotice(null);
+  }
+
+  function openShiftCorrection(
+    shift: ShiftRow,
+    mode: "edit_shift" | "void_shift",
+  ) {
+    const userId =
+      typeof shift.user_id === "string"
+        ? shift.user_id
+        : typeof shift.userId === "string"
+          ? shift.userId
+          : "";
+    if (!userId || !shift.id) {
+      setShiftCorrectionError(
+        "This timecard is missing its employee or shift reference.",
+      );
+      return;
+    }
+    const startLocal = toShopLocalInput(shift.start_time, timezone);
+    const endLocal = toShopLocalInput(shift.end_time, timezone);
+    setShiftCorrection({
+      mode,
+      shiftId: shift.id,
+      userId,
+      employeeName: getEmployeeDisplayName(shift),
+      startLocal,
+      endLocal,
+      originalStartLocal: startLocal,
+      originalEndLocal: endLocal,
+      reason: "",
+    });
+    setShiftCorrectionError(null);
+    setCorrectionNotice(null);
+  }
+
+  async function saveShiftCorrection() {
+    if (!shiftCorrection) return;
+    const reason = shiftCorrection.reason.trim();
+    if (reason.length < 3) {
+      setShiftCorrectionError(
+        "Enter a correction reason of at least 3 characters.",
+      );
+      return;
+    }
+
+    let correctionType:
+      | "create_missing_shift"
+      | "adjust_start"
+      | "adjust_end"
+      | "adjust_start_and_end"
+      | "void_shift";
+    const payload: Record<string, string | null> = {
+      target_user_id: shiftCorrection.userId,
+      shift_id: shiftCorrection.shiftId,
+      reason,
+    };
+
+    if (shiftCorrection.mode === "create_missing_shift") {
+      if (!shiftCorrection.startLocal || !shiftCorrection.endLocal) {
+        setShiftCorrectionError(
+          "Clock-in and clock-out times are required.",
+        );
+        return;
+      }
+      correctionType = "create_missing_shift";
+      payload.corrected_start_local = shiftCorrection.startLocal;
+      payload.corrected_end_local = shiftCorrection.endLocal;
+    } else if (shiftCorrection.mode === "void_shift") {
+      correctionType = "void_shift";
+    } else {
+      const startChanged =
+        shiftCorrection.startLocal !== shiftCorrection.originalStartLocal;
+      const endChanged =
+        shiftCorrection.endLocal !== shiftCorrection.originalEndLocal;
+      if (!startChanged && !endChanged) {
+        setShiftCorrectionError("Change a time before saving.");
+        return;
+      }
+      if (startChanged && !shiftCorrection.startLocal) {
+        setShiftCorrectionError("Clock-in time cannot be blank.");
+        return;
+      }
+      if (endChanged && !shiftCorrection.endLocal) {
+        setShiftCorrectionError(
+          "Clock-out time cannot be cleared. Void the timecard if it should not count.",
+        );
+        return;
+      }
+      correctionType =
+        startChanged && endChanged
+          ? "adjust_start_and_end"
+          : startChanged
+            ? "adjust_start"
+            : "adjust_end";
+      if (startChanged) {
+        payload.corrected_start_local = shiftCorrection.startLocal;
+      }
+      if (endChanged) {
+        payload.corrected_end_local = shiftCorrection.endLocal;
+      }
+    }
+
+    setSavingShiftCorrection(true);
+    setShiftCorrectionError(null);
+    try {
+      const response = await fetch(
+        "/api/workforce/attendance/corrections",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...payload,
+            correction_type: correctionType,
+          }),
+        },
+      );
+      const responseBody = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          responseBody?.error ?? "Unable to save the timecard correction.",
+        );
+      }
+      setShiftCorrection(null);
+      setCorrectionNotice(
+        correctionType === "create_missing_shift"
+          ? "Missing timecard added and payroll evidence refreshed."
+          : correctionType === "void_shift"
+            ? "Timecard voided without deleting its audit evidence."
+            : "Timecard corrected and payroll evidence refreshed.",
+      );
+      await fetchAttendance();
+    } catch (error) {
+      setShiftCorrectionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to save the timecard correction.",
+      );
+    } finally {
+      setSavingShiftCorrection(false);
+    }
+  }
+
+  function renderShiftCorrectionForm() {
+    if (!shiftCorrection) return null;
+    const isVoid = shiftCorrection.mode === "void_shift";
+    const isCreate = shiftCorrection.mode === "create_missing_shift";
+    return (
+      <div className="rounded-xl border border-orange-400/30 bg-orange-500/5 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-[color:var(--theme-accent-text)]">
+              {isCreate
+                ? "Add missing timecard"
+                : isVoid
+                  ? "Void timecard"
+                  : "Correct timecard"}
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+              {shiftCorrection.employeeName} · Times use {timezone || "UTC"}.
+              The correction is audited and locked payroll periods remain
+              protected.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={savingShiftCorrection}
+            onClick={() => {
+              setShiftCorrection(null);
+              setShiftCorrectionError(null);
+            }}
+            className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs"
+          >
+            Cancel
+          </button>
+        </div>
+
+        {isCreate ? (
+          <label className="mt-4 grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+            Employee
+            <select
+              value={shiftCorrection.userId}
+              onChange={(event) => {
+                const employee = roster.find(
+                  (person) => person.userId === event.target.value,
+                );
+                setShiftCorrection((current) =>
+                  current
+                    ? {
+                        ...current,
+                        userId: event.target.value,
+                        employeeName:
+                          employee?.employeeName ??
+                          "Employee profile unavailable",
+                      }
+                    : current,
+                );
+              }}
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+            >
+              {roster.map((employee) => (
+                <option key={employee.userId} value={employee.userId}>
+                  {employee.employeeName}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {!isVoid ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+              Clock in
+              <input
+                type="datetime-local"
+                value={shiftCorrection.startLocal}
+                onChange={(event) =>
+                  setShiftCorrection((current) =>
+                    current
+                      ? { ...current, startLocal: event.target.value }
+                      : current,
+                  )
+                }
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+              />
+            </label>
+            <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+              Clock out
+              <input
+                type="datetime-local"
+                value={shiftCorrection.endLocal}
+                onChange={(event) =>
+                  setShiftCorrection((current) =>
+                    current
+                      ? { ...current, endLocal: event.target.value }
+                      : current,
+                  )
+                }
+                className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+              />
+            </label>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-[color:var(--theme-warning-text)]">
+            The timecard remains in history but will be excluded from payroll.
+          </p>
+        )}
+
+        <label className="mt-4 grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
+          Audit reason
+          <input
+            value={shiftCorrection.reason}
+            maxLength={1000}
+            onChange={(event) =>
+              setShiftCorrection((current) =>
+                current ? { ...current, reason: event.target.value } : current,
+              )
+            }
+            placeholder="Required—explain what changed and why"
+            className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]"
+          />
+        </label>
+        {shiftCorrectionError ? (
+          <p className="mt-2 text-xs text-[color:var(--theme-danger-text)]">
+            {shiftCorrectionError}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          disabled={
+            savingShiftCorrection || shiftCorrection.reason.trim().length < 3
+          }
+          onClick={() => void saveShiftCorrection()}
+          className="mt-4 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          {savingShiftCorrection
+            ? "Saving…"
+            : isCreate
+              ? "Add timecard"
+              : isVoid
+                ? "Void timecard"
+                : "Save correction"}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <OperationalViewSwitcher role={role} />
       <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
         <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">Attendance & Activity</h1>
-        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Live shop-floor command board for shift posture, active jobs, unassigned time, and operational exceptions.</p>
-        <p className="mt-2 inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-xs text-[color:var(--theme-text-secondary)]">
-          {timezone ? `Today based on shop timezone: ${timezone}` : "Today based on shop day window (UTC fallback)"}
+        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+          Daily employees, shifts, clocked time, punch events, job time, and correction evidence in one view.
         </p>
+        <p className="mt-2 inline-flex rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2.5 py-1 text-xs text-[color:var(--theme-text-secondary)]">
+          {data?.isLiveDay ? "Live shop day" : `Recorded day: ${selectedDate}`} · {timezone || "UTC"}
+        </p>
+        {personId ? (
+          <p className="ml-2 mt-2 inline-flex rounded-full border border-[color:var(--brand-accent)]/40 bg-[color:var(--theme-surface-panel)] px-2.5 py-1 text-xs font-medium text-[color:var(--theme-accent-text)]">
+            Employee: {selectedPersonName ?? "Employee record unavailable"}
+          </p>
+        ) : null}
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
             Day
@@ -308,7 +678,28 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
             />
           </label>
           {personId ? <Link href={`/dashboard/workforce/attendance?date=${selectedDate}`} className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm text-[color:var(--theme-accent-text)]">Show all employees</Link> : null}
+          <button
+            type="button"
+            disabled={roster.length === 0}
+            onClick={openMissingShiftCorrection}
+            className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Add missing timecard
+          </button>
         </div>
+        {correctionNotice ? (
+          <p className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm text-[color:var(--theme-success-text)]">
+            {correctionNotice}
+          </p>
+        ) : null}
+        {shiftCorrection?.mode === "create_missing_shift" ? (
+          <div className="mt-4">{renderShiftCorrectionForm()}</div>
+        ) : null}
+        {shiftCorrectionError && !shiftCorrection ? (
+          <p className="mt-3 text-sm text-[color:var(--theme-danger-text)]">
+            {shiftCorrectionError}
+          </p>
+        ) : null}
       </section>
 
       {loading && (
@@ -327,24 +718,24 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
         </section>
       )}
 
-      {!loading && !error && shifts.length === 0 && punches.length === 0 && (
+      {!loading && !error && roster.length === 0 && shifts.length === 0 && punches.length === 0 && (
         <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
-          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">No attendance activity today</h2>
-          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">No shifts or punches were found in today&apos;s range.</p>
+          <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">No employees match this view</h2>
+          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">No active employee or attendance evidence was found for the selected filter.</p>
         </section>
       )}
 
-      {!loading && !error && (shifts.length > 0 || punches.length > 0) && (
+      {!loading && !error && (roster.length > 0 || shifts.length > 0 || punches.length > 0) && (
         <>
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              ["Active technicians", String(data?.activitySummary?.activeTechnicians ?? derived.activeNow)],
+              ["Clocked in now", String(data?.activitySummary?.activeTechnicians ?? derived.activeNow)],
               ["Working on jobs", String(data?.activitySummary?.workingOnJobs ?? 0)],
               ["No active job", String(data?.activitySummary?.idleTechnicians ?? 0)],
               ["On break", String(data?.activitySummary?.onBreak ?? derived.onBreak)],
               ["On lunch", String(data?.activitySummary?.onLunch ?? derived.onLunch)],
-              ["Ended today", String(data?.activitySummary?.endedToday ?? derived.endedToday)],
-              ["Job time today", `${data?.activitySummary?.jobMinutesToday ?? derived.billableMinutes} min`],
+              [data?.isLiveDay ? "Ended today" : "Ended shifts", String(data?.activitySummary?.endedToday ?? derived.endedToday)],
+              [data?.isLiveDay ? "Job time today" : "Job time", `${data?.activitySummary?.jobMinutesToday ?? derived.billableMinutes} min`],
               ["Utilization %", `${data?.activitySummary?.utilizationPct ?? 0}%`],
             ].map(([label, value]) => (
               <div key={label} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4">
@@ -357,13 +748,81 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
           <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
+                <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Daily workforce</h2>
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+                  Every active employee remains visible, including people with no recorded punch.
+                </p>
+              </div>
+              <span className="text-xs text-[color:var(--theme-text-muted)]">
+                {roster.length} active {roster.length === 1 ? "employee" : "employees"}
+              </span>
+            </div>
+            {roster.length === 0 ? (
+              <p className="mt-4 text-sm text-[color:var(--theme-text-secondary)]">
+                The selected employee is not active in the workforce roster.
+              </p>
+            ) : (
+              <div className="mt-4 overflow-x-auto rounded-xl border border-[color:var(--theme-border-soft)]">
+                <table className="min-w-[900px] w-full text-sm">
+                  <thead className="bg-[color:var(--theme-surface-subtle)] text-xs uppercase tracking-wide text-[color:var(--theme-text-muted)]">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Employee</th>
+                      <th className="px-3 py-2 text-left">Day status</th>
+                      <th className="px-3 py-2 text-right">Shifts</th>
+                      <th className="px-3 py-2 text-right">Clocked</th>
+                      <th className="px-3 py-2 text-right">Break</th>
+                      <th className="px-3 py-2 text-right">Lunch</th>
+                      <th className="px-3 py-2 text-right">Recorded</th>
+                      <th className="px-3 py-2 text-right">Job time</th>
+                      <th className="px-3 py-2 text-right">Punches</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[color:var(--theme-border-soft)]">
+                    {roster.map((employee) => (
+                      <tr key={employee.userId}>
+                        <td className="px-3 py-3">
+                          <Link
+                            href={`/dashboard/workforce/attendance?date=${selectedDate}&person_id=${employee.userId}`}
+                            className="font-semibold text-[color:var(--theme-text-primary)] hover:text-[color:var(--theme-accent-text)]"
+                          >
+                            {employee.employeeName}
+                          </Link>
+                          <p className="text-xs text-[color:var(--theme-text-muted)]">
+                            {employee.role?.replaceAll("_", " ") ||
+                              employee.employeeEmail ||
+                              "Employee profile unavailable"}
+                          </p>
+                        </td>
+                        <td className="px-3 py-3 text-[color:var(--theme-text-secondary)]">{employee.status}</td>
+                        <td className="px-3 py-3 text-right">{employee.shiftCount}</td>
+                        <td className="px-3 py-3 text-right">{formatMinutes(employee.grossMinutes)}</td>
+                        <td className="px-3 py-3 text-right">{formatMinutes(employee.breakMinutes)}</td>
+                        <td className="px-3 py-3 text-right">{formatMinutes(employee.lunchMinutes)}</td>
+                        <td className="px-3 py-3 text-right font-medium">{formatMinutes(employee.recordedMinutes)}</td>
+                        <td className="px-3 py-3 text-right">{formatMinutes(employee.jobMinutes)}</td>
+                        <td className="px-3 py-3 text-right">{employee.punchCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
                 <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Daily timecards</h2>
                 <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Attendance punches and current duration for the selected shop day.</p>
               </div>
               <span className="text-xs text-[color:var(--theme-text-muted)]">{shifts.length} timecard{shifts.length === 1 ? "" : "s"}</span>
             </div>
             <div className="mt-4 grid gap-3 xl:grid-cols-2">
-              {shifts.map((shift) => {
+              {shifts.length === 0 ? (
+                <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                  No timecards were recorded for the selected day.
+                </p>
+              ) : shifts.map((shift) => {
                 const shiftId = typeof shift.id === "string" ? shift.id : "";
                 const events = punches
                   .filter((punch) => punch.shift_id === shiftId)
@@ -457,11 +916,28 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
                         {correctionError ? <p className="mt-2 text-xs text-[color:var(--theme-danger-text)]">{correctionError}</p> : null}
                       </div>
                     ) : null}
-                    <div className="mt-3 flex gap-3 text-xs">
+                    <div className="mt-3 flex flex-wrap gap-3 text-xs">
                       {shift.user_id ? <Link href={`/dashboard/workforce/payroll-review?person_id=${shift.user_id}`} className="font-medium text-[color:var(--theme-accent-text)]">Payroll detail</Link> : null}
-                      {shift.user_id ? <Link href={`/dashboard/workforce/people/${shift.user_id}#payroll-posture`} className="font-medium text-[color:var(--theme-accent-text)]">Employee record</Link> : null}
-                      {shift.user_id ? <Link href={`/dashboard/workforce/scheduling?user_id=${shift.user_id}&shift_id=${shiftId}&date=${selectedDate}`} className="font-medium text-[color:var(--theme-accent-text)]">Correct time</Link> : null}
+                      {shift.user_id && (role === "owner" || role === "admin") ? <Link href={`/dashboard/workforce/people/${shift.user_id}#payroll-posture`} className="font-medium text-[color:var(--theme-accent-text)]">Employee record</Link> : null}
+                      {shift.user_id ? <Link href={`/dashboard/workforce/scheduling?person_id=${shift.user_id}&date=${selectedDate}`} className="font-medium text-[color:var(--theme-accent-text)]">Open schedule</Link> : null}
+                      <button
+                        type="button"
+                        onClick={() => openShiftCorrection(shift, "edit_shift")}
+                        className="font-medium text-[color:var(--theme-accent-text)]"
+                      >
+                        Correct timecard
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openShiftCorrection(shift, "void_shift")}
+                        className="font-medium text-[color:var(--theme-danger-text)]"
+                      >
+                        Void timecard
+                      </button>
                     </div>
+                    {shiftCorrection?.shiftId === shiftId ? (
+                      <div className="mt-3">{renderShiftCorrectionForm()}</div>
+                    ) : null}
                   </article>
                 );
               })}
@@ -471,13 +947,13 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
           <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Live technician operations</h2>
-                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Current job state is resolved from canonical labor segments, not line punch timestamps.</p>
+                <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">{data?.isLiveDay ? "Live employee operations" : "Employee day activity"}</h2>
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Job state and daily totals are resolved from canonical labor segments, not display-only line timestamps.</p>
               </div>
               {(data?.activitySummary?.activeExceptionCount ?? 0) > 0 ? <span className="rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-sm text-[color:var(--theme-danger-text)]">{data?.activitySummary?.activeExceptionCount} active exception(s)</span> : null}
             </div>
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
-              {(data?.activities ?? []).length === 0 ? <p className="text-sm text-[color:var(--theme-text-secondary)]">No employees or active labor segments found for today.</p> : (data?.activities ?? []).map((activity) => <TechnicianActivityCard key={activity.userId} activity={activity} timezone={timezone} />)}
+              {(data?.activities ?? []).length === 0 ? <p className="text-sm text-[color:var(--theme-text-secondary)]">No shifts or job-time activity were recorded for this shop day.</p> : (data?.activities ?? []).map((activity) => <TechnicianActivityCard key={activity.userId} activity={activity} timezone={timezone} />)}
             </div>
           </section>
 
@@ -489,7 +965,7 @@ export function AttendanceOverviewClient({ from, to, timezone, role, selectedDat
 
           <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
             <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">Payroll bridge</h2>
-            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Attendance posture from shifts and punches feeds payroll review for downstream approvals and handoff. Exception policies are intentionally deferred for a later phase.</p>
+            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">Shift and punch evidence feeds Payroll Review, where paid-rest policy, exceptions, approval locks, and export readiness are applied.</p>
             <Link href="/dashboard/workforce/payroll-review" className="mt-3 inline-flex rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-medium text-[color:var(--theme-accent-text)] hover:text-[color:var(--theme-accent-text)]">Open Payroll Review</Link>
           </section>
         </>

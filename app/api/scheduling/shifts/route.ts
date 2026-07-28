@@ -1,23 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  createServerSupabaseRoute,
-  createAdminSupabase,
-} from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { buildWorkforceActivity } from "@/features/workforce/server/buildWorkforceActivity";
+import {
+  overlapMinutes,
+  sumPairedOverlapDurations,
+} from "@/features/workforce/lib/activityMetrics";
+import {
+  composeActiveWorkforceRoster,
+  workforceDisplayName,
+} from "@/features/workforce/lib/roster";
 
 type DB = Database;
-
-type Caller = {
-  id: string;
-  role: string | null;
-  shop_id: string | null;
-};
 
 type ProfileIdentity = {
   id: string;
   full_name: string | null;
+  username: string | null;
   email: string | null;
   role: string | null;
 };
@@ -33,58 +33,28 @@ type AttendanceShift = DB["public"]["Tables"]["tech_shifts"]["Row"] & {
   };
 };
 
-function employeeNameFromProfile(profile: Pick<ProfileIdentity, "full_name" | "email"> | undefined): string {
-  const fullName = profile?.full_name?.trim();
-  if (fullName) return fullName;
-
-  const email = profile?.email?.trim();
-  if (email) return email;
-
-  return "Unknown employee";
+function employeeNameFromProfile(
+  profile:
+    | Pick<ProfileIdentity, "full_name" | "username" | "email">
+    | undefined,
+): string {
+  return workforceDisplayName(profile);
 }
 
-async function authz() {
-  const supabase = createServerSupabaseRoute();
-
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr || !user) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
-    };
-  }
-
-  const { data: me, error: meErr } = await supabase
-    .from("profiles")
-    .select("id, role, shop_id")
-    .eq("id", user.id)
-    .maybeSingle<Caller>();
-
-  if (meErr || !me || !me.shop_id) {
-    return {
-      ok: false as const,
-      res: NextResponse.json({ error: "Missing shop" }, { status: 403 }),
-    };
-  }
-
-  const actor = getActorCapabilities({ role: me.role });
-  const isAdmin = actor.isKnownRole && actor.canManageScheduling;
-  return { ok: true as const, me, isAdmin };
+function activityLabel(value: string | undefined) {
+  if (value === "working_on_job") return "Working on job";
+  if (value === "clocked_in_idle") return "Clocked in — no active job";
+  if (value === "on_break") return "On break";
+  if (value === "on_lunch") return "On lunch";
+  if (value === "shift_ended") return "Shift ended";
+  return "No shift recorded";
 }
 
-/* --------------------------------------------------------- */
-/* GET  /api/scheduling/shifts                               */
-/* --------------------------------------------------------- */
 export async function GET(req: NextRequest) {
-  const a = await authz();
-  if (!a.ok) return a.res;
-  if (!a.isAdmin) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageScheduling",
+  });
+  if (!access.ok) return access.response;
 
   const url = new URL(req.url);
   const from = url.searchParams.get("from");
@@ -95,77 +65,88 @@ export async function GET(req: NextRequest) {
   if (!from || !to) {
     return NextResponse.json({ error: "Missing from/to" }, { status: 400 });
   }
+  const fromMs = new Date(from).getTime();
+  const toMs = new Date(to).getTime();
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || toMs <= fromMs) {
+    return NextResponse.json(
+      { error: "Invalid from/to range" },
+      { status: 400 },
+    );
+  }
+  const fromIso = new Date(fromMs).toISOString();
+  const toIso = new Date(toMs).toISOString();
 
   const admin = createAdminSupabase();
-
-  // Optional role filter
-  let staffIds: string[] | null = null;
-  if (role !== "all") {
-    const { data: staff, error: staffErr } = await admin
+  const shopId = access.profile.shop_id;
+  const [shopRes, profilesRes, workforceRes] = await Promise.all([
+    admin.from("shops").select("timezone").eq("id", shopId).maybeSingle(),
+    admin
       .from("profiles")
-      .select("id")
-      .eq("shop_id", a.me.shop_id)
-      .eq("role", role);
-
-    if (staffErr) {
-      return NextResponse.json({ error: staffErr.message }, { status: 500 });
-    }
-
-    staffIds = (staff ?? []).map((r) => r.id);
-    if (staffIds.length === 0) {
-      return NextResponse.json({ shifts: [], punches: [], billableMinutes: 0 });
-    }
+      .select("id, full_name, username, email, role")
+      .eq("shop_id", shopId)
+      .order("full_name", { ascending: true }),
+    admin
+      .from("people_workforce_profiles")
+      .select("user_id, employment_status")
+      .eq("shop_id", shopId),
+  ]);
+  const setupError =
+    shopRes.error ?? profilesRes.error ?? workforceRes.error ?? null;
+  if (setupError) {
+    return NextResponse.json({ error: setupError.message }, { status: 500 });
   }
 
-  // Shifts
-  let shiftQ = admin
+  const allProfiles = (profilesRes.data ?? []) as ProfileIdentity[];
+  const profileById = new Map(
+    allProfiles.map((profile) => [profile.id, profile]),
+  );
+  const activeRosterIds = new Set(
+    composeActiveWorkforceRoster({
+      profiles: allProfiles,
+      workforceProfiles: workforceRes.data ?? [],
+    }).map((person) => person.id),
+  );
+  const rosterProfiles = allProfiles.filter((profile) => {
+    if (!activeRosterIds.has(profile.id)) return false;
+    if (role !== "all" && profile.role !== role) return false;
+    if (userId && profile.id !== userId) return false;
+    return true;
+  });
+  const roleStaffIds =
+    role === "all" ? null : rosterProfiles.map((profile) => profile.id);
+
+  let shiftQuery = admin
     .from("tech_shifts")
     .select("*")
-    .eq("shop_id", a.me.shop_id)
-    .lt("start_time", to)
-    .or(`end_time.is.null,end_time.gt.${from}`)
+    .eq("shop_id", shopId)
+    .lt("start_time", toIso)
+    .or(`end_time.is.null,end_time.gt.${fromIso}`)
     .order("start_time", { ascending: false });
 
-  if (userId) shiftQ = shiftQ.eq("user_id", userId);
-  if (staffIds) shiftQ = shiftQ.in("user_id", staffIds);
-
-  const { data: shifts, error: sErr } = await shiftQ;
-  if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 });
-
-  const shiftRows = (shifts ?? []) as DB["public"]["Tables"]["tech_shifts"]["Row"][];
-  const shiftIds = shiftRows.map((s) => s.id).filter(Boolean) as string[];
-  const shiftUserIds = Array.from(
-    new Set(
-      shiftRows
-        .map((s) => (typeof s.user_id === "string" ? s.user_id : null))
-        .filter((id): id is string => Boolean(id)),
-    ),
-  );
-
-  const profilesById = new Map<string, ProfileIdentity>();
-  if (shiftUserIds.length > 0) {
-    const { data: profileRows, error: profileErr } = await admin
-      .from("profiles")
-      .select("id, full_name, email, role")
-      .eq("shop_id", a.me.shop_id)
-      .in("id", shiftUserIds);
-
-    if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 });
-
-    for (const profile of (profileRows ?? []) as ProfileIdentity[]) {
-      profilesById.set(profile.id, profile);
-    }
+  if (userId) shiftQuery = shiftQuery.eq("user_id", userId);
+  if (roleStaffIds?.length) {
+    shiftQuery = shiftQuery.in("user_id", roleStaffIds);
   }
 
+  const { data: shifts, error: shiftError } =
+    roleStaffIds && roleStaffIds.length === 0
+      ? { data: [], error: null }
+      : await shiftQuery;
+  if (shiftError) {
+    return NextResponse.json({ error: shiftError.message }, { status: 500 });
+  }
+
+  const shiftRows = (shifts ?? []) as DB["public"]["Tables"]["tech_shifts"]["Row"][];
+  const shiftIds = shiftRows.map((shift) => shift.id).filter(Boolean);
   const attendanceShifts: AttendanceShift[] = shiftRows.map((shift) => {
-    const userId = typeof shift.user_id === "string" ? shift.user_id : null;
-    const profile = userId ? profilesById.get(userId) : undefined;
+    const shiftUserId =
+      typeof shift.user_id === "string" ? shift.user_id : null;
+    const profile = shiftUserId ? profileById.get(shiftUserId) : undefined;
     const employeeName = employeeNameFromProfile(profile);
     const employeeEmail = profile?.email?.trim() || null;
-
     return {
       ...shift,
-      userId,
+      userId: shiftUserId,
       employeeName,
       employeeEmail,
       employee: {
@@ -176,41 +157,197 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Punches
   let punches: DB["public"]["Tables"]["punch_events"]["Row"][] = [];
   if (shiftIds.length > 0) {
-    const { data: pRows, error: pErr } = await admin
+    const { data, error } = await admin
       .from("punch_events")
       .select("*")
       .in("shift_id", shiftIds)
       .order("timestamp", { ascending: true });
-
-    if (pErr) return NextResponse.json({ error: pErr.message }, { status: 500 });
-    punches = (pRows ?? []) as typeof punches;
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    punches = (data ?? []) as typeof punches;
   }
 
-  const shopRes = await admin.from("shops").select("timezone").eq("id", a.me.shop_id).maybeSingle();
-  if (shopRes.error) return NextResponse.json({ error: shopRes.error.message }, { status: 500 });
-  const activity = await buildWorkforceActivity({ shopId: a.me.shop_id!, timezone: shopRes.data?.timezone ?? null });
+  const currentMs = Date.now();
+  const isLiveDay = currentMs >= fromMs && currentMs < toMs;
+  const activityAt = isLiveDay
+    ? new Date(currentMs)
+    : currentMs < fromMs
+      ? new Date(fromMs)
+      : new Date(toMs - 1);
+  const rawActivity = await buildWorkforceActivity({
+    shopId,
+    timezone: shopRes.data?.timezone ?? null,
+    now: activityAt,
+  });
+  const visibleRosterIds = new Set(rosterProfiles.map((profile) => profile.id));
+  const activities = rawActivity.activities.filter((row) =>
+    visibleRosterIds.has(row.userId),
+  );
+  const activityFeed = rawActivity.feed.filter(
+    (row) => row.userId !== null && visibleRosterIds.has(row.userId),
+  );
+  const activityByUser = new Map(
+    rawActivity.activities.map((row) => [row.userId, row]),
+  );
 
-  // Productive time comes from canonical labor segments through the shared activity builder.
-  const billableMinutes = activity.summary.jobMinutesToday;
+  const shiftsByUser = new Map<
+    string,
+    DB["public"]["Tables"]["tech_shifts"]["Row"][]
+  >();
+  for (const shift of shiftRows) {
+    if (!shift.user_id) continue;
+    shiftsByUser.set(shift.user_id, [
+      ...(shiftsByUser.get(shift.user_id) ?? []),
+      shift,
+    ]);
+  }
+  const punchesByShift = new Map<string, typeof punches>();
+  for (const punch of punches) {
+    if (!punch.shift_id) continue;
+    punchesByShift.set(punch.shift_id, [
+      ...(punchesByShift.get(punch.shift_id) ?? []),
+      punch,
+    ]);
+  }
+
+  const evidenceEnd = new Date(
+    isLiveDay ? Math.min(currentMs, toMs) : toMs,
+  ).toISOString();
+  const roster = rosterProfiles.map((profile) => {
+    const employeeShifts = shiftsByUser.get(profile.id) ?? [];
+    const employeePunches = employeeShifts.flatMap(
+      (shift) => punchesByShift.get(shift.id) ?? [],
+    );
+    const grossMinutes = employeeShifts.reduce(
+      (total, shift) =>
+        total +
+        overlapMinutes(
+          shift.start_time,
+          shift.end_time,
+          fromIso,
+          evidenceEnd,
+        ),
+      0,
+    );
+    const breakMinutes = employeeShifts.reduce((total, shift) => {
+      const events = punchesByShift.get(shift.id) ?? [];
+      return (
+        total +
+        sumPairedOverlapDurations({
+          events,
+          startType: "break_start",
+          endType: "break_end",
+          windowStart: fromIso,
+          windowEnd: evidenceEnd,
+        })
+      );
+    }, 0);
+    const lunchMinutes = employeeShifts.reduce((total, shift) => {
+      const events = punchesByShift.get(shift.id) ?? [];
+      return (
+        total +
+        sumPairedOverlapDurations({
+          events,
+          startType: "lunch_start",
+          endType: "lunch_end",
+          windowStart: fromIso,
+          windowEnd: evidenceEnd,
+        })
+      );
+    }, 0);
+    const activity = activityByUser.get(profile.id);
+    return {
+      userId: profile.id,
+      employeeName: employeeNameFromProfile(profile),
+      employeeEmail: profile.email?.trim() || null,
+      role: profile.role,
+      shiftCount: employeeShifts.length,
+      grossMinutes,
+      breakMinutes,
+      lunchMinutes,
+      recordedMinutes: Math.max(
+        0,
+        grossMinutes - breakMinutes - lunchMinutes,
+      ),
+      jobMinutes: activity?.today.jobMinutes ?? 0,
+      punchCount: employeePunches.length,
+      status: activityLabel(activity?.operationalState),
+    };
+  });
+
+  const billableMinutes = activities.reduce(
+    (total, activity) => total + activity.today.jobMinutes,
+    0,
+  );
+  const recordedMinutes = activities.reduce(
+    (total, activity) =>
+      total +
+      Math.max(
+        0,
+        activity.today.shiftMinutes -
+          activity.today.breakMinutes -
+          activity.today.lunchMinutes,
+      ),
+    0,
+  );
+  const activitySummary = {
+    activeTechnicians: activities.filter(
+      (activity) =>
+        activity.operationalState !== "off_shift" &&
+        activity.operationalState !== "shift_ended",
+    ).length,
+    workingOnJobs: activities.filter(
+      (activity) => activity.operationalState === "working_on_job",
+    ).length,
+    idleTechnicians: activities.filter(
+      (activity) => activity.operationalState === "clocked_in_idle",
+    ).length,
+    onBreak: activities.filter(
+      (activity) => activity.operationalState === "on_break",
+    ).length,
+    onLunch: activities.filter(
+      (activity) => activity.operationalState === "on_lunch",
+    ).length,
+    endedToday: activities.filter(
+      (activity) => activity.operationalState === "shift_ended",
+    ).length,
+    jobMinutesToday: billableMinutes,
+    soldLaborHoursToday: activities.reduce(
+      (total, activity) => total + activity.today.soldLaborHours,
+      0,
+    ),
+    utilizationPct:
+      recordedMinutes > 0
+        ? Math.round((billableMinutes / recordedMinutes) * 100)
+        : 0,
+    activeExceptionCount: activities.reduce(
+      (total, activity) => total + activity.exceptions.length,
+      0,
+    ),
+  };
 
   return NextResponse.json({
     shifts: attendanceShifts,
     punches,
+    roster,
+    isLiveDay,
     billableMinutes,
-    activity,
-    activities: activity.activities,
-    activityFeed: activity.feed,
-    activitySummary: activity.summary,
-    sourceMap: activity.sourceMap,
+    activity: {
+      ...rawActivity,
+      activities,
+      feed: activityFeed,
+      summary: activitySummary,
+    },
+    activities,
+    activityFeed,
+    activitySummary,
+    sourceMap: rawActivity.sourceMap,
   });
 }
 
-/* --------------------------------------------------------- */
-/* POST /api/scheduling/shifts                               */
-/* --------------------------------------------------------- */
 export async function POST() {
   return NextResponse.json(
     { error: "Shift lifecycle writes must use the canonical shift API." },

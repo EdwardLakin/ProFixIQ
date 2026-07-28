@@ -70,7 +70,7 @@ export const WORKFORCE_NAVIGATION: readonly WorkforceNavigationItem[] = [
     label: "Certifications",
     description: "Expiry readiness",
     icon: "certifications",
-    roles: OWNER_ADMIN,
+    roles: ALL_WORKFORCE_MANAGERS,
   },
   {
     href: "/dashboard/workforce/activity",

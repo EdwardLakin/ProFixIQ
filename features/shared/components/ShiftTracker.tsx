@@ -49,9 +49,16 @@ export default function ShiftTracker({
   const startTime = shiftState?.startTime ?? null;
   const mode = shiftState?.mode ?? "none";
 
-  const applyShiftState = useCallback((state: MobileShiftState) => {
+  const applyShiftState = useCallback((
+    state: MobileShiftState,
+    notifyWorkforce = true,
+  ) => {
     setShiftState(state);
-    window.dispatchEvent(new CustomEvent("workforce:shift-state", { detail: state }));
+    if (notifyWorkforce) {
+      window.dispatchEvent(
+        new CustomEvent("workforce:shift-state", { detail: state }),
+      );
+    }
   }, []);
 
   const loadOpenShift = useCallback(async () => {
@@ -59,7 +66,7 @@ export default function ShiftTracker({
     setErr(null);
 
     try {
-      applyShiftState(await fetchMobileShiftState());
+      applyShiftState(await fetchMobileShiftState(), false);
     } catch (error) {
       setErr(formatErr(error, "Failed to load shift state"));
       setShiftState(null);
@@ -69,6 +76,17 @@ export default function ShiftTracker({
   useEffect(() => {
     void loadOpenShift();
   }, [loadOpenShift]);
+
+  useEffect(() => {
+    const syncShiftState = (event: Event) => {
+      const detail = (event as CustomEvent<MobileShiftState>).detail;
+      if (!detail || typeof detail.activity !== "string") return;
+      setShiftState(detail);
+    };
+    window.addEventListener("workforce:shift-state", syncShiftState);
+    return () =>
+      window.removeEventListener("workforce:shift-state", syncShiftState);
+  }, []);
 
   const postShiftAction = useCallback(
     async (action: ShiftAction, fallback: string) => {
@@ -162,9 +180,9 @@ export default function ShiftTracker({
     "rounded border px-4 py-2 text-[color:var(--theme-text-primary)] transition-colors bg-transparent hover:bg-[color:var(--theme-surface-subtle)] focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed";
   const btnOutline = useMemo(
     () => ({
-      yellow: `${btnBase} border-yellow-500`,
-      orange: `${btnBase} border-orange-500`,
-      red: `${btnBase} border-red-500`,
+      neutral: `${btnBase} border-[color:var(--theme-border-strong)]`,
+      accent: `${btnBase} border-[color:var(--brand-accent)] text-[color:var(--theme-accent-text)]`,
+      danger: `${btnBase} border-[color:var(--theme-border-strong)] text-[color:var(--theme-danger-text)]`,
     }),
     [],
   );
@@ -200,11 +218,11 @@ export default function ShiftTracker({
 
       {mode === "none" && (
         <button
-          className={`${btnOutline.yellow} w-full py-3 text-base`}
+          className={`${btnOutline.accent} w-full py-3 text-base`}
           onClick={() => void startShift()}
           disabled={busy}
         >
-          {busy ? "Starting…" : "Start Shift"}
+          {busy ? "Punching in…" : "Punch in"}
         </button>
       )}
 
@@ -212,7 +230,7 @@ export default function ShiftTracker({
         <div className="space-y-3">
           <div className="flex gap-3">
             <button
-              className={`${btnOutline.yellow} flex-1 py-3 text-base`}
+              className={`${btnOutline.neutral} flex-1 py-3 text-base`}
               onClick={() => void toggleBreak()}
               disabled={busy || mode === "lunch"}
             >
@@ -220,7 +238,7 @@ export default function ShiftTracker({
             </button>
 
             <button
-              className={`${btnOutline.orange} flex-1 py-3 text-base`}
+              className={`${btnOutline.accent} flex-1 py-3 text-base`}
               onClick={() => void toggleLunch()}
               disabled={busy || mode === "break"}
             >
@@ -229,11 +247,11 @@ export default function ShiftTracker({
           </div>
 
           <button
-            className={`${btnOutline.red} w-full py-3 text-base`}
+            className={`${btnOutline.danger} w-full py-3 text-base`}
             onClick={() => void endShift()}
             disabled={busy || !shiftId}
           >
-            End Shift
+            {busy ? "Punching out…" : "Punch out"}
           </button>
         </div>
       )}

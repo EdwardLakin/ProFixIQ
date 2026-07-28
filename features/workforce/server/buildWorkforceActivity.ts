@@ -5,7 +5,7 @@ import {
   clampNonNegative,
   hasOverlaps,
   overlapMinutes,
-  sumPairedDurations,
+  sumPairedOverlapDurations,
 } from "../lib/activityMetrics";
 import {
   WORKFORCE_ACTIVITY_THRESHOLDS,
@@ -26,6 +26,7 @@ type OperationalLog = DB["public"]["Tables"]["activity_logs"]["Row"];
 type Profile = {
   id: string;
   full_name: string | null;
+  username?: string | null;
   email: string | null;
   role: string | null;
 };
@@ -76,6 +77,10 @@ type Vehicle = {
   license_plate: string | null;
   shop_id: string | null;
 };
+type LineAssignment = {
+  work_order_line_id: string;
+  technician_id: string;
+};
 const INACTIVE_LINE = new Set([
   "completed",
   "cancelled",
@@ -92,7 +97,12 @@ const INFORMATIONAL_LINE_TYPES = new Set([
   "inspection_note",
 ]);
 function name(p?: Profile) {
-  return p?.full_name?.trim() || p?.email?.trim() || "Unknown employee";
+  return (
+    p?.full_name?.trim() ||
+    p?.username?.trim() ||
+    p?.email?.trim() ||
+    "Employee profile unavailable"
+  );
 }
 function woNum(wo?: WO) {
   return wo?.custom_id || wo?.external_id || null;
@@ -282,7 +292,7 @@ export async function buildWorkforceActivity(params: {
       .order("start_time", { ascending: false }),
     admin
       .from("profiles")
-      .select("id, full_name, email, role")
+      .select("id, full_name, username, email, role")
       .eq("shop_id", params.shopId),
     admin
       .from("work_order_line_labor_segments")
@@ -311,7 +321,7 @@ export async function buildWorkforceActivity(params: {
   const punches = (punchesScopedRes.data ?? []) as Punch[];
   const lineIds = [...new Set(segments.map((s) => s.work_order_line_id))];
   const woIds = [...new Set(segments.map((s) => s.work_order_id))];
-  const [linesRes, woRes] = await Promise.all([
+  const [linesRes, woRes, assignmentsRes] = await Promise.all([
     lineIds.length
       ? admin
           .from("work_order_lines")
@@ -330,8 +340,16 @@ export async function buildWorkforceActivity(params: {
           .eq("shop_id", params.shopId)
           .in("id", woIds)
       : Promise.resolve({ data: [], error: null }),
+    lineIds.length
+      ? admin
+          .from("work_order_line_technicians")
+          .select("work_order_line_id, technician_id")
+          .in("work_order_line_id", lineIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  if (linesRes.error || woRes.error) throw linesRes.error || woRes.error;
+  if (linesRes.error || woRes.error || assignmentsRes.error) {
+    throw linesRes.error || woRes.error || assignmentsRes.error;
+  }
   const lines = (linesRes.data ?? []) as Line[];
   const wos = (woRes.data ?? []) as WO[];
   const operationalLogsRes = lineIds.length
@@ -381,6 +399,7 @@ export async function buildWorkforceActivity(params: {
     workOrders: wos,
     customers: (customersRes.data ?? []) as Customer[],
     vehicles: (vehiclesRes.data ?? []) as Vehicle[],
+    assignments: (assignmentsRes.data ?? []) as LineAssignment[],
     operationalLogs: (operationalLogsRes.data ?? []) as OperationalLog[],
   });
 }
@@ -398,6 +417,7 @@ export function composeWorkforceActivity(input: {
   workOrders: WO[];
   customers: Customer[];
   vehicles: Vehicle[];
+  assignments?: LineAssignment[];
   operationalLogs?: OperationalLog[];
 }): WorkforceActivityResponse {
   const scopedShifts = input.shifts.filter((s) => s.shop_id === input.shopId);
@@ -408,6 +428,18 @@ export function composeWorkforceActivity(input: {
   const lines = new Map(
     input.lines.filter((l) => l.shop_id === input.shopId).map((l) => [l.id, l]),
   );
+  const assignedUsersByLine = new Map<string, Set<string>>();
+  for (const line of lines.values()) {
+    assignedUsersByLine.set(
+      line.id,
+      new Set(line.assigned_tech_id ? [line.assigned_tech_id] : []),
+    );
+  }
+  for (const assignment of input.assignments ?? []) {
+    assignedUsersByLine
+      .get(assignment.work_order_line_id)
+      ?.add(assignment.technician_id);
+  }
   const wos = new Map(
     input.workOrders
       .filter((w) => w.shop_id === input.shopId)
@@ -427,15 +459,13 @@ export function composeWorkforceActivity(input: {
         p,
       ]);
   });
-  const shiftsByUser = new Map<string, Shift>();
+  const shiftsByUser = new Map<string, Shift[]>();
   scopedShifts.forEach((s) => {
-    if (
-      s.user_id &&
-      (!shiftsByUser.get(s.user_id) ||
-        new Date(s.start_time) >
-          new Date(shiftsByUser.get(s.user_id)!.start_time))
-    )
-      shiftsByUser.set(s.user_id, s);
+    if (!s.user_id) return;
+    shiftsByUser.set(s.user_id, [
+      ...(shiftsByUser.get(s.user_id) ?? []),
+      s,
+    ]);
   });
   const segsByUser = new Map<string, Segment[]>();
   scopedSegments.forEach((s) =>
@@ -448,9 +478,26 @@ export function composeWorkforceActivity(input: {
   for (const userId of [...users].sort((a, b) =>
     name(profiles.get(a)).localeCompare(name(profiles.get(b))),
   )) {
-    const shift = shiftsByUser.get(userId) ?? null;
-    const shiftEvents = shift?.id ? (punchesByShift.get(shift.id) ?? []) : [];
-    const latest = latestPunch(shiftEvents);
+    const userShifts = [...(shiftsByUser.get(userId) ?? [])].sort(
+      (a, b) =>
+        new Date(b.start_time).getTime() - new Date(a.start_time).getTime() ||
+        a.id.localeCompare(b.id),
+    );
+    const shift =
+      userShifts.find(
+        (candidate) =>
+          !candidate.end_time &&
+          String(candidate.status ?? "").toLowerCase() === "active",
+      ) ??
+      userShifts[0] ??
+      null;
+    const shiftEvents = shift?.id
+      ? (punchesByShift.get(shift.id) ?? [])
+      : [];
+    const allShiftEvents = userShifts.flatMap(
+      (candidate) => punchesByShift.get(candidate.id) ?? [],
+    );
+    const latest = latestPunch(allShiftEvents);
     const userSegs = segsByUser.get(userId) ?? [];
     const activeSegs = userSegs
       .filter(
@@ -502,28 +549,58 @@ export function composeWorkforceActivity(input: {
               input.nowIso,
             ),
             assignedTechId: line.assigned_tech_id,
+            assignedTechnicianIds: [
+              ...(assignedUsersByLine.get(line.id) ?? []),
+            ],
           }
         : null;
-    const breakMinutes = sumPairedDurations(
-      shiftEvents,
-      "break_start",
-      "break_end",
-      input.nowIso,
-    );
-    const lunchMinutes = sumPairedDurations(
-      shiftEvents,
-      "lunch_start",
-      "lunch_end",
-      input.nowIso,
-    );
-    const shiftMinutes = shift
-      ? overlapMinutes(
-          shift.start_time,
-          shift.end_time,
+    const breakMinutes = userShifts.reduce((total, candidate) => {
+      const windowEnd =
+        candidate.end_time &&
+        new Date(candidate.end_time).getTime() <
+          new Date(input.nowIso).getTime()
+          ? candidate.end_time
+          : input.nowIso;
+      return (
+        total +
+        sumPairedOverlapDurations({
+          events: punchesByShift.get(candidate.id) ?? [],
+          startType: "break_start",
+          endType: "break_end",
+          windowStart: input.from,
+          windowEnd,
+        })
+      );
+    }, 0);
+    const lunchMinutes = userShifts.reduce((total, candidate) => {
+      const windowEnd =
+        candidate.end_time &&
+        new Date(candidate.end_time).getTime() <
+          new Date(input.nowIso).getTime()
+          ? candidate.end_time
+          : input.nowIso;
+      return (
+        total +
+        sumPairedOverlapDurations({
+          events: punchesByShift.get(candidate.id) ?? [],
+          startType: "lunch_start",
+          endType: "lunch_end",
+          windowStart: input.from,
+          windowEnd,
+        })
+      );
+    }, 0);
+    const shiftMinutes = userShifts.reduce(
+      (total, candidate) =>
+        total +
+        overlapMinutes(
+          candidate.start_time,
+          candidate.end_time,
           input.from,
           input.nowIso,
-        )
-      : 0;
+        ),
+      0,
+    );
     const jobMinutes = clampNonNegative(
       userSegs.reduce(
         (sum, s) =>
@@ -607,7 +684,10 @@ export function composeWorkforceActivity(input: {
           relatedLineId: active.work_order_line_id,
         }),
       );
-    if (active && (!line?.assigned_tech_id || line.assigned_tech_id !== userId))
+    if (
+      active &&
+      !assignedUsersByLine.get(active.work_order_line_id)?.has(userId)
+    )
       exceptions.push(
         exception({
           code: "active_job_unassigned",
@@ -711,20 +791,21 @@ export function composeWorkforceActivity(input: {
     }
   }
   const segmentsByLine = new Map<string, Segment[]>();
-  for (const segment of input.segments) {
+  for (const segment of scopedSegments) {
     segmentsByLine.set(segment.work_order_line_id, [
       ...(segmentsByLine.get(segment.work_order_line_id) ?? []),
       segment,
     ]);
   }
   const feed: WorkforceActivityFeedItem[] = [
-    ...input.punches.map((p) => ({
+    ...scopedPunches.map((p) => ({
       id: p.id,
       timestamp: p.timestamp,
+      userId: p.user_id ?? null,
       employeeName: name(profiles.get(p.user_id ?? "")),
       action: String(p.event_type).replaceAll("_", " "),
     })),
-    ...input.segments.flatMap((s) => {
+    ...scopedSegments.flatMap((s) => {
       const l = lines.get(s.work_order_line_id);
       const w = wos.get(s.work_order_id);
       const sameLineEarlierSegments =
@@ -737,6 +818,7 @@ export function composeWorkforceActivity(input: {
         {
           id: `${s.id}:start`,
           timestamp: s.started_at,
+          userId: s.technician_id,
           employeeName: name(profiles.get(s.technician_id)),
           action: actionCopy(startAction, l),
           workOrderNumber: woNum(w),
@@ -749,6 +831,7 @@ export function composeWorkforceActivity(input: {
               {
                 id: `${s.id}:end`,
                 timestamp: s.ended_at,
+                userId: s.technician_id,
                 employeeName: name(profiles.get(s.technician_id)),
                 action: actionCopy(
                   resolveLaborSegmentFeedAction({
@@ -794,6 +877,7 @@ export function composeWorkforceActivity(input: {
         return {
           id: `${log.id}:release`,
           timestamp: log.timestamp!,
+          userId: log.user_id ?? null,
           employeeName: name(profiles.get(log.user_id ?? "")),
           action: "released hold on job",
           workOrderNumber: woNum(w),
@@ -816,7 +900,7 @@ export function composeWorkforceActivity(input: {
   );
   const job = activities.reduce((s, a) => s + a.today.jobMinutes, 0);
   const soldLaborHoursToday = soldLaborHoursForSegments(
-    input.segments,
+    scopedSegments,
     lines,
     wos,
     input.shopId,

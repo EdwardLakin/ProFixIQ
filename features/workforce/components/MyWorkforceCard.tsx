@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ShiftTracker from "@/features/shared/components/ShiftTracker";
+import { shopLocalDateTimeToUtc } from "@/features/shared/lib/utils/shopDayWindow";
 
 type RequestStatus = "pending" | "approved" | "declined" | "cancelled";
 
@@ -16,7 +18,26 @@ type TimeAwayRequest = {
 };
 
 type WorkforceSelf = {
+  profile: {
+    id: string;
+    display_name: string;
+    email: string | null;
+    role: string | null;
+  };
+  timezone: string;
   current_shift: { id: string; status: string; start_time: string; end_time: string | null } | null;
+  today_evidence: {
+    gross_minutes: number;
+    break_minutes: number;
+    lunch_minutes: number;
+    recorded_minutes: number;
+    punch_count: number;
+    punches: Array<{
+      id: string;
+      event_type: string | null;
+      timestamp: string | null;
+    }>;
+  };
   next_schedule: {
     id: string;
     schedule_date: string;
@@ -43,9 +64,19 @@ function hours(minutes: number | null | undefined) {
 }
 
 function statusTone(status: RequestStatus) {
-  if (status === "approved") return "text-emerald-300";
+  if (status === "approved") return "text-[color:var(--theme-success-text)]";
   if (status === "declined" || status === "cancelled") return "text-[color:var(--theme-text-muted)]";
-  return "text-amber-300";
+  return "text-[color:var(--theme-warning-text)]";
+}
+
+function punchLabel(eventType: string | null) {
+  if (eventType === "start_shift") return "Clock in";
+  if (eventType === "end_shift") return "Clock out";
+  if (eventType === "break_start") return "Break start";
+  if (eventType === "break_end") return "Break end";
+  if (eventType === "lunch_start") return "Lunch start";
+  if (eventType === "lunch_end") return "Lunch end";
+  return String(eventType ?? "Punch").replaceAll("_", " ");
 }
 
 export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
@@ -75,6 +106,12 @@ export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener("workforce:shift-state", refresh);
+    return () => window.removeEventListener("workforce:shift-state", refresh);
+  }, [load]);
+
   const metrics = useMemo(() => {
     const period = data?.current_period;
     const actual = period?.job_minutes ?? 0;
@@ -94,13 +131,31 @@ export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
     }
     setBusy(true);
     setError(null);
+    let requestStart: string;
+    let requestEnd: string;
+    try {
+      requestStart = shopLocalDateTimeToUtc(
+        startsAt.slice(0, 10),
+        startsAt.slice(11),
+        data?.timezone ?? "UTC",
+      );
+      requestEnd = shopLocalDateTimeToUtc(
+        endsAt.slice(0, 10),
+        endsAt.slice(11),
+        data?.timezone ?? "UTC",
+      );
+    } catch {
+      setBusy(false);
+      setError("Choose valid shop-local start and end times.");
+      return;
+    }
     const response = await fetch("/api/time-off/requests", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         request_type: requestType,
-        starts_at: new Date(startsAt).toISOString(),
-        ends_at: new Date(endsAt).toISOString(),
+        starts_at: requestStart,
+        ends_at: requestEnd,
         is_partial_day: startsAt.slice(0, 10) === endsAt.slice(0, 10),
         reason: reason.trim() || null,
       }),
@@ -142,15 +197,22 @@ export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
     <section className={`${cardClass} space-y-4`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">My Schedule & Time Away</h2>
+          <p className="text-xs uppercase tracking-[0.18em] text-[color:var(--theme-accent-text)]">
+            Signed in as{" "}
+            {data?.profile.display_name ??
+              (loading
+                ? "Loading employee profile…"
+                : "Employee profile unavailable")}
+          </p>
+          <h2 className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">My Shift, Schedule &amp; Time Away</h2>
           <p className="text-xs text-[color:var(--theme-text-secondary)]">
-            Your schedule, pay-period time evidence, flat-rate results, and requests.
+            Punch controls, your next shift, pay-period time evidence, and requests.
           </p>
         </div>
         <button
           type="button"
           onClick={() => setShowRequest((current) => !current)}
-          className="rounded-lg border border-orange-400/40 bg-orange-500/10 px-3 py-2 text-xs font-semibold text-orange-200"
+          className="rounded-lg border border-[color:var(--brand-accent)]/40 bg-[color:var(--theme-surface-panel)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-accent-text)]"
         >
           {showRequest ? "Close" : "Request time away"}
         </button>
@@ -161,10 +223,17 @@ export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
 
       {!loading && data ? (
         <>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            <Stat label="Clocked today" value={hours(data.today_evidence.gross_minutes)} />
+            <Stat label="Active time today" value={hours(data.today_evidence.recorded_minutes)} />
+            <Stat label="Breaks today" value={hours(data.today_evidence.break_minutes)} />
+            <Stat label="Lunch today" value={hours(data.today_evidence.lunch_minutes)} />
+            <Stat label="Punches today" value={String(data.today_evidence.punch_count)} />
+          </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            <Stat label="Attendance" value={hours(data.current_period?.worked_minutes)} />
+            <Stat label="Payroll hours (period)" value={hours(data.current_period?.worked_minutes)} />
             <Stat label="Actual job time" value={hours(data.current_period?.job_minutes)} />
-            <Stat label="Flagged time" value={hours(data.current_period?.flagged_minutes)} />
+            <Stat label="Flat-rate credit" value={hours(data.current_period?.flagged_minutes)} />
             <Stat label="Overtime" value={hours(data.current_period?.overtime_minutes)} />
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -172,25 +241,58 @@ export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
             <Stat label="Productivity" value={`${metrics.productivity.toFixed(0)}%`} />
             <Stat label="Overall" value={`${metrics.overall.toFixed(0)}%`} />
           </div>
-          <div className="grid gap-2 text-xs md:grid-cols-2">
-            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
-              <p className="uppercase tracking-wide text-[color:var(--theme-text-muted)]">Current shift</p>
-              <p className="mt-1 text-[color:var(--theme-text-primary)]">
+          <div className="grid gap-2 text-xs lg:grid-cols-2">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
+              <p className="uppercase tracking-wide text-[color:var(--theme-text-muted)]">Punch clock</p>
+              <p className="mt-1 text-[color:var(--theme-text-secondary)]">
                 {data.current_shift
-                  ? `Started ${new Date(data.current_shift.start_time).toLocaleString()} · ${data.current_shift.status}`
-                  : "Not clocked in"}
+                  ? `Recorded start ${new Date(data.current_shift.start_time).toLocaleString([], {
+                      timeZone: data.timezone,
+                    })}`
+                  : "No active shift recorded"}
               </p>
+              <ShiftTracker userId={data.profile.id} />
+              {data.today_evidence.punches.length > 0 ? (
+                <div className="mt-3 border-t border-[color:var(--theme-border-soft)] pt-3">
+                  <p className="uppercase tracking-wide text-[color:var(--theme-text-muted)]">
+                    Today&apos;s punch trail
+                  </p>
+                  <div className="mt-2 space-y-1 text-[color:var(--theme-text-secondary)]">
+                    {data.today_evidence.punches.map((event) => (
+                      <p key={event.id}>
+                        {punchLabel(event.event_type)}
+                        {event.timestamp
+                          ? ` · ${new Date(event.timestamp).toLocaleTimeString([], {
+                              hour: "numeric",
+                              minute: "2-digit",
+                              timeZone: data.timezone,
+                            })}`
+                          : ""}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
+            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
               <p className="uppercase tracking-wide text-[color:var(--theme-text-muted)]">Next scheduled shift</p>
               <p className="mt-1 text-[color:var(--theme-text-primary)]">
                 {data.next_schedule?.start_at
-                  ? `${new Date(data.next_schedule.start_at).toLocaleString()} → ${
+                  ? `${new Date(data.next_schedule.start_at).toLocaleString([], {
+                      timeZone: data.timezone,
+                    })} → ${
                       data.next_schedule.end_at
-                        ? new Date(data.next_schedule.end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                        ? new Date(data.next_schedule.end_at).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                            timeZone: data.timezone,
+                          })
                         : "open"
                     }`
                   : "No upcoming shift scheduled"}
+              </p>
+              <p className="mt-2 text-[color:var(--theme-text-muted)]">
+                Schedule source: {data.next_schedule?.source === "override" ? "day override" : data.next_schedule ? "recurring schedule" : "none"}
               </p>
             </div>
           </div>
@@ -198,7 +300,7 @@ export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
       ) : null}
 
       {showRequest ? (
-        <div className="space-y-3 rounded-xl border border-orange-400/30 bg-orange-500/5 p-3">
+        <div className="space-y-3 rounded-xl border border-[color:var(--brand-accent)]/30 bg-[color:var(--theme-surface-panel)] p-3">
           <div className="grid gap-2 md:grid-cols-2">
             <label className="grid gap-1 text-xs text-[color:var(--theme-text-secondary)]">
               Type
@@ -240,7 +342,13 @@ export function MyWorkforceCard({ mobile = false }: { mobile?: boolean }) {
                 <div>
                   <p className="font-medium capitalize text-[color:var(--theme-text-primary)]">{request.request_type}</p>
                   <p className="text-[color:var(--theme-text-secondary)]">
-                    {new Date(request.starts_at).toLocaleString()} → {new Date(request.ends_at).toLocaleString()}
+                    {new Date(request.starts_at).toLocaleString([], {
+                      timeZone: data?.timezone ?? "UTC",
+                    })}{" "}
+                    →{" "}
+                    {new Date(request.ends_at).toLocaleString([], {
+                      timeZone: data?.timezone ?? "UTC",
+                    })}
                   </p>
                   {request.reason ? <p className="mt-1 text-[color:var(--theme-text-muted)]">{request.reason}</p> : null}
                   {request.review_note ? <p className="mt-1 text-[color:var(--theme-text-secondary)]">Review note: {request.review_note}</p> : null}

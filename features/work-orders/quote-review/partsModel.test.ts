@@ -9,6 +9,7 @@ const liveItem = (overrides: Partial<PartRequestItem> = {}): PartRequestItem => 
   id: "pri-1",
   request_id: "pr-1",
   shop_id: "shop-1",
+  source_menu_item_part_id: null,
   source_work_order_part_id: null,
   work_order_id: "wo-1",
   quote_line_id: "ql-1",

@@ -152,6 +152,25 @@ describe("workforce activity DTO", () => {
       .activities[0];
     expect(a.exceptions.map((e) => e.code)).toContain("active_job_off_shift");
   });
+  it("recognizes a multi-technician line assignment", () => {
+    const a = base({
+      shifts: [shift],
+      segments: [segment],
+      lines: [{ ...line, assigned_tech_id: null }],
+      assignments: [
+        {
+          work_order_line_id: line.id,
+          technician_id: "tech-1",
+        },
+      ],
+      workOrders: [wo],
+    }).activities[0];
+
+    expect(a.currentJob?.assignedTechnicianIds).toContain("tech-1");
+    expect(a.exceptions.map((event) => event.code)).not.toContain(
+      "active_job_unassigned",
+    );
+  });
   it("selects multiple active segments deterministically and emits exception", () => {
     const seg2 = {
       ...segment,
