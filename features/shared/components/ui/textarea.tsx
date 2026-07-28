@@ -12,16 +12,15 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         ref={ref}
         className={clsx(
           "w-full min-h-[100px] rounded-[var(--theme-radius-md,0.5rem)] border px-4 py-2 text-sm",
-          "border-[color:var(--theme-input-border,var(--theme-border-soft))]",
-          "bg-[color:var(--theme-input-bg,var(--theme-surface-page))]",
-          "text-[color:var(--theme-input-text,var(--theme-text-primary))]",
-          "placeholder:text-[color:var(--theme-text-muted)] placeholder:opacity-100",
+          "border-[var(--theme-input-border,var(--theme-border-soft))]",
+          "bg-[var(--theme-input-bg,var(--theme-surface-page))]",
+          "text-[var(--theme-input-text,var(--theme-text-inverse))]",
+          "placeholder:text-[var(--theme-text-secondary,var(--theme-text-muted))]",
           "backdrop-blur-sm",
           "focus:outline-none focus:ring-2",
-          "focus:ring-[color:var(--brand-primary,#1747FF)]",
-          "focus:border-[color:var(--brand-accent,#0BB7FF)]",
-          "transition duration-200",
-          "disabled:cursor-not-allowed disabled:bg-[color:var(--theme-surface-subtle)] disabled:text-[color:var(--theme-text-secondary)] disabled:opacity-100",
+          "focus:ring-[var(--brand-primary,#C97A3D)]",
+          "focus:border-[var(--brand-accent,#E2A164)]",
+          "transition duration-200 disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
         {...props}
