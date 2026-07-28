@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./light-mode-contrast.css";
 import { Inter, Black_Ops_One } from "next/font/google";
 import Script from "next/script";
 import Providers from "./providers";
