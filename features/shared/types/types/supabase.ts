@@ -22839,6 +22839,18 @@ export type Database = {
         Args: { p_outbox_id: string; p_worker_id: string }
         Returns: boolean
       }
+      complete_scheduled_shift_end_atomic: {
+        Args: {
+          p_execution_time?: string
+          p_schedule_date?: string
+          p_schedule_source?: string
+          p_scheduled_end: string
+          p_shift_id: string
+          p_shop_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       complete_stripe_webhook_event: {
         Args: { p_claim_token: string; p_event_id: string }
         Returns: boolean
