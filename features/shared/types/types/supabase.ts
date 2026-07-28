@@ -3227,8 +3227,8 @@ export type Database = {
           content_type: string | null
           doc_type: string
           expires_at: string | null
-          file_size_bytes: number | null
           file_path: string
+          file_size_bytes: number | null
           id: string
           original_filename: string | null
           shop_id: string
@@ -3242,8 +3242,8 @@ export type Database = {
           content_type?: string | null
           doc_type: string
           expires_at?: string | null
-          file_size_bytes?: number | null
           file_path: string
+          file_size_bytes?: number | null
           id?: string
           original_filename?: string | null
           shop_id: string
@@ -3257,8 +3257,8 @@ export type Database = {
           content_type?: string | null
           doc_type?: string
           expires_at?: string | null
-          file_size_bytes?: number | null
           file_path?: string
+          file_size_bytes?: number | null
           id?: string
           original_filename?: string | null
           shop_id?: string
@@ -3283,15 +3283,15 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "employee_documents_user_id_fkey"
-            columns: ["user_id"]
+            foreignKeyName: "employee_documents_uploaded_by_fkey"
+            columns: ["uploaded_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "employee_documents_uploaded_by_fkey"
-            columns: ["uploaded_by"]
+            foreignKeyName: "employee_documents_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -7116,8 +7116,8 @@ export type Database = {
           cause: string | null
           complaint: string | null
           correction: string | null
-          creation_request_id: string | null
           created_at: string | null
+          creation_request_id: string | null
           description: string | null
           drivetrain: string | null
           engine_code: string | null
@@ -7151,8 +7151,8 @@ export type Database = {
           cause?: string | null
           complaint?: string | null
           correction?: string | null
-          creation_request_id?: string | null
           created_at?: string | null
+          creation_request_id?: string | null
           description?: string | null
           drivetrain?: string | null
           engine_code?: string | null
@@ -7186,8 +7186,8 @@ export type Database = {
           cause?: string | null
           complaint?: string | null
           correction?: string | null
-          creation_request_id?: string | null
           created_at?: string | null
+          creation_request_id?: string | null
           description?: string | null
           drivetrain?: string | null
           engine_code?: string | null
@@ -8663,7 +8663,7 @@ export type Database = {
           {
             foreignKeyName: "part_requests_source_menu_item_shop_fkey"
             columns: ["shop_id", "source_menu_item_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "menu_items"
             referencedColumns: ["shop_id", "id"]
           },
@@ -22522,6 +22522,19 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_canonical_offline_shift_punch_atomic: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_event_type: string
+          p_note?: string
+          p_operation_key: string
+          p_shift_id: string
+          p_shop_id: string
+          p_timestamp: string
+        }
+        Returns: Json
+      }
       apply_customer_quote_decision_atomic: {
         Args: {
           p_actor_user_id: string
@@ -22566,19 +22579,6 @@ export type Database = {
           p_payload: Json
           p_shop_id: string
           p_work_order_line_id: string
-        }
-        Returns: Json
-      }
-      apply_canonical_offline_shift_punch_atomic: {
-        Args: {
-          p_actor_auth_user_id: string
-          p_actor_profile_id: string
-          p_event_type: string
-          p_note?: string
-          p_operation_key: string
-          p_shift_id: string
-          p_shop_id: string
-          p_timestamp: string
         }
         Returns: Json
       }
@@ -22718,14 +22718,6 @@ export type Database = {
         Args: { p_job_id: string; p_sections: Json; p_title: string }
         Returns: string
       }
-      approve_payroll_period_atomic: {
-        Args: {
-          p_actor_profile_id: string
-          p_period_id: string
-          p_shop_id: string
-        }
-        Returns: Json
-      }
       approve_lines: {
         Args: {
           _approved_ids: string[]
@@ -22735,6 +22727,14 @@ export type Database = {
           _wo: string
         }
         Returns: undefined
+      }
+      approve_payroll_period_atomic: {
+        Args: {
+          p_actor_profile_id: string
+          p_period_id: string
+          p_shop_id: string
+        }
+        Returns: Json
       }
       assign_work_order_line_technician_atomic: {
         Args: {
@@ -23163,6 +23163,15 @@ export type Database = {
         }
       }
       current_shop_id: { Args: never; Returns: string }
+      delete_menu_item_with_parts_intake: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_menu_item_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       evaluate_fleet_pm_due_events: {
         Args: { p_fleet_id: string; p_vehicle_id?: string }
         Returns: {
@@ -23185,20 +23194,6 @@ export type Database = {
           p_pdf_storage_path: string
           p_pdf_url: string
           p_work_order_line_id: string
-        }
-        Returns: Json
-      }
-      finalize_payroll_export_atomic: {
-        Args: {
-          p_actor_profile_id: string
-          p_batch_id: string
-          p_file_sha256: string
-          p_file_size_bytes: number
-          p_period_id: string
-          p_provider_template_version: string
-          p_shop_id: string
-          p_storage_bucket: string
-          p_storage_path: string
         }
         Returns: Json
       }
@@ -23249,6 +23244,20 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      finalize_payroll_export_atomic: {
+        Args: {
+          p_actor_profile_id: string
+          p_batch_id: string
+          p_file_sha256: string
+          p_file_size_bytes: number
+          p_period_id: string
+          p_provider_template_version: string
+          p_shop_id: string
+          p_storage_bucket: string
+          p_storage_path: string
+        }
+        Returns: Json
       }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       get_invoice_net_issued_parts: {
@@ -23912,6 +23921,19 @@ export type Database = {
         }
         Returns: Json
       }
+      review_menu_item_part_intake: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_catalog_part_id: string
+          p_operation_key: string
+          p_quantity: number
+          p_request_item_id: string
+          p_shop_id: string
+          p_unit_cost: number
+        }
+        Returns: Json
+      }
       save_inspection_progress_atomic: {
         Args: {
           p_actor_user_id: string
@@ -23944,6 +23966,42 @@ export type Database = {
           p_work_order_line_id: string
         }
         Returns: Json
+      }
+      save_staff_schedule_override_atomic: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_end_time: string
+          p_notes: string
+          p_override_id: string
+          p_schedule_date: string
+          p_shop_id: string
+          p_start_time: string
+          p_status: string
+          p_target_user_id: string
+          p_unpaid_break_minutes: number
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          end_time: string | null
+          id: string
+          notes: string | null
+          schedule_date: string
+          shop_id: string
+          source_type: string
+          start_time: string | null
+          status: string
+          unpaid_break_minutes: number
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "staff_schedule_overrides"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
@@ -24161,6 +24219,17 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      update_menu_item_with_parts_intake: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_item: Json
+          p_menu_item_id: string
+          p_parts: Json
+          p_shop_id: string
+        }
+        Returns: Json
       }
       user_is_in_shop: { Args: { target_shop_id: string }; Returns: boolean }
       void_invoice_version: {
@@ -24836,3 +24905,4 @@ export const Constants = {
     },
   },
 } as const
+
