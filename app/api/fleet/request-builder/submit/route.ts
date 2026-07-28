@@ -64,7 +64,10 @@ export async function POST(req: NextRequest) {
       p_vehicle_id: parsed.data.vehicleId,
       p_title: parsed.data.title,
       p_summary: parsed.data.summary,
-      p_requested_for_date: parsed.data.requestedForDate ?? null,
+      // Postgres accepts an explicit NULL for this required nullable argument,
+      // while generated RPC types represent date inputs as strings only.
+      p_requested_for_date:
+        parsed.data.requestedForDate ?? (null as unknown as string),
       p_lines: parsed.data.lines,
       p_operation_key: parsed.data.operationKey,
     },
