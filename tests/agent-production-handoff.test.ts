@@ -19,7 +19,8 @@ describe("production agent request handoff", () => {
   it("sends canonical engineering context to the production workforce", () => {
     expect(route).toContain("expectedBehavior:");
     expect(route).toContain("actualBehavior:");
-    expect(route).toContain("screenshots: signedAttachments.map");
+    expect(route).toContain("const signedScreenshotUrls = signedAttachments.map");
+    expect(route).toContain("screenshots: signedScreenshotUrls");
     expect(route).toContain("route: asNullableString(body.location)");
     expect(route).toContain("browser: asNullableString(body.device)");
   });
