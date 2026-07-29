@@ -3,14 +3,12 @@ import "server-only";
 
 export const runtime = "nodejs";
 
-import { createHash } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
 import type { Database } from "@shared/types/types/supabase";
-import { generateInspectionPDF } from "@/features/inspections/lib/inspection/pdf";
-import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
 
 type DB = Database;
 
@@ -45,21 +43,8 @@ function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
 
-function isStorageAlreadyExistsError(error: unknown): boolean {
-  if (!isRecord(error)) return false;
-  const status = Number(error.statusCode ?? error.status);
-  const message = [error.message, error.error]
-    .filter((value): value is string => typeof value === "string")
-    .join(" ");
-  return status === 409 || /already exists|duplicate/i.test(message);
-}
-
 function asString(x: unknown): string | null {
   return typeof x === "string" && x.trim().length ? x.trim() : null;
-}
-
-function safeFilePart(x: string): string {
-  return x.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 export async function POST(req: NextRequest) {
@@ -226,69 +211,34 @@ export async function POST(req: NextRequest) {
   }
 
   const inspectionId = insp.id;
-  const brand = await getActiveBrandForRender(shopId);
-
-  // 5) Generate PDF
-  const pdfBytes = await generateInspectionPDF(summary, {
-    logoUrl: brand.logoUrl,
-    shopName: null,
-    colors: brand.colors,
-  });
-  const pdfBuffer = Buffer.from(pdfBytes);
-  const pdfHash = createHash("sha256").update(pdfBuffer).digest("hex");
-
-  // 6) Upload to storage (Policy-based: path includes shop id)
-  const bucket = "inspection_pdfs";
-  const shopPart = safeFilePart(shopId);
-  const woPart = safeFilePart(workOrderId);
-  const inspPart = safeFilePart(String(inspectionId));
-  const linePart = safeFilePart(workOrderLineId);
-
-  const path = `shops/${shopPart}/work_orders/${woPart}/inspections/${inspPart}/line_${linePart}_r${summaryRevision}_${pdfHash}.pdf`;
-
-  const { error: uploadErr } = await storageSupabase.storage
-    .from(bucket)
-    .upload(path, pdfBuffer, { contentType: "application/pdf", upsert: false });
-
-  if (uploadErr && !isStorageAlreadyExistsError(uploadErr)) {
-    // eslint-disable-next-line no-console
-    console.error("[inspections/finalize/pdf] upload failed", {
-      message: uploadErr.message,
-      name: uploadErr.name,
-      cause: (uploadErr as unknown as { cause?: unknown })?.cause,
-      path,
-      bucket,
+  let published;
+  try {
+    published = await publishInspectionPdf({
+      admin: storageSupabase,
       shopId,
       workOrderId,
       workOrderLineId,
+      inspectionId,
+      summary,
+      syncRevision: summaryRevision,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Inspection PDF upload failed.";
+    console.error("[inspections/finalize/pdf] publish failed", {
+      message,
+      shopId,
+      workOrderId,
+      workOrderLineId,
+      inspectionId,
     });
     return NextResponse.json(
-      {
-        error: uploadErr.message,
-        detail: {
-          bucket,
-          path,
-          hint: "Storage RLS likely blocked upload. Confirm policy matches shops/<shop_id>/... and current_shop_id() is set.",
-        },
-      },
+      { error: message },
       { status: 500 },
     );
   }
 
-  // Optional: signed URL for quick-open in UI
-  const { data: signed, error: signedErr } = await storageSupabase.storage
-    .from(bucket)
-    .createSignedUrl(path, 60 * 60 * 24 * 30);
-
-  if (signedErr) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      "[inspections/finalize/pdf] createSignedUrl failed",
-      signedErr,
-    );
-  }
-
-  // 7) Publish the immutable object only if the persisted summary revision is
+  // Publish the immutable object only if the persisted summary revision is
   // still the one used to generate it. The RPC locks and rechecks the row.
   const finalizeRpc = storageSupabase as unknown as FinalizeRpcClient;
   const { error: finalizeErr } = await finalizeRpc.rpc(
@@ -298,9 +248,9 @@ export async function POST(req: NextRequest) {
       p_work_order_line_id: workOrderLineId,
       p_actor_user_id: user.id,
       p_expected_sync_revision: expectedSyncRevision,
-      p_pdf_storage_path: path,
-      p_pdf_sha256: pdfHash,
-      p_pdf_url: signed?.signedUrl ?? null,
+      p_pdf_storage_path: published.path,
+      p_pdf_sha256: published.sha256,
+      p_pdf_url: published.reportUrl,
     },
   );
 
@@ -330,8 +280,8 @@ export async function POST(req: NextRequest) {
     inspectionId,
     workOrderId,
     workOrderLineId,
-    bucket,
-    pdf_storage_path: path,
-    pdf_url: signed?.signedUrl ?? null,
+    bucket: published.bucket,
+    pdf_storage_path: published.path,
+    pdf_url: published.reportUrl,
   });
 }

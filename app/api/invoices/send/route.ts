@@ -9,6 +9,7 @@ import { getActiveBrandForRender } from "@/features/branding/server/getActiveBra
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
 import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
 import { finalizeInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
+import { attachInspectionReportToInvoice } from "@/features/invoices/server/attachInspectionReportToInvoice";
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -246,6 +247,13 @@ export async function POST(req: Request) {
     // configuration is stored in the immutable version snapshot so historical
     // invoices never change when the shop updates its logo or template later.
     const brand = await getActiveBrandForRender(workOrder.shop_id);
+    const inspectionAttachment = await attachInspectionReportToInvoice({
+      supabase: admin,
+      invoiceId,
+      workOrderId,
+      shopId: workOrder.shop_id,
+      actorUserId: access.profile.id,
+    });
     const issuedSnapshot = {
       ...snapshot,
       documentConfiguration: brand.document,
@@ -362,6 +370,7 @@ export async function POST(req: Request) {
       invoiceId,
       invoiceVersionId: version.id,
       invoiceVersion: version,
+      inspectionAttachment,
       sentWithWarnings: warnings.length > 0 || undefined,
       warnings: warnings.length ? warnings : undefined,
     });

@@ -22746,6 +22746,18 @@ export type Database = {
         }
         Returns: Json
       }
+      attach_signed_inspection_pdf_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_expected_sync_revision: number
+          p_inspection_id: string
+          p_pdf_sha256: string
+          p_pdf_storage_path: string
+          p_pdf_url: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       attach_stripe_acquisition_checkout: {
         Args: {
           p_checkout_session_id: string
