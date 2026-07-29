@@ -22,6 +22,8 @@ import AssignTechModal from "@/features/work-orders/components/workorders/extras
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import WorkOrderAiOperationalRecommendations from "@/features/work-orders/components/WorkOrderAiOperationalRecommendations";
 import WorkOrderAiFreshnessBadge from "@/features/work-orders/components/WorkOrderAiFreshnessBadge";
+import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
+import type { WorkOrderEvidenceItem } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 import PageShell from "@/features/shared/components/PageShell";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionTimeline, {
@@ -83,9 +85,6 @@ type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
     template?: string | null;
   } | null;
 };
-type JobLinePriority = "low" | "normal" | "high" | "urgent";
-
-
 type PropertyContext = {
   requestId: string;
   requestTitle: string | null;
@@ -218,6 +217,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
   const [partRequestsByQuoteLine, setPartRequestsByQuoteLine] = useState<Record<string, PartRequestRow[]>>({});
   const [partRequestsByLine, setPartRequestsByLine] = useState<Record<string, PartRequestRow[]>>({});
+  const [evidence, setEvidence] = useState<WorkOrderEvidenceItem[]>([]);
   const [requestingPartsLineId, setRequestingPartsLineId] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [loadedOnce, setLoadedOnce] = useState<boolean>(false);
@@ -552,6 +552,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             setAllocsByLine({});
             setStagedPartsByLine({});
             setPartRequestsByQuoteLine({});
+            setEvidence([]);
             setActiveTechsByLine({});
           }
 
@@ -578,7 +579,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setWarnedMissing(true);
         }
 
-        const [linesRes, quoteRes, vehRes, custRes, shopRes, propertyReqRes] = await Promise.all([
+        const [linesRes, quoteRes, vehRes, custRes, shopRes, propertyReqRes, evidenceRes] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("*")
@@ -615,6 +616,9 @@ export default function WorkOrderIdClient(): JSX.Element {
             .select("*")
             .eq("work_order_id", woRow.id)
             .maybeSingle(),
+          fetch(`/api/work-orders/${woRow.id}/media?scope=all`, {
+            cache: "no-store",
+          }),
         ]);
 
         if (linesRes.error) throw linesRes.error;
@@ -624,6 +628,15 @@ export default function WorkOrderIdClient(): JSX.Element {
         if (quoteRes.error) throw quoteRes.error;
         const quoteRows = (quoteRes.data ?? []) as WorkOrderQuoteLine[];
         setQuoteLines(quoteRows);
+
+        if (evidenceRes.ok) {
+          const evidenceBody = (await evidenceRes.json().catch(() => null)) as
+            | { items?: WorkOrderEvidenceItem[] }
+            | null;
+          setEvidence(evidenceBody?.items ?? []);
+        } else {
+          setEvidence([]);
+        }
 
         if (vehRes?.error) throw vehRes.error;
         setVehicle((vehRes?.data as Vehicle | null) ?? null);
@@ -844,6 +857,26 @@ export default function WorkOrderIdClient(): JSX.Element {
         },
         () => fetchLatestReview(wo.id),
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_media",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_media_annotations",
+          filter: `shop_id=eq.${wo.shop_id}`,
+        },
+        () => fetchAll(),
+      )
       .subscribe();
 
     const local = () => fetchAll();
@@ -857,7 +890,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       }
       window.removeEventListener("wo:parts-used", local);
     };
-  }, [wo?.id, fetchAll, fetchLatestReview]);
+  }, [wo?.id, wo?.shop_id, fetchAll, fetchLatestReview]);
 
   // ---------- listen for inspection finish ----------
   useEffect(() => {
@@ -1113,20 +1146,6 @@ export default function WorkOrderIdClient(): JSX.Element {
   const canRequestParts = currentActor.canManageWorkOrders;
 
   const canDeleteLine = currentUserRole ? LINE_DELETE_ROLES.has(currentUserRole) : false;
-
-  const updateLinePriority = useCallback(
-    async (lineId: string, priority: JobLinePriority) => {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({ job_priority: priority } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId)
-        .eq("work_order_id", routeId)
-        .eq("line_type", "job");
-
-      if (error) throw error;
-    },
-    [routeId],
-  );
 
   const selectedDelLine = useMemo(() => {
     if (!delLineId) return null;
@@ -2032,21 +2051,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                               }
                             : undefined
                         }
-                        onPriorityChange={
-                          canAssign
-                            ? async (priority: JobLinePriority) => {
-                                try {
-                                  await updateLinePriority(ln.id, priority);
-                                  toast.success("Job priority updated.");
-                                  await fetchAll();
-                                } catch (e) {
-                                  const msg =
-                                    e instanceof Error ? e.message : "Failed to update priority.";
-                                  toast.error(msg);
-                                }
-                              }
-                            : undefined
-                        }
                         onOpenInspection={
                           ln.job_type === "inspection"
                             ? () => void openInspectionForLine(ln)
@@ -2068,6 +2072,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                         compact={showPanel}
                         selected={isSelectedForPanel}
                         hideExecutionStageCompletenessPills
+                        evidence={evidence.filter(
+                          (item) => item.workOrderLineId === ln.id,
+                        )}
                       />
                     );
                   })}
@@ -2162,6 +2169,19 @@ export default function WorkOrderIdClient(): JSX.Element {
                   </div>
                 </section>
               )}
+
+              {wo?.id ? (
+                <WorkOrderMediaGallery
+                  workOrderId={wo.id}
+                  scope="unassigned"
+                  hideWhenEmpty
+                  lineOptions={sortedLines.map((line, index) => ({
+                    id: line.id,
+                    label: `${index + 1}. ${line.description || line.complaint || "Job"}`,
+                  }))}
+                  className={cn(PANEL_VARIANTS.passive, "rounded-xl p-3")}
+                />
+              ) : null}
             </div>
 
             {/* Right: focused job workspace pane */}
