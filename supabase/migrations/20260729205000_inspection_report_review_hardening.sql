@@ -1,5 +1,8 @@
 begin;
 
+alter table public.inspections
+  add column if not exists pdf_sha256 text;
+
 create or replace function public.sync_finalized_inspection_to_work_order()
 returns trigger
 language plpgsql
