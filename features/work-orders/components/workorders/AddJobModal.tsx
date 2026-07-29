@@ -9,10 +9,10 @@ import { toast } from "sonner";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
 import type { Database } from "@shared/types/types/supabase";
+import { buildAddJobLinePayload } from "@/features/work-orders/lib/addJobLinePayload";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type WorkOrderLineInsert = DB["public"]["Tables"]["work_order_lines"]["Insert"];
 
 type Props = {
   isOpen: boolean;
@@ -229,47 +229,21 @@ export default function AddJobModal(props: Props) {
 
       const hasParts = validItems.length > 0;
 
-      // ✅ IMPORTANT CHANGE:
-      // This modal creates advisor/tech-added jobs that require customer authorization.
-      // Parts requests do NOT imply "on hold" (that's operational hold like waiting for parts delivery).
-      // So always start in the approval bucket.
-      const initialStatus: WorkOrderLineInsert["status"] = "awaiting_approval";
-
       const newLineId = uuidv4();
 
-      const payloadBase: WorkOrderLineInsert = {
+      const payload = buildAddJobLinePayload({
         id: newLineId,
-        work_order_id: workOrderId,
-        vehicle_id: vehicleId,
-        complaint: jobName.trim(),
-        cause: null,
-        correction: notes.trim() || null,
-        labor_time: laborHours > 0 ? laborHours : null,
-
-        // keep legacy text column filled for now (useful for quick scanning)
-        parts: hasParts
-          ? validItems.map((p) => `${p.qty}x ${p.description}`).join(", ")
-          : null,
-
-        status: initialStatus,
-        job_type: "repair",
-        shop_id: useShopId,
-
-        ...(user?.id ? { user_id: user.id } : {}),
-        ...(techId && techId !== "system" ? { assigned_tech_id: techId } : {}),
-        ...(urgency ? { urgency } : {}),
-      };
-
-      // If your DB has approval columns, we want them consistent with the UI bucket.
-      // We apply them in a TS-safe way (won't break compile if not present in generated types).
-      const payload = {
-        ...payloadBase,
-        ...( {
-          approval_state: "pending",
-          approval_decision: "pending",
-          approval_requested_at: new Date().toISOString(),
-        } as unknown as Partial<WorkOrderLineInsert>),
-      } satisfies WorkOrderLineInsert;
+        workOrderId,
+        vehicleId,
+        jobName,
+        notes,
+        laborHours,
+        parts: validItems,
+        shopId: useShopId,
+        userId: user?.id ?? null,
+        assignedTechId: techId && techId !== "system" ? techId : null,
+        urgency,
+      });
 
       // 1) Create the line
       const { error: insErr } = await supabase.from("work_order_lines").insert(payload);
