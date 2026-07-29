@@ -34,6 +34,14 @@ const mediaGallery = readFileSync(
   "features/work-orders/components/workorders/extras/WorkOrderMediaGallery.tsx",
   "utf8",
 );
+const mediaApi = readFileSync(
+  "app/api/work-orders/[id]/media/route.ts",
+  "utf8",
+);
+const evidenceUrls = readFileSync(
+  "features/work-orders/server/workOrderEvidenceUrls.ts",
+  "utf8",
+);
 const focusedJobModal = readFileSync(
   "features/work-orders/components/workorders/FocusedJobModal.tsx",
   "utf8",
@@ -177,10 +185,12 @@ test("job media capture supports video and attached media visibility", () => {
   expect(photoModal).toContain("Choose media");
 
   expect(mediaGallery).toContain("work_order_media");
-  expect(mediaGallery).toContain("Photos & videos");
+  expect(mediaGallery).toContain("Photos and videos attached to this job.");
   expect(mediaGallery).toContain("Technician video");
-  expect(mediaGallery).toContain("createSignedUrl");
-  expect(mediaGallery).toContain("No photos or videos attached yet.");
+  expect(mediaGallery).toContain("No photos or videos attached to this job yet.");
+  expect(mediaApi).toContain("resolveEvidenceDisplayUrl");
+  expect(evidenceUrls).toContain("isCanonicalEvidenceStorageObject");
+  expect(evidenceUrls).toContain("createSignedUrl");
 
   expect(focusedJobModal).toContain("WorkOrderMediaGallery");
   expect(mobileFocusedJob).toContain("WorkOrderMediaGallery");
