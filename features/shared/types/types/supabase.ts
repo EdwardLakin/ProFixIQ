@@ -20439,6 +20439,13 @@ export type Database = {
             foreignKeyName: "work_order_media_annotations_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_media_annotations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
           },
@@ -24046,15 +24053,6 @@ export type Database = {
         }
         Returns: Json
       }
-      save_work_order_media_annotation_atomic: {
-        Args: {
-          p_client_mutation_id: string
-          p_media_id: string
-          p_overlay: Json
-          p_visibility: string
-        }
-        Returns: Json
-      }
       save_staff_schedule_override_atomic: {
         Args: {
           p_actor_auth_user_id: string
@@ -24090,6 +24088,15 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      save_work_order_media_annotation_atomic: {
+        Args: {
+          p_client_mutation_id: string
+          p_media_id: string
+          p_overlay: Json
+          p_visibility: string
+        }
+        Returns: Json
       }
       seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
