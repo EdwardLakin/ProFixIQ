@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type JSX, type MouseEvent } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, PackagePlus, Wrench } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleAlert, CircleCheck, Images, PackagePlus, Play, UserRound, Wrench } from "lucide-react";
 
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
@@ -10,6 +10,11 @@ import Card from "@shared/components/ui/Card";
 import { cn } from "@shared/lib/utils";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import { formatLaborSummary, formatPartsSummary, resolvePrimaryTechDisplay } from "@/features/work-orders/lib/display/linePresentation";
+import EvidenceImage from "@/features/work-orders/components/evidence/EvidenceImage";
+import {
+  isVideoEvidence,
+  type WorkOrderEvidenceItem,
+} from "@/features/work-orders/lib/evidence/workOrderEvidence";
 
 type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type WorkOrderPartAllocation =
@@ -51,7 +56,6 @@ type JobCardProps = {
   isSelectedForPanel?: boolean;
   onOpen: () => void;
   onAssign?: (techId: string) => void;
-  onPriorityChange?: (priority: JobLinePriority) => void;
   onOpenInspection?: () => void;
   onAddPart?: () => void;
   onRequestParts?: () => void;
@@ -64,9 +68,8 @@ type JobCardProps = {
   compact?: boolean;
   selected?: boolean;
   hideExecutionStageCompletenessPills?: boolean;
+  evidence?: WorkOrderEvidenceItem[];
 };
-
-type JobLinePriority = "low" | "normal" | "high" | "urgent";
 
 type StatusVisual = {
   label: string | null;
@@ -77,26 +80,11 @@ type StatusVisual = {
   muted: boolean;
 };
 
-const PRIORITY_OPTIONS: JobLinePriority[] = ["urgent", "high", "normal", "low"];
-
-const PRIORITY_CHIP_STYLES: Record<JobLinePriority, string> = {
-  urgent: "border-red-400/50 bg-red-500/10 text-red-100",
-  high: "border-amber-400/50 bg-amber-500/10 text-amber-100",
-  normal: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]",
-  low: "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]",
-};
-
 const METALLIC_CARD_SURFACE =
   "bg-[var(--theme-gradient-panel)]";
 
 function norm(s: unknown): string {
   return String(s ?? "").trim().toLowerCase();
-}
-
-function toLinePriority(line: WorkOrderLine): JobLinePriority {
-  const raw = norm((line as WorkOrderLine & { job_priority?: string | null }).job_priority);
-  if (raw === "urgent" || raw === "high" || raw === "normal" || raw === "low") return raw;
-  return "normal";
 }
 
 function formatCurrency(value: number | null | undefined): string {
@@ -312,7 +300,6 @@ export function JobCard({
   isSelectedForPanel,
   onOpen,
   onAssign,
-  onPriorityChange,
   onOpenInspection,
   onAddPart,
   onRequestParts,
@@ -325,6 +312,7 @@ export function JobCard({
   compact = false,
   selected = false,
   hideExecutionStageCompletenessPills = false,
+  evidence = [],
 }: JobCardProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<boolean>(false);
 
@@ -358,8 +346,6 @@ export function JobCard({
     return resolvePrimaryTechDisplay(line, profile ? { ...profile, role: "tech" } : null);
   }, [line, technicians]);
 
-  const linePriority = toLinePriority(line);
-  const quietPriority = linePriority === "urgent" || linePriority === "high" ? linePriority : null;
   const effectivePartsCount = Math.max(
     parts.length,
     partsCount ?? 0,
@@ -464,16 +450,6 @@ export function JobCard({
                       {liveMarkerLabel}
                     </span>
                   ) : null}
-                  {quietPriority ? (
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em]",
-                        PRIORITY_CHIP_STYLES[quietPriority],
-                      )}
-                    >
-                      {quietPriority}
-                    </span>
-                  ) : null}
                 </div>
 
                 <p className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
@@ -481,10 +457,34 @@ export function JobCard({
                 </p>
               </div>
 
-              <div className={cn("flex flex-wrap items-center", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-80")}>
-                <Button type="button" variant={isSelected ? "secondary" : "outline"} size="sm" onClick={onOpen}>
-                  Open
-                </Button>
+              <div className={cn("flex max-w-full flex-wrap items-center justify-end", compact ? "gap-1" : "gap-1.5", statusVisual.muted && "opacity-80")}>
+                {canAssign && onAssign ? (
+                  <label
+                    className="relative inline-flex items-center"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <UserRound className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-[color:var(--theme-text-muted)]" />
+                    <span className="sr-only">Assigned technician</span>
+                    <select
+                      aria-label="Assigned technician"
+                      value={line.assigned_tech_id ?? ""}
+                      onChange={(event) => onAssign(event.target.value)}
+                      className="h-8 max-w-44 appearance-none truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] py-1 pl-7 pr-3 text-[10px] font-semibold text-[color:var(--theme-text-primary)]"
+                    >
+                      <option value="" disabled>Unassigned</option>
+                      {technicians.map((tech) => (
+                        <option key={tech.id} value={tech.id}>
+                          {tech.full_name || "Unnamed tech"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <span className="inline-flex max-w-44 items-center gap-1 truncate rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-primary)]">
+                    <UserRound className="h-3.5 w-3.5 shrink-0" />
+                    {assignedTech}
+                  </span>
+                )}
 
                 {onOpenInspection ? (
                   <Button type="button" variant="secondary" size="sm" onClick={onOpenInspection}>
@@ -568,8 +568,7 @@ export function JobCard({
 
             {!collapsed ? (
               <>
-                <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-                  <MetaTile label="Assigned Tech" value={assignedTech} />
+                <div className="grid gap-2.5 sm:grid-cols-3">
                   <MetaTile
                     label="Labor"
                     value={formatLaborSummary(
@@ -592,6 +591,52 @@ export function JobCard({
                   <MetaTile label="Line Total" value={lineTotal > 0 ? formatCurrency(lineTotal) : "Estimate pending"} />
                 </div>
 
+                {evidence.length > 0 ? (
+                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                        <Images className="h-3.5 w-3.5" />
+                        Evidence
+                      </span>
+                      <span className="text-[10px] text-[color:var(--theme-text-muted)]">
+                        {evidence.filter((item) => !isVideoEvidence(item)).length} photo
+                        {evidence.filter((item) => !isVideoEvidence(item)).length === 1 ? "" : "s"}
+                        {evidence.some(isVideoEvidence)
+                          ? ` · ${evidence.filter(isVideoEvidence).length} video${evidence.filter(isVideoEvidence).length === 1 ? "" : "s"}`
+                          : ""}
+                      </span>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto">
+                      {evidence.slice(0, 3).map((item) => (
+                        <div
+                          key={item.id}
+                          className="relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-black"
+                        >
+                          {isVideoEvidence(item) ? (
+                            <>
+                              {item.displayUrl ? (
+                                <video src={item.displayUrl} muted preload="metadata" className="h-full w-full object-cover" />
+                              ) : null}
+                              <Play className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 text-white" />
+                            </>
+                          ) : (
+                            <EvidenceImage
+                              item={item}
+                              alt={item.fileName ?? "Job evidence"}
+                              className="h-full [&_img]:h-full [&_img]:object-cover"
+                            />
+                          )}
+                        </div>
+                      ))}
+                      {evidence.length > 3 ? (
+                        <div className="grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-[color:var(--theme-border-soft)] text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+                          +{evidence.length - 3}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
                 {(line.complaint || line.cause || line.correction || line.hold_reason) ? (
                   <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-secondary)]">
                     {line.complaint ? <div>Complaint: {line.complaint}</div> : null}
@@ -602,54 +647,6 @@ export function JobCard({
                   </div>
                 ) : null}
 
-                {canAssign && onAssign ? (
-                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Assign technician</div>
-
-                    <div className="mt-2.5 flex flex-wrap gap-1.5">
-                      {technicians.length === 0 ? (
-                        <span className="text-sm text-[color:var(--theme-text-secondary)]">No technicians available.</span>
-                      ) : (
-                        technicians.map((tech) => {
-                          const isAssigned = tech.id === line.assigned_tech_id;
-
-                          return (
-                            <button
-                              key={tech.id}
-                              type="button"
-                              onClick={() => onAssign(tech.id)}
-                              className={cn(
-                                "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                                isAssigned
-                                  ? "border-cyan-300/50 bg-cyan-500/10 text-cyan-100"
-                                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]",
-                              )}
-                            >
-                              {tech.full_name || "Unnamed tech"}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-
-                {onPriorityChange ? (
-                  <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                    <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Job priority</div>
-                    <select
-                      className="mt-2 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1.5 text-sm text-[color:var(--theme-text-primary)]"
-                      value={linePriority}
-                      onChange={(event) => onPriorityChange(event.target.value as JobLinePriority)}
-                    >
-                      {PRIORITY_OPTIONS.map((priority) => (
-                        <option key={priority} value={priority}>
-                          {priority[0].toUpperCase() + priority.slice(1)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : null}
               </>
             ) : null}
           </div>
