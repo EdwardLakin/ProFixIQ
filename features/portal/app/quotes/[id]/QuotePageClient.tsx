@@ -22,6 +22,11 @@ import {
   shopSuppliesSummaryText,
   shopSuppliesTaxableSubtotal,
 } from "@/features/work-orders/lib/shopSupplies";
+import EvidenceImage from "@/features/work-orders/components/evidence/EvidenceImage";
+import {
+  isVideoEvidence,
+  type WorkOrderEvidenceItem,
+} from "@/features/work-orders/lib/evidence/workOrderEvidence";
 
 const COPPER = "#C57A4A";
 const CUSTOMER_VISIBLE_QUOTE_STATUSES = new Set(["sent", "approved", "converted", "declined", "deferred"]);
@@ -94,7 +99,7 @@ type LineView = {
   createdAt: string | null;
   updatedAt: string | null;
   parts: QuotePartView[];
-  evidencePhotos: string[];
+  evidence: WorkOrderEvidenceItem[];
   requestKind: "repair" | "parts_only" | null;
   fulfillment: "appointment" | "pickup" | null;
 };
@@ -315,6 +320,15 @@ export default function QuotePageClient(): JSX.Element {
       inspectionPhotos = (photos ?? []) as Array<Pick<InspectionPhotoRow, "image_url" | "item_name">>;
     }
 
+    const evidenceResponse = await fetch(
+      `/api/work-orders/${workOrderId}/media?scope=all`,
+      { cache: "no-store" },
+    );
+    const evidenceBody = (await evidenceResponse.json().catch(() => null)) as
+      | { items?: WorkOrderEvidenceItem[] }
+      | null;
+    const canonicalEvidence = evidenceResponse.ok ? evidenceBody?.items ?? [] : [];
+
     const mapped: LineView[] = ((quoteRowsRaw ?? []) as QuoteLineRow[])
       .filter(isCustomerVisibleQuoteLine)
       .map((line, index) => {
@@ -329,6 +343,31 @@ export default function QuotePageClient(): JSX.Element {
         const subtotalAmount = nullableNumber(line.subtotal) ?? laborAmount + partsAmount;
         const taxAmount = nullableNumber(line.tax_total) ?? 0;
         const totalAmount = nullableNumber(line.grand_total) ?? subtotalAmount + taxAmount;
+
+        const linkedEvidence = canonicalEvidence.filter(
+          (item) =>
+            item.quoteLineId === line.id ||
+            (line.work_order_line_id != null &&
+              item.workOrderLineId === line.work_order_line_id),
+        );
+        const fallbackEvidence: WorkOrderEvidenceItem[] =
+          linkedEvidence.length > 0
+            ? []
+            : getEvidencePhotos(line, inspectionPhotos).map((url, photoIndex) => ({
+                id: `${line.id}-legacy-${photoIndex}`,
+                workOrderId,
+                workOrderLineId: line.work_order_line_id,
+                quoteLineId: line.id,
+                kind: "photo",
+                source: "inspection_finding",
+                visibility: "customer",
+                fileName: null,
+                contentType: "image/jpeg",
+                fileSize: null,
+                createdAt: null,
+                displayUrl: url,
+                annotation: null,
+              }));
 
         return {
           id: line.id,
@@ -354,7 +393,7 @@ export default function QuotePageClient(): JSX.Element {
           createdAt: line.created_at ?? null,
           updatedAt: line.updated_at ?? null,
           parts,
-          evidencePhotos: getEvidencePhotos(line, inspectionPhotos),
+          evidence: linkedEvidence.length > 0 ? linkedEvidence : fallbackEvidence,
           requestKind: requestKind === "parts_only" ? "parts_only" : requestKind === "repair" ? "repair" : null,
           fulfillment: fulfillment === "pickup" ? "pickup" : fulfillment === "appointment" ? "appointment" : null,
         };
@@ -558,28 +597,41 @@ export default function QuotePageClient(): JSX.Element {
                   </div>
 
                   <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Evidence photo</div>
-                    {line.evidencePhotos.length > 0 ? (
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">Repair evidence</div>
+                    {line.evidence.length > 0 ? (
                       <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {line.evidencePhotos.map((photo, idx) => (
-                          <a
-                            key={`${line.id}-photo-${idx}`}
-                            href={photo}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={photo}
-                              alt={`Evidence ${idx + 1}`}
-                              className="h-24 w-full object-cover"
-                            />
-                          </a>
-                        ))}
+                        {line.evidence.map((item, idx) =>
+                          isVideoEvidence(item) && item.displayUrl ? (
+                            <div
+                              key={item.id}
+                              className="overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+                            >
+                              <video
+                                src={item.displayUrl}
+                                controls
+                                preload="metadata"
+                                className="h-24 w-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <a
+                              key={item.id}
+                              href={item.displayUrl ?? "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+                            >
+                              <EvidenceImage
+                                item={item}
+                                alt={`Evidence ${idx + 1}`}
+                                className="h-24 [&_img]:h-full [&_img]:object-cover"
+                              />
+                            </a>
+                          ),
+                        )}
                       </div>
                     ) : (
-                      <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">No photo evidence attached.</div>
+                      <div className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">No customer-visible evidence attached.</div>
                     )}
                   </div>
 

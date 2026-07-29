@@ -20266,12 +20266,15 @@ export type Database = {
           id: string
           kind: string | null
           note: string | null
+          quote_line_id: string | null
           shop_id: string
           source: string | null
           storage_bucket: string | null
           storage_path: string | null
+          updated_at: string
           url: string
           user_id: string | null
+          visibility: string
           work_order_id: string
           work_order_line_id: string | null
         }
@@ -20284,12 +20287,15 @@ export type Database = {
           id?: string
           kind?: string | null
           note?: string | null
+          quote_line_id?: string | null
           shop_id: string
           source?: string | null
           storage_bucket?: string | null
           storage_path?: string | null
+          updated_at?: string
           url: string
           user_id?: string | null
+          visibility?: string
           work_order_id: string
           work_order_line_id?: string | null
         }
@@ -20302,16 +20308,26 @@ export type Database = {
           id?: string
           kind?: string | null
           note?: string | null
+          quote_line_id?: string | null
           shop_id?: string
           source?: string | null
           storage_bucket?: string | null
           storage_path?: string | null
+          updated_at?: string
           url?: string
           user_id?: string | null
+          visibility?: string
           work_order_id?: string
           work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "work_order_media_quote_line_id_fkey"
+            columns: ["quote_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_quote_lines"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_order_media_shop_id_fkey"
             columns: ["shop_id"]
@@ -20373,6 +20389,64 @@ export type Database = {
             columns: ["work_order_line_id"]
             isOneToOne: false
             referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_media_annotations: {
+        Row: {
+          client_mutation_id: string | null
+          created_at: string
+          created_by: string
+          id: string
+          media_id: string
+          overlay: Json
+          shop_id: string
+          version: number
+          visibility: string
+        }
+        Insert: {
+          client_mutation_id?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          media_id: string
+          overlay?: Json
+          shop_id: string
+          version: number
+          visibility?: string
+        }
+        Update: {
+          client_mutation_id?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          media_id?: string
+          overlay?: Json
+          shop_id?: string
+          version?: number
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_media_annotations_media_id_fkey"
+            columns: ["media_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_media"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_media_annotations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_media_annotations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -24014,6 +24088,15 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      save_work_order_media_annotation_atomic: {
+        Args: {
+          p_client_mutation_id: string
+          p_media_id: string
+          p_overlay: Json
+          p_visibility: string
+        }
+        Returns: Json
       }
       seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
