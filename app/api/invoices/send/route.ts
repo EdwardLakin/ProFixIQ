@@ -252,7 +252,7 @@ export async function POST(req: Request) {
       invoiceId,
       workOrderId,
       shopId: workOrder.shop_id,
-      actorUserId: access.profile.id,
+      actorUserId: access.authUserId,
     });
     const issuedSnapshot = {
       ...snapshot,

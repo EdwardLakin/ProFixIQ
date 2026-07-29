@@ -4,6 +4,11 @@ import { PDFDocument } from "pdf-lib";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
+const MAX_INSPECTION_REPORTS = 10;
+const MAX_REPORT_BYTES = 20 * 1024 * 1024;
+const MAX_COMBINED_INPUT_BYTES = 40 * 1024 * 1024;
+const MAX_COMBINED_OUTPUT_BYTES = 50 * 1024 * 1024;
+
 export async function attachInspectionReportToInvoice(args: {
   supabase: SupabaseClient<Database>;
   invoiceId: string;
@@ -25,8 +30,14 @@ export async function attachInspectionReportToInvoice(args: {
       typeof row.pdf_storage_path === "string" && !!row.pdf_storage_path,
   );
   if (!inspections.length) return { attached: false, count: 0 };
+  if (inspections.length > MAX_INSPECTION_REPORTS) {
+    throw new Error(
+      `Invoice has ${inspections.length} inspection reports; the safe limit is ${MAX_INSPECTION_REPORTS}.`,
+    );
+  }
 
   const combined = await PDFDocument.create();
+  let combinedInputBytes = 0;
   for (const inspection of inspections) {
     const downloaded = await args.supabase.storage
       .from("inspection_pdfs")
@@ -36,11 +47,24 @@ export async function attachInspectionReportToInvoice(args: {
         downloaded.error?.message ?? `Unable to load inspection ${inspection.id}`,
       );
     }
+    const reportBytes = downloaded.data.size;
+    if (reportBytes > MAX_REPORT_BYTES) {
+      throw new Error(`Inspection report ${inspection.id} exceeds the safe size limit.`);
+    }
+    combinedInputBytes += reportBytes;
+    if (combinedInputBytes > MAX_COMBINED_INPUT_BYTES) {
+      throw new Error("Inspection reports exceed the safe combined size limit.");
+    }
     const source = await PDFDocument.load(await downloaded.data.arrayBuffer());
     const pages = await combined.copyPages(source, source.getPageIndices());
     pages.forEach((page) => combined.addPage(page));
   }
+
   const body = Buffer.from(await combined.save());
+  if (body.byteLength > MAX_COMBINED_OUTPUT_BYTES) {
+    throw new Error("Combined inspection report exceeds the safe output size limit.");
+  }
+
   const path =
     `shops/${args.shopId}/invoices/${args.invoiceId}/inspection-report.pdf`;
   const upload = await args.supabase.storage

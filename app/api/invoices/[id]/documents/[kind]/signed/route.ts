@@ -4,7 +4,10 @@ export const runtime = "nodejs";
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import {
+  hasAnyRole,
+  ROLE_GROUPS,
+} from "@/features/shared/lib/rbac";
 
 
 type SupportedInvoiceDocumentKind = "invoice_pdf" | "inspection_report";
@@ -22,11 +25,20 @@ function isSupportedKind(kind: string): kind is SupportedInvoiceDocumentKind {
   return SUPPORTED_KINDS.has(kind as SupportedInvoiceDocumentKind);
 }
 
-function isSafeStoragePath(path: string): boolean {
-  if (!path || path.startsWith("/")) return false;
-  if (path.includes("..")) return false;
-  if (path.includes("//")) return false;
-  return true;
+function isExpectedDocumentStorage(args: {
+  kind: SupportedInvoiceDocumentKind;
+  bucket: string;
+  path: string;
+  shopId: string;
+  invoiceId: string;
+}): boolean {
+  if (args.bucket !== "inspection_pdfs") return false;
+  if (!args.path || args.path.startsWith("/")) return false;
+  if (args.path.includes("..") || args.path.includes("//")) return false;
+  if (!args.path.endsWith(".pdf")) return false;
+  return args.path.startsWith(
+    `shops/${args.shopId}/invoices/${args.invoiceId}/`,
+  );
 }
 
 export async function GET(req: NextRequest) {
@@ -62,10 +74,9 @@ export async function GET(req: NextRequest) {
     .select("shop_id,role")
     .eq("id", user.id)
     .maybeSingle<{ shop_id: string | null; role: string | null }>();
-  const staffRole = canonicalizeRole(profile?.role);
   const isStaff =
     profile?.shop_id === invoice.shop_id &&
-    !["fleet_manager", "driver", "customer", "unknown"].includes(staffRole);
+    hasAnyRole(profile?.role, ROLE_GROUPS.billingOperators);
 
   let customer: { id: string; shop_id: string } | null = null;
   if (!isStaff) {
@@ -130,14 +141,14 @@ export async function GET(req: NextRequest) {
   ) {
     return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
   }
-  if (!isSafeStoragePath(doc.storage_path)) {
-    return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-  }
   if (
-    kind === "inspection_report" &&
-    !doc.storage_path.startsWith(
-      `shops/${invoice.shop_id}/invoices/${invoice.id}/`,
-    )
+    !isExpectedDocumentStorage({
+      kind,
+      bucket: doc.storage_bucket,
+      path: doc.storage_path,
+      shopId: invoice.shop_id,
+      invoiceId: invoice.id,
+    })
   ) {
     return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
   }

@@ -30,6 +30,7 @@ type RawInspection = {
   pdf_storage_path: string | null;
   finalized_at: string | null;
   finalized_by: string | null;
+  signing_cycle: number | null;
 };
 
 async function actorCanRead(args: {
@@ -49,7 +50,13 @@ async function actorCanRead(args: {
   const role = canonicalizeRole(profile?.role);
   if (
     profile?.shop_id === args.shopId &&
-    !["customer", "fleet_manager", "driver", "unknown"].includes(role)
+    ![
+      "customer",
+      "fleet_manager",
+      "dispatcher",
+      "driver",
+      "unknown",
+    ].includes(role)
   ) {
     return true;
   }
@@ -80,38 +87,85 @@ async function actorCanRead(args: {
 }
 
 function storageObject(url: string): { bucket: string; path: string } | null {
+  const configuredUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  if (!configuredUrl) return null;
   try {
     const parsed = new URL(url);
+    if (parsed.origin !== new URL(configuredUrl).origin) return null;
     const match = parsed.pathname.match(
       /\/storage\/v1\/object\/(?:sign|public)\/([^/]+)\/(.+)$/,
     );
     return match
-      ? { bucket: decodeURIComponent(match[1]), path: decodeURIComponent(match[2]) }
+      ? {
+          bucket: decodeURIComponent(match[1]),
+          path: decodeURIComponent(match[2]),
+        }
       : null;
   } catch {
     return null;
   }
 }
 
-async function refreshEvidence(report: InspectionReport): Promise<InspectionReport> {
+async function refreshEvidence(
+  report: InspectionReport,
+  scope: { shopId: string; workOrderId: string },
+): Promise<InspectionReport> {
   const admin = createAdminClient();
+  const { data: media, error } = await admin
+    .from("work_order_media")
+    .select("storage_bucket,storage_path")
+    .eq("shop_id", scope.shopId)
+    .eq("work_order_id", scope.workOrderId)
+    .eq("storage_bucket", "job-photos")
+    .not("storage_path", "is", null);
+  if (error) throw new Error(error.message);
+
+  const canonicalObjects = new Set(
+    (media ?? [])
+      .filter(
+        (
+          row,
+        ): row is {
+          storage_bucket: string;
+          storage_path: string;
+        } =>
+          row.storage_bucket === "job-photos" &&
+          typeof row.storage_path === "string" &&
+          row.storage_path.startsWith(`wo/${scope.workOrderId}/`),
+      )
+      .map((row) => `${row.storage_bucket}/${row.storage_path}`),
+  );
+
   const refreshed = await Promise.all(
     report.sections.map(async (section) => ({
       ...section,
       items: await Promise.all(
-        section.items.map(async (item) => ({
-          ...item,
-          photoUrls: await Promise.all(
+        section.items.map(async (item) => {
+          const photoUrls = await Promise.all(
             item.photoUrls.map(async (url) => {
               const object = storageObject(url);
-              if (!object) return url;
+              if (
+                !object ||
+                object.bucket !== "job-photos" ||
+                !object.path.startsWith(`wo/${scope.workOrderId}/`) ||
+                !canonicalObjects.has(`${object.bucket}/${object.path}`)
+              ) {
+                return null;
+              }
               const signed = await admin.storage
-                .from(object.bucket)
+                .from("job-photos")
                 .createSignedUrl(object.path, 60 * 10);
-              return signed.data?.signedUrl ?? url;
+              return signed.data?.signedUrl ?? null;
             }),
-          ),
-        })),
+          );
+          return {
+            ...item,
+            photoUrls: photoUrls.filter(
+              (url): url is string => typeof url === "string",
+            ),
+          };
+        }),
       ),
     })),
   );
@@ -155,22 +209,25 @@ async function hydrate(
   ) {
     return null;
   }
-  let technicianName: string | null = null;
-  if (inspection.finalized_by) {
-    const { data: technician } = await admin
-      .from("profiles")
-      .select("full_name")
-      .or(
-        `id.eq.${inspection.finalized_by},user_id.eq.${inspection.finalized_by}`,
-      )
-      .limit(1)
-      .maybeSingle<{ full_name: string | null }>();
-    technicianName = technician?.full_name ?? null;
-  }
+  const { data: technicianSignature } = await admin
+    .from("inspection_signatures")
+    .select("signed_name")
+    .eq("inspection_id", inspection.id)
+    .eq("signing_cycle", Math.max(0, inspection.signing_cycle ?? 0))
+    .eq("role", "technician")
+    .order("signed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ signed_name: string | null }>();
+  const technicianName = technicianSignature?.signed_name ?? null;
   let report = assembleInspectionReport(
     inspection.summary as InspectionSession,
   );
-  if (includeEvidencePhotos) report = await refreshEvidence(report);
+  if (includeEvidencePhotos) {
+    report = await refreshEvidence(report, {
+      shopId: inspection.shop_id,
+      workOrderId: workOrder.id,
+    });
+  }
   return {
     inspectionId: inspection.id,
     workOrderId: workOrder.id,
@@ -194,7 +251,7 @@ export async function getInspectionReportForActor(args: {
   const { data } = await admin
     .from("inspections")
     .select(
-      "id,shop_id,work_order_id,summary,pdf_storage_path,finalized_at,finalized_by",
+      "id,shop_id,work_order_id,summary,pdf_storage_path,finalized_at,finalized_by,signing_cycle",
     )
     .eq("id", args.inspectionId)
     .eq("is_canonical", true)
@@ -225,7 +282,7 @@ export async function listInspectionReportsForActor(args: {
   const { data, error } = await admin
     .from("inspections")
     .select(
-      "id,shop_id,work_order_id,summary,pdf_storage_path,finalized_at,finalized_by",
+      "id,shop_id,work_order_id,summary,pdf_storage_path,finalized_at,finalized_by,signing_cycle",
     )
     .in("work_order_id", workOrderIds)
     .eq("is_canonical", true)
