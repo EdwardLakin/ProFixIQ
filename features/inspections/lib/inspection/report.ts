@@ -48,7 +48,8 @@ export function assembleInspectionReport(
   const sections = (session.sections ?? []).map((section, sectionIndex) => ({
     title: text(section.title) ?? `Section ${sectionIndex + 1}`,
     items: (section.items ?? []).map((item) => {
-      const status = item.status ?? "not_checked";
+      const status: InspectionReportItem["status"] =
+        item.status ?? "not_checked";
       if (status !== "not_checked") totals.checked += 1;
       if (status === "ok") totals.ok += 1;
       if (status === "fail") totals.failed += 1;
