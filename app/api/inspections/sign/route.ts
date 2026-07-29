@@ -3,6 +3,9 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { createAdminClient } from "@/features/integrations/shopreel/server/createAdminClient";
+import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
+import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 
 type Role = "technician" | "customer" | "advisor";
 
@@ -92,6 +95,15 @@ function isSignRequestBody(value: unknown): value is SignRequestBody {
 
 type Supabase = ReturnType<typeof createServerSupabaseRoute>;
 type RpcReturn = { data: unknown; error: { message: string } | null };
+type AttachSignedPdfArgs = {
+  p_inspection_id: string;
+  p_work_order_line_id: string;
+  p_actor_user_id: string;
+  p_expected_sync_revision: number;
+  p_pdf_storage_path: string;
+  p_pdf_sha256: string;
+  p_pdf_url: string;
+};
 type ResolveInspectionResult =
   | { ok: true; inspectionId: string }
   | { ok: false; error: string; status: number };
@@ -105,6 +117,20 @@ async function callSignInspectionRpc(
       rpc: (fn: string, args: SignInspectionArgs) => Promise<RpcReturn>;
     }
   ).rpc("sign_inspection", args);
+}
+
+async function callAttachSignedPdfRpc(
+  args: AttachSignedPdfArgs,
+): Promise<RpcReturn> {
+  const admin = createAdminClient();
+  return (
+    admin as unknown as {
+      rpc: (
+        fn: "attach_signed_inspection_pdf_atomic",
+        values: AttachSignedPdfArgs,
+      ) => Promise<RpcReturn>;
+    }
+  ).rpc("attach_signed_inspection_pdf_atomic", args);
 }
 
 async function resolveInspectionForSigning(args: {
@@ -337,7 +363,7 @@ export async function POST(req: NextRequest) {
     p_expected_sync_revision: bodyUnknown.expectedSyncRevision,
   });
 
-  if (error) {
+  if (error && !error.message.toLowerCase().includes("already signed")) {
     const lower = error.message.toLowerCase();
     const status =
       lower.includes("not found") ||
@@ -354,11 +380,89 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status });
   }
 
+  // Signing is a completion path, so it must not leave a locked inspection
+  // without its immutable report. An idempotent retry of sign_inspection is
+  // allowed to repair a prior upload/attachment interruption.
+  const admin = createAdminClient();
+  const { data: inspection, error: inspectionError } = await admin
+    .from("inspections")
+    .select(
+      "id,shop_id,work_order_id,work_order_line_id,summary,sync_revision,pdf_storage_path",
+    )
+    .eq("id", resolved.inspectionId)
+    .eq("shop_id", profile.shop_id)
+    .eq("is_canonical", true)
+    .maybeSingle<{
+      id: string;
+      shop_id: string;
+      work_order_id: string | null;
+      work_order_line_id: string | null;
+      summary: unknown;
+      sync_revision: number | null;
+      pdf_storage_path: string | null;
+    }>();
+  if (
+    inspectionError ||
+    !inspection?.work_order_id ||
+    !inspection.work_order_line_id ||
+    !inspection.summary ||
+    typeof inspection.summary !== "object"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          inspectionError?.message ??
+          "Inspection was signed, but its report context could not be loaded. Sign again to retry report publication.",
+      },
+      { status: 500 },
+    );
+  }
+
+  let reportUrl = `/api/inspections/${inspection.id}/report/pdf`;
+  if (!inspection.pdf_storage_path) {
+    const syncRevision = Math.max(
+      0,
+      Math.trunc(inspection.sync_revision ?? 0),
+    );
+    try {
+      const published = await publishInspectionPdf({
+        admin,
+        shopId: inspection.shop_id,
+        workOrderId: inspection.work_order_id,
+        workOrderLineId: inspection.work_order_line_id,
+        inspectionId: inspection.id,
+        summary: inspection.summary as InspectionSession,
+        syncRevision,
+      });
+      const attached = await callAttachSignedPdfRpc({
+        p_inspection_id: inspection.id,
+        p_work_order_line_id: inspection.work_order_line_id,
+        p_actor_user_id: user.id,
+        p_expected_sync_revision: syncRevision,
+        p_pdf_storage_path: published.path,
+        p_pdf_sha256: published.sha256,
+        p_pdf_url: published.reportUrl,
+      });
+      if (attached.error) throw new Error(attached.error.message);
+      reportUrl = published.reportUrl;
+    } catch (publishError) {
+      return NextResponse.json(
+        {
+          error:
+            publishError instanceof Error
+              ? `Inspection was signed, but the report could not be published: ${publishError.message}. Sign again to retry.`
+              : "Inspection was signed, but the report could not be published. Sign again to retry.",
+        },
+        { status: 500 },
+      );
+    }
+  }
+
   return NextResponse.json({
     success: true,
     data,
     inspectionId: resolved.inspectionId,
     signedName: effectiveSignedName,
+    reportUrl,
   });
 }
-
