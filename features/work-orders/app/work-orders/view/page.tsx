@@ -270,19 +270,6 @@ function stageAccent(status: string | null | undefined): {
   };
 }
 
-function techRollupChip(rollup: TechRollup): string {
-  if (rollup === "in_progress") {
-    return "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-100";
-  }
-  if (rollup === "on_hold") {
-    return "border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-100";
-  }
-  if (rollup === "completed") {
-    return "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100";
-  }
-  return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
-}
-
 function priorityLabel(priority: number | null | undefined): string | null {
   if (priority === 1) return "Urgent";
   if (priority === 2) return "High";
