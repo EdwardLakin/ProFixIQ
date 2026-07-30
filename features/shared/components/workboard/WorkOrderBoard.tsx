@@ -25,6 +25,7 @@ import type {
   WorkOrderBoardStage,
   WorkOrderBoardVariant,
 } from "../../lib/workboard/types";
+import { getWorkOrderBoardStageSurface } from "../../lib/workboard/presentation";
 import { buildBlockers, timeAgoLabel } from "../../lib/workboard/utils";
 
 type FilterKey = WorkOrderBoardFilterKey;
@@ -100,8 +101,11 @@ function BoardCard({
     row.first_tech_name ||
     row.assigned_summary ||
     "Unassigned";
+  const stageSurface = getWorkOrderBoardStageSurface(row.overall_stage);
   const card = (
-    <article className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-sm transition hover:border-[var(--brand-accent,#E39A6E)]/60 hover:shadow-md">
+    <article
+      className={`rounded-xl border p-3 shadow-sm transition hover:border-[var(--brand-accent,#E39A6E)]/60 hover:shadow-md ${stageSurface.card}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-extrabold text-[color:var(--theme-text-primary)]">
@@ -478,6 +482,7 @@ export default function WorkOrderBoard(props: {
           >
             {visibleStages.map((stage) => {
               const Icon = stage.icon;
+              const stageSurface = getWorkOrderBoardStageSurface(stage.key);
               const stageRows = filteredRows.filter((row) =>
                 stageFilter === "on_hold"
                   ? row.overall_stage === "on_hold"
@@ -489,12 +494,14 @@ export default function WorkOrderBoard(props: {
               return (
                 <section
                   key={stage.key}
-                  className="min-h-[560px] rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3"
+                  className={`min-h-[560px] rounded-xl border p-3 ${stageSurface.column}`}
                 >
                   <header className="mb-3 flex items-center gap-2">
                     <Icon className={`h-4 w-4 ${stage.tone}`} />
                     <h2 className="text-sm font-bold">{stage.label}</h2>
-                    <span className="rounded-full bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-xs font-bold">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-bold ${stageSurface.count}`}
+                    >
                       {stageRows.length}
                     </span>
                   </header>
