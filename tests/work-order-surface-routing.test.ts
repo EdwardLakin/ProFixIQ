@@ -33,6 +33,7 @@ describe("work-order surface ownership", () => {
     expect(workOrdersPageSource).not.toContain(
       'className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"',
     );
+    expect(workOrdersPageSource).not.toContain("function techRollupChip");
   });
 
   it("preserves every existing operational action and authorization gate", () => {
