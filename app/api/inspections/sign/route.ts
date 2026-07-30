@@ -363,7 +363,7 @@ export async function POST(req: NextRequest) {
     p_expected_sync_revision: bodyUnknown.expectedSyncRevision,
   });
 
-  if (error && !error.message.toLowerCase().includes("already signed")) {
+  if (error) {
     const lower = error.message.toLowerCase();
     const status =
       lower.includes("not found") ||

@@ -1,5 +1,11 @@
 // features/inspections/lib/inspection/pdf.ts
-import { PDFDocument, rgb, StandardFonts, type PDFImage } from "pdf-lib";
+import {
+  PDFDocument,
+  rgb,
+  StandardFonts,
+  type PDFImage,
+  type PDFFont,
+} from "pdf-lib";
 import type {
   InspectionSession,
   InspectionItem,
@@ -32,6 +38,17 @@ type FindingRow = {
 
 function safeStr(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
+function pdfSafeText(value: string, font: PDFFont): string {
+  return Array.from(value, (character) => {
+    try {
+      font.encodeText(character);
+      return character;
+    } catch {
+      return "?";
+    }
+  }).join("");
 }
 
 function isStringArray(v: unknown): v is string[] {
@@ -244,11 +261,12 @@ export async function generateInspectionPDF(
       color?: PdfRgb;
     },
   ) => {
-    page.drawText(text, {
+    const selectedFont = opts?.bold ? bold : font;
+    page.drawText(pdfSafeText(text, selectedFont), {
       x,
       y: yPos,
       size: opts?.size ?? 10,
-      font: opts?.bold ? bold : font,
+      font: selectedFont,
       color: opts?.color ?? COLOR_TEXT,
     });
   };

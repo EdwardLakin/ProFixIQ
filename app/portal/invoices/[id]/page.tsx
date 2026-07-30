@@ -8,6 +8,7 @@ import {
 } from "@/features/portal/server/portalAuth";
 import PortalInvoicePayButton from "@/features/stripe/components/PortalInvoicePayButton";
 import PortalPaymentStatus from "@/features/stripe/components/PortalPaymentStatus";
+import { InspectionReportAttachments } from "@/features/inspections/components/InspectionReportAttachments";
 import {
   getInvoiceVersionById,
   getLatestCustomerVisibleInvoiceVersion,
@@ -161,6 +162,13 @@ export default async function PortalInvoicePage({
               </a>
             </div>
           </section>
+
+          {selectedVersion.invoice_id ? (
+            <InspectionReportAttachments
+              invoiceId={selectedVersion.invoice_id}
+              title="Inspection report attached to this invoice"
+            />
+          ) : null}
 
           <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-6">
             <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Totals</h2>

@@ -5929,6 +5929,7 @@ export type Database = {
           location: string | null
           locked: boolean
           notes: string | null
+          pdf_sha256: string | null
           pdf_storage_path: string | null
           pdf_url: string | null
           photo_urls: string[] | null
@@ -5962,6 +5963,7 @@ export type Database = {
           location?: string | null
           locked?: boolean
           notes?: string | null
+          pdf_sha256?: string | null
           pdf_storage_path?: string | null
           pdf_url?: string | null
           photo_urls?: string[] | null
@@ -5995,6 +5997,7 @@ export type Database = {
           location?: string | null
           locked?: boolean
           notes?: string | null
+          pdf_sha256?: string | null
           pdf_storage_path?: string | null
           pdf_url?: string | null
           photo_urls?: string[] | null

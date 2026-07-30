@@ -14,14 +14,42 @@ type ReportLink = {
 export function InspectionReportAttachments({
   workOrderId,
   vehicleId,
+  invoiceId,
   title = "Inspection reports",
 }: {
   workOrderId?: string;
   vehicleId?: string;
+  invoiceId?: string;
   title?: string;
 }) {
   const [reports, setReports] = useState<ReportLink[]>([]);
   useEffect(() => {
+    if (invoiceId) {
+      void fetch(
+        `/api/invoices/${encodeURIComponent(invoiceId)}/documents/inspection_report/signed`,
+        { cache: "no-store" },
+      )
+        .then((response) => (response.ok ? response.json() : null))
+        .then((payload) =>
+          setReports(
+            typeof payload?.url === "string"
+              ? [
+                  {
+                    inspectionId: `invoice:${invoiceId}`,
+                    title: "Inspection report",
+                    finalizedAt: null,
+                    technicianName: null,
+                    viewUrl: payload.url,
+                    pdfUrl: payload.url,
+                  },
+                ]
+              : [],
+          ),
+        )
+        .catch(() => setReports([]));
+      return;
+    }
+
     const query = workOrderId
       ? `workOrderId=${encodeURIComponent(workOrderId)}`
       : vehicleId
@@ -32,7 +60,8 @@ export function InspectionReportAttachments({
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => setReports(payload?.reports ?? []))
       .catch(() => setReports([]));
-  }, [vehicleId, workOrderId]);
+  }, [invoiceId, vehicleId, workOrderId]);
+
   if (!reports.length) return null;
   return (
     <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
@@ -47,12 +76,14 @@ export function InspectionReportAttachments({
           >
             <div>
               <div className="font-semibold">{report.title}</div>
-              <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                {report.finalizedAt
-                  ? new Date(report.finalizedAt).toLocaleString()
-                  : "Finalized"}
-                {report.technicianName ? ` · ${report.technicianName}` : ""}
-              </div>
+              {report.finalizedAt || report.technicianName ? (
+                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                  {report.finalizedAt
+                    ? new Date(report.finalizedAt).toLocaleString()
+                    : "Finalized"}
+                  {report.technicianName ? ` · ${report.technicianName}` : ""}
+                </div>
+              ) : null}
             </div>
             <div className="flex gap-2">
               <a className="rounded-full border px-3 py-2 text-xs" href={report.viewUrl}>
