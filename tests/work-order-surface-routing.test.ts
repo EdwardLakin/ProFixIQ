@@ -64,10 +64,19 @@ describe("work-order surface ownership", () => {
 
   it("does not count a generic on-hold job as waiting for parts", () => {
     expect(workOrdersPageSource).toContain(
-      'normalizeStatusKey(row.status) === "waiting_parts"',
+      'countWorkOrdersBySummary(rows, "waiting_parts", summaryNow)',
     );
-    expect(workOrdersPageSource).not.toContain(
-      'normalizeStatusKey(row.status) === "waiting_parts" ||',
+    expect(workOrdersPageSource).toContain(
+      "filterWorkOrdersBySummary(rows, summaryFilter, summaryNow)",
     );
+  });
+
+  it("uses the operational summary cards as accessible toggle filters", () => {
+    expect(workOrdersPageSource).toContain("type WorkOrderSummaryFilter");
+    expect(workOrdersPageSource).toContain("aria-pressed={selected}");
+    expect(workOrdersPageSource).toContain(
+      "toggleWorkOrderSummaryFilter(current, filter)",
+    );
+    expect(workOrdersPageSource).toContain("visibleRows.map((row)");
   });
 });

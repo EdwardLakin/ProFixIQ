@@ -19,6 +19,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { normalizeWorkOrderStatus } from "@/features/work-orders/lib/work-order-status";
+import {
+  countWorkOrdersBySummary,
+  filterWorkOrdersBySummary,
+  toggleWorkOrderSummaryFilter,
+  type WorkOrderSummaryFilter,
+} from "@/features/work-orders/lib/workOrderListFilters";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
@@ -300,6 +306,8 @@ export default function WorkOrdersView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("");
+  const [summaryFilter, setSummaryFilter] =
+    useState<WorkOrderSummaryFilter | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [isSeededShop, setIsSeededShop] = useState(false);
 
@@ -879,6 +887,7 @@ export default function WorkOrdersView(): JSX.Element {
   );
 
   const total = rows.length;
+  const summaryNow = useMemo(() => Date.now(), [rows]);
 
   const activeCount = useMemo(
     () =>
@@ -893,48 +902,23 @@ export default function WorkOrdersView(): JSX.Element {
   );
 
   const readyToWorkCount = useMemo(
-    () =>
-      rows.filter((row) =>
-        [
-          "new",
-          "awaiting",
-          "awaiting_inspection",
-          "recommended",
-          "approved",
-          "queued",
-          "planned",
-        ].includes(normalizeStatusKey(row.status)),
-      ).length,
-    [rows],
+    () => countWorkOrdersBySummary(rows, "ready_to_work", summaryNow),
+    [rows, summaryNow],
   );
 
   const waitingPartsCount = useMemo(
-    () =>
-      rows.filter((row) => normalizeStatusKey(row.status) === "waiting_parts")
-        .length,
-    [rows],
+    () => countWorkOrdersBySummary(rows, "waiting_parts", summaryNow),
+    [rows, summaryNow],
   );
 
   const readyToInvoiceCount = useMemo(
-    () =>
-      rows.filter((row) =>
-        ["completed", "ready_to_invoice"].includes(
-          normalizeStatusKey(row.status),
-        ),
-      ).length,
-    [rows],
+    () => countWorkOrdersBySummary(rows, "ready_to_invoice", summaryNow),
+    [rows, summaryNow],
   );
 
   const atRiskCount = useMemo(
-    () =>
-      rows.filter((row) => {
-        if (Number(row.priority ?? 3) === 1) return true;
-        const updatedAt = new Date(
-          row.updated_at ?? row.created_at ?? Date.now(),
-        ).getTime();
-        return Date.now() - updatedAt >= 3 * 86400000;
-      }).length,
-    [rows],
+    () => countWorkOrdersBySummary(rows, "at_risk", summaryNow),
+    [rows, summaryNow],
   );
 
   const needsAttentionCount = useMemo(
@@ -942,17 +926,53 @@ export default function WorkOrdersView(): JSX.Element {
       rows.filter((row) => {
         const statusKey = normalizeStatusKey(row.status);
         const updatedAt = new Date(
-          row.updated_at ?? row.created_at ?? Date.now(),
+          row.updated_at ?? row.created_at ?? summaryNow,
         ).getTime();
         return (
           Number(row.priority ?? 3) === 1 ||
           statusKey === "awaiting_approval" ||
           statusKey === "waiting_parts" ||
-          Date.now() - updatedAt >= 3 * 86400000
+          summaryNow - updatedAt >= 3 * 86400000
         );
       }).length,
-    [rows],
+    [rows, summaryNow],
   );
+
+  const visibleRows = useMemo(
+    () => filterWorkOrdersBySummary(rows, summaryFilter, summaryNow),
+    [rows, summaryFilter, summaryNow],
+  );
+
+  const summaryCards = [
+    {
+      label: "At risk",
+      value: atRiskCount,
+      icon: AlertTriangle,
+      tone: "text-orange-600 dark:text-orange-300",
+      filter: "at_risk",
+    },
+    {
+      label: "Ready to work",
+      value: readyToWorkCount,
+      icon: CheckCircle2,
+      tone: "text-blue-600 dark:text-blue-300",
+      filter: "ready_to_work",
+    },
+    {
+      label: "Waiting parts",
+      value: waitingPartsCount,
+      icon: Clock3,
+      tone: "text-amber-600 dark:text-amber-300",
+      filter: "waiting_parts",
+    },
+    {
+      label: "Ready to invoice",
+      value: readyToInvoiceCount,
+      icon: ClipboardCheck,
+      tone: "text-emerald-600 dark:text-emerald-300",
+      filter: "ready_to_invoice",
+    },
+  ] as const;
 
   return (
     <div
@@ -1027,7 +1047,10 @@ export default function WorkOrdersView(): JSX.Element {
 
             <select
               value={status}
-              onChange={(event) => setStatus(event.target.value)}
+              onChange={(event) => {
+                setStatus(event.target.value);
+                setSummaryFilter(null);
+              }}
               className={`${SELECT_DARK} h-11`}
               aria-label="Filter by status"
             >
@@ -1065,43 +1088,32 @@ export default function WorkOrdersView(): JSX.Element {
 
         {!loading && !err ? (
           <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              {
-                label: "At risk",
-                value: atRiskCount,
-                icon: AlertTriangle,
-                tone: "text-orange-600 dark:text-orange-300",
-              },
-              {
-                label: "Ready to work",
-                value: readyToWorkCount,
-                icon: CheckCircle2,
-                tone: "text-blue-600 dark:text-blue-300",
-              },
-              {
-                label: "Waiting parts",
-                value: waitingPartsCount,
-                icon: Clock3,
-                tone: "text-amber-600 dark:text-amber-300",
-              },
-              {
-                label: "Ready to invoice",
-                value: readyToInvoiceCount,
-                icon: ClipboardCheck,
-                tone: "text-emerald-600 dark:text-emerald-300",
-              },
-            ].map(({ label, value, icon: Icon, tone }) => (
-              <div
-                key={label}
-                className="flex items-center gap-3 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-3 shadow-sm"
-              >
-                <Icon className={`h-5 w-5 ${tone}`} />
-                <span className="flex-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                  {label}
-                </span>
-                <strong className={`text-xl ${tone}`}>{value}</strong>
-              </div>
-            ))}
+            {summaryCards.map(({ label, value, icon: Icon, tone, filter }) => {
+              const selected = summaryFilter === filter;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() =>
+                    setSummaryFilter((current) =>
+                      toggleWorkOrderSummaryFilter(current, filter),
+                    )
+                  }
+                  className={`flex items-center gap-3 rounded-xl border bg-[color:var(--desktop-item-bg)] px-4 py-3 text-left shadow-sm transition hover:border-[color:var(--brand-primary,#1747FF)]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-primary,#1747FF)]/50 ${
+                    selected
+                      ? "border-[color:var(--brand-primary,#1747FF)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--brand-primary,#1747FF)_30%,transparent)]"
+                      : "border-[color:var(--desktop-border)]"
+                  }`}
+                >
+                  <Icon className={`h-5 w-5 ${tone}`} />
+                  <span className="flex-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                    {label}
+                  </span>
+                  <strong className={`text-xl ${tone}`}>{value}</strong>
+                </button>
+              );
+            })}
           </section>
         ) : null}
 
@@ -1120,11 +1132,13 @@ export default function WorkOrdersView(): JSX.Element {
               />
             ))}
           </section>
-        ) : rows.length === 0 ? (
+        ) : visibleRows.length === 0 ? (
           <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-6 text-sm text-[color:var(--theme-text-secondary)]">
             {workforceDrilldownActive
               ? "No unassigned active jobs right now."
-              : "No work orders match your current filters."}
+              : summaryFilter
+                ? "No work orders match the selected summary filter."
+                : "No work orders match your current filters."}
           </div>
         ) : (
           <section className="overflow-hidden rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--desktop-shadow-card)]">
@@ -1137,7 +1151,7 @@ export default function WorkOrdersView(): JSX.Element {
             </div>
 
             <div className="space-y-2 p-2">
-              {rows.map((row) => {
+              {visibleRows.map((row) => {
                 const displayId = workOrderDisplayId(row);
                 const href = `/work-orders/${row.custom_id ?? row.id}?mode=view`;
                 const isAssigning = assigningFor === row.id;

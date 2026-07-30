@@ -325,7 +325,9 @@ describe("evidence URL safety", () => {
       "https://cdn.example/photo.jpg",
     );
     expect(
-      sanitizeEvidenceFallbackUrl("/storage/v1/object/public/job-photos/photo.jpg"),
+      sanitizeEvidenceFallbackUrl(
+        "/storage/v1/object/public/job-photos/photo.jpg",
+      ),
     ).toBe("/storage/v1/object/public/job-photos/photo.jpg");
     expect(sanitizeEvidenceFallbackUrl("javascript:alert(1)")).toBeNull();
     expect(sanitizeEvidenceFallbackUrl("not-a-url")).toBeNull();
@@ -339,7 +341,9 @@ describe("canonical line evidence migration contract", () => {
   );
 
   it("registers quote evidence and relinks it when approval materializes a job", () => {
-    expect(migration).toContain("quote_line_id uuid references public.work_order_quote_lines");
+    expect(migration).toContain(
+      "quote_line_id uuid references public.work_order_quote_lines",
+    );
     expect(migration).toContain("trg_sync_quote_line_media_evidence");
     expect(migration).toContain("update of metadata, work_order_line_id");
     expect(migration).toContain("work_order_line_id = new.work_order_line_id");
@@ -349,7 +353,9 @@ describe("canonical line evidence migration contract", () => {
   it("backfills evidence directly without replaying quote-line update triggers", () => {
     const backfill = migration.slice(
       migration.indexOf("-- Register existing inspection evidence"),
-      migration.indexOf("alter table public.work_order_media_annotations enable row level security"),
+      migration.indexOf(
+        "alter table public.work_order_media_annotations enable row level security",
+      ),
     );
 
     expect(backfill).toContain("insert into public.work_order_media");
@@ -361,7 +367,9 @@ describe("canonical line evidence migration contract", () => {
     expect(migration).toContain(
       `drop policy if exists "Users can view their shop's media"`,
     );
-    expect(migration).toContain('drop policy if exists "Users can insert their own WO media"');
+    expect(migration).toContain(
+      'drop policy if exists "Users can insert their own WO media"',
+    );
     expect(migration).toContain("c.shop_id = work_order_media.shop_id");
     expect(migration).toContain("fm.shop_id = work_order_media.shop_id");
     expect(migration).toContain("fm.shop_id = wom.shop_id");
@@ -370,8 +378,12 @@ describe("canonical line evidence migration contract", () => {
 
   it("keeps annotation writes atomic, tenant-scoped, bounded, and replay-safe", () => {
     const writer = migration.slice(
-      migration.indexOf("create or replace function public.save_work_order_media_annotation_atomic"),
-      migration.indexOf("revoke all on function public.save_work_order_media_annotation_atomic"),
+      migration.indexOf(
+        "create or replace function public.save_work_order_media_annotation_atomic",
+      ),
+      migration.indexOf(
+        "revoke all on function public.save_work_order_media_annotation_atomic",
+      ),
     );
 
     expect(writer.indexOf("where id = p_media_id")).toBeLessThan(
@@ -382,13 +394,19 @@ describe("canonical line evidence migration contract", () => {
     expect(writer).toContain("pg_advisory_xact_lock");
     expect(writer).toContain("v_media.visibility <> 'customer'");
     expect(migration).toContain("jsonb_array_length(overlay) <= 100");
-    expect(migration).toContain("revoke all on table public.work_order_media_annotations");
-    expect(migration).toContain("grant select on table public.work_order_media_annotations to authenticated");
+    expect(migration).toContain(
+      "revoke all on table public.work_order_media_annotations",
+    );
+    expect(migration).toContain(
+      "grant select on table public.work_order_media_annotations to authenticated",
+    );
   });
 
   it("publishes canonical media and annotations for cross-device refresh", () => {
     expect(migration).toContain("c.relname = 'work_order_media_annotations'");
-    expect(migration).toContain("add table public.work_order_media_annotations");
+    expect(migration).toContain(
+      "add table public.work_order_media_annotations",
+    );
     expect(migration).toContain("c.relname = 'work_order_media'");
     expect(migration).toContain("add table public.work_order_media");
   });
@@ -401,6 +419,10 @@ describe("premium work-order evidence UI contract", () => {
   );
   const jobCard = readFileSync(
     "features/work-orders/components/JobCard.tsx",
+    "utf8",
+  );
+  const jobEvidenceStrip = readFileSync(
+    "features/work-orders/components/evidence/JobEvidenceStrip.tsx",
     "utf8",
   );
   const workOrder = readFileSync("app/work-orders/[id]/Client.tsx", "utf8");
@@ -417,18 +439,21 @@ describe("premium work-order evidence UI contract", () => {
     "utf8",
   );
 
-  it("uses a compact premium work-order list instead of priority cards", () => {
-    expect(board).toContain("function BoardRow");
-    expect(board).toContain("Operational state");
-    expect(board).toContain("jobs complete");
-    expect(board).not.toContain("priorityLabel");
+  it("keeps the dashboard work-order board on its color-coded stage cards", () => {
+    expect(board).toContain("function BoardCard");
+    expect(board).toContain("visibleStages.map");
+    expect(board).toContain("getWorkOrderBoardStageSurface");
+    expect(board).not.toContain("function BoardRow");
+    expect(board).not.toContain("<span>Operational state</span>");
   });
 
   it("removes job priority and moves line evidence and technician identity into the card", () => {
     expect(jobCard).not.toContain("onPriorityChange");
     expect(workOrder).not.toContain("updateLinePriority");
     expect(jobCard).toContain("Assigned technician");
-    expect(jobCard).toContain("evidence.slice(0, 3)");
+    expect(jobCard).toContain("<JobEvidenceStrip evidence={evidence} />");
+    expect(jobEvidenceStrip).toContain("evidence.slice(0, 3)");
+    expect(jobEvidenceStrip).toContain("Open ${evidenceLabel(item, index)}");
     expect(workOrder).toContain("item.workOrderLineId === ln.id");
   });
 
@@ -440,9 +465,7 @@ describe("premium work-order evidence UI contract", () => {
   });
 
   it("shows canonical line evidence in customer and fleet portal experiences", () => {
-    expect(quote).toContain(
-      "/api/work-orders/${workOrderId}/media?scope=all",
-    );
+    expect(quote).toContain("/api/work-orders/${workOrderId}/media?scope=all");
     expect(quote).toContain("item.quoteLineId === line.id");
     expect(quote).toContain("EvidenceImage");
     expect(
