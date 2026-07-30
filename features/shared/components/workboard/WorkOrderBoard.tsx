@@ -25,12 +25,7 @@ import type {
   WorkOrderBoardStage,
   WorkOrderBoardVariant,
 } from "../../lib/workboard/types";
-import {
-  buildBlockers,
-  formatStageLabel,
-  stageAccent,
-  timeAgoLabel,
-} from "../../lib/workboard/utils";
+import { buildBlockers, timeAgoLabel } from "../../lib/workboard/utils";
 
 type FilterKey = WorkOrderBoardFilterKey;
 type WorkOrderBoardHrefMode = "none" | "shop-work-order";
@@ -68,6 +63,16 @@ const stages: Array<{
   },
 ];
 
+function priorityLabel(priority?: number | null) {
+  return priority === 1
+    ? "Urgent"
+    : priority === 2
+      ? "High"
+      : priority === 4
+        ? "Low"
+        : "Normal";
+}
+
 function defaultHrefModeForVariant(
   variant: WorkOrderBoardVariant,
 ): WorkOrderBoardHrefMode {
@@ -80,7 +85,7 @@ function resolveHref(row: WorkOrderBoardRow, mode: WorkOrderBoardHrefMode) {
     : null;
 }
 
-function BoardRow({
+function BoardCard({
   row,
   href,
   variant,
@@ -95,98 +100,85 @@ function BoardRow({
     row.first_tech_name ||
     row.assigned_summary ||
     "Unassigned";
-  const accent = stageAccent(row.overall_stage, row.risk_level);
-  const statusLabel = formatStageLabel(row, variant);
-  const progressLabel =
-    row.jobs_total > 0
-      ? `${row.jobs_completed} of ${row.jobs_total} jobs complete`
-      : "No jobs added";
   const card = (
-    <article
-      className={`group relative overflow-hidden rounded-xl border bg-[color:var(--theme-surface-inset)] shadow-sm transition hover:-translate-y-px hover:border-[var(--brand-accent,#E39A6E)]/60 hover:shadow-md ${accent.border}`}
-    >
-      <div className={`absolute inset-y-0 left-0 w-1 ${accent.progress}`} />
-      <div className="grid gap-3 px-4 py-3 pl-5 md:grid-cols-[minmax(180px,1.25fr)_minmax(160px,1fr)_minmax(180px,1.15fr)_minmax(150px,.9fr)_auto] md:items-center">
+    <article className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-sm transition hover:border-[var(--brand-accent,#E39A6E)]/60 hover:shadow-md">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <div className="font-extrabold text-[color:var(--theme-text-primary)]">
-              {row.custom_id ?? "Work order"}
-            </div>
-            {row.is_waiter ? (
-              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
-                Waiting
-              </span>
-            ) : null}
+          <div className="font-extrabold text-[color:var(--theme-text-primary)]">
+            {row.custom_id ?? "Work order"}
           </div>
           <div className="mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
             {row.display_name ?? "Customer"}
           </div>
         </div>
-
-        <div className="min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)] md:hidden">
-            Vehicle
-          </div>
-          <div className="truncate text-sm text-[color:var(--theme-text-primary)]">
-            {row.vehicle_label || "Vehicle not listed"}
-          </div>
-          {row.unit_label ? (
-            <div className="mt-0.5 truncate text-xs text-[color:var(--theme-text-muted)]">
-              Unit {row.unit_label}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${accent.badge}`}>
-              {statusLabel}
-            </span>
-            {blockers[0] ? (
-              <span className="truncate text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                {blockers[0]}
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-2 flex items-center gap-2">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
-              <div
-                className={`h-full rounded-full ${accent.progress}`}
-                style={{
-                  width: `${Math.min(100, Math.max(0, row.progress_pct))}%`,
-                }}
-              />
-            </div>
-            <span className="shrink-0 text-[10px] text-[color:var(--theme-text-muted)]">
-              {progressLabel}
-            </span>
-          </div>
-        </div>
-
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 truncate text-xs font-medium text-[color:var(--theme-text-secondary)]">
-            <UserRound className="h-3.5 w-3.5 shrink-0" />
-            {tech}
-          </div>
-          {row.advisor_name ? (
-            <div className="mt-1 truncate text-[11px] text-[color:var(--theme-text-muted)]">
-              Advisor · {row.advisor_name}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="flex items-center justify-between gap-3 md:justify-end">
+        <span
+          className={
+            row.risk_level === "danger"
+              ? "text-xs font-bold text-red-600"
+              : "text-xs text-[color:var(--theme-text-muted)]"
+          }
+        >
+          {timeAgoLabel(row.time_in_stage_seconds ?? null)}
+        </span>
+      </div>
+      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+        {[row.unit_label ? `Unit ${row.unit_label}` : null, row.vehicle_label]
+          .filter(Boolean)
+          .join(" · ") || "Vehicle not listed"}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+        <span className="inline-flex items-center gap-1">
           <span
-            className={
-              row.risk_level === "danger"
-                ? "text-xs font-bold text-red-600"
-                : "text-xs text-[color:var(--theme-text-muted)]"
-            }
-          >
-            {timeAgoLabel(row.time_in_stage_seconds ?? null)}
+            className={`h-1.5 w-1.5 rounded-full ${row.priority === 1 ? "bg-red-500" : "bg-blue-500"}`}
+          />
+          {priorityLabel(row.priority)} priority
+        </span>
+        {row.is_waiter ? (
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-700 dark:text-amber-200">
+            Customer waiting
           </span>
-          <ChevronRight className="h-4 w-4 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--brand-primary,#C1663B)]" />
-        </div>
+        ) : null}
+        {row.overall_stage === "completed" ? (
+          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-semibold text-emerald-700 dark:text-emerald-200">
+            Ready to invoice
+          </span>
+        ) : null}
+      </div>
+      <dl className="mt-3 grid grid-cols-[78px_1fr] gap-x-2 gap-y-1 text-xs">
+        <dt className="text-[color:var(--theme-text-muted)]">Technician</dt>
+        <dd className="truncate text-[color:var(--theme-text-secondary)]">
+          <UserRound className="mr-1 inline h-3.5 w-3.5" />
+          {tech}
+        </dd>
+        {row.parts_blocker_count ? (
+          <>
+            <dt className="text-[color:var(--theme-text-muted)]">Parts</dt>
+            <dd>
+              {row.parts_blocker_count} request
+              {row.parts_blocker_count === 1 ? "" : "s"}
+            </dd>
+          </>
+        ) : null}
+        <dt className="text-[color:var(--theme-text-muted)]">Job progress</dt>
+        <dd>{row.progress_pct}%</dd>
+        <dt className="text-[color:var(--theme-text-muted)]">Blocking</dt>
+        <dd className="truncate">{blockers[0] ?? "—"}</dd>
+      </dl>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
+        <div
+          className={`h-full rounded-full ${row.overall_stage === "completed" ? "bg-emerald-500" : "bg-[var(--brand-primary,#C1663B)]"}`}
+          style={{ width: `${Math.min(100, Math.max(0, row.progress_pct))}%` }}
+        />
+      </div>
+      <div className="mt-3 flex min-h-9 items-center justify-center gap-2 rounded-lg border border-[var(--brand-primary,#C1663B)]/45 text-xs font-semibold text-[var(--brand-primary,#C1663B)]">
+        {row.overall_stage === "completed"
+          ? "Review invoice"
+          : row.overall_stage === "waiting_parts"
+            ? "Open parts"
+            : row.overall_stage === "awaiting"
+              ? "Assign"
+              : "Open work order"}
+        <ChevronRight className="h-3.5 w-3.5" />
       </div>
     </article>
   );
@@ -237,6 +229,7 @@ export default function WorkOrderBoard(props: {
   const [query, setQuery] = useState("");
   const [advisor, setAdvisor] = useState("all");
   const [technician, setTechnician] = useState("all");
+  const [priority, setPriority] = useState("all");
   const [waiter, setWaiter] = useState("all");
 
   useEffect(() => {
@@ -295,17 +288,20 @@ export default function WorkOrderBoard(props: {
         (technician === "all" ||
           row.first_tech_name === technician ||
           row.tech_names?.includes(technician)) &&
+        (priority === "all" || String(row.priority ?? 3) === priority) &&
         (waiter === "all" || (waiter === "yes") === Boolean(row.is_waiter))
       );
-    }).sort((a, b) => {
-      const exceptionScore = (row: WorkOrderBoardRow) =>
-        (row.risk_level === "danger" ? 100 : row.risk_level === "warn" ? 50 : 0) +
-        (row.overall_stage === "on_hold" ? 30 : 0) +
-        (row.overall_stage === "waiting_parts" ? 20 : 0) +
-        (row.assigned_summary === "Unassigned" ? 10 : 0);
-      return exceptionScore(b) - exceptionScore(a);
     });
-  }, [advisor, query, riskOnly, rows, stageFilter, technician, waiter]);
+  }, [
+    advisor,
+    priority,
+    query,
+    riskOnly,
+    rows,
+    stageFilter,
+    technician,
+    waiter,
+  ]);
 
   const count = (stage: WorkOrderBoardStage) =>
     rows.filter((row) => row.overall_stage === stage).length;
@@ -315,6 +311,12 @@ export default function WorkOrderBoard(props: {
   const hrefMode = props.hrefMode ?? defaultHrefModeForVariant(props.variant);
   const buildHref = (row: WorkOrderBoardRow) =>
     props.hrefBuilder ? props.hrefBuilder(row) : resolveHref(row, hrefMode);
+  const visibleStages =
+    stageFilter === "all"
+      ? stages
+      : stageFilter === "on_hold"
+        ? stages.filter((stage) => stage.key === "waiting_parts")
+        : stages.filter((stage) => stage.key === stageFilter);
   const summaryCards: Array<{
     label: string;
     value: number;
@@ -390,6 +392,17 @@ export default function WorkOrderBoard(props: {
             options={techOptions.map((value) => [value, value])}
           />
           <Filter
+            label="Priority"
+            value={priority}
+            onChange={setPriority}
+            options={[
+              ["1", "Urgent"],
+              ["2", "High"],
+              ["3", "Normal"],
+              ["4", "Low"],
+            ]}
+          />
+          <Filter
             label="Waiter"
             value={waiter}
             onChange={setWaiter}
@@ -421,9 +434,7 @@ export default function WorkOrderBoard(props: {
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {summaryCards.map(({ label, value, icon: Icon, tone, filter }) => {
           const selected =
-            filter === "risk"
-              ? riskOnly
-              : !riskOnly && stageFilter === filter;
+            filter === "risk" ? riskOnly : !riskOnly && stageFilter === filter;
           return (
             <button
               key={String(label)}
@@ -461,36 +472,51 @@ export default function WorkOrderBoard(props: {
           {error}
         </div>
       ) : (
-        <section className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]">
-          <div className="hidden grid-cols-[minmax(180px,1.25fr)_minmax(160px,1fr)_minmax(180px,1.15fr)_minmax(150px,.9fr)_auto] gap-3 border-b border-[color:var(--theme-border-soft)] px-5 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)] md:grid">
-            <span>Work order</span>
-            <span>Vehicle</span>
-            <span>Operational state</span>
-            <span>Assigned</span>
-            <span className="text-right">Age</span>
+        <div className="overflow-x-auto pb-2">
+          <div
+            className={`grid min-w-[1280px] gap-3 ${visibleStages.length === 1 ? "grid-cols-1" : "grid-cols-5"}`}
+          >
+            {visibleStages.map((stage) => {
+              const Icon = stage.icon;
+              const stageRows = filteredRows.filter((row) =>
+                stageFilter === "on_hold"
+                  ? row.overall_stage === "on_hold"
+                  : row.overall_stage === stage.key ||
+                    (stageFilter === "all" &&
+                      stage.key === "waiting_parts" &&
+                      row.overall_stage === "on_hold"),
+              );
+              return (
+                <section
+                  key={stage.key}
+                  className="min-h-[560px] rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3"
+                >
+                  <header className="mb-3 flex items-center gap-2">
+                    <Icon className={`h-4 w-4 ${stage.tone}`} />
+                    <h2 className="text-sm font-bold">{stage.label}</h2>
+                    <span className="rounded-full bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-xs font-bold">
+                      {stageRows.length}
+                    </span>
+                  </header>
+                  <div className="space-y-2">
+                    {stageRows.length ? (
+                      stageRows.map((row) => (
+                        <BoardCard
+                          key={row.work_order_id}
+                          row={row}
+                          variant={props.variant}
+                          href={buildHref(row)}
+                        />
+                      ))
+                    ) : (
+                      <EmptyColumn label={stage.label} />
+                    )}
+                  </div>
+                </section>
+              );
+            })}
           </div>
-          <div className="space-y-2 p-2">
-            {filteredRows.length ? (
-              filteredRows.map((row) => (
-                <BoardRow
-                  key={row.work_order_id}
-                  row={row}
-                  variant={props.variant}
-                  href={buildHref(row)}
-                />
-              ))
-            ) : (
-              <EmptyColumn
-                label={
-                  stageFilter === "all"
-                    ? "the current filters"
-                    : stages.find((stage) => stage.key === stageFilter)?.label ??
-                      "this stage"
-                }
-              />
-            )}
-          </div>
-        </section>
+        </div>
       )}
 
       <button
