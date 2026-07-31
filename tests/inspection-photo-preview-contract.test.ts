@@ -34,6 +34,20 @@ describe("inspection photo preview and markup contract", () => {
     expect(gallery).toContain("scope=line&lineId=");
   });
 
+  it("mounts the editor at the viewport root with a scroll-safe image workspace", () => {
+    const editor = source(
+      "features/work-orders/components/evidence/ImageMarkupEditor.tsx",
+    );
+
+    expect(editor).toContain("createPortal(");
+    expect(editor).toContain("document.body");
+    expect(editor).toContain("h-[100dvh]");
+    expect(editor).toContain("max-w-[96rem]");
+    expect(editor).toContain("overscroll-contain");
+    expect(editor).toContain("max-h-[calc(100dvh-13rem)]");
+    expect(editor).not.toContain("max-w-6xl");
+  });
+
   it("uses canonical evidence with content-bound upload idempotency", () => {
     const upload = source("app/api/inspections/photos/upload/route.ts");
 
