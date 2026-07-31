@@ -1,4 +1,5 @@
 import type { InspectionReport } from "@/features/inspections/lib/inspection/report";
+import InspectionPhotoGallery from "@/features/inspections/components/inspection/InspectionPhotoGallery";
 
 const labels = {
   ok: "Pass",
@@ -90,17 +91,15 @@ export function InspectionReportView({
                   </ul>
                 ) : null}
                 {item.photoUrls.length ? (
-                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {item.photoUrls.map((url) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={url}
-                        src={url}
-                        alt={`${item.label} evidence`}
-                        className="aspect-[4/3] w-full rounded-xl object-cover"
-                      />
-                    ))}
-                  </div>
+                  <InspectionPhotoGallery
+                    className="mt-4"
+                    allowMarkup={false}
+                    photos={item.photoUrls.map((url, photoIndex) => ({
+                      id: `${url}-${photoIndex}`,
+                      url,
+                      label: `${item.label} evidence ${photoIndex + 1}`,
+                    }))}
+                  />
                 ) : null}
               </div>
             ))}

@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
-import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
+import InspectionPhotoGallery from "@inspections/components/inspection/InspectionPhotoGallery";
 import {
+  createInspectionPhotoOperationId,
   INSPECTION_PHOTO_SYNCED_EVENT,
   listStagedInspectionPhotos,
   stageInspectionPhoto,
@@ -13,6 +14,7 @@ import {
   dismissOfflineMutation,
   subscribeOfflineMutations,
 } from "@/features/shared/lib/offline/mutations";
+import { uniqueEvidenceUrls } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 
 type PhotoUploadButtonProps = {
   photoUrls: string[];
@@ -55,7 +57,7 @@ export default function PhotoUploadButton({
   const onChangeRef = useRef(onChange);
 
   useEffect(() => {
-    const next = photoUrls ?? [];
+    const next = uniqueEvidenceUrls(photoUrls ?? []);
     urlsRef.current = next;
     setUrls(next);
   }, [photoUrls]);
@@ -118,8 +120,8 @@ export default function PhotoUploadButton({
       ) {
         return;
       }
-      if (!urlsRef.current.includes(detail.url)) {
-        const next = [...urlsRef.current, detail.url];
+      const next = uniqueEvidenceUrls([...urlsRef.current, detail.url]);
+      if (next.length !== urlsRef.current.length) {
         urlsRef.current = next;
         setUrls(next);
         onChangeRef.current(next);
@@ -136,7 +138,10 @@ export default function PhotoUploadButton({
     };
   }, [canStage, draftKey, sectionIndex, itemIndex]);
 
-  async function uploadOne(file: File): Promise<string | null> {
+  async function uploadOne(
+    file: File,
+    operationKey: string,
+  ): Promise<string | null> {
     if (!canUpload) {
       toast.error("Missing inspectionId — photo upload is disabled.");
       return null;
@@ -155,6 +160,7 @@ export default function PhotoUploadButton({
     const response = await fetch("/api/inspections/photos/upload", {
       method: "POST",
       credentials: "include",
+      headers: { "Idempotency-Key": operationKey },
       body: form,
     });
     const json = (await response.json().catch(() => null)) as unknown;
@@ -208,15 +214,13 @@ export default function PhotoUploadButton({
           if (result.queued) queued += 1;
           else if (result.url) uploaded.push(result.url);
         } else {
-          const url = await uploadOne(file);
+          const url = await uploadOne(file, createInspectionPhotoOperationId());
           if (url) uploaded.push(url);
         }
       }
 
       if (uploaded.length) {
-        const next = [...urlsRef.current, ...uploaded].filter(
-          (url, index, all) => all.indexOf(url) === index,
-        );
+        const next = uniqueEvidenceUrls([...urlsRef.current, ...uploaded]);
         urlsRef.current = next;
         setUrls(next);
         onChangeRef.current(next);
@@ -264,29 +268,32 @@ export default function PhotoUploadButton({
         Add photos
       </label>
 
-      <div className="flex flex-wrap">
-        {urls.map((url, index) => (
-          <PhotoThumbnail
-            key={url + index}
-            url={url}
-            onRemove={() => handleRemove(index)}
-          />
-        ))}
-        {staged.map((preview) => (
-          <PhotoThumbnail
-            key={preview.clientMutationId}
-            url={preview.previewUrl}
-            label={
+      <InspectionPhotoGallery
+        workOrderId={workOrderId}
+        workOrderLineId={workOrderLineId}
+        photos={[
+          ...urls.map((url, index) => ({
+            id: `saved-${url}-${index}`,
+            url,
+            label: itemName
+              ? `${itemName} evidence ${index + 1}`
+              : `Inspection evidence ${index + 1}`,
+            onRemove: () => handleRemove(index),
+          })),
+          ...staged.map((preview) => ({
+            id: preview.clientMutationId,
+            url: preview.previewUrl,
+            label: preview.fileName,
+            statusLabel:
               preview.status === "conflicted"
                 ? "Sync needs review"
                 : preview.status === "failed"
                   ? "Waiting to retry"
-                  : "Queued on device"
-            }
-            onRemove={() => void removeStaged(preview)}
-          />
-        ))}
-      </div>
+                  : "Queued on device",
+            onRemove: () => void removeStaged(preview),
+          })),
+        ]}
+      />
 
       <input
         type="file"

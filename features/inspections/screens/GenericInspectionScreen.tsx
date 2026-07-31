@@ -3150,17 +3150,14 @@ type SmartMatchRow = {
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
                             onUpdateNote={handleUpdateNoteWithSmartMatch}
-                            onUpload={(
-                              photoUrl: string,
+                            onUpdatePhotos={(
                               secIdx: number,
                               itemIdx: number,
+                              photoUrls: string[],
                             ) => {
                               if (guardLocked()) return;
-                              const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ??
-                                [];
                               updateItem(secIdx, itemIdx, {
-                                photoUrls: [...prev, photoUrl],
+                                photoUrls,
                               } as ItemPatch);
                             }}
                             onUpdateParts={(
@@ -3231,17 +3228,14 @@ type SmartMatchRow = {
                               autoAdvanceFrom(secIdx, itemIdx);
                             }}
                             onUpdateNote={handleUpdateNoteWithSmartMatch}
-                            onUpload={(
-                              photoUrl: string,
+                            onUpdatePhotos={(
                               secIdx: number,
                               itemIdx: number,
+                              photoUrls: string[],
                             ) => {
                               if (guardLocked()) return;
-                              const prev =
-                                session.sections[secIdx].items[itemIdx].photoUrls ??
-                                [];
                               updateItem(secIdx, itemIdx, {
-                                photoUrls: [...prev, photoUrl],
+                                photoUrls,
                               } as ItemPatch);
                             }}
                             onUpdateParts={(

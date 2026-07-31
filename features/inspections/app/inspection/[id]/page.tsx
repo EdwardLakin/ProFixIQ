@@ -8,6 +8,7 @@ import PageShell from "@/features/shared/components/PageShell";
 import Card from "@/features/shared/components/ui/Card";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
+import InspectionPhotoGallery from "@inspections/components/inspection/InspectionPhotoGallery";
 
 // --- Types ---
 interface InspectionItem {
@@ -27,6 +28,8 @@ interface InspectionResultSection {
 
 interface CanonicalInspection {
   id: string;
+  workOrderId: string | null;
+  workOrderLineId: string | null;
   updatedAt: string | null;
   templateName?: string;
   status: string;
@@ -40,6 +43,8 @@ type LoadResponse = {
     templateitem?: string | null;
     status?: string | null;
     sections?: InspectionResultSection[];
+    workOrderId?: string | null;
+    workOrderLineId?: string | null;
   } | null;
   inspectionMeta?: {
     status?: string | null;
@@ -71,6 +76,8 @@ export default function InspectionDetailPage() {
 
       setInspection({
         id: payload.session.id ?? id,
+        workOrderId: payload.session.workOrderId ?? null,
+        workOrderLineId: payload.session.workOrderLineId ?? null,
         updatedAt: payload.inspectionMeta?.updatedAt ?? null,
         templateName:
           payload.session.templateName ?? payload.session.templateitem ?? undefined,
@@ -161,16 +168,16 @@ export default function InspectionDetailPage() {
                     </span>
                   )}
                   {(item.photoUrls?.length ?? 0) > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {item.photoUrls?.map((url, idx) => (
-                        <img
-                          key={idx}
-                          src={url}
-                          alt="Photo"
-                          className="h-24 w-24 rounded border border-[var(--theme-card-border,var(--theme-border-soft))] object-cover"
-                        />
-                      ))}
-                    </div>
+                    <InspectionPhotoGallery
+                      className="mt-2"
+                      workOrderId={inspection.workOrderId}
+                      workOrderLineId={inspection.workOrderLineId}
+                      photos={(item.photoUrls ?? []).map((url, photoIndex) => ({
+                        id: `${url}-${photoIndex}`,
+                        url,
+                        label: `${item.name ?? item.item ?? "Inspection item"} evidence ${photoIndex + 1}`,
+                      }))}
+                    />
                   )}
                 </li>
               ))}
