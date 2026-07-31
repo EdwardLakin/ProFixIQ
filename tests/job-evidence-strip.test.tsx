@@ -110,6 +110,29 @@ describe("job evidence strip", () => {
     expect(screen.getByText("Video evidence is view-only")).toBeInTheDocument();
   });
 
+  it("mounts markup as a viewport editor instead of clipping it inside the preview dialog", async () => {
+    const user = userEvent.setup();
+    render(<JobEvidenceStrip evidence={items} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Open Front brake.jpg" }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Mark up" }),
+    );
+
+    expect(await screen.findByText("Mark up evidence")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save markup" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      await screen.findByRole("heading", { name: "Front brake.jpg" }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps markup hidden for read-only viewers", async () => {
     mockMediaResponse(false);
     const user = userEvent.setup();
