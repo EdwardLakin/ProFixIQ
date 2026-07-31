@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import JobEvidenceStrip, {
   nextEvidenceIndex,
@@ -39,7 +39,22 @@ const items = [
   evidence("four", "Tire.jpg"),
 ];
 
+function mockMediaResponse(canEdit = true) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ items, canEdit }),
+    })),
+  );
+}
+
 describe("job evidence strip", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    mockMediaResponse();
+  });
+
   it("wraps previous and next navigation", () => {
     expect(nextEvidenceIndex(0, 4, -1)).toBe(3);
     expect(nextEvidenceIndex(3, 4, 1)).toBe(0);
@@ -67,6 +82,46 @@ describe("job evidence strip", () => {
     expect(
       screen.getByRole("heading", { name: "Front brake.jpg" }),
     ).toBeInTheDocument();
+  });
+
+  it("offers markup only for authorized photo evidence", async () => {
+    const user = userEvent.setup();
+    render(<JobEvidenceStrip evidence={items} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Open Front brake.jpg" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Mark up" }),
+    ).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/work-orders/work-order-1/media?scope=line&lineId=line-1",
+      { credentials: "include", cache: "no-store" },
+    );
+
+    await user.click(screen.getByRole("button", { name: "Next evidence" }));
+    await user.click(screen.getByRole("button", { name: "Next evidence" }));
+    expect(
+      screen.getByRole("heading", { name: "Road test.mp4" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Mark up" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Video evidence is view-only")).toBeInTheDocument();
+  });
+
+  it("keeps markup hidden for read-only viewers", async () => {
+    mockMediaResponse(false);
+    const user = userEvent.setup();
+    render(<JobEvidenceStrip evidence={items} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Open Front brake.jpg" }),
+    );
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("button", { name: "Mark up" }),
+    ).not.toBeInTheDocument();
   });
 
   it("navigates through photos and video evidence", async () => {
