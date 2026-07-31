@@ -13,18 +13,28 @@ drop function if exists public.create_part_request_with_items(uuid, jsonb, uuid,
 -- These relations were reachable through the Data API with RLS disabled.
 -- Backup and operation-ledger rows are internal-only. Shop membership remains
 -- available through explicit, non-recursive tenant policies.
-alter table public.parts_backup_20260708 enable row level security;
 alter table public.parts_lifecycle_operations enable row level security;
 alter table public.shop_users enable row level security;
 
-revoke all on table public.parts_backup_20260708 from public, anon, authenticated;
 revoke all on table public.parts_lifecycle_operations from public, anon, authenticated;
 revoke all on table public.shop_users from public, anon, authenticated;
 
 grant select, insert, update, delete on table public.shop_users to authenticated;
-grant all on table public.parts_backup_20260708 to service_role;
 grant all on table public.parts_lifecycle_operations to service_role;
 grant all on table public.shop_users to service_role;
+
+-- This emergency backup exists in production but is intentionally absent from
+-- the canonical schema. Harden it when present without making clean replay
+-- depend on a production-only artifact.
+do $$
+begin
+  if to_regclass('public.parts_backup_20260708') is not null then
+    execute 'alter table public.parts_backup_20260708 enable row level security';
+    execute 'revoke all on table public.parts_backup_20260708 from public, anon, authenticated';
+    execute 'grant all on table public.parts_backup_20260708 to service_role';
+  end if;
+end;
+$$;
 
 create or replace function public.user_is_in_shop(target_shop_id uuid)
 returns boolean
