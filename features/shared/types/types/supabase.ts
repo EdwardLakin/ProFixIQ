@@ -20850,6 +20850,7 @@ export type Database = {
           sent_to_customer_at: string | null
           shop_id: string
           source_row_id: string | null
+          source_work_order_line_id: string | null
           stage: string | null
           status: string
           subtotal: number | null
@@ -20900,6 +20901,7 @@ export type Database = {
           sent_to_customer_at?: string | null
           shop_id: string
           source_row_id?: string | null
+          source_work_order_line_id?: string | null
           stage?: string | null
           status?: string
           subtotal?: number | null
@@ -20950,6 +20952,7 @@ export type Database = {
           sent_to_customer_at?: string | null
           shop_id?: string
           source_row_id?: string | null
+          source_work_order_line_id?: string | null
           stage?: string | null
           status?: string
           subtotal?: number | null
@@ -20988,6 +20991,13 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_quote_lines_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
           {
@@ -23624,12 +23634,29 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_create_or_reuse_po_line_for_request: {
+        Args: {
+          p_idempotency_key: string
+          p_location_id?: string
+          p_notes?: string
+          p_po_id?: string
+          p_qty: number
+          p_request_item_id: string
+          p_supplier_id?: string
+          p_unit_cost?: number
+        }
+        Returns: Json
+      }
       parts_dismiss_empty_request_atomic: {
         Args: {
           p_actor_user_id: string
           p_request_id: string
           p_shop_id: string
         }
+        Returns: Json
+      }
+      parts_ensure_request_quote_line: {
+        Args: { p_request_id: string }
         Returns: Json
       }
       parts_ensure_work_order_part: {
@@ -25003,4 +25030,3 @@ export const Constants = {
     },
   },
 } as const
-

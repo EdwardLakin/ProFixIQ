@@ -61,6 +61,8 @@ export function partsRequestStageLabel(stage: PartsRequestStage): string {
 export type PartsRequestStageItem = {
   description?: string | null;
   partId?: string | null;
+  requestedPartNumber?: string | null;
+  requestedManufacturer?: string | null;
   quotedPrice?: unknown;
   unitPrice?: unknown;
   qty?: unknown;
@@ -87,9 +89,21 @@ function requestedQty(item: PartsRequestStageItem): number {
 
 export function isPartsRequestItemPriced(item: PartsRequestStageItem): boolean {
   const description = String(item.description ?? "").trim();
-  const hasPart = String(item.partId ?? "").trim().length > 0;
-  const hasPrice = item.quotedPrice != null || item.unitPrice != null;
-  return description.length > 0 && hasPart && requestedQty(item) > 0 && hasPrice;
+  const hasIdentity = [
+    description,
+    item.partId,
+    item.requestedPartNumber,
+    item.requestedManufacturer,
+  ].some((value) => String(value ?? "").trim().length > 0);
+  const rawPrice = item.quotedPrice ?? item.unitPrice;
+  const price = rawPrice == null ? null : Number(rawPrice);
+  return (
+    hasIdentity &&
+    requestedQty(item) > 0 &&
+    price != null &&
+    Number.isFinite(price) &&
+    price >= 0
+  );
 }
 
 /**

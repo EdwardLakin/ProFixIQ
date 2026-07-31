@@ -81,6 +81,7 @@ export function mapRequestToWorkbenchModel(input: {
   workOrderId?: string | null;
   workOrderCustomId?: string | null;
   jobContext?: string | null;
+  requestLabel?: string | null;
   defaultLocationId?: string | null;
   defaultSupplierId?: string | null;
   stockSuggestionCountByItemId?: Record<string, number>;
@@ -91,7 +92,10 @@ export function mapRequestToWorkbenchModel(input: {
   packageCommitWarningByItemId?: Record<string, string>;
 }): PartsRequestWorkbenchModel {
   const requestId = text(input.request.id);
-  const requestLabel = text(input.request.custom_id, requestId ? requestId.slice(0, 8) : "Request");
+  const requestLabel = text(
+    input.requestLabel,
+    text(input.request.custom_id, requestId ? requestId.slice(0, 8) : "Request"),
+  );
 
   return {
     requestId,
