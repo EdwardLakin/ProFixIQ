@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
   Circle,
@@ -206,6 +207,14 @@ export default function ImageMarkupEditor({
     }
   };
 
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   const tools: Array<{ value: Tool; label: string; icon: typeof PenLine }> = [
     { value: "path", label: "Draw", icon: PenLine },
     { value: "circle", label: "Circle", icon: Circle },
@@ -213,10 +222,16 @@ export default function ImageMarkupEditor({
     { value: "text", label: "Text", icon: Type },
   ];
 
-  return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-black/95 p-3 sm:p-6">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
-        <header className="flex flex-wrap items-center gap-2 border-b border-[color:var(--theme-border-soft)] p-3">
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Mark up evidence"
+      className="fixed inset-0 z-[100] flex h-[100dvh] w-screen flex-col overflow-hidden bg-black/95 p-2 sm:p-4 lg:p-6"
+    >
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[96rem] flex-1 flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
+        <header className="max-h-[35dvh] shrink-0 overflow-y-auto border-b border-[color:var(--theme-border-soft)] p-3">
+          <div className="flex flex-wrap items-center gap-2">
           <div className="mr-auto">
             <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
               Mark up evidence
@@ -260,12 +275,14 @@ export default function ImageMarkupEditor({
           <button type="button" onClick={redo} disabled={!future.length} className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40" aria-label="Redo">
             <Redo2 className="h-4 w-4" />
           </button>
+          </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-auto bg-black p-2 sm:p-5">
+        <div className="min-h-0 flex-1 overflow-auto overscroll-contain bg-black p-2 [-webkit-overflow-scrolling:touch] sm:p-4">
+          <div className="flex min-h-full min-w-full items-center justify-center">
           <div
             ref={surfaceRef}
-            className="relative mx-auto max-w-5xl touch-none select-none overflow-hidden"
+            className="relative inline-flex max-h-full max-w-full touch-none select-none overflow-hidden"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -278,14 +295,15 @@ export default function ImageMarkupEditor({
             <img
               src={item.displayUrl ?? ""}
               alt={item.fileName ?? "Evidence to mark up"}
-              className="block h-auto max-h-[72vh] w-full object-contain"
+              className="block h-auto max-h-[calc(100dvh-13rem)] w-auto max-w-full object-contain"
               draggable={false}
             />
             <EvidenceOverlay elements={visibleElements} interactive />
           </div>
+          </div>
         </div>
 
-        <footer className="flex flex-wrap items-center gap-2 border-t border-[color:var(--theme-border-soft)] p-3">
+        <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-[color:var(--theme-border-soft)] p-3">
           <label className="mr-auto flex items-center gap-2 text-xs">
             Markup visibility
             <select
@@ -311,6 +329,7 @@ export default function ImageMarkupEditor({
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
