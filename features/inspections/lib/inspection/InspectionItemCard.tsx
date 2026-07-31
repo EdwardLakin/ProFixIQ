@@ -10,7 +10,6 @@ import type {
 } from "@inspections/lib/inspection/types";
 import StatusButtons from "./StatusButtons";
 import PhotoUploadButton from "./PhotoUploadButton";
-import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 
 interface InspectionItemCardProps {
   item: InspectionItem;
@@ -23,7 +22,11 @@ interface InspectionItemCardProps {
   workOrderLineId?: string | null;
   draftKey?: string;
   onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
-  onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
+  onUpdatePhotos: (
+    sectionIndex: number,
+    itemIndex: number,
+    photoUrls: string[],
+  ) => void;
   onUpdateStatus: (
     sectionIndex: number,
     itemIndex: number,
@@ -82,7 +85,7 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
     workOrderLineId,
     draftKey,
     onUpdateNote,
-    onUpload,
+    onUpdatePhotos,
     onUpdateStatus,
     onUpdateValue,
     onUpdateUnit,
@@ -288,20 +291,11 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                     itemIndex={itemIndex}
                     itemName={label || null}
                     photoUrls={item.photoUrls ?? []}
-                    onChange={(urls: string[]) => {
-                      const newUrl = urls[urls.length - 1];
-                      if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
-                    }}
+                    onChange={(urls: string[]) =>
+                      onUpdatePhotos(sectionIndex, itemIndex, urls)
+                    }
                   />
                 </div>
-
-                {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
-                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                    {item.photoUrls.map((url, i) => (
-                      <PhotoThumbnail key={url + i} url={url} />
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -378,8 +372,8 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
 
       {showPhotos &&
         (item.status === "fail" ||
-            item.status === "recommend" ||
-            showEvidenceFields) && (
+          item.status === "recommend" ||
+          showEvidenceFields) && (
           <div className="mt-2">
             <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -395,20 +389,11 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
                   itemIndex={itemIndex}
                   itemName={label || null}
                   photoUrls={item.photoUrls ?? []}
-                  onChange={(urls: string[]) => {
-                    const newUrl = urls[urls.length - 1];
-                    if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
-                  }}
+                  onChange={(urls: string[]) =>
+                    onUpdatePhotos(sectionIndex, itemIndex, urls)
+                  }
                 />
               </div>
-
-              {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
-                <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                  {item.photoUrls.map((url, i) => (
-                    <PhotoThumbnail key={url + i} url={url} />
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         )}

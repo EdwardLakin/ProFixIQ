@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Json } from "@shared/types/types/supabase";
 import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+import { authorizeWorkOrderEvidence } from "@/features/work-orders/server/authorizeWorkOrderEvidence";
+import {
+  reconcileInspectionPhotoEvidence,
+  type InspectionPhotoEvidenceRow,
+} from "@/features/inspections/server/reconcileInspectionPhotoEvidence";
+import { uniqueEvidenceUrls } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 
 type InspectionRow = {
   id: string;
@@ -29,8 +35,11 @@ function asString(value: unknown): string | null {
 }
 
 type InspectionPhotoRow = {
+  id: string;
+  inspection_id: string | null;
   item_name: string | null;
   image_url: string | null;
+  user_id: string | null;
 };
 
 type WorkOrderContextRow = {
@@ -95,9 +104,7 @@ function mergeCanonicalPhotos(
         const existing = Array.isArray(item.photoUrls) ? item.photoUrls : [];
         return {
           ...item,
-          photoUrls: [...existing, ...canonical].filter(
-            (url, index, all) => all.indexOf(url) === index,
-          ),
+          photoUrls: uniqueEvidenceUrls([...existing, ...canonical]),
         };
       }),
     })),
@@ -334,7 +341,7 @@ export async function GET(req: NextRequest) {
   if (photoInspectionIds.length) {
     const { data: photoRows, error: photoError } = await supabase
       .from("inspection_photos")
-      .select("item_name, image_url")
+      .select("id, inspection_id, item_name, image_url, user_id")
       .in("inspection_id", photoInspectionIds)
       .order("created_at", { ascending: true });
 
@@ -342,6 +349,35 @@ export async function GET(req: NextRequest) {
       console.error("[inspections/load] canonical photo hydration failed", photoError);
     } else {
       canonicalPhotos = (photoRows ?? []) as InspectionPhotoRow[];
+    }
+  }
+
+  if (
+    canonicalWorkOrderId &&
+    resolvedWorkOrderLineId &&
+    canonicalPhotos.length > 0
+  ) {
+    const actor = await authorizeWorkOrderEvidence(
+      supabase,
+      canonicalWorkOrderId,
+    );
+    if (
+      actor?.kind === "staff" &&
+      actor.canEdit &&
+      actor.shopId === shopId
+    ) {
+      try {
+        await reconcileInspectionPhotoEvidence({
+          shopId,
+          workOrderId: canonicalWorkOrderId,
+          workOrderLineId: resolvedWorkOrderLineId,
+          inspectionIds: photoInspectionIds,
+          photos: canonicalPhotos as InspectionPhotoEvidenceRow[],
+        });
+      } catch (error) {
+        // Historical evidence linking must not block the inspection snapshot.
+        console.error("[inspections/load] evidence reconciliation failed", error);
+      }
     }
   }
 

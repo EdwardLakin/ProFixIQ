@@ -19,12 +19,16 @@ import { Button } from "@shared/components/ui/Button";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
 import DecisionEventFeed from "@/features/shared/components/ui/DecisionEventFeed";
 import { PANEL_VARIANTS } from "@/features/shared/components/ui/panelHierarchy";
-import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
+import InspectionPhotoGallery from "@inspections/components/inspection/InspectionPhotoGallery";
 import { formatDecisionStatus } from "@/features/shared/lib/decisionStatus";
 import { deriveEventsFromFindings } from "@/features/shared/lib/decisionEvents";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 import { cn } from "@shared/lib/utils";
-import { getPendingInspectionPhotoCount } from "@inspections/lib/inspection/inspectionPhotoStaging";
+import {
+  createInspectionPhotoOperationId,
+  getPendingInspectionPhotoCount,
+} from "@inspections/lib/inspection/inspectionPhotoStaging";
+import { uniqueEvidenceUrls } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 import {
   getInspectionOfflineDraft,
   removeInspectionOfflineDraft,
@@ -452,6 +456,7 @@ export default function InspectionFindingsPage(): JSX.Element {
 
       const res = await fetch("/api/inspections/photos/upload", {
         method: "POST",
+        headers: { "Idempotency-Key": createInspectionPhotoOperationId() },
         body: form,
       });
 
@@ -472,7 +477,9 @@ export default function InspectionFindingsPage(): JSX.Element {
 
       const nextUrl = json?.url ?? null;
       const current = row.item.photoUrls ?? [];
-      const nextPhotoUrls = nextUrl ? [...current, nextUrl] : current;
+      const nextPhotoUrls = nextUrl
+        ? uniqueEvidenceUrls([...current, nextUrl])
+        : current;
 
       updateFinding(row.sectionIndex, row.itemIndex, {
         photoUrls: nextPhotoUrls,
@@ -1103,11 +1110,15 @@ export default function InspectionFindingsPage(): JSX.Element {
                         </button>
                       </div>
                       {photos.length > 0 ? (
-                        <div className="flex gap-2 overflow-x-auto pb-1">
-                          {photos.map((url, i) => (
-                            <PhotoThumbnail key={`${url}-${i}`} url={url} />
-                          ))}
-                        </div>
+                        <InspectionPhotoGallery
+                          workOrderId={resolvedWorkOrderId}
+                          workOrderLineId={resolvedWorkOrderLineId}
+                          photos={photos.map((url, index) => ({
+                            id: `finding-${key}-${index}`,
+                            url,
+                            label: `${itemLabel} evidence ${index + 1}`,
+                          }))}
+                        />
                       ) : (
                         <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-xs text-[color:var(--theme-text-muted)]">
                           Add at least one photo for stronger customer approval confidence.

@@ -35,7 +35,11 @@ interface SectionDisplayProps {
     status: InspectionItemStatus,
   ) => void;
   onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void;
-  onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void;
+  onUpdatePhotos: (
+    sectionIndex: number,
+    itemIndex: number,
+    photoUrls: string[],
+  ) => void;
 
   requireNoteForAI?: boolean;
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
@@ -197,7 +201,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     draftKey,
     onUpdateStatus,
     onUpdateNote,
-    onUpload,
+    onUpdatePhotos,
     requireNoteForAI,
     onSubmitAI,
     isSubmittingAI,
@@ -507,7 +511,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         draftKey={draftKey}
                         onUpdateStatus={onUpdateStatus}
                         onUpdateNote={onUpdateNote}
-                        onUpload={onUpload}
+                        onUpdatePhotos={onUpdatePhotos}
                         variant="row"
                         showStatusControls={!showGridFindings}
                         showEvidenceFields={showGridFindings}

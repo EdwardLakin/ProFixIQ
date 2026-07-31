@@ -69,6 +69,9 @@ export type WorkOrderEvidenceItem = {
   contentType: string | null;
   fileSize: number | null;
   createdAt: string | null;
+  storageBucket?: string | null;
+  storagePath?: string | null;
+  sourceUrl?: string | null;
   displayUrl: string | null;
   annotation: WorkOrderEvidenceAnnotation | null;
 };
@@ -224,3 +227,72 @@ export function isVideoEvidence(
   );
 }
 
+export function evidenceStorageObject(
+  value: string | null | undefined,
+): { bucket: string; path: string } | null {
+  if (!value) return null;
+
+  try {
+    const parsed = new URL(value, "https://local.invalid");
+    const match = parsed.pathname.match(
+      /\/storage\/v1\/object\/(?:sign|public|authenticated)\/([^/]+)\/(.+)$/,
+    );
+    if (!match) return null;
+    return {
+      bucket: decodeURIComponent(match[1]),
+      path: decodeURIComponent(match[2]),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function evidenceUrlIdentity(value: string): string {
+  const object = evidenceStorageObject(value);
+  return object
+    ? `storage:${object.bucket}/${object.path}`
+    : `url:${value.trim()}`;
+}
+
+export function uniqueEvidenceUrls(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const identity = evidenceUrlIdentity(value);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
+export function evidenceItemMatchesUrl(
+  item: WorkOrderEvidenceItem,
+  url: string,
+): boolean {
+  const requestedObject = evidenceStorageObject(url);
+  if (
+    requestedObject &&
+    item.storageBucket === requestedObject.bucket &&
+    item.storagePath === requestedObject.path
+  ) {
+    return true;
+  }
+  if (item.sourceUrl === url || item.displayUrl === url) return true;
+
+  const sourceObject = evidenceStorageObject(item.sourceUrl);
+  if (
+    requestedObject &&
+    sourceObject &&
+    requestedObject.bucket === sourceObject.bucket &&
+    requestedObject.path === sourceObject.path
+  ) {
+    return true;
+  }
+
+  const displayObject = evidenceStorageObject(item.displayUrl);
+  return Boolean(
+    requestedObject &&
+    displayObject &&
+    requestedObject.bucket === displayObject.bucket &&
+    requestedObject.path === displayObject.path,
+  );
+}
