@@ -174,7 +174,7 @@ export default function InspectionPhotoGallery({
       </div>
 
       <Dialog
-        open={selectedPhoto !== null}
+        open={selectedPhoto !== null && !editing}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedIndex(null);
@@ -187,17 +187,7 @@ export default function InspectionPhotoGallery({
           style={{ maxWidth: "48rem" }}
         >
           {selectedPhoto ? (
-            editing && selectedMedia ? (
-              <ImageMarkupEditor
-                item={selectedMedia}
-                onClose={() => setEditing(false)}
-                onSaved={async () => {
-                  setEditing(false);
-                  await loadMedia();
-                }}
-              />
-            ) : (
-              <>
+            <>
                 <DialogHeader className="border-b border-[color:var(--theme-border-soft)] px-5 py-4 text-left">
                   <DialogTitle>
                     {photoLabel(selectedPhoto, selectedIndex ?? 0)}
@@ -305,10 +295,20 @@ export default function InspectionPhotoGallery({
                   </div>
                 </div>
               </>
-            )
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {editing && selectedMedia ? (
+        <ImageMarkupEditor
+          item={selectedMedia}
+          onClose={() => setEditing(false)}
+          onSaved={async () => {
+            setEditing(false);
+            await loadMedia();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
