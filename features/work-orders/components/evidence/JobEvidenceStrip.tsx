@@ -212,8 +212,7 @@ export default function JobEvidenceStrip({ evidence }: Props): JSX.Element {
             onClick={stopCardClick}
             onKeyDown={stopCardKeyDown}
           >
-            <>
-                <DialogHeader className="flex-row items-start justify-between gap-3 px-4 py-3">
+            <DialogHeader className="flex-row items-start justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
                     <DialogTitle className="truncate text-sm normal-case tracking-normal">
                       {evidenceLabel(selected, selectedIndex)}
@@ -321,7 +320,6 @@ export default function JobEvidenceStrip({ evidence }: Props): JSX.Element {
                     </button>
                   </div>
                 ) : null}
-              </>
           </DialogContent>
         ) : null}
       </Dialog>
