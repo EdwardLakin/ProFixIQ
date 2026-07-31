@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
+import { isPartsRequestItemPriced } from "@/features/parts/lib/status-display";
 
 type DB = Database;
 type PartRequestItemUpdate = DB["public"]["Tables"]["part_request_items"]["Update"];
@@ -96,7 +97,7 @@ export async function POST(
 
   const { data: item, error: itemError } = await supabase
     .from("part_request_items")
-    .select("id, request_id, shop_id, work_order_id, quote_line_id, work_order_line_id, status, qty_received, qty_consumed, qty_reserved, qty_picked")
+    .select("id, request_id, shop_id, work_order_id, quote_line_id, work_order_line_id, status, description, part_id, requested_part_number, requested_manufacturer, qty, qty_requested, quoted_price, unit_price, qty_received, qty_consumed, qty_reserved, qty_picked")
     .eq("id", itemId)
     .eq("shop_id", shopId)
     .maybeSingle();
@@ -247,7 +248,18 @@ export async function POST(
   const vendor = cleanString(body.vendor);
   const requestedPartNumber = cleanString(body.requestedPartNumber);
   const requestedManufacturer = cleanString(body.requestedManufacturer);
-  const quoteComplete = Boolean(partId) && quotedPrice != null && quotedPrice >= 0 && (nextQty ?? 0) > 0;
+  const quoteComplete = isPartsRequestItemPriced({
+    description: description ?? item.description,
+    partId: partId ?? item.part_id,
+    requestedPartNumber:
+      requestedPartNumber ?? item.requested_part_number,
+    requestedManufacturer:
+      requestedManufacturer ?? item.requested_manufacturer,
+    qty: nextQty ?? item.qty,
+    qtyRequested: nextQty ?? item.qty_requested,
+    quotedPrice: quotedPrice ?? item.quoted_price,
+    unitPrice: quotedPrice ?? item.unit_price,
+  });
 
   const update: PartRequestItemUpdate = {
     updated_at: new Date().toISOString(),

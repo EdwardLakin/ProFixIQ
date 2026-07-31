@@ -46,6 +46,8 @@ type QueueItem = Pick<
   | "request_id"
   | "description"
   | "part_id"
+  | "requested_part_number"
+  | "requested_manufacturer"
   | "quoted_price"
   | "unit_price"
   | "qty"
@@ -178,6 +180,8 @@ function stageItem(item: QueueItem): PartsRequestStageItem {
   return {
     description: item.description,
     partId: item.part_id,
+    requestedPartNumber: item.requested_part_number,
+    requestedManufacturer: item.requested_manufacturer,
     quotedPrice: item.quoted_price,
     unitPrice: item.unit_price,
     qty: item.qty,
@@ -678,7 +682,7 @@ export default function PartsRequestsPage(): JSX.Element {
             const { data: items, error: itemError } = await supabase
               .from("part_request_items")
               .select(
-                "id,request_id,description,part_id,quoted_price,unit_price,unit_cost,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
+                "id,request_id,description,part_id,requested_part_number,requested_manufacturer,quoted_price,unit_price,unit_cost,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
               )
               .in("request_id", requestChunk)
               .order("id", { ascending: true })

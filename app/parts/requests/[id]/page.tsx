@@ -21,6 +21,7 @@ import {
   type SaveItemInput,
 } from "@/features/parts/components/request-workbench";
 import {
+  isPartsRequestItemPriced,
   itemFlowLabel,
   requestFlowLabel,
   toItemFlowDisplay,
@@ -125,10 +126,6 @@ type DrawerItem = {
   trust_reasons?: string[];
 };
 
-function isNonEmptyString(v: unknown): v is string {
-  return typeof v === "string" && v.trim().length > 0;
-}
-
 function toNum(v: unknown, fallback: number): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -174,11 +171,16 @@ function resolveWorkOrderLineId(
 }
 
 function isRowComplete(it: UiItem): boolean {
-  // ONLY persisted values count
-  const hasPart = isNonEmptyString(it.part_id ?? null);
-  const hasPrice = it.quoted_price != null;
-  const qty = toNum(it.qty, 0);
-  return hasPart && hasPrice && qty > 0;
+  return isPartsRequestItemPriced({
+    description: it.description,
+    partId: it.part_id,
+    requestedPartNumber: it.requested_part_number,
+    requestedManufacturer: it.requested_manufacturer,
+    quotedPrice: it.quoted_price,
+    unitPrice: it.unit_price,
+    qty: it.qty,
+    qtyRequested: it.qty_requested,
+  });
 }
 
 function n(v: unknown): number {
@@ -1199,10 +1201,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
   }
 
-  async function createPoLineForItem(item: UiItem, poId: string): Promise<boolean> {
+  async function createPoLineForItem(
+    item: UiItem,
+    poId: string | null,
+    supplierId: string | null,
+  ): Promise<boolean> {
     const itemId = String(item.id);
-    if (!isUuid(poId)) {
-      toast.error("Invalid PO id.");
+    if ((!poId || !isUuid(poId)) && (!supplierId || !isUuid(supplierId))) {
+      toast.error("Choose an existing PO or a valid supplier.");
       return false;
     }
 
@@ -1236,7 +1242,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const idempotencyKey = [
       "request-order",
       itemId,
-      poId,
+      poId ?? `supplier-${supplierId}`,
       `target-${coverage.targetQty}`,
       `shortage-${coverage.remainingToOrderQty}`,
     ].join(":");
@@ -1248,9 +1254,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           poId,
+          supplierId,
           qty: coverage.remainingToOrderQty,
           unitCost,
           locationId: item.location_id ?? defaultLocationId ?? null,
+          notes: `Created from ${woDisplay ?? "work order"} parts request`,
           idempotencyKey,
         }),
       });
@@ -1258,6 +1266,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         ok?: boolean;
         error?: string;
         result?: {
+          po_id?: string;
           ordered_qty?: number;
           remaining_to_order?: number;
           status?: string;
@@ -1268,6 +1277,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         return false;
       }
 
+      const assignedPoId = body.result?.po_id ?? poId;
+      if (!assignedPoId || !isUuid(assignedPoId)) {
+        toast.error("The purchase order was created without a valid identifier.");
+        return false;
+      }
+
       setRequests((prev) =>
         prev.map((request) => ({
           ...request,
@@ -1275,8 +1290,8 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             String(candidate.id) === itemId
               ? ({
                   ...candidate,
-                  po_id: poId,
-                  ui_po_id: poId,
+                  po_id: assignedPoId,
+                  ui_po_id: assignedPoId,
                   qty_ordered: body.result?.ordered_qty ?? candidate.qty_ordered,
                   status: (body.result?.status ?? candidate.status) as ItemRow["status"],
                 } as UiItem)
@@ -1332,39 +1347,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     return created?.id ? String(created.id) : null;
   }
 
-  async function createPoForSupplier(
-    shopId: string,
-    supplierId: string | null,
-    notes?: string,
-  ): Promise<string | null> {
-    const insert = {
-      shop_id: shopId,
-      supplier_id: supplierId,
-      status: "open",
-      notes: notes?.trim() ? notes.trim() : null,
-    };
-
-    const { data, error } = await supabase
-      .from("purchase_orders")
-      .insert(
-        insert as unknown as DB["public"]["Tables"]["purchase_orders"]["Insert"],
-      )
-      .select("*")
-      .single();
-
-    if (error) {
-      toast.error(error.message);
-      return null;
-    }
-
-    const id = data?.id ? String(data.id) : null;
-    if (!id) return null;
-
-    // refresh local PO list (no extra routes)
-    setPOs((prev) => [data as PurchaseOrderRow, ...prev]);
-    return id;
-  }
-
   async function createOrReusePoAndAssign(
     item: UiItem,
     supplierId: string,
@@ -1375,7 +1357,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    const shopId = String(wo.shop_id);
     const sid = String(supplierId);
 
     // Rule: one PO per vendor (per work order) => reuse if one already exists
@@ -1396,16 +1377,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    const poId =
-      useId ??
-      (await createPoForSupplier(
-        shopId,
-        sid,
-        `Auto-created from request ${String(item.request_id ?? "").slice(0, 8)}`,
-      ));
-    if (!poId) return;
-
-    await createPoLineForItem(item, poId);
+    await createPoLineForItem(item, useId, sid);
   }
 
 
@@ -1453,21 +1425,19 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       return;
     }
 
-    const resolved = resolveAddPartId(it);
-    const partId = resolved.partId;
-    if (!partId) {
-      toast.error(resolved.error ?? "Pick a stock part first.");
-      return;
-    }
+    const selectedPartId = String(it.ui_part_id ?? it.part_id ?? "").trim();
+    const partId = selectedPartId || null;
     if (partId && !isUuid(partId)) {
       toast.error("Invalid part id (must be a UUID).");
       return;
     }
-    const conflict = detectPartDescriptionConflict({
-      requestedDescription: it.description,
-      requestedPartNumber: it.requested_part_number,
-      matchedPart: getPartForConflict(partId),
-    });
+    const conflict = partId
+      ? detectPartDescriptionConflict({
+          requestedDescription: it.description,
+          requestedPartNumber: it.requested_part_number,
+          matchedPart: getPartForConflict(partId),
+        })
+      : null;
     if (conflict && !conflictOverrideByItemId[itemId]) {
       setConflictWarningByItemId((prev) => ({ ...prev, [itemId]: conflict.message }));
       toast.warning("Possible mismatch. Review the warning before saving.");
@@ -2028,8 +1998,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
             </div>
           ) : (
             <div className="space-y-4">
-              {requests.map((r) => {
+              {requests.map((r, requestIndex) => {
                 const busy = savingReqId === r.req.id;
+                const batchNumber = requests.length - requestIndex;
+                const requestLabel =
+                  batchNumber === 1
+                    ? "Initial request"
+                    : `Additional request ${batchNumber}`;
                 const requestState = toRequestFlowDisplay({
                   rawStatus: r.req.status,
                   itemStates: r.items.map((it) =>
@@ -2067,6 +2042,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                     workOrderId: wo?.id ?? r.req.work_order_id ?? null,
                     workOrderCustomId: woDisplay,
                     jobContext: jobText,
+                    requestLabel,
                     defaultLocationId: resolvedDefaultLocId,
                     defaultSupplierId: "",
                     stockSuggestionCountByItemId: Object.fromEntries(
@@ -2283,10 +2259,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-sm font-semibold">
-                            Request{" "}
-                            <span className={ACCENT_TEXT}>
-                              #{r.req.id.slice(0, 8)}
-                            </span>
+                            <span className={ACCENT_TEXT}>{requestLabel}</span>
                           </div>
 
                           <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
@@ -2295,13 +2268,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                               ? new Date(r.req.created_at).toLocaleString()
                               : "—"}
                             <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
-                            Line: {hasValidLineId && lineId ? String(lineId).slice(0, 8) : "Not linked"}
-                            {hasQuoteLineOrigin ? (
-                              <>
-                                <span className="mx-2 text-[color:var(--theme-text-muted)]">·</span>
-                                Quote line: {quoteLineId ? String(quoteLineId).slice(0, 8) : "—"}
-                              </>
-                            ) : null}
+                            Repair line: {jobText || (hasValidLineId ? "Linked" : "Not linked")}
                           </div>
 
                           {jobText ? (
@@ -2364,9 +2331,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                           <span className="font-semibold text-[color:var(--theme-text-primary)]">{r.items.length}</span>
                         </div>
                         <div>
-                          Linked line:{" "}
+                          Repair line:{" "}
                           <span className="font-semibold text-[color:var(--theme-text-primary)]">
-                            {hasValidLineId ? lineId?.slice(0, 8) : "Not linked"}
+                            {jobText || (hasValidLineId ? "Linked" : "Not linked")}
                           </span>
                         </div>
                       </div>
@@ -2762,7 +2729,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                           onChange={(e) => {
                                             const next = e.target.value || "";
                                             if (next) {
-                                              void createPoLineForItem(it, next);
+                                              void createPoLineForItem(it, next, null);
                                             } else {
                                               void clearItemPoAssignment(it);
                                             }

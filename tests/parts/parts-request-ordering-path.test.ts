@@ -14,14 +14,33 @@ const orderingMigration = readFileSync(
   "supabase/migrations/20260719100200_parts_ordering_path_hardening.sql",
   "utf8",
 );
+const p0Migration = readFileSync(
+  "supabase/migrations/20260731162625_repair_parts_quote_linkage_p0.sql",
+  "utf8",
+);
 
 describe("parts request ordering path", () => {
   it("uses the canonical idempotent PO-line command instead of a browser insert", () => {
     expect(detailPage).toContain("/po-line");
     expect(detailPage).toContain("calculateOrderCoverage");
     expect(detailPage).not.toContain('.from("purchase_order_lines").insert');
-    expect(poLineRoute).toContain('"parts_create_po_line_for_request"');
+    expect(detailPage).not.toContain('.from("purchase_orders")\n      .insert');
+    expect(poLineRoute).toContain(
+      '"parts_create_or_reuse_po_line_for_request"',
+    );
     expect(poLineRoute).toContain("p_idempotency_key");
+  });
+
+  it("validates release before creating a PO header and line in one transaction", () => {
+    expect(p0Migration).toContain(
+      "create or replace function public.parts_create_or_reuse_po_line_for_request",
+    );
+    expect(p0Migration).toContain(
+      "if not public.parts_request_is_operationally_released(v_item.request_id)",
+    );
+    expect(p0Migration).toContain("insert into public.purchase_orders");
+    expect(p0Migration).toContain("public.parts_create_po_line_for_request(");
+    expect(p0Migration).toContain("insert into public.parts_lifecycle_operations");
   });
 
   it("provides stable idempotency keys for attach, allocation, and ordering", () => {

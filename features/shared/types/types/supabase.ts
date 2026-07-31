@@ -9136,6 +9136,64 @@ export type Database = {
           },
         ]
       }
+      parts_lifecycle_operations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          idempotency_key: string
+          operation_type: string
+          part_request_item_id: string | null
+          result: Json
+          shop_id: string
+          work_order_part_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idempotency_key: string
+          operation_type: string
+          part_request_item_id?: string | null
+          result?: Json
+          shop_id: string
+          work_order_part_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idempotency_key?: string
+          operation_type?: string
+          part_request_item_id?: string | null
+          result?: Json
+          shop_id?: string
+          work_order_part_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_lifecycle_operations_part_request_item_id_fkey"
+            columns: ["part_request_item_id"]
+            isOneToOne: false
+            referencedRelation: "part_request_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_lifecycle_operations_work_order_part_id_fkey"
+            columns: ["work_order_part_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_net_issued_parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_lifecycle_operations_work_order_part_id_fkey"
+            columns: ["work_order_part_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parts_messages: {
         Row: {
           created_at: string | null
@@ -15607,6 +15665,58 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_users: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          role: string
+          shop_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          role?: string
+          shop_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          role?: string
+          shop_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_users_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_users_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_users_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_vehicle_menu_items: {
         Row: {
           created_at: string
@@ -20850,6 +20960,7 @@ export type Database = {
           sent_to_customer_at: string | null
           shop_id: string
           source_row_id: string | null
+          source_work_order_line_id: string | null
           stage: string | null
           status: string
           subtotal: number | null
@@ -20900,6 +21011,7 @@ export type Database = {
           sent_to_customer_at?: string | null
           shop_id: string
           source_row_id?: string | null
+          source_work_order_line_id?: string | null
           stage?: string | null
           status?: string
           subtotal?: number | null
@@ -20950,6 +21062,7 @@ export type Database = {
           sent_to_customer_at?: string | null
           shop_id?: string
           source_row_id?: string | null
+          source_work_order_line_id?: string | null
           stage?: string | null
           status?: string
           subtotal?: number | null
@@ -20988,6 +21101,20 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_quote_lines_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_quote_lines_source_work_order_line_id_fkey"
+            columns: ["source_work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
           {
@@ -23613,6 +23740,19 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_create_or_reuse_po_line_for_request: {
+        Args: {
+          p_idempotency_key: string
+          p_location_id?: string
+          p_notes?: string
+          p_po_id?: string
+          p_qty: number
+          p_request_item_id: string
+          p_supplier_id?: string
+          p_unit_cost?: number
+        }
+        Returns: Json
+      }
       parts_create_po_line_for_request: {
         Args: {
           p_idempotency_key?: string
@@ -23630,6 +23770,10 @@ export type Database = {
           p_request_id: string
           p_shop_id: string
         }
+        Returns: Json
+      }
+      parts_ensure_request_quote_line: {
+        Args: { p_request_id: string }
         Returns: Json
       }
       parts_ensure_work_order_part: {
@@ -24213,6 +24357,10 @@ export type Database = {
       shop_id_for: { Args: { uid: string }; Returns: string }
       shop_role: { Args: { shop_id: string }; Returns: string }
       shop_role_v2: { Args: { shop_id: string }; Returns: string }
+      shop_users_actor_can_manage: {
+        Args: { target_shop_id: string }
+        Returns: boolean
+      }
       sign_inspection: {
         Args: {
           p_expected_sync_revision: number
