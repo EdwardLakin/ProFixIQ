@@ -13,6 +13,38 @@ drop function if exists public.create_part_request_with_items(uuid, jsonb, uuid,
 -- These relations were reachable through the Data API with RLS disabled.
 -- Backup and operation-ledger rows are internal-only. Shop membership remains
 -- available through explicit, non-recursive tenant policies.
+create table if not exists public.parts_lifecycle_operations (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null,
+  idempotency_key text not null,
+  operation_type text not null,
+  part_request_item_id uuid references public.part_request_items(id)
+    on delete set null,
+  work_order_part_id uuid references public.work_order_parts(id)
+    on delete restrict,
+  result jsonb not null default '{}'::jsonb,
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  unique (shop_id, idempotency_key)
+);
+
+create table if not exists public.shop_users (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references public.shops(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null default 'owner'
+    check (role in ('owner', 'admin', 'editor', 'viewer')),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (shop_id, user_id)
+);
+
+create index if not exists idx_shop_users_shop_id
+  on public.shop_users(shop_id);
+create index if not exists idx_shop_users_user_id
+  on public.shop_users(user_id);
+
 alter table public.parts_lifecycle_operations enable row level security;
 alter table public.shop_users enable row level security;
 
