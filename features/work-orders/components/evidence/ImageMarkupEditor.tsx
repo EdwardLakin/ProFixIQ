@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowUpRight,
   Circle,
@@ -181,18 +182,23 @@ export default function ImageMarkupEditor({
   const save = async () => {
     setSaving(true);
     try {
-      const response = await fetch(`/api/work-orders/${item.workOrderId}/media`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save_annotation",
-          mediaId: item.id,
-          overlay: elements,
-          visibility,
-          clientMutationId: crypto.randomUUID(),
-        }),
-      });
-      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      const response = await fetch(
+        `/api/work-orders/${item.workOrderId}/media`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_annotation",
+            mediaId: item.id,
+            overlay: elements,
+            visibility,
+            clientMutationId: crypto.randomUUID(),
+          }),
+        },
+      );
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       if (!response.ok) {
         throw new Error(body?.error ?? "Unable to save markup");
       }
@@ -200,11 +206,21 @@ export default function ImageMarkupEditor({
       await onSaved();
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to save markup");
+      toast.error(
+        error instanceof Error ? error.message : "Unable to save markup",
+      );
     } finally {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   const tools: Array<{ value: Tool; label: string; icon: typeof PenLine }> = [
     { value: "path", label: "Draw", icon: PenLine },
@@ -213,91 +229,118 @@ export default function ImageMarkupEditor({
     { value: "text", label: "Text", icon: Type },
   ];
 
-  return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-black/95 p-3 sm:p-6">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
-        <header className="flex flex-wrap items-center gap-2 border-b border-[color:var(--theme-border-soft)] p-3">
-          <div className="mr-auto">
-            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-              Mark up evidence
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Mark up evidence"
+      className="fixed inset-0 z-[100] flex h-[100dvh] w-screen flex-col overflow-hidden bg-black/95 p-2 sm:p-4 lg:p-6"
+    >
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[96rem] flex-1 flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
+        <header className="max-h-[35dvh] shrink-0 overflow-y-auto border-b border-[color:var(--theme-border-soft)] p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="mr-auto">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Mark up evidence
+              </div>
+              <div className="text-xs text-[color:var(--theme-text-muted)]">
+                The original image remains unchanged.
+              </div>
             </div>
-            <div className="text-xs text-[color:var(--theme-text-muted)]">
-              The original image remains unchanged.
-            </div>
-          </div>
-          {tools.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={tool === value}
-              onClick={() => setTool(value)}
-              className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs ${
-                tool === value
-                  ? "border-[var(--brand-primary,#C1663B)] bg-[var(--brand-primary,#C1663B)]/15"
-                  : "border-[color:var(--theme-border-soft)]"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-          <div className="flex items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] p-1">
-            {EVIDENCE_COLORS.map((value) => (
+            {tools.map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
                 type="button"
-                aria-label={`Use ${value}`}
-                aria-pressed={color === value}
-                onClick={() => setColor(value)}
-                className={`h-6 w-6 rounded-full border-2 ${color === value ? "border-white" : "border-transparent"}`}
-                style={{ backgroundColor: value }}
-              />
+                aria-pressed={tool === value}
+                onClick={() => setTool(value)}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs ${
+                  tool === value
+                    ? "border-[var(--brand-primary,#C1663B)] bg-[var(--brand-primary,#C1663B)]/15"
+                    : "border-[color:var(--theme-border-soft)]"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
             ))}
+            <div className="flex items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] p-1">
+              {EVIDENCE_COLORS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-label={`Use ${value}`}
+                  aria-pressed={color === value}
+                  onClick={() => setColor(value)}
+                  className={`h-6 w-6 rounded-full border-2 ${color === value ? "border-white" : "border-transparent"}`}
+                  style={{ backgroundColor: value }}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!past.length}
+              className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40"
+              aria-label="Undo"
+            >
+              <Undo2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!future.length}
+              className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40"
+              aria-label="Redo"
+            >
+              <Redo2 className="h-4 w-4" />
+            </button>
           </div>
-          <button type="button" onClick={undo} disabled={!past.length} className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40" aria-label="Undo">
-            <Undo2 className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={redo} disabled={!future.length} className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40" aria-label="Redo">
-            <Redo2 className="h-4 w-4" />
-          </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-auto bg-black p-2 sm:p-5">
-          <div
-            ref={surfaceRef}
-            className="relative mx-auto max-w-5xl touch-none select-none overflow-hidden"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={() => {
-              setDraft(null);
-              dragStartRef.current = null;
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={item.displayUrl ?? ""}
-              alt={item.fileName ?? "Evidence to mark up"}
-              className="block h-auto max-h-[72vh] w-full object-contain"
-              draggable={false}
-            />
-            <EvidenceOverlay elements={visibleElements} interactive />
+        <div className="min-h-0 flex-1 overflow-auto overscroll-contain bg-black p-2 [-webkit-overflow-scrolling:touch] sm:p-4">
+          <div className="flex min-h-full min-w-full items-center justify-center">
+            <div
+              ref={surfaceRef}
+              className="relative inline-flex max-h-full max-w-full touch-none select-none overflow-hidden"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={() => {
+                setDraft(null);
+                dragStartRef.current = null;
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={item.displayUrl ?? ""}
+                alt={item.fileName ?? "Evidence to mark up"}
+                className="block h-auto max-h-[calc(100dvh-13rem)] w-auto max-w-full object-contain"
+                draggable={false}
+              />
+              <EvidenceOverlay elements={visibleElements} interactive />
+            </div>
           </div>
         </div>
 
-        <footer className="flex flex-wrap items-center gap-2 border-t border-[color:var(--theme-border-soft)] p-3">
+        <footer className="flex shrink-0 flex-wrap items-center gap-2 border-t border-[color:var(--theme-border-soft)] p-3">
           <label className="mr-auto flex items-center gap-2 text-xs">
             Markup visibility
             <select
               value={visibility}
-              onChange={(event) => setVisibility(event.target.value as EvidenceVisibility)}
+              onChange={(event) =>
+                setVisibility(event.target.value as EvidenceVisibility)
+              }
               className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1.5"
             >
               <option value="internal">Internal only</option>
               <option value="customer">Customer visible</option>
             </select>
           </label>
-          <button type="button" onClick={onClose} className="rounded-lg border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm"
+          >
             Cancel
           </button>
           <button
@@ -311,6 +354,7 @@ export default function ImageMarkupEditor({
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
