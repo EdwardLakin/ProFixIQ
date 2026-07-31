@@ -182,18 +182,23 @@ export default function ImageMarkupEditor({
   const save = async () => {
     setSaving(true);
     try {
-      const response = await fetch(`/api/work-orders/${item.workOrderId}/media`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "save_annotation",
-          mediaId: item.id,
-          overlay: elements,
-          visibility,
-          clientMutationId: crypto.randomUUID(),
-        }),
-      });
-      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      const response = await fetch(
+        `/api/work-orders/${item.workOrderId}/media`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_annotation",
+            mediaId: item.id,
+            overlay: elements,
+            visibility,
+            clientMutationId: crypto.randomUUID(),
+          }),
+        },
+      );
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       if (!response.ok) {
         throw new Error(body?.error ?? "Unable to save markup");
       }
@@ -201,7 +206,9 @@ export default function ImageMarkupEditor({
       await onSaved();
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to save markup");
+      toast.error(
+        error instanceof Error ? error.message : "Unable to save markup",
+      );
     } finally {
       setSaving(false);
     }
@@ -232,74 +239,86 @@ export default function ImageMarkupEditor({
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[96rem] flex-1 flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
         <header className="max-h-[35dvh] shrink-0 overflow-y-auto border-b border-[color:var(--theme-border-soft)] p-3">
           <div className="flex flex-wrap items-center gap-2">
-          <div className="mr-auto">
-            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-              Mark up evidence
+            <div className="mr-auto">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Mark up evidence
+              </div>
+              <div className="text-xs text-[color:var(--theme-text-muted)]">
+                The original image remains unchanged.
+              </div>
             </div>
-            <div className="text-xs text-[color:var(--theme-text-muted)]">
-              The original image remains unchanged.
-            </div>
-          </div>
-          {tools.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={tool === value}
-              onClick={() => setTool(value)}
-              className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs ${
-                tool === value
-                  ? "border-[var(--brand-primary,#C1663B)] bg-[var(--brand-primary,#C1663B)]/15"
-                  : "border-[color:var(--theme-border-soft)]"
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
-          <div className="flex items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] p-1">
-            {EVIDENCE_COLORS.map((value) => (
+            {tools.map(({ value, label, icon: Icon }) => (
               <button
                 key={value}
                 type="button"
-                aria-label={`Use ${value}`}
-                aria-pressed={color === value}
-                onClick={() => setColor(value)}
-                className={`h-6 w-6 rounded-full border-2 ${color === value ? "border-white" : "border-transparent"}`}
-                style={{ backgroundColor: value }}
-              />
+                aria-pressed={tool === value}
+                onClick={() => setTool(value)}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs ${
+                  tool === value
+                    ? "border-[var(--brand-primary,#C1663B)] bg-[var(--brand-primary,#C1663B)]/15"
+                    : "border-[color:var(--theme-border-soft)]"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
             ))}
-          </div>
-          <button type="button" onClick={undo} disabled={!past.length} className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40" aria-label="Undo">
-            <Undo2 className="h-4 w-4" />
-          </button>
-          <button type="button" onClick={redo} disabled={!future.length} className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40" aria-label="Redo">
-            <Redo2 className="h-4 w-4" />
-          </button>
+            <div className="flex items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] p-1">
+              {EVIDENCE_COLORS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-label={`Use ${value}`}
+                  aria-pressed={color === value}
+                  onClick={() => setColor(value)}
+                  className={`h-6 w-6 rounded-full border-2 ${color === value ? "border-white" : "border-transparent"}`}
+                  style={{ backgroundColor: value }}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={undo}
+              disabled={!past.length}
+              className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40"
+              aria-label="Undo"
+            >
+              <Undo2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={redo}
+              disabled={!future.length}
+              className="rounded-lg border border-[color:var(--theme-border-soft)] p-2 disabled:opacity-40"
+              aria-label="Redo"
+            >
+              <Redo2 className="h-4 w-4" />
+            </button>
           </div>
         </header>
 
         <div className="min-h-0 flex-1 overflow-auto overscroll-contain bg-black p-2 [-webkit-overflow-scrolling:touch] sm:p-4">
           <div className="flex min-h-full min-w-full items-center justify-center">
-          <div
-            ref={surfaceRef}
-            className="relative inline-flex max-h-full max-w-full touch-none select-none overflow-hidden"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={() => {
-              setDraft(null);
-              dragStartRef.current = null;
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={item.displayUrl ?? ""}
-              alt={item.fileName ?? "Evidence to mark up"}
-              className="block h-auto max-h-[calc(100dvh-13rem)] w-auto max-w-full object-contain"
-              draggable={false}
-            />
-            <EvidenceOverlay elements={visibleElements} interactive />
-          </div>
+            <div
+              ref={surfaceRef}
+              className="relative inline-flex max-h-full max-w-full touch-none select-none overflow-hidden"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={() => {
+                setDraft(null);
+                dragStartRef.current = null;
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={item.displayUrl ?? ""}
+                alt={item.fileName ?? "Evidence to mark up"}
+                className="block h-auto max-h-[calc(100dvh-13rem)] w-auto max-w-full object-contain"
+                draggable={false}
+              />
+              <EvidenceOverlay elements={visibleElements} interactive />
+            </div>
           </div>
         </div>
 
@@ -308,14 +327,20 @@ export default function ImageMarkupEditor({
             Markup visibility
             <select
               value={visibility}
-              onChange={(event) => setVisibility(event.target.value as EvidenceVisibility)}
+              onChange={(event) =>
+                setVisibility(event.target.value as EvidenceVisibility)
+              }
               className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1.5"
             >
               <option value="internal">Internal only</option>
               <option value="customer">Customer visible</option>
             </select>
           </label>
-          <button type="button" onClick={onClose} className="rounded-lg border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm"
+          >
             Cancel
           </button>
           <button
