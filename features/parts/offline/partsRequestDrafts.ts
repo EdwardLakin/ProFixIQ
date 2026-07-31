@@ -68,6 +68,26 @@ export function createOfflinePartsRequestItem(): OfflinePartsRequestItem {
   };
 }
 
+export function renewOfflinePartsRequestDraft(
+  draft: OfflinePartsRequestDraft,
+): OfflinePartsRequestDraft {
+  const id = crypto.randomUUID();
+  return {
+    ...draft,
+    id: `parts-draft:${id}`,
+    operationKey: `parts-draft:${id}:materialize`,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function isPartsDraftIdempotencyReuse(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error as Error & { status?: number }).status === 409 &&
+    error.message.includes("IDEMPOTENCY_KEY_REUSE")
+  );
+}
+
 export async function saveOfflinePartsRequestDraft(
   draft: OfflinePartsRequestDraft,
 ): Promise<void> {
@@ -191,29 +211,52 @@ export async function submitOfflinePartsRequestDraft(
     // Do not claim an offline queue is durable until device persistence succeeds.
     await saveOfflinePartsRequestDraft(draft);
   }
-  let requestId: string | null = null;
-  const result = await runMutationWithOfflineQueue({
-    clientMutationId: draft.operationKey,
-    actionType: "parts-request:create-draft",
-    payload: draft,
-    scope: { userId: draft.userId, shopId: draft.shopId },
-    orderKey: `${draft.workOrderId}:${draft.workOrderLineId}:parts:${draft.operationKey}`,
-    bestEffortOnlineHistory: true,
-    runner: async () => {
-      requestId = (await postOfflinePartsRequestDraft(draft)).requestId;
-    },
-  });
+  const submit = async (candidate: OfflinePartsRequestDraft) => {
+    let submittedRequestId: string | null = null;
+    const mutation = await runMutationWithOfflineQueue({
+      clientMutationId: candidate.operationKey,
+      actionType: "parts-request:create-draft",
+      payload: candidate,
+      scope: { userId: candidate.userId, shopId: candidate.shopId },
+      orderKey: `${candidate.workOrderId}:${candidate.workOrderLineId}:parts:${candidate.operationKey}`,
+      bestEffortOnlineHistory: true,
+      runner: async () => {
+        submittedRequestId = (
+          await postOfflinePartsRequestDraft(candidate)
+        ).requestId;
+      },
+    });
+    return { ...mutation, requestId: submittedRequestId };
+  };
+
+  let submittedDraft = draft;
+  let result: Awaited<ReturnType<typeof submit>>;
+  try {
+    result = await submit(submittedDraft);
+  } catch (error) {
+    if (!isPartsDraftIdempotencyReuse(error)) throw error;
+
+    // A successful request can outlive its local IndexedDB cleanup. If that
+    // stale draft is edited later, the server correctly rejects the old key
+    // because it belongs to the previously committed payload. Give the edited
+    // request a new identity and retry once; all ordinary retries retain the
+    // original stable key.
+    submittedDraft = renewOfflinePartsRequestDraft(draft);
+    await saveOfflinePartsRequestDraft(submittedDraft);
+    result = await submit(submittedDraft);
+  }
   if (!result.conflicted) {
     try {
-      await removeOfflinePartsRequestDraft({
+      await removeOfflineSnapshots({
         scope: { userId: draft.userId, shopId: draft.shopId },
-        draftId: draft.id,
+        kind: KIND,
+        entityIds: [...new Set([draft.id, submittedDraft.id])],
       });
     } catch {
       // Cleanup is best-effort once the request was submitted or durably queued.
     }
   }
-  return { ...result, requestId };
+  return result;
 }
 
 export async function resolveAndSubmitDependentPartsDrafts(args: {

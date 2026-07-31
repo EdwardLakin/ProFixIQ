@@ -56,7 +56,7 @@ describe("offline parts-request drafts", () => {
   it("uses the global ordered mutation queue for both advisor and technician requests", () => {
     expect(repository).toContain("runMutationWithOfflineQueue");
     expect(repository).toContain('actionType: "parts-request:create-draft"');
-    expect(repository).toContain("clientMutationId: draft.operationKey");
+    expect(repository).toContain("clientMutationId: candidate.operationKey");
     expect(repository).toContain("orderKey:");
     expect(modal).toContain("submitOfflinePartsRequestDraft");
     expect(modal).not.toContain("await saveOfflinePartsRequestDraft(draft)");
@@ -68,6 +68,21 @@ describe("offline parts-request drafts", () => {
     expect(replay).toContain('"parts-request:create-draft"');
     expect(replay).toContain("postOfflinePartsRequestDraft(draft)");
     expect(replay).toContain("removeOfflinePartsRequestDraft");
+  });
+
+  it("renews only a stale operation key rejected for different draft data", () => {
+    expect(repository).toContain("function isPartsDraftIdempotencyReuse");
+    expect(repository).toContain(
+      'error.message.includes("IDEMPOTENCY_KEY_REUSE")',
+    );
+    expect(repository).toContain("renewOfflinePartsRequestDraft(draft)");
+    expect(repository).toContain("result = await submit(submittedDraft)");
+    expect(repository).toContain(
+      "entityIds: [...new Set([draft.id, submittedDraft.id])]",
+    );
+    expect(repository).not.toContain(
+      "if (error instanceof Error) renewOfflinePartsRequestDraft",
+    );
   });
 
   it("derives server scope from the actor and initializes the RLS shop context", () => {
