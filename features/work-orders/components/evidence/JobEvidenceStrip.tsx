@@ -196,7 +196,7 @@ export default function JobEvidenceStrip({ evidence }: Props): JSX.Element {
       </div>
 
       <Dialog
-        open={selected !== null}
+        open={selected !== null && !editing}
         onOpenChange={(open) => {
           if (!open) closePreview();
         }}
@@ -212,17 +212,7 @@ export default function JobEvidenceStrip({ evidence }: Props): JSX.Element {
             onClick={stopCardClick}
             onKeyDown={stopCardKeyDown}
           >
-            {editing && !selectedIsVideo ? (
-              <ImageMarkupEditor
-                item={selected}
-                onClose={() => setEditing(false)}
-                onSaved={async () => {
-                  await loadMedia(selected);
-                  setShowMarkup(true);
-                }}
-              />
-            ) : (
-              <>
+            <>
                 <DialogHeader className="flex-row items-start justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
                     <DialogTitle className="truncate text-sm normal-case tracking-normal">
@@ -332,10 +322,20 @@ export default function JobEvidenceStrip({ evidence }: Props): JSX.Element {
                   </div>
                 ) : null}
               </>
-            )}
           </DialogContent>
         ) : null}
       </Dialog>
+
+      {editing && selected && !selectedIsVideo ? (
+        <ImageMarkupEditor
+          item={selected}
+          onClose={() => setEditing(false)}
+          onSaved={async () => {
+            await loadMedia(selected);
+            setShowMarkup(true);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
