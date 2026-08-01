@@ -54,4 +54,18 @@ describe("create work order fast-intake redesign", () => {
     expect(createPage).toContain("min-h-11 w-full");
     expect(createPage).toContain("min-h-10 items-center");
   });
+
+  it("renders every intake control as a separate rounded themed field", () => {
+    expect(customerVehicleForm).toContain(
+      "const intakeFieldClass = `${ui.input} min-h-11 rounded-xl`",
+    );
+    expect(createPage).toContain(
+      "const formControlClass = `${ui.input} min-h-11 rounded-xl`",
+    );
+    expect(customerVehicleForm).not.toContain('className="input"');
+    expect(createPage).not.toContain('className="input"');
+    expect(customerVehicleForm).toContain(
+      'className="grid grid-cols-1 gap-3 sm:grid-cols-2"',
+    );
+  });
 });

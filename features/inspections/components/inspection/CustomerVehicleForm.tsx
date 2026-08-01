@@ -13,6 +13,9 @@ import {
   type VehicleDuplicateMatch,
 } from "@/features/shared/lib/vehicles/duplicateCheck";
 import { CarFront, CheckCircle2, ChevronDown, UserRound } from "lucide-react";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
+
+const intakeFieldClass = `${ui.input} min-h-11 rounded-xl`;
 
 type VehicleInfo = SessionVehicle & {
   submodel?: string | null;
@@ -796,7 +799,7 @@ export default function CustomerVehicleForm({
                 </span>
               </label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Business name"
                 value={customer.business_name ?? ""}
                 onChange={(e) => {
@@ -821,7 +824,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>First name</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="First name"
                 value={customer.first_name ?? ""}
                 onChange={(e) => {
@@ -846,7 +849,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Last name</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Last name"
                 value={customer.last_name ?? ""}
                 onChange={(e) => {
@@ -871,7 +874,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Phone</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Phone"
                 value={customer.phone ?? ""}
                 onChange={(e) => {
@@ -897,7 +900,7 @@ export default function CustomerVehicleForm({
               <label className={labelClass}>Email</label>
               <input
                 type="email"
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Email"
                 value={customer.email ?? ""}
                 onChange={(e) => {
@@ -931,7 +934,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1 sm:col-span-2">
                 <label className={labelClass}>Address</label>
                 <input
-                  className="input"
+                  className={intakeFieldClass}
                   placeholder="Street address"
                   value={customer.address ?? ""}
                   onChange={(e) =>
@@ -942,7 +945,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1">
                 <label className={labelClass}>City</label>
                 <input
-                  className="input"
+                  className={intakeFieldClass}
                   placeholder="City"
                   value={customer.city ?? ""}
                   onChange={(e) =>
@@ -953,7 +956,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1">
                 <label className={labelClass}>Province</label>
                 <input
-                  className="input"
+                  className={intakeFieldClass}
                   placeholder="Province / State"
                   value={customer.province ?? ""}
                   onChange={(e) =>
@@ -964,7 +967,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1">
                 <label className={labelClass}>Postal code</label>
                 <input
-                  className="input"
+                  className={intakeFieldClass}
                   placeholder="Postal code"
                   value={customer.postal_code ?? ""}
                   onChange={(e) =>
@@ -1040,7 +1043,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Unit #</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Unit #"
                 value={vehicle.unit_number ?? ""}
                 onChange={(e) =>
@@ -1061,7 +1064,7 @@ export default function CustomerVehicleForm({
               <label className={labelClass}>Year</label>
               <input
                 inputMode="numeric"
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Year"
                 value={vehicle.year ?? ""}
                 onChange={(e) => safeSetVehicle("year", e.target.value || null)}
@@ -1072,7 +1075,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Make</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Make"
                 value={vehicle.make ?? ""}
                 onChange={(e) => safeSetVehicle("make", e.target.value || null)}
@@ -1083,7 +1086,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>Model</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Model"
                 value={vehicle.model ?? ""}
                 onChange={(e) =>
@@ -1096,7 +1099,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>VIN</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="VIN"
                 value={vehicle.vin ?? ""}
                 onChange={(e) => safeSetVehicle("vin", e.target.value || null)}
@@ -1107,7 +1110,7 @@ export default function CustomerVehicleForm({
             <div className="space-y-1">
               <label className={labelClass}>License plate</label>
               <input
-                className="input"
+                className={intakeFieldClass}
                 placeholder="License plate"
                 value={vehicle.license_plate ?? ""}
                 onChange={(e) =>
@@ -1128,7 +1131,7 @@ export default function CustomerVehicleForm({
               <label className={labelClass}>Mileage</label>
               <input
                 inputMode="numeric"
-                className="input"
+                className={intakeFieldClass}
                 placeholder="Mileage"
                 value={vehicle.mileage ?? ""}
                 onChange={(e) =>
@@ -1150,7 +1153,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1">
                 <label className={labelClass}>Color</label>
                 <input
-                  className="input"
+                  className={intakeFieldClass}
                   placeholder="Color"
                   value={vehicle.color ?? ""}
                   onChange={(e) =>
@@ -1162,7 +1165,7 @@ export default function CustomerVehicleForm({
                 <label className={labelClass}>Engine hours</label>
                 <input
                   inputMode="numeric"
-                  className="input"
+                  className={intakeFieldClass}
                   placeholder="Engine hours"
                   value={vehicle.engine_hours ?? ""}
                   onChange={(e) =>
@@ -1173,7 +1176,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1">
                 <label className={labelClass}>Engine / Trim</label>
                 <input
-                  className="input"
+                  className={intakeFieldClass}
                   placeholder="e.g. 3.5L EcoBoost"
                   value={vehicle.engine ?? ""}
                   onChange={(e) =>
@@ -1184,7 +1187,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1">
                 <label className={labelClass}>Transmission</label>
                 <select
-                  className="input"
+                  className={intakeFieldClass}
                   value={vehicle.transmission ?? ""}
                   onChange={(e) =>
                     safeSetVehicle("transmission", e.target.value || null)
@@ -1201,7 +1204,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1">
                 <label className={labelClass}>Fuel type</label>
                 <select
-                  className="input"
+                  className={intakeFieldClass}
                   value={vehicle.fuel_type ?? ""}
                   onChange={(e) =>
                     safeSetVehicle("fuel_type", e.target.value || null)
@@ -1220,7 +1223,7 @@ export default function CustomerVehicleForm({
               <div className="space-y-1">
                 <label className={labelClass}>Drivetrain</label>
                 <select
-                  className="input"
+                  className={intakeFieldClass}
                   value={vehicle.drivetrain ?? ""}
                   onChange={(e) =>
                     safeSetVehicle("drivetrain", e.target.value || null)
