@@ -335,15 +335,15 @@ export const TILES: Tile[] = [
   {
     href: "/fleet/units/new",
     title: "Add Fleet Unit",
-    subtitle: "Enroll units into programs",
+    subtitle: "Assign vehicles to fleets",
     roles: ["owner", "admin", "manager", "fleet_manager"],
     scopes: ["management", "inspections", "all"],
     section: "Fleet",
   },
   {
     href: "/fleet/programs",
-    title: "Fleet Programs",
-    subtitle: "Groups, contacts & notes",
+    title: "Manage Fleets",
+    subtitle: "Create fleets and contacts",
     roles: ["owner", "admin", "manager", "fleet_manager"],
     scopes: ["management", "settings", "all"],
     section: "Fleet",
