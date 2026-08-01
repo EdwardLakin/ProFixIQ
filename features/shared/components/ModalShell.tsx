@@ -52,8 +52,8 @@ export default function ModalShell({
 
       <div className={`relative z-[510] w-full ${width}`}>
         <Dialog.Panel className="relative w-full overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]">
-          <div className="absolute inset-x-0 top-0 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
-          <div className="pointer-events-none absolute inset-x-10 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.14),transparent_72%)]" />
+          <div className="absolute inset-x-0 top-0 z-20 h-[3px] bg-[linear-gradient(90deg,transparent,var(--brand-primary),var(--brand-accent),transparent)]" />
+          <div className="pointer-events-none absolute inset-x-10 top-0 z-10 h-24 bg-[radial-gradient(circle_at_top,color-mix(in_srgb,var(--brand-primary)_18%,transparent),transparent_72%)]" />
 
           <div className="relative flex items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 sm:px-5">
             <div className="min-w-0">
@@ -97,7 +97,12 @@ export default function ModalShell({
               </div>
 
               <div className="flex gap-2">
-                <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClose}
+                >
                   Cancel
                 </Button>
 
