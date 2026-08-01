@@ -4,7 +4,6 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
-import { upsertMenuRepairItemFromQuoteLine } from "@/features/menu-repair-items/server/upsertMenuRepairItemFromQuoteLine";
 
 export const runtime = "nodejs";
 
@@ -243,51 +242,7 @@ export async function POST(req: Request) {
     });
   }
 
-  const menuRepairLearning: Array<{
-    quoteLineId: string;
-    workOrderLineId: string;
-    error: string | null;
-  }> = [];
-
-  if (approvedQuoteLineIds.length > 0) {
-    const { data: mappings } = await supabase
-      .from("work_order_quote_lines")
-      .select("id,work_order_line_id")
-      .eq("shop_id", workOrder.shop_id)
-      .eq("work_order_id", workOrderId)
-      .in("id", approvedQuoteLineIds);
-
-    for (const mapping of mappings ?? []) {
-      if (!mapping.work_order_line_id) continue;
-      try {
-        await upsertMenuRepairItemFromQuoteLine({
-          supabase,
-          shopId: workOrder.shop_id,
-          workOrderId,
-          quoteLineId: mapping.id,
-          workOrderLineId: mapping.work_order_line_id,
-          actorUserId: user.id,
-        });
-        menuRepairLearning.push({
-          quoteLineId: mapping.id,
-          workOrderLineId: mapping.work_order_line_id,
-          error: null,
-        });
-      } catch (learningError) {
-        menuRepairLearning.push({
-          quoteLineId: mapping.id,
-          workOrderLineId: mapping.work_order_line_id,
-          error:
-            learningError instanceof Error
-              ? learningError.message
-              : "Menu repair learning failed",
-        });
-      }
-    }
-  }
-
   return NextResponse.json({
     ...(data && typeof data === "object" ? data : { ok: true }),
-    menuRepairLearning,
   });
 }

@@ -32,14 +32,6 @@ type QueueRow = WorkOrderLine & {
   menu_repair_item_id?: string | null;
 };
 
-type MenuUpsertResponse = {
-  ok: boolean;
-  menuItemId?: string;
-  updated?: boolean;
-  error?: string;
-  detail?: string;
-};
-
 type ApplyAiUnmatched = { name: string; qty: number };
 type ApplyAiResponse = {
   ok?: boolean;
@@ -371,50 +363,13 @@ export default function QuotingQueuePage(): JSX.Element {
     [fetchQueue],
   );
 
-  // ---- Mark as quoted (still pending approval) + grow Saved Menu
+  // ---- Mark as quoted (still pending approval)
   const markQuoted = useCallback(
     async (row: QueueRow) => {
       if (!row.id) return;
       toast.loading("Marking as quoted…", { id: `quoted-${row.id}` });
 
       try {
-        const [menuRes, repairRes] = await Promise.all([
-          fetch("/api/menu-items/upsert-from-line", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workOrderLineId: row.id }),
-          }),
-          fetch("/api/menu-repair-items/upsert-from-line", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workOrderLineId: row.id }),
-          }),
-        ]);
-
-        const menuRaw = await safeText(menuRes);
-        const menuBody = tryParseJson<MenuUpsertResponse>(menuRaw);
-
-        const repairRaw = await safeText(repairRes);
-        const repairBody = tryParseJson<{ ok?: boolean; detail?: string; error?: string }>(repairRaw);
-
-        if (!menuRes.ok || !menuBody?.ok) {
-          const reason =
-            menuBody?.detail || menuBody?.error || menuRaw || `HTTP ${menuRes.status}`;
-          toast.warning(`Quoted, but couldn’t save to menu items. ${reason}`, {
-            id: `quoted-${row.id}`,
-          });
-          return;
-        }
-
-        if (!repairRes.ok || !repairBody?.ok) {
-          const reason =
-            repairBody?.detail || repairBody?.error || repairRaw || `HTTP ${repairRes.status}`;
-          toast.warning(`Quoted, but couldn’t save to menu repair items. ${reason}`, {
-            id: `quoted-${row.id}`,
-          });
-          return;
-        }
-
         const nextNotes = `${row.notes ?? ""}`.includes("[quoted]")
           ? row.notes
           : [row.notes ?? "", "[quoted]"].filter(Boolean).join(" ").trim();
@@ -430,11 +385,13 @@ export default function QuotingQueuePage(): JSX.Element {
           .eq("id", row.id);
 
         if (ue) {
-          toast.success("Saved Menu updated, but line status could not be set to quoted.", {
+          toast.error("Line status could not be set to quoted.", {
             id: `quoted-${row.id}`,
           });
         } else {
-          toast.success("Marked as quoted (awaiting approval). Menu + repair memory updated.", { id: `quoted-${row.id}` });
+          toast.success("Marked as quoted (awaiting approval).", {
+            id: `quoted-${row.id}`,
+          });
         }
 
         await fetchQueue();

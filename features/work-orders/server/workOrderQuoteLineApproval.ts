@@ -3,10 +3,6 @@ import "server-only";
 import crypto from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  upsertMenuRepairItemFromQuoteLine,
-  type UpsertMenuRepairItemFromQuoteLineResult,
-} from "@/features/menu-repair-items/server/upsertMenuRepairItemFromQuoteLine";
 
 type DB = Database;
 
@@ -17,13 +13,6 @@ export type QuoteDecisionContactMethod =
   | "in_person"
   | "email"
   | "other";
-
-export type QuoteLineLearningResult = {
-  quoteLineId: string;
-  workOrderLineId: string;
-  result: UpsertMenuRepairItemFromQuoteLineResult | null;
-  error: string | null;
-};
 
 export type RelinkQuoteLinePartsResult = {
   partRequestsRelinked: number;
@@ -114,7 +103,6 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   declinedRemainingQuoteLineIds: string[];
   approvalState: string | null;
   partRelink: RelinkQuoteLinePartsResult;
-  menuRepairLearning: QuoteLineLearningResult[];
   idempotent?: boolean;
   error?: string;
 }> {
@@ -128,7 +116,6 @@ export async function applyWorkOrderQuoteLineDecision(params: {
       declinedRemainingQuoteLineIds: [],
       approvalState: null,
       partRelink: emptyPartRelinkResult(),
-      menuRepairLearning: [],
       error: "No quote line ids supplied",
     };
   }
@@ -180,7 +167,6 @@ export async function applyWorkOrderQuoteLineDecision(params: {
       declinedRemainingQuoteLineIds: [],
       approvalState: null,
       partRelink: emptyPartRelinkResult(),
-      menuRepairLearning: [],
       error: messageFromRpcError(error),
     };
   }
@@ -191,9 +177,6 @@ export async function applyWorkOrderQuoteLineDecision(params: {
         (id): id is string => typeof id === "string",
       )
     : [];
-  const committedQuoteLineIds = Array.isArray(result.quote_line_ids)
-    ? result.quote_line_ids.filter((id): id is string => typeof id === "string")
-    : quoteLineIds;
   const declinedRemainingQuoteLineIds = Array.isArray(
     result.declined_remaining_quote_line_ids,
   )
@@ -210,46 +193,6 @@ export async function applyWorkOrderQuoteLineDecision(params: {
       : [],
   };
 
-  const menuRepairLearning: QuoteLineLearningResult[] = [];
-  if (params.decision === "approve" && workOrderLineIds.length > 0) {
-    const { data: mappings } = await params.supabase
-      .from("work_order_quote_lines")
-      .select("id, work_order_line_id")
-      .eq("shop_id", params.shopId)
-      .eq("work_order_id", params.workOrderId)
-      .in("id", committedQuoteLineIds);
-
-    for (const mapping of mappings ?? []) {
-      if (!mapping.work_order_line_id) continue;
-      try {
-        const learningResult = await upsertMenuRepairItemFromQuoteLine({
-          supabase: params.supabase,
-          shopId: params.shopId,
-          workOrderId: params.workOrderId,
-          quoteLineId: mapping.id,
-          workOrderLineId: mapping.work_order_line_id,
-          actorUserId: params.actorUserId,
-        });
-        menuRepairLearning.push({
-          quoteLineId: mapping.id,
-          workOrderLineId: mapping.work_order_line_id,
-          result: learningResult,
-          error: null,
-        });
-      } catch (learningError) {
-        menuRepairLearning.push({
-          quoteLineId: mapping.id,
-          workOrderLineId: mapping.work_order_line_id,
-          result: null,
-          error:
-            learningError instanceof Error
-              ? learningError.message
-              : "Unknown menu repair learning error",
-        });
-      }
-    }
-  }
-
   return {
     ok: result.ok !== false,
     workOrderLineIds,
@@ -257,7 +200,6 @@ export async function applyWorkOrderQuoteLineDecision(params: {
     approvalState:
       typeof result.approval_state === "string" ? result.approval_state : null,
     partRelink,
-    menuRepairLearning,
     idempotent: result.idempotent === true,
   };
 }

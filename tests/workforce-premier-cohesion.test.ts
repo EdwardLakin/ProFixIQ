@@ -364,7 +364,9 @@ describe("premier workforce cohesion", () => {
       'rpc("create_menu_item_with_parts_intake"',
     );
     expect(menuPage).toContain("idempotency_key:");
-    expect(menuPage).toContain("automatically sent to internal intake");
+    expect(menuPage).toContain(
+      "requested automatically whenever this service is added to a work order",
+    );
     expect(menuPage).not.toContain("Paste work_order_id");
     expect(menuPage).not.toContain("Create parts request (internal)");
     expect(menuItemPage).toContain(

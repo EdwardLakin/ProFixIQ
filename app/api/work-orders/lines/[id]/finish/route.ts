@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
+import { upsertMenuRepairItemFromCompletedLine } from "@/features/menu-repair-items/server/upsertMenuRepairItemFromCompletedLine";
 
 type Body = {
   cause?: string | null;
@@ -68,5 +69,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json(result.payload ?? { success: true });
+  let menuRepairLearned = false;
+
+  const { data: completedLine, error: completedLineError } = await supabase
+    .from("work_order_lines")
+    .select("id, shop_id")
+    .eq("id", id)
+    .maybeSingle<{ id: string; shop_id: string | null }>();
+
+  if (completedLineError || !completedLine?.shop_id) {
+    console.error("[work-orders] completed repair memory update failed", {
+      workOrderLineId: id,
+      error:
+        completedLineError?.message ?? "Completed line is missing shop context",
+    });
+  } else {
+    try {
+      await upsertMenuRepairItemFromCompletedLine({
+        supabase,
+        shopId: completedLine.shop_id,
+        workOrderLineId: completedLine.id,
+        actorUserId: user.id,
+      });
+      menuRepairLearned = true;
+    } catch (learningError) {
+      console.error("[work-orders] completed repair memory update failed", {
+        workOrderLineId: id,
+        error:
+          learningError instanceof Error
+            ? learningError.message
+            : "Completed repair memory update failed",
+      });
+    }
+  }
+
+  const payload =
+    result.payload && typeof result.payload === "object"
+      ? result.payload
+      : { success: true };
+  return NextResponse.json({
+    ...payload,
+    menuRepairLearning: { ok: menuRepairLearned },
+  });
 }
