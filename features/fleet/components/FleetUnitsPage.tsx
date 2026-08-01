@@ -115,7 +115,7 @@ export default function FleetUnitsPage({
               <h1 className={ui.title}>Fleet Units</h1>
               <p className={ui.subtitle}>
                 Master list of tractors, trailers, buses and other HD assets
-                enrolled in fleet programs.
+                assigned to fleets.
               </p>
               <p className={ui.note}>Actor surface: {uiContext.actorLabel}</p>
             </div>
@@ -151,7 +151,7 @@ export default function FleetUnitsPage({
             </div>
 
             <div className="text-[11px] text-[color:var(--theme-text-muted)] md:pl-3">
-              Units shown are linked from your fleet programs and vehicle list.
+              Units shown are linked from your fleets and vehicle list.
             </div>
           </div>
         </div>
@@ -176,7 +176,7 @@ export default function FleetUnitsPage({
                 No fleet units found
               </div>
               <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
-                Add vehicles to a fleet program to see them here.
+                Add vehicles to a fleet to see them here.
               </p>
             </div>
           )}
