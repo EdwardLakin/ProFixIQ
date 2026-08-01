@@ -9,6 +9,30 @@ import {
   normalizeWorkOrderOperationalStage,
 } from "@/features/work-orders/lib/operational-stage";
 
+type WaitingBoardRow = {
+  overall_stage?: unknown;
+  has_waiting_parts?: boolean | null;
+};
+
+export const ACTIONABLE_WORK_ORDER_NOTIFICATION_FILTER =
+  "overall_stage.eq.awaiting_approval,and(overall_stage.eq.waiting,has_waiting_parts.eq.true)";
+
+export function isWaitingPartsOperationalBlocker(
+  row: WaitingBoardRow,
+): boolean {
+  return (
+    normalizeWorkOrderOperationalStage(row.overall_stage) === "waiting" &&
+    row.has_waiting_parts === true
+  );
+}
+
+export function isGenericWaitingWorkOrder(row: WaitingBoardRow): boolean {
+  return (
+    normalizeWorkOrderOperationalStage(row.overall_stage) === "waiting" &&
+    row.has_waiting_parts !== true
+  );
+}
+
 export function formatStageLabel(
   row: WorkOrderBoardRow,
   variant: WorkOrderBoardVariant,
@@ -125,7 +149,7 @@ export function buildBlockers(row: WorkOrderBoardRow, variant: WorkOrderBoardVar
     chips.push("Unassigned");
   }
 
-  if (row.has_waiting_parts) {
+  if (isWaitingPartsOperationalBlocker(row)) {
     chips.push(variant === "portal" ? "Parts on order" : "Waiting parts");
   }
 
@@ -135,7 +159,7 @@ export function buildBlockers(row: WorkOrderBoardRow, variant: WorkOrderBoardVar
     chips.push(variant === "portal" ? "Approval needed" : "Awaiting approval");
   }
 
-  if (stage === "waiting" && !row.has_waiting_parts) {
+  if (isGenericWaitingWorkOrder(row)) {
     chips.push(variant === "portal" ? "Preparing next step" : "Waiting");
   }
 

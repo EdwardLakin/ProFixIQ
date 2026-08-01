@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/types/types/supabase";
+import { isWaitingPartsOperationalBlocker } from "@/features/shared/lib/workboard/utils";
 import { shopLocalDateTimeToUtc } from "@/features/shared/lib/utils/shopDayWindow";
 import type {
   OwnerIntelligenceReport,
@@ -837,7 +838,7 @@ export async function buildOwnerIntelligenceReport(args: {
     (row) => row.overall_stage === "awaiting_approval",
   );
   const waitingPartsCards = boardCards.filter(
-    (row) => row.has_waiting_parts === true,
+    isWaitingPartsOperationalBlocker,
   );
   const onHoldCards = boardCards.filter(
     (row) => row.overall_stage === "waiting" && row.has_waiting_parts !== true,

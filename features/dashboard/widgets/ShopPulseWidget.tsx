@@ -6,6 +6,10 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import DashboardWidgetShell from "@/features/dashboard/components/DashboardWidgetShell";
 import { toDashboardFallbackMessage } from "@/features/dashboard/lib/widget-fallback";
+import {
+  isGenericWaitingWorkOrder,
+  isWaitingPartsOperationalBlocker,
+} from "@/features/shared/lib/workboard/utils";
 import StatusBadge from "@shared/components/ui/StatusBadge";
 import { cn } from "@shared/lib/utils";
 
@@ -101,10 +105,8 @@ export default function ShopPulseWidget({
   const pulse = useMemo(() => {
     const active = rows.filter((r) => r.overall_stage !== "closed");
     const approvals = active.filter((r) => r.overall_stage === "awaiting_approval");
-    const parts = active.filter((r) => r.has_waiting_parts === true);
-    const waiting = active.filter(
-      (r) => r.overall_stage === "waiting" && r.has_waiting_parts !== true,
-    );
+    const parts = active.filter(isWaitingPartsOperationalBlocker);
+    const waiting = active.filter(isGenericWaitingWorkOrder);
     const urgent = active.filter((r) => r.priority === 1);
     const waiters = active.filter((r) => !!r.is_waiter);
     const danger = active.filter((r) => r.risk_level === "danger");

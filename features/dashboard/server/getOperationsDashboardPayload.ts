@@ -8,6 +8,7 @@ import {
   CANONICAL_WORK_ORDER_OPERATIONAL_STAGES,
   WORK_ORDER_OPERATIONAL_STAGE_LABELS,
 } from "@/features/work-orders/lib/operational-stage";
+import { isGenericWaitingWorkOrder } from "@/features/shared/lib/workboard/utils";
 
 const OPEN_PART_STATUSES = [
   "requested",
@@ -795,7 +796,7 @@ export async function getOperationsDashboardPayload(): Promise<OperationsDashboa
     href: waitingPartsTargetHref,
     targetKind: waitingPartsTargetKind,
   };
-  const waitingCount = activeBoardRows.filter((row) => row.overall_stage === "waiting").length;
+  const waitingCount = activeBoardRows.filter(isGenericWaitingWorkOrder).length;
   const waiterCount = activeBoardRows.filter((row) => Boolean(row.is_waiter)).length;
   const longRunningCount = activeBoardRows.filter((row) => (row.time_in_stage_seconds ?? 0) >= 4 * 60 * 60).length;
   const idleTechCount = Math.max(0, payload.topSummary.techniciansClockedIn - activeLines.length);

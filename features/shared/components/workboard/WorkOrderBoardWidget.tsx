@@ -20,6 +20,7 @@ import type {
 import {
   buildBlockers,
   formatStageLabel,
+  isWaitingPartsOperationalBlocker,
   timeAgoLabel,
 } from "../../lib/workboard/utils";
 
@@ -78,7 +79,7 @@ export default function WorkOrderBoardWidget(props: {
   const inProgress = rows.filter(
     (row) => row.overall_stage === "in_progress",
   ).length;
-  const waitingParts = rows.filter((row) => row.has_waiting_parts).length;
+  const waitingParts = rows.filter(isWaitingPartsOperationalBlocker).length;
 
   return (
     <section aria-labelledby="compact-work-board-title" className="space-y-4">

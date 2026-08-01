@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 
 import { parseWorkOrderBoardStageFilter } from "@/features/shared/lib/workboard/filters";
 import {
+  ACTIONABLE_WORK_ORDER_NOTIFICATION_FILTER,
+  buildBlockers,
+  isGenericWaitingWorkOrder,
+  isWaitingPartsOperationalBlocker,
+} from "@/features/shared/lib/workboard/utils";
+import {
   CANONICAL_WORK_ORDER_OPERATIONAL_STAGES,
   normalizeWorkOrderOperationalStage,
   toCustomerSafeWorkOrderStatus,
@@ -10,7 +16,7 @@ import {
 } from "@/features/work-orders/lib/operational-stage";
 
 const migration = readFileSync(
-  "supabase/migrations/20260801164830_protected_canonical_work_order_lifecycle.sql",
+  "supabase/migrations/20260801221903_correct_work_order_lifecycle_review_findings.sql",
   "utf8",
 );
 const workOrderList = readFileSync(
@@ -39,7 +45,7 @@ describe("protected canonical work-order lifecycle", () => {
   it("normalizes rolling-deployment values but keeps old board links meaningful", () => {
     expect(normalizeWorkOrderOperationalStage("waiting_parts")).toBe("waiting");
     expect(normalizeWorkOrderOperationalStage("ready_to_invoice")).toBe("ready");
-    expect(normalizeWorkOrderOperationalStage("completed")).toBe("closed");
+    expect(normalizeWorkOrderOperationalStage("completed")).toBe("ready");
     expect(parseWorkOrderBoardStageFilter("waiting_parts")).toBe("waiting");
     expect(parseWorkOrderBoardStageFilter("completed")).toBe("ready");
   });
@@ -67,6 +73,85 @@ describe("protected canonical work-order lifecycle", () => {
     }
 
     expect(migration).not.toContain("add column operational_stage");
+  });
+
+  it("keeps completed work billable and unresolved partial decisions actionable", () => {
+    expect(migration).toContain("'ready', 'ready_to_invoice', 'completed'");
+    expect(migration).not.toContain(
+      "'closed', 'completed', 'invoiced', 'cancelled', 'canceled'",
+    );
+
+    const awaitingDecisionBranch = migration.indexOf(
+      "when coalesce(qr.any_awaiting_decision, false)",
+    );
+    const authorizedBranch = migration.indexOf(
+      "when coalesce(lr.any_authorized, false)",
+    );
+    expect(awaitingDecisionBranch).toBeGreaterThan(-1);
+    expect(authorizedBranch).toBeGreaterThan(awaitingDecisionBranch);
+  });
+
+  it("separates current parts blockers from terminal and generic waiting work", () => {
+    expect(
+      isWaitingPartsOperationalBlocker({
+        overall_stage: "waiting",
+        has_waiting_parts: true,
+      }),
+    ).toBe(true);
+    expect(
+      isWaitingPartsOperationalBlocker({
+        overall_stage: "closed",
+        has_waiting_parts: true,
+      }),
+    ).toBe(false);
+    expect(
+      isGenericWaitingWorkOrder({
+        overall_stage: "waiting",
+        has_waiting_parts: true,
+      }),
+    ).toBe(false);
+    expect(
+      isGenericWaitingWorkOrder({
+        overall_stage: "waiting",
+        has_waiting_parts: false,
+      }),
+    ).toBe(true);
+    expect(ACTIONABLE_WORK_ORDER_NOTIFICATION_FILTER).toBe(
+      "overall_stage.eq.awaiting_approval,and(overall_stage.eq.waiting,has_waiting_parts.eq.true)",
+    );
+    expect(
+      buildBlockers(
+        {
+          work_order_id: "wo-closed",
+          custom_id: "WO-CLOSED",
+          display_name: "Customer",
+          unit_label: null,
+          vehicle_label: null,
+          jobs_total: 1,
+          jobs_completed: 1,
+          progress_pct: 100,
+          overall_stage: "closed",
+          has_waiting_parts: true,
+        },
+        "shop",
+      ),
+    ).not.toContain("Waiting parts");
+    expect(
+      migration.match(
+        /when stage\.overall_stage = 'waiting'\s+and coalesce\(pr\.has_waiting_parts, false\)/g,
+      ),
+    ).toHaveLength(3);
+  });
+
+  it("filters the waiting-parts widget before ordering and limiting", () => {
+    const widget = readFileSync(
+      "features/dashboard/widgets/WaitingPartsWidget.tsx",
+      "utf8",
+    );
+    const stageFilter = widget.indexOf('.eq("overall_stage", "waiting")');
+    const limit = widget.indexOf(".limit(12)");
+    expect(stageFilter).toBeGreaterThan(-1);
+    expect(limit).toBeGreaterThan(stageFilter);
   });
 
   it("does not let the work-order list mutate a projected stage directly", () => {
