@@ -3,6 +3,7 @@ import { FLOW_HEALTH_THRESHOLDS, ageHours } from "./flowHealth";
 import { getTechnicianLoadMetricsWithClient } from "@shared/lib/stats/getTechnicianLoadMetricsCore";
 import { buildOptimizationOpportunities } from "@/features/optimization/server/buildOptimizationOpportunities";
 import type { OptimizationOpportunity } from "@/features/optimization/types";
+import { ACTIONABLE_WORK_ORDER_NOTIFICATION_FILTER } from "@/features/shared/lib/workboard/utils";
 
 export type OpsNotificationLevel = "info" | "warning" | "urgent";
 
@@ -156,7 +157,7 @@ export async function getOpsNotifications(
     .from("v_work_order_board_cards_shop")
     .select("work_order_id, custom_id, display_name, overall_stage, has_waiting_parts, time_in_stage_seconds")
     .eq("shop_id", shopId)
-    .in("overall_stage", ["awaiting_approval", "waiting"])
+    .or(ACTIONABLE_WORK_ORDER_NOTIFICATION_FILTER)
     .order("time_in_stage_seconds", { ascending: false })
     .limit(120);
 

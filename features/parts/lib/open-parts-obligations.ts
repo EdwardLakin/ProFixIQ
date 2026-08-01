@@ -167,14 +167,24 @@ export function reconcileBoardPartsState(
         : row;
     }
 
+    const preserveStage =
+      row.overall_stage === "quality_check" ||
+      row.overall_stage === "ready" ||
+      row.overall_stage === "closed";
+    const reconciledStage = preserveStage
+      ? row.overall_stage
+      : activeLaborWorkOrderIds.has(row.work_order_id)
+        ? "in_progress"
+        : row.overall_stage === "waiting"
+          ? "authorized"
+          : row.overall_stage;
+
     return {
       ...row,
       has_waiting_parts: false,
       parts_blocker_count: 0,
       jobs_waiting_parts: 0,
-      overall_stage: activeLaborWorkOrderIds.has(row.work_order_id)
-        ? "in_progress"
-        : "authorized",
+      overall_stage: reconciledStage,
     };
   });
 }

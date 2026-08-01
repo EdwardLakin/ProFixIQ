@@ -118,4 +118,51 @@ describe("canonical open parts obligations", () => {
       }),
     ]);
   });
+
+  it("clears stale parts counters without reopening terminal or review stages", () => {
+    const baseRow: WorkOrderBoardRow = {
+      work_order_id: "wo-preserve",
+      custom_id: "EL000006",
+      display_name: "Test customer",
+      unit_label: null,
+      vehicle_label: null,
+      jobs_total: 1,
+      jobs_completed: 1,
+      progress_pct: 100,
+      overall_stage: "ready",
+      risk_level: "none",
+      has_waiting_parts: true,
+      parts_blocker_count: 1,
+      jobs_waiting_parts: 1,
+    };
+    const rows: WorkOrderBoardRow[] = [
+      baseRow,
+      { ...baseRow, work_order_id: "wo-closed", overall_stage: "closed" },
+      {
+        ...baseRow,
+        work_order_id: "wo-quality-check",
+        overall_stage: "quality_check",
+      },
+      { ...baseRow, work_order_id: "wo-estimate", overall_stage: "estimate" },
+    ];
+
+    expect(
+      reconcileBoardPartsState(
+        rows,
+        new Map(),
+        new Set(rows.map((row) => row.work_order_id)),
+      ),
+    ).toEqual([
+      expect.objectContaining({ overall_stage: "ready", has_waiting_parts: false }),
+      expect.objectContaining({ overall_stage: "closed", has_waiting_parts: false }),
+      expect.objectContaining({
+        overall_stage: "quality_check",
+        has_waiting_parts: false,
+      }),
+      expect.objectContaining({
+        overall_stage: "in_progress",
+        has_waiting_parts: false,
+      }),
+    ]);
+  });
 });
