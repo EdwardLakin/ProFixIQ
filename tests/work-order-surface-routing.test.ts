@@ -36,7 +36,7 @@ describe("work-order surface ownership", () => {
     expect(workOrdersPageSource).not.toContain("function techRollupChip");
   });
 
-  it("preserves every existing operational action and authorization gate", () => {
+  it("preserves workflow actions while removing direct lifecycle mutation", () => {
     expect(workOrdersPageSource).toContain(
       'fetch("/api/work-orders/assign-all"',
     );
@@ -52,10 +52,8 @@ describe("work-order surface ownership", () => {
     expect(workOrdersPageSource).toContain(
       "const canAssign = currentActor.canAssignWork",
     );
-    expect(workOrdersPageSource).toContain(
-      "const canPickStatus = currentActor.canManageWorkOrders",
-    );
-    expect(workOrdersPageSource).toContain("<StatusPickerModal");
+    expect(workOrdersPageSource).not.toContain("<StatusPickerModal");
+    expect(workOrdersPageSource).not.toContain(".update(");
     expect(workOrdersPageSource).toContain("<WorkOrderAssignedSummary");
     expect(workOrdersPageSource).toContain("Assign work order");
     expect(workOrdersPageSource).toContain("Invoice review");

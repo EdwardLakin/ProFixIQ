@@ -143,8 +143,8 @@ export function ShopPulseModule({ shopId, mode }: { shopId: string | null; mode:
         const { data, error: queryError } = await supabase.from("v_work_order_board_cards_shop").select("overall_stage,risk_level,priority").eq("shop_id", shopId).limit(80);
         if (queryError) throw queryError;
         const rows = data ?? [];
-        const active = rows.filter((row) => row.overall_stage !== "completed").length;
-        const blocked = rows.filter((row) => row.overall_stage === "waiting_parts" || row.overall_stage === "on_hold").length;
+        const active = rows.filter((row) => row.overall_stage !== "closed").length;
+        const blocked = rows.filter((row) => row.overall_stage === "waiting").length;
         const danger = rows.filter((row) => row.risk_level === "danger").length;
         const urgent = rows.filter((row) => row.priority === 1).length;
         if (!cancelled) {
@@ -242,7 +242,7 @@ export function PerformanceModule({ shopId, mode }: { shopId: string | null; mod
 
 export function WorkOrderBoardModule({ mode }: { mode: DashboardModuleMode }) {
   const { rows, loading, error, refetch } = useWorkOrderBoard("shop", { limit: 10 });
-  const active = rows.filter((row) => row.overall_stage !== "completed").length;
+  const active = rows.filter((row) => row.overall_stage !== "closed").length;
 
   return (
     <DashboardModuleShell mode={mode}>
@@ -251,7 +251,7 @@ export function WorkOrderBoardModule({ mode }: { mode: DashboardModuleMode }) {
         <>
           <DashboardMetricRow columns={2}>
             <DashboardMetric label="Active" value={String(active)} tone="primary" />
-            <DashboardMetric label="Completed" value={String(rows.length - active)} />
+            <DashboardMetric label="Closed" value={String(rows.length - active)} />
           </DashboardMetricRow>
           <DashboardSignalList items={rows.slice(0, 5).map((row) => ({ label: row.custom_id ?? row.display_name ?? row.work_order_id.slice(0, 8), value: row.overall_stage?.replaceAll("_", " ") ?? "active" }))} />
           <DashboardActionBar>

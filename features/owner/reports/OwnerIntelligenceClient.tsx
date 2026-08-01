@@ -579,9 +579,9 @@ export default function OwnerIntelligenceClient({
                 <div className="grid gap-3 lg:grid-cols-2">
                   {[
                     { label: "Customer approval", value: report.workflow.awaitingApprovalHours, count: report.workflow.awaitingApprovalCount, href: "/work-orders/board?stage=awaiting_approval" },
-                    { label: "Parts", value: report.workflow.waitingForPartsHours, count: report.workflow.waitingForPartsCount, href: "/work-orders/board?stage=waiting_parts" },
-                    { label: "On hold", value: report.workflow.onHoldHours, count: report.workflow.onHoldWorkOrders, href: "/work-orders/board?stage=on_hold" },
-                    { label: "Billing handoff", value: report.workflow.readyToInvoiceHours, count: report.workflow.readyToInvoiceCount, href: "/work-orders/board?stage=ready_to_invoice" },
+                    { label: "Parts", value: report.workflow.waitingForPartsHours, count: report.workflow.waitingForPartsCount, href: "/work-orders/board?stage=waiting" },
+                    { label: "Other waiting", value: report.workflow.onHoldHours, count: report.workflow.onHoldWorkOrders, href: "/work-orders/board?stage=waiting" },
+                    { label: "Billing handoff", value: report.workflow.readyToInvoiceHours, count: report.workflow.readyToInvoiceCount, href: "/work-orders/board?stage=ready" },
                   ].map((row) => (
                     <Link key={row.label} href={row.href} className="group rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 hover:border-orange-300/40">
                       <div className="flex items-center justify-between gap-3">

@@ -157,12 +157,12 @@ export function reconcileBoardPartsState(
       openCount === 0 &&
       (row.has_waiting_parts === true ||
         Number(row.parts_blocker_count ?? 0) > 0 ||
-        Number(row.jobs_waiting_parts ?? 0) > 0 ||
-        row.overall_stage === "waiting_parts");
+        Number(row.jobs_waiting_parts ?? 0) > 0);
 
     if (!staleWaitingState) {
       return activeLaborWorkOrderIds.has(row.work_order_id) &&
-        row.overall_stage !== "completed"
+        row.overall_stage !== "ready" &&
+        row.overall_stage !== "closed"
         ? { ...row, overall_stage: "in_progress" }
         : row;
     }
@@ -172,12 +172,9 @@ export function reconcileBoardPartsState(
       has_waiting_parts: false,
       parts_blocker_count: 0,
       jobs_waiting_parts: 0,
-      overall_stage:
-        row.overall_stage === "waiting_parts"
-          ? activeLaborWorkOrderIds.has(row.work_order_id)
-            ? "in_progress"
-            : "awaiting"
-          : row.overall_stage,
+      overall_stage: activeLaborWorkOrderIds.has(row.work_order_id)
+        ? "in_progress"
+        : "authorized",
     };
   });
 }

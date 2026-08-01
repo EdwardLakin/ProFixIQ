@@ -37,12 +37,12 @@ const stages: Array<{
   icon: typeof Clock3;
   tone: string;
 }> = [
-  { key: "awaiting", label: "Awaiting", icon: Clock3, tone: "text-blue-600" },
+  { key: "intake", label: "Intake", icon: Clock3, tone: "text-blue-600" },
   {
-    key: "in_progress",
-    label: "In progress",
-    icon: Wrench,
-    tone: "text-violet-600",
+    key: "estimate",
+    label: "Estimate",
+    icon: ClipboardCheck,
+    tone: "text-cyan-600",
   },
   {
     key: "awaiting_approval",
@@ -51,16 +51,40 @@ const stages: Array<{
     tone: "text-amber-600",
   },
   {
-    key: "waiting_parts",
-    label: "Waiting parts",
+    key: "authorized",
+    label: "Authorized",
+    icon: CheckCircle2,
+    tone: "text-emerald-600",
+  },
+  {
+    key: "waiting",
+    label: "Waiting",
     icon: Package,
     tone: "text-orange-600",
   },
   {
-    key: "completed",
-    label: "Ready to invoice",
+    key: "in_progress",
+    label: "In progress",
+    icon: Wrench,
+    tone: "text-violet-600",
+  },
+  {
+    key: "quality_check",
+    label: "Quality check",
+    icon: ClipboardCheck,
+    tone: "text-teal-600",
+  },
+  {
+    key: "ready",
+    label: "Ready",
     icon: CheckCircle2,
-    tone: "text-emerald-600",
+    tone: "text-lime-600",
+  },
+  {
+    key: "closed",
+    label: "Closed",
+    icon: Clock3,
+    tone: "text-slate-600",
   },
 ];
 
@@ -142,9 +166,9 @@ function BoardCard({
             Customer waiting
           </span>
         ) : null}
-        {row.overall_stage === "completed" ? (
+        {row.overall_stage === "ready" ? (
           <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-semibold text-emerald-700 dark:text-emerald-200">
-            Ready to invoice
+            Ready
           </span>
         ) : null}
       </div>
@@ -170,18 +194,22 @@ function BoardCard({
       </dl>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
         <div
-          className={`h-full rounded-full ${row.overall_stage === "completed" ? "bg-emerald-500" : "bg-[var(--brand-primary,#C1663B)]"}`}
+          className={`h-full rounded-full ${row.overall_stage === "ready" || row.overall_stage === "closed" ? "bg-emerald-500" : "bg-[var(--brand-primary,#C1663B)]"}`}
           style={{ width: `${Math.min(100, Math.max(0, row.progress_pct))}%` }}
         />
       </div>
       <div className="mt-3 flex min-h-9 items-center justify-center gap-2 rounded-lg border border-[var(--brand-primary,#C1663B)]/45 text-xs font-semibold text-[var(--brand-primary,#C1663B)]">
-        {row.overall_stage === "completed"
-          ? "Review invoice"
-          : row.overall_stage === "waiting_parts"
-            ? "Open parts"
-            : row.overall_stage === "awaiting"
-              ? "Assign"
-              : "Open work order"}
+        {row.overall_stage === "closed"
+          ? "View history"
+          : row.overall_stage === "ready"
+            ? "Review invoice"
+            : row.overall_stage === "waiting"
+              ? "Open blocker"
+              : row.overall_stage === "authorized"
+                ? "Dispatch"
+                : row.overall_stage === "intake"
+                  ? "Continue intake"
+                  : "Open work order"}
         <ChevronRight className="h-3.5 w-3.5" />
       </div>
     </article>
@@ -318,15 +346,13 @@ export default function WorkOrderBoard(props: {
   const visibleStages =
     stageFilter === "all"
       ? stages
-      : stageFilter === "on_hold"
-        ? stages.filter((stage) => stage.key === "waiting_parts")
-        : stages.filter((stage) => stage.key === stageFilter);
+      : stages.filter((stage) => stage.key === stageFilter);
   const summaryCards: Array<{
     label: string;
     value: number;
     icon: LucideIcon;
     tone: string;
-    filter: "risk" | Exclude<WorkOrderBoardStage, "empty">;
+    filter: "risk" | WorkOrderBoardStage;
   }> = [
     {
       label: "At risk",
@@ -336,25 +362,25 @@ export default function WorkOrderBoard(props: {
       filter: "risk",
     },
     {
-      label: "Ready to work",
-      value: count("awaiting"),
+      label: "Authorized",
+      value: count("authorized"),
       icon: CheckCircle2,
-      tone: "text-blue-600",
-      filter: "awaiting",
+      tone: "text-emerald-600",
+      filter: "authorized",
     },
     {
-      label: "Waiting parts",
-      value: count("waiting_parts"),
+      label: "Waiting",
+      value: count("waiting"),
       icon: Clock3,
       tone: "text-amber-600",
-      filter: "waiting_parts",
+      filter: "waiting",
     },
     {
-      label: "Ready to invoice",
-      value: count("completed"),
+      label: "Ready",
+      value: count("ready"),
       icon: ClipboardCheck,
       tone: "text-emerald-600",
-      filter: "completed",
+      filter: "ready",
     },
   ];
 
@@ -478,18 +504,17 @@ export default function WorkOrderBoard(props: {
       ) : (
         <div className="overflow-x-auto pb-2">
           <div
-            className={`grid min-w-[1280px] gap-3 ${visibleStages.length === 1 ? "grid-cols-1" : "grid-cols-5"}`}
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: `repeat(${visibleStages.length}, minmax(240px, 1fr))`,
+              minWidth: `${Math.max(1, visibleStages.length) * 252}px`,
+            }}
           >
             {visibleStages.map((stage) => {
               const Icon = stage.icon;
               const stageSurface = getWorkOrderBoardStageSurface(stage.key);
-              const stageRows = filteredRows.filter((row) =>
-                stageFilter === "on_hold"
-                  ? row.overall_stage === "on_hold"
-                  : row.overall_stage === stage.key ||
-                    (stageFilter === "all" &&
-                      stage.key === "waiting_parts" &&
-                      row.overall_stage === "on_hold"),
+              const stageRows = filteredRows.filter(
+                (row) => row.overall_stage === stage.key,
               );
               return (
                 <section
@@ -529,13 +554,13 @@ export default function WorkOrderBoard(props: {
       <button
         type="button"
         onClick={() =>
-          setStageFilter(stageFilter === "completed" ? "all" : "completed")
+          setStageFilter(stageFilter === "closed" ? "all" : "closed")
         }
         className="flex w-full items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-sm"
       >
         <Clock3 className="h-4 w-4" />
-        <span>Completed today</span>
-        <strong>{count("completed")}</strong>
+        <span>Closed work orders</span>
+        <strong>{count("closed")}</strong>
         <span className="text-[color:var(--theme-text-muted)]">
           · View history
         </span>

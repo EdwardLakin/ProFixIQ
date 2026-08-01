@@ -4,6 +4,10 @@ import type {
   WorkOrderBoardStage,
   WorkOrderBoardVariant,
 } from "./types";
+import {
+  WORK_ORDER_OPERATIONAL_STAGE_LABELS,
+  normalizeWorkOrderOperationalStage,
+} from "@/features/work-orders/lib/operational-stage";
 
 export function formatStageLabel(
   row: WorkOrderBoardRow,
@@ -12,22 +16,9 @@ export function formatStageLabel(
   if (variant === "portal" && row.portal_stage_label) return row.portal_stage_label;
   if (variant === "fleet" && row.fleet_stage_label) return row.fleet_stage_label;
 
-  switch (row.overall_stage) {
-    case "completed":
-      return "Completed";
-    case "on_hold":
-      return "On hold";
-    case "waiting_parts":
-      return "Waiting for parts";
-    case "awaiting_approval":
-      return "Awaiting approval";
-    case "in_progress":
-      return "In progress";
-    case "awaiting":
-      return "Awaiting";
-    default:
-      return "Awaiting";
-  }
+  return WORK_ORDER_OPERATIONAL_STAGE_LABELS[
+    normalizeWorkOrderOperationalStage(row.overall_stage)
+  ];
 }
 
 export function stageAccent(
@@ -54,20 +45,14 @@ export function stageAccent(
     };
   }
 
-  switch (stage) {
+  switch (normalizeWorkOrderOperationalStage(stage)) {
     case "in_progress":
       return {
         border: "border-emerald-500/55",
         badge: "bg-emerald-500/15 text-emerald-200 border-emerald-500/30",
         progress: "bg-emerald-400",
       };
-    case "on_hold":
-      return {
-        border: "border-yellow-500/55",
-        badge: "bg-yellow-500/15 text-yellow-200 border-yellow-500/30",
-        progress: "bg-yellow-400",
-      };
-    case "waiting_parts":
+    case "waiting":
       return {
         border: "border-orange-500/55",
         badge: "bg-orange-500/15 text-orange-200 border-orange-500/30",
@@ -80,13 +65,37 @@ export function stageAccent(
           "bg-[color:var(--pfq-copper)]/15 text-[color:var(--accent-copper-light)] border-[color:var(--pfq-copper)]/30",
         progress: "bg-[color:var(--pfq-copper)]",
       };
-    case "completed":
+    case "ready":
+      return {
+        border: "border-lime-500/55",
+        badge: "bg-lime-500/15 text-lime-200 border-lime-500/30",
+        progress: "bg-lime-400",
+      };
+    case "closed":
       return {
         border: "border-[color:var(--theme-border-soft)]",
         badge: "bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)] border-[color:var(--theme-border-soft)]",
         progress: "bg-[color:var(--theme-surface-subtle)]",
       };
-    case "awaiting":
+    case "quality_check":
+      return {
+        border: "border-teal-500/55",
+        badge: "bg-teal-500/15 text-teal-200 border-teal-500/30",
+        progress: "bg-teal-400",
+      };
+    case "authorized":
+      return {
+        border: "border-emerald-500/55",
+        badge: "bg-emerald-500/15 text-emerald-200 border-emerald-500/30",
+        progress: "bg-emerald-400",
+      };
+    case "estimate":
+      return {
+        border: "border-cyan-500/45",
+        badge: "bg-cyan-500/15 text-cyan-200 border-cyan-500/30",
+        progress: "bg-cyan-400",
+      };
+    case "intake":
     default:
       return {
         border: "border-sky-500/45",
@@ -120,8 +129,14 @@ export function buildBlockers(row: WorkOrderBoardRow, variant: WorkOrderBoardVar
     chips.push(variant === "portal" ? "Parts on order" : "Waiting parts");
   }
 
-  if (row.overall_stage === "awaiting_approval") {
+  const stage = normalizeWorkOrderOperationalStage(row.overall_stage);
+
+  if (stage === "awaiting_approval") {
     chips.push(variant === "portal" ? "Approval needed" : "Awaiting approval");
+  }
+
+  if (stage === "waiting" && !row.has_waiting_parts) {
+    chips.push(variant === "portal" ? "Preparing next step" : "Waiting");
   }
 
   if (row.risk_reason) {

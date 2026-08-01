@@ -58,6 +58,7 @@ type BoardRow = {
   custom_id: string | null;
   display_name: string | null;
   overall_stage: string | null;
+  has_waiting_parts: boolean | null;
   time_in_stage_seconds: number | null;
 };
 
@@ -153,9 +154,9 @@ export async function getOpsNotifications(
 
   const { data: boardRows, error: boardError } = await supabase
     .from("v_work_order_board_cards_shop")
-    .select("work_order_id, custom_id, display_name, overall_stage, time_in_stage_seconds")
+    .select("work_order_id, custom_id, display_name, overall_stage, has_waiting_parts, time_in_stage_seconds")
     .eq("shop_id", shopId)
-    .in("overall_stage", ["awaiting_approval", "waiting_parts"])
+    .in("overall_stage", ["awaiting_approval", "waiting"])
     .order("time_in_stage_seconds", { ascending: false })
     .limit(120);
 
@@ -222,7 +223,11 @@ export async function getOpsNotifications(
       continue;
     }
 
-    if (stage === "waiting_parts" && hours >= FLOW_HEALTH_THRESHOLDS.partsWaitHours) {
+    if (
+      stage === "waiting" &&
+      row.has_waiting_parts === true &&
+      hours >= FLOW_HEALTH_THRESHOLDS.partsWaitHours
+    ) {
       notifications.push({
         level: "warning",
         code: "parts_waiting_too_long",
