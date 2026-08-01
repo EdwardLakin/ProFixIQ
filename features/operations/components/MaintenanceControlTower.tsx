@@ -115,8 +115,8 @@ export function MaintenanceControlTower({
           {layout === "dashboard-first" ? (
             <>
               {summaryCards}
-              {issueTables}
               {aiSummary}
+              {issueTables}
               {workOrderBoard}
             </>
           ) : (
