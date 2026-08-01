@@ -188,6 +188,7 @@ export default function PayrollTimeClient({
   const [entries, setEntries] = useState<Entry[]>([]);
   const [exceptions, setExceptions] = useState<Exception[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -327,49 +328,69 @@ export default function PayrollTimeClient({
 
   const load = useCallback(async (periodId?: string | null) => {
     setLoading(true);
+    setLoadError(null);
     setError(null);
-    const url = periodId ? `/api/payroll-time/periods?period_id=${periodId}` : "/api/payroll-time/periods";
-    const res = await fetch(url, { cache: "no-store" });
-    const body = await res.json().catch(() => null);
+    try {
+      const url = periodId ? `/api/payroll-time/periods?period_id=${periodId}` : "/api/payroll-time/periods";
+      const res = await fetch(url, { cache: "no-store" });
+      const body = await res.json().catch(() => null);
 
-    if (!res.ok) {
-      setError(body?.error ?? "Failed to load payroll time data");
-      setLoading(false);
-      return;
-    }
+      if (!res.ok) {
+        setPeriods([]);
+        setActivePeriodId(null);
+        setEntries([]);
+        setExceptions([]);
+        setCanConfigurePeriods(false);
+        setLoadError(
+          body?.error ??
+            "Payroll is temporarily unavailable. Recorded punches are safe; retry the payroll load.",
+        );
+        return;
+      }
 
-    const nextSettings = (body?.settings ?? null) as PayrollSettings | null;
-    setShopId(typeof body?.shopId === "string" ? body.shopId : null);
-    setTimezone(
-      typeof body?.timezone === "string" && body.timezone
-        ? body.timezone
-        : "UTC",
-    );
-    setPayrollSettings(nextSettings);
-    setCanConfigurePeriods(Boolean(body?.canConfigure));
-    if (nextSettings) {
-      setSettingsForm({
-        cadence: nextSettings.cadence,
-        week_starts_on: Number(nextSettings.week_starts_on ?? 1),
-        period_anchor_date:
-          nextSettings.period_anchor_date ?? DEFAULT_BIWEEKLY_ANCHOR_DATE,
+      const nextSettings = (body?.settings ?? null) as PayrollSettings | null;
+      setShopId(typeof body?.shopId === "string" ? body.shopId : null);
+      setTimezone(
+        typeof body?.timezone === "string" && body.timezone
+          ? body.timezone
+          : "UTC",
+      );
+      setPayrollSettings(nextSettings);
+      setCanConfigurePeriods(Boolean(body?.canConfigure));
+      if (nextSettings) {
+        setSettingsForm({
+          cadence: nextSettings.cadence,
+          week_starts_on: Number(nextSettings.week_starts_on ?? 1),
+          period_anchor_date:
+            nextSettings.period_anchor_date ?? DEFAULT_BIWEEKLY_ANCHOR_DATE,
+        });
+      }
+      setPeriods((body?.periods ?? []) as Period[]);
+      setActivePeriodId((body?.activePeriodId as string | null) ?? null);
+      setEntries((body?.entries ?? []) as Entry[]);
+      setExceptions((body?.exceptions ?? []) as Exception[]);
+      setZeroState(body?.zeroState ?? null);
+      setRosterSummary({
+        activeWorkforce: Number(body?.rosterSummary?.activeWorkforce ?? 0),
+        payrollEligible: Number(body?.rosterSummary?.payrollEligible ?? 0),
+        payrollSetupIncomplete: Number(
+          body?.rosterSummary?.payrollSetupIncomplete ?? 0,
+        ),
+        recordedEmployees: Number(body?.rosterSummary?.recordedEmployees ?? 0),
       });
+      setRefreshState(body?.refresh ?? null);
+    } catch {
+      setPeriods([]);
+      setActivePeriodId(null);
+      setEntries([]);
+      setExceptions([]);
+      setCanConfigurePeriods(false);
+      setLoadError(
+        "Payroll is temporarily unavailable. Recorded punches are safe; retry the payroll load.",
+      );
+    } finally {
+      setLoading(false);
     }
-    setPeriods((body?.periods ?? []) as Period[]);
-    setActivePeriodId((body?.activePeriodId as string | null) ?? null);
-    setEntries((body?.entries ?? []) as Entry[]);
-    setExceptions((body?.exceptions ?? []) as Exception[]);
-    setZeroState(body?.zeroState ?? null);
-    setRosterSummary({
-      activeWorkforce: Number(body?.rosterSummary?.activeWorkforce ?? 0),
-      payrollEligible: Number(body?.rosterSummary?.payrollEligible ?? 0),
-      payrollSetupIncomplete: Number(
-        body?.rosterSummary?.payrollSetupIncomplete ?? 0,
-      ),
-      recordedEmployees: Number(body?.rosterSummary?.recordedEmployees ?? 0),
-    });
-    setRefreshState(body?.refresh ?? null);
-    setLoading(false);
   }, []);
 
   const loadExportHistory = useCallback(async (periodId?: string | null) => {
@@ -434,7 +455,7 @@ export default function PayrollTimeClient({
     setBusyAction("settings");
     setError(null);
     setNotice(null);
-    const response = await fetch("/api/payroll-time/periods", {
+    const response = await fetch("/api/payroll-time/settings", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(settingsForm),
@@ -507,6 +528,53 @@ export default function PayrollTimeClient({
     window.open(String(body.signedUrl), "_blank", "noopener,noreferrer");
     setDownloadingBatchId(null);
     await loadExportHistory(activePeriodId);
+  }
+
+  if (loading && periods.length === 0) {
+    return (
+      <div className="space-y-4">
+        <AdminPageHeader
+          eyebrow="Pay-period review"
+          title="Payroll Review"
+          subtitle="Review attendance, job time, flat-rate credit, exceptions, approvals, and export readiness."
+        />
+        <AdminPanel>
+          <AdminEmptyState
+            title="Loading payroll from recorded time"
+            body="Connecting shift punches, job punches, and pay-period settings."
+          />
+        </AdminPanel>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <AdminPageHeader
+          eyebrow="Pay-period review"
+          title="Payroll Review"
+          subtitle="Review attendance, job time, flat-rate credit, exceptions, approvals, and export readiness."
+        />
+        <AdminPanel>
+          <AdminPanelTitle
+            title="Payroll is unavailable"
+            description="This is a payroll assembly failure, not a zero-time result. Recorded shift and job punches have not been removed."
+          />
+          <div className="space-y-3 p-4">
+            <p className="text-sm text-[color:var(--theme-danger-text)]">
+              {loadError}
+            </p>
+            <button
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-primary)]"
+              onClick={() => void load()}
+            >
+              Retry payroll load
+            </button>
+          </div>
+        </AdminPanel>
+      </div>
+    );
   }
 
   return (

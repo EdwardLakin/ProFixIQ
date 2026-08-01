@@ -7,9 +7,7 @@ import {
   splitIntervalByShopDay,
 } from "@/features/payroll-time/server/payrollTime";
 import { requirePayrollReviewer } from "../_lib/auth";
-import { OWNER_PIN_PURPOSES, requireOwnerPinVerified } from "@/features/shared/lib/server/owner-pin";
 import { composeActiveWorkforceRoster } from "@/features/workforce/lib/roster";
-import { isValidPayrollDateKey } from "@/features/payroll-time/lib/payPeriodBounds";
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 type PayrollProfile = {
   id?: string;
@@ -67,7 +65,19 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const periodId = url.searchParams.get("period_id");
 
-  const current = await getOrCreateCurrentPeriod(me.shop_id!);
+  let current: Awaited<ReturnType<typeof getOrCreateCurrentPeriod>>;
+  try {
+    current = await getOrCreateCurrentPeriod(me.shop_id!);
+  } catch (error) {
+    console.error("payroll period initialization failed", error);
+    return NextResponse.json(
+      {
+        error:
+          "Payroll is temporarily unavailable. Recorded punches are safe; retry the payroll load.",
+      },
+      { status: 503 },
+    );
+  }
   const { data: shop, error: shopError } = await admin
     .from("shops")
     .select("timezone")
@@ -99,7 +109,23 @@ export async function GET(req: NextRequest) {
     requestedPeriod?.id ?? current.period?.id ?? periods?.[0]?.id ?? null;
   if (!activePeriodId) return NextResponse.json({ periods: [], entries: [], exceptions: [] });
 
-  const refreshState = await refreshOpenPeriodIfStale({ shopId: me.shop_id!, actorId: me.id, periodId: activePeriodId });
+  let refreshState: Awaited<ReturnType<typeof refreshOpenPeriodIfStale>>;
+  try {
+    refreshState = await refreshOpenPeriodIfStale({
+      shopId: me.shop_id!,
+      actorId: me.id,
+      periodId: activePeriodId,
+    });
+  } catch (error) {
+    console.error("payroll period source refresh failed", error);
+    return NextResponse.json(
+      {
+        error:
+          "Payroll totals could not be assembled from recorded time. The source punches remain safe; retry the payroll load.",
+      },
+      { status: 503 },
+    );
+  }
 
   const [
     { data: entries, error: entriesErr },
@@ -385,81 +411,7 @@ export async function GET(req: NextRequest) {
 }
 
 
-type PayrollCadence = "weekly" | "biweekly" | "semimonthly" | "monthly";
-
-type SettingsBody = {
-  cadence?: PayrollCadence;
-  week_starts_on?: number;
-  period_anchor_date?: string | null;
-};
-
-export async function PUT(req: NextRequest) {
-  const auth = await requirePayrollReviewer();
-  if (!auth.ok) return auth.response;
-  if (!["owner", "admin"].includes(String(auth.me.role ?? ""))) {
-    return NextResponse.json({ error: "Only an owner or admin can change payroll period settings." }, { status: 403 });
-  }
-  const pin = await requireOwnerPinVerified(req, auth.supabase as never, {
-    shopId: auth.me.shop_id!,
-    userId: auth.authUserId,
-    allowedPurposes: [OWNER_PIN_PURPOSES.SETTINGS, OWNER_PIN_PURPOSES.PRIVILEGED],
-  });
-  if (!pin.ok) return pin.response;
-
-  const body = (await req.json().catch(() => null)) as SettingsBody | null;
-  const allowedCadences: PayrollCadence[] = ["weekly", "biweekly", "semimonthly", "monthly"];
-  if (!body?.cadence || !allowedCadences.includes(body.cadence)) {
-    return NextResponse.json({ error: "Choose weekly, bi-weekly, semi-monthly, or monthly." }, { status: 400 });
-  }
-
-  const weekStartsOn = Number(body.week_starts_on);
-  if (!Number.isInteger(weekStartsOn) || weekStartsOn < 0 || weekStartsOn > 6) {
-    return NextResponse.json({ error: "Week start must be a day from Sunday through Saturday." }, { status: 400 });
-  }
-
-  const anchorDate = body.period_anchor_date?.trim() || null;
-  if (anchorDate && !isValidPayrollDateKey(anchorDate)) {
-    return NextResponse.json({ error: "Anchor date must be a valid calendar date." }, { status: 400 });
-  }
-  if (body.cadence === "biweekly" && !anchorDate) {
-    return NextResponse.json({ error: "Bi-weekly payroll requires an anchor period start date." }, { status: 400 });
-  }
-
-  const admin: AdminClient = createAdminSupabase();
-  const now = new Date().toISOString();
-  const { data: settings, error } = await (admin as any)
-    .from("shop_payroll_settings")
-    .upsert({
-      shop_id: auth.me.shop_id,
-      cadence: body.cadence,
-      week_starts_on: weekStartsOn,
-      period_anchor_date: anchorDate,
-      updated_at: now,
-    }, { onConflict: "shop_id" })
-    .select("*")
-    .single();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-
-  const { error: auditError } = await (admin as any).from("audit_logs").insert({
-    actor_id: auth.me.id,
-    action: "payroll.settings.updated",
-    target: settings.id,
-    metadata: {
-      shop_id: auth.me.shop_id,
-      target_type: "shop_payroll_settings",
-      cadence: body.cadence,
-      week_starts_on: weekStartsOn,
-      period_anchor_date: anchorDate,
-    },
-  });
-  const current = await getOrCreateCurrentPeriod(auth.me.shop_id!);
-  return NextResponse.json({
-    ok: true,
-    settings,
-    currentPeriod: current.period,
-    warning: auditError
-      ? "Payroll settings were saved, but the Activity entry could not be recorded. No retry is needed."
-      : null,
-  });
-}
+// Compatibility for older clients. All payroll settings writes are owned by
+// the canonical settings route so validation, Owner PIN, and audit behavior
+// cannot drift between surfaces.
+export { PUT } from "../settings/route";

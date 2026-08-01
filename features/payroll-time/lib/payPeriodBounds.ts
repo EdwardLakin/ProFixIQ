@@ -79,3 +79,53 @@ export function calculatePayPeriodBounds(params: {
     end: new Date(Date.UTC(year, month + 1, 0)),
   };
 }
+
+export type PayrollPeriodRange = {
+  periodStart: string;
+  periodEnd: string;
+};
+
+export function buildPayrollPeriodRanges(params: {
+  firstWorkDate: string;
+  currentWorkDate: string;
+  cadence: PayrollCadence;
+  weekStartsOn: number;
+  anchorDate?: string | null;
+}): PayrollPeriodRange[] {
+  const firstWorkDate = atUtcDay(params.firstWorkDate);
+  const currentWorkDate = atUtcDay(params.currentWorkDate);
+  if (firstWorkDate > currentWorkDate) return [];
+
+  const ranges: PayrollPeriodRange[] = [];
+  const seen = new Set<string>();
+  let cursor = firstWorkDate;
+  let iterationCount = 0;
+
+  while (cursor <= currentWorkDate) {
+    const bounds = calculatePayPeriodBounds({
+      shopDate: cursor,
+      cadence: params.cadence,
+      weekStartsOn: params.weekStartsOn,
+      anchorDate: params.anchorDate,
+    });
+    const periodStart = bounds.start.toISOString().slice(0, 10);
+    const periodEnd = bounds.end.toISOString().slice(0, 10);
+    const key = `${periodStart}:${periodEnd}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      ranges.push({ periodStart, periodEnd });
+    }
+
+    const nextCursor = addUtcDays(bounds.end, 1);
+    if (nextCursor <= cursor) {
+      throw new Error("Payroll period calculation did not advance");
+    }
+    cursor = nextCursor;
+    iterationCount += 1;
+    if (iterationCount > 1200) {
+      throw new Error("Payroll period history exceeds the supported range");
+    }
+  }
+
+  return ranges;
+}
