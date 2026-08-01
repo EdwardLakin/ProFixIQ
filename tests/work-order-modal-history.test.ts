@@ -25,6 +25,10 @@ const mobileFocusedJob = readFileSync(
   "features/work-orders/mobile/MobileFocusedJob.tsx",
   "utf8",
 );
+const modalShell = readFileSync(
+  "features/shared/components/ModalShell.tsx",
+  "utf8",
+);
 
 describe("work-order modal sizing, theme, and vehicle history", () => {
   it("gives cause and correction a large responsive shell without nested scrolling", () => {
@@ -43,6 +47,13 @@ describe("work-order modal sizing, theme, and vehicle history", () => {
     expect(assistantModal).not.toContain(
       'className="var(--theme-gradient-panel)"',
     );
+  });
+
+  it("uses the ProFixIQ brand blue treatment for shared modal top bars", () => {
+    expect(modalShell).toContain("var(--brand-primary)");
+    expect(modalShell).toContain("var(--brand-accent)");
+    expect(modalShell).not.toContain("rgba(184,115,51");
+    expect(modalShell).not.toContain("rgba(253,186,116");
   });
 
   it("loads canonical prior work orders through a shop-authorized server route", () => {
