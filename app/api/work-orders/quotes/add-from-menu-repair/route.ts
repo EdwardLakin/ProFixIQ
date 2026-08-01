@@ -4,6 +4,12 @@ import type { Database, Json } from "@shared/types/types/supabase";
 import { getActiveMenuRepairPricingSnapshot } from "@/features/parts/server/getActiveMenuRepairPricingSnapshot";
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
+import {
+  COMPLETED_REPAIR_SOURCE,
+  COMPLETED_REPAIR_STATUSES,
+  matchesCompletedRepairVehicle,
+  resolveCompletedRepairSubtotal,
+} from "@/features/menu-repair-items/lib/completedRepair";
 
 type DB = Database;
 type QuoteInsert = DB["public"]["Tables"]["work_order_quote_lines"]["Insert"];
@@ -38,6 +44,8 @@ type MenuRepairItemLite = Pick<
   | "drivetrain"
   | "transmission"
   | "fuel_type"
+  | "source_work_order_line_id"
+  | "last_pricing_source"
 >;
 
 type WorkOrderLite = Pick<
@@ -285,7 +293,7 @@ export async function POST(req: Request) {
     const { data: repairItem, error: repairErr } = await supabase
       .from("menu_repair_items")
       .select(
-        "id, shop_id, name, complaint, cause, correction, labor_hours, labor_rate, price_estimate, pricing_valid_days, parts, is_active, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, fuel_type",
+        "id, shop_id, name, complaint, cause, correction, labor_hours, labor_rate, price_estimate, pricing_valid_days, parts, is_active, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, fuel_type, source_work_order_line_id, last_pricing_source",
       )
       .eq("id", menuRepairItemId)
       .eq("shop_id", shopId)
@@ -301,6 +309,33 @@ export async function POST(req: Request) {
 
     if (repairItem.is_active !== true) {
       return NextResponse.json({ ok: false, error: "Repair item is inactive" }, { status: 409 });
+    }
+
+    if (
+      !repairItem.source_work_order_line_id ||
+      repairItem.last_pricing_source !== COMPLETED_REPAIR_SOURCE
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Repair item is not backed by completed work" },
+        { status: 409 },
+      );
+    }
+
+    const { data: sourceLine, error: sourceLineError } = await supabase
+      .from("work_order_lines")
+      .select("id, status")
+      .eq("id", repairItem.source_work_order_line_id)
+      .eq("shop_id", shopId)
+      .in("status", [...COMPLETED_REPAIR_STATUSES])
+      .maybeSingle();
+    if (sourceLineError) {
+      return NextResponse.json({ ok: false, error: sourceLineError.message }, { status: 500 });
+    }
+    if (!sourceLine?.id) {
+      return NextResponse.json(
+        { ok: false, error: "Repair item is not backed by completed work" },
+        { status: 409 },
+      );
     }
 
     const { data: workOrder, error: workOrderErr } = await supabase
@@ -335,6 +370,32 @@ export async function POST(req: Request) {
       vehicle = vehicleRow ?? null;
     }
 
+    if (
+      !matchesCompletedRepairVehicle(
+        {
+          year: vehicle?.year ?? workOrder.vehicle_year,
+          make: vehicle?.make ?? workOrder.vehicle_make,
+          model: vehicle?.model ?? workOrder.vehicle_model,
+          engine: vehicle?.engine ?? workOrder.vehicle_engine,
+          drivetrain: vehicle?.drivetrain ?? workOrder.vehicle_drivetrain,
+          transmission: vehicle?.transmission ?? workOrder.vehicle_transmission,
+        },
+        {
+          year: repairItem.vehicle_year,
+          make: repairItem.vehicle_make,
+          model: repairItem.vehicle_model,
+          engine: repairItem.engine,
+          drivetrain: repairItem.drivetrain,
+          transmission: repairItem.transmission,
+        },
+      )
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Repair history does not match this vehicle" },
+        { status: 409 },
+      );
+    }
+
     const activeSnapshot = await getActiveMenuRepairPricingSnapshot({
       supabase,
       menuRepairItemId: repairItem.id,
@@ -365,11 +426,16 @@ export async function POST(req: Request) {
     const partsVerificationRequired = !useFinalPricing;
     const laborTotal =
       useFinalPricing && laborHours != null && laborRate != null ? laborHours * laborRate : null;
-    const partsTotal =
-      activeSnapshot?.totalSell != null && useFinalPricing
-        ? money(activeSnapshot.totalSell)
-        : partTotal(reuseParts, useFinalPricing);
-    const subtotal = useFinalPricing ? (partsTotal ?? 0) + (laborTotal ?? 0) : null;
+    const partsTotal = partTotal(reuseParts, useFinalPricing);
+    const snapshotPartsTotal = useFinalPricing
+      ? money(activeSnapshot?.totalSell)
+      : null;
+    const subtotal = resolveCompletedRepairSubtotal({
+      useFinalPricing,
+      snapshotPartsTotal,
+      partsTotal,
+      laborTotal,
+    });
     const grandTotal = subtotal;
     const status = useFinalPricing ? "quoted" : "pending_parts";
     const stage = "advisor_pending";
@@ -393,6 +459,7 @@ export async function POST(req: Request) {
       supplier_name: activeSnapshot?.supplierName ?? null,
       currency: activeSnapshot?.currency ?? null,
       quoted_at: activeSnapshot?.quotedAt ?? null,
+      snapshot_parts_total_at_reuse: snapshotPartsTotal,
       technician_or_advisor_note_at_reuse: notes,
     };
 

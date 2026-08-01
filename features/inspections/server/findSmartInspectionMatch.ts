@@ -1,7 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  COMPLETED_REPAIR_SOURCE,
+  COMPLETED_REPAIR_STATUSES,
+  matchesCompletedRepairVehicle,
+} from "@/features/menu-repair-items/lib/completedRepair";
 
 type DB = Database;
+type QueryError = {
+  code?: string | null;
+  message: string;
+  details?: string | null;
+};
 
 type MatchBody = {
   item?: string;
@@ -71,6 +81,9 @@ type MenuRepairItemRow = {
   drivetrain: string | null;
   transmission: string | null;
   fuel_type: string | null;
+  source_work_order_line_id: string | null;
+  last_pricing_source: string | null;
+  usage_count: number;
 };
 
 type MenuItemRow = {
@@ -123,6 +136,14 @@ export type SmartInspectionMatch = {
   acceptanceRate?: number | null;
   pricingStatus?: "fresh" | "stale" | "expired";
   pricingValidUntil?: string | null;
+  usageCount?: number | null;
+  vehicle?: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    engine: string | null;
+    drivetrain: string | null;
+  } | null;
 };
 
 function txt(v: unknown): string {
@@ -308,18 +329,18 @@ function warnSchemaDrift(table: "menu_items" | "menu_repair_items", phase: "rich
 }
 
 async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: string): Promise<MenuRepairItemRow[]> {
-  const baseSelect = "id, name, complaint, correction, labor_hours, parts";
-  const extendedSelect = `${baseSelect}, confidence_score, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, fuel_type`;
+  const baseSelect = "id, name, complaint, correction, labor_hours, parts, source_work_order_line_id, last_pricing_source";
+  const extendedSelect = `${baseSelect}, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, fuel_type, usage_count`;
   const minimalSelect = "id, name";
 
   let data: unknown[] | null = null;
-  let error: any = null;
+  let error: QueryError | null = null;
   ({ data, error } = await supabase
     .from("menu_repair_items")
     .select(extendedSelect)
     .eq("shop_id", shopId)
     .order("updated_at", { ascending: false })
-    .limit(60) as unknown as { data: unknown[] | null; error: typeof error });
+    .limit(60) as unknown as { data: unknown[] | null; error: QueryError | null });
 
   if (error && isSchemaDriftError(error)) {
     warnSchemaDrift("menu_repair_items", "rich", error);
@@ -327,7 +348,7 @@ async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: str
       .from("menu_repair_items")
       .select(minimalSelect)
       .eq("shop_id", shopId)
-      .limit(60) as unknown as { data: unknown[] | null; error: typeof error });
+      .limit(60) as unknown as { data: unknown[] | null; error: QueryError | null });
   }
 
   if (error) {
@@ -336,14 +357,14 @@ async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: str
     return [];
   }
 
-  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+  const mapped = ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
     id: String(row.id ?? ""),
     name: (row.name as string | null) ?? null,
     complaint: (row.complaint as string | null) ?? null,
     correction: (row.correction as string | null) ?? null,
     labor_hours: (row.labor_hours as number | null) ?? null,
     parts: row.parts ?? null,
-    confidence_score: (row.confidence_score as number | null) ?? null,
+    confidence_score: null,
     vehicle_year: (row.vehicle_year as number | null) ?? null,
     vehicle_make: (row.vehicle_make as string | null) ?? null,
     vehicle_model: (row.vehicle_model as string | null) ?? null,
@@ -351,7 +372,45 @@ async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: str
     drivetrain: (row.drivetrain as string | null) ?? null,
     transmission: (row.transmission as string | null) ?? null,
     fuel_type: (row.fuel_type as string | null) ?? null,
+    source_work_order_line_id:
+      (row.source_work_order_line_id as string | null) ?? null,
+    last_pricing_source: (row.last_pricing_source as string | null) ?? null,
+    usage_count:
+      typeof row.usage_count === "number" && Number.isFinite(row.usage_count)
+        ? row.usage_count
+        : 0,
   })).filter((row) => !!row.id);
+
+  const sourceLineIds = [
+    ...new Set(
+      mapped
+        .map((row) => row.source_work_order_line_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (sourceLineIds.length === 0) return [];
+
+  const { data: completedSources, error: completedSourceError } = await supabase
+    .from("work_order_lines")
+    .select("id, status")
+    .eq("shop_id", shopId)
+    .in("id", sourceLineIds)
+    .in("status", [...COMPLETED_REPAIR_STATUSES]);
+  if (completedSourceError) {
+    console.warn("[inspections] completed repair source verification skipped", {
+      code: completedSourceError.code,
+      message: completedSourceError.message,
+    });
+    return [];
+  }
+
+  const completedSourceIds = new Set((completedSources ?? []).map((row) => row.id));
+  return mapped.filter(
+    (row) =>
+      Boolean(row.source_work_order_line_id) &&
+      row.last_pricing_source === COMPLETED_REPAIR_SOURCE &&
+      completedSourceIds.has(row.source_work_order_line_id as string),
+  );
 }
 
 async function safeLoadMenuItems(supabase: SupabaseClient<DB>, shopId: string): Promise<MenuItemRow[]> {
@@ -360,14 +419,14 @@ async function safeLoadMenuItems(supabase: SupabaseClient<DB>, shopId: string): 
   const minimalSelect = "id, name";
 
   let data: unknown[] | null = null;
-  let error: any = null;
+  let error: QueryError | null = null;
   ({ data, error } = await supabase
     .from("menu_items")
     .select(extendedSelect)
     .eq("shop_id", shopId)
     .eq("is_active", true)
     .order("updated_at", { ascending: false })
-    .limit(80) as unknown as { data: unknown[] | null; error: typeof error });
+    .limit(80) as unknown as { data: unknown[] | null; error: QueryError | null });
 
   if (error && isSchemaDriftError(error)) {
     warnSchemaDrift("menu_items", "rich", error);
@@ -375,7 +434,7 @@ async function safeLoadMenuItems(supabase: SupabaseClient<DB>, shopId: string): 
       .from("menu_items")
       .select(minimalSelect)
       .eq("shop_id", shopId)
-      .limit(80) as unknown as { data: unknown[] | null; error: typeof error });
+      .limit(80) as unknown as { data: unknown[] | null; error: QueryError | null });
   }
 
   if (error) {
@@ -645,6 +704,14 @@ export async function findSmartInspectionMatch(args: {
         .trim();
 
       if (
+        !matchesCompletedRepairVehicle(body.vehicle, {
+          year: row.vehicle_year,
+          make: row.vehicle_make,
+          model: row.vehicle_model,
+          engine: row.engine,
+          drivetrain: row.drivetrain,
+          transmission: row.transmission,
+        }) ||
         !isCompatibleCandidate({
           body,
           noteText,
@@ -655,7 +722,13 @@ export async function findSmartInspectionMatch(args: {
         return null;
       }
 
-      let score = Math.max(tokenScore(noteText, haystack), serviceFamilyScore(noteText, haystack));
+      const repairSimilarity = Math.max(
+        tokenScore(noteText, haystack),
+        serviceFamilyScore(noteText, haystack),
+      );
+      if (repairSimilarity <= 0) return null;
+
+      let score = repairSimilarity;
       score = addVehicleScore(score, row, body);
 
       if (dismissedIds.has(row.id) || dismissedLabels.has(txt(row.name))) {
@@ -694,6 +767,21 @@ export async function findSmartInspectionMatch(args: {
 
   const rankedHistory = ((smartHistory ?? []) as SmartHistoryRow[])
     .map((row) => {
+      if (
+        !row.menu_repair_item_id ||
+        !repairItems.some((repair) => repair.id === row.menu_repair_item_id) ||
+        !matchesCompletedRepairVehicle(body.vehicle, {
+          year: row.vehicle_year,
+          make: row.vehicle_make,
+          model: row.vehicle_model,
+          engine: row.engine,
+          drivetrain: row.drivetrain,
+          transmission: row.transmission,
+        })
+      ) {
+        return null;
+      }
+
       const haystack = [
         row.note ?? "",
         row.item_label ?? "",
@@ -703,7 +791,13 @@ export async function findSmartInspectionMatch(args: {
         .join(" ")
         .trim();
 
-      let score = Math.max(tokenScore(noteText, haystack), serviceFamilyScore(noteText, haystack));
+      const historySimilarity = Math.max(
+        tokenScore(noteText, haystack),
+        serviceFamilyScore(noteText, haystack),
+      );
+      if (historySimilarity <= 0) return null;
+
+      let score = historySimilarity;
       if (
         !isCompatibleCandidate({
           body,
@@ -812,12 +906,15 @@ export async function findSmartInspectionMatch(args: {
     .sort((a, b) => b.score - a.score);
 
   const bestCatalogItem = rankedCatalogItems[0];
+  const inferredRepairConfidence = bestRepairItem
+    ? Math.min(0.96, 0.84 + Math.min(bestRepairItem.row.usage_count, 6) * 0.02)
+    : 0;
   const topSpecificConfidence =
     typeof bestRepairItem?.row?.confidence_score === "number"
       ? bestRepairItem.row.confidence_score
       : typeof bestHistory?.row?.confidence === "number"
         ? bestHistory.row.confidence
-        : 0;
+        : inferredRepairConfidence;
 
   const bestCatalogServiceScore = bestCatalogItem
     ? serviceFamilyScore(noteText, [
@@ -848,8 +945,8 @@ export async function findSmartInspectionMatch(args: {
         bestRepairItem.row.complaint ??
         "Matched repair",
       sourceType: "history_repair",
-      sourceLabel: "repair history",
-      whyShown: "Strong compatible historical repair match.",
+      sourceLabel: "completed repair history",
+      whyShown: "The same repair was completed previously for this vehicle year, make, and model.",
       compatibilityStatus: "compatible",
       compatibilitySummary:
         reasons.length > 0 ? `Matched on ${reasons.join(", ")}.` : "Passed compatibility safety filters.",
@@ -861,11 +958,19 @@ export async function findSmartInspectionMatch(args: {
       confidence:
         typeof bestRepairItem.row.confidence_score === "number"
           ? bestRepairItem.row.confidence_score
-          : Math.min(0.97, 0.6 + bestRepairItem.score * 0.3),
+          : inferredRepairConfidence,
       menuRepairItemId: bestRepairItem.row.id,
       menuItemId: null,
       pricingStatus: computePricingStatusFromDate(pricing?.validUntil ?? null),
       pricingValidUntil: pricing?.validUntil ?? null,
+      usageCount: bestRepairItem.row.usage_count,
+      vehicle: {
+        year: bestRepairItem.row.vehicle_year,
+        make: bestRepairItem.row.vehicle_make,
+        model: bestRepairItem.row.vehicle_model,
+        engine: bestRepairItem.row.engine,
+        drivetrain: bestRepairItem.row.drivetrain,
+      },
     };
   }
 
@@ -956,11 +1061,21 @@ export async function findSmartInspectionMatch(args: {
 
   const rankedIntel = ((intelRows ?? []) as WorkOrderIntelRow[])
     .map((row) => {
+      if (
+        !matchesCompletedRepairVehicle(body.vehicle, {
+          year: row.vehicle_year,
+          make: row.vehicle_make,
+          model: row.vehicle_model,
+        })
+      ) {
+        return null;
+      }
       const haystack = [row.complaint ?? "", row.correction ?? ""].join(" ").trim();
       let score = tokenScore(noteText, haystack);
       score = addVehicleScore(score, row, body);
       return { row, score };
     })
+    .filter((x): x is { row: WorkOrderIntelRow; score: number } => Boolean(x))
     .filter((x) => x.score >= 0.3)
     .sort((a, b) => b.score - a.score);
 

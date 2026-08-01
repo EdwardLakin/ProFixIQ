@@ -38,27 +38,17 @@ type SmartRepairMatch = {
   confidence?: number | null;
   menuItemId?: string | null;
   menuRepairItemId?: string | null;
-  autoAcceptReady?: boolean;
-  matchTier?: "high" | "medium" | "low";
-  acceptedCount?: number | null;
-  acceptanceRate?: number | null;
   pricingStatus?: "fresh" | "stale" | "expired";
   pricingValidUntil?: string | null;
+  usageCount?: number | null;
+  vehicle?: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    engine: string | null;
+    drivetrain: string | null;
+  } | null;
 };
-
-
-function isTopRepairDefault(match: SmartRepairMatch | null): boolean {
-  if (!match?.menuRepairItemId) return false;
-
-  const accepted =
-    typeof match.acceptedCount === "number" ? match.acceptedCount : 0;
-  const rate =
-    typeof match.acceptanceRate === "number" ? match.acceptanceRate : 0;
-  const confidence =
-    typeof match.confidence === "number" ? match.confidence : 0;
-
-  return accepted >= 3 && rate >= 0.8 && confidence >= 0.85;
-}
 
 type VehicleLite = Pick<
   DB["public"]["Tables"]["vehicles"]["Row"],
@@ -104,13 +94,21 @@ export function NewWorkOrderLineForm(props: {
 
   const infoTitle = complaint.trim();
   const canSave = (lineType === "info" ? infoTitle.length > 0 : complaint.trim().length > 0) && !!workOrderId;
-  const topRepairDefault = isTopRepairDefault(smartMatch);
   const formShellClass =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 text-sm text-[color:var(--theme-text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5";
   const controlClass =
     "w-full rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-400/70 focus:outline-none";
   const mutedPillClass =
     "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1 text-[10px] text-[color:var(--theme-text-secondary)]";
+  const smartMatchVehicle = smartMatch?.vehicle
+    ? [
+        smartMatch.vehicle.year,
+        smartMatch.vehicle.make,
+        smartMatch.vehicle.model,
+      ]
+        .filter((value) => value !== null && value !== "")
+        .join(" ")
+    : "";
 
   function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
     const allowed: WOJobType[] = [
@@ -215,27 +213,7 @@ export function NewWorkOrderLineForm(props: {
           return;
         }
 
-        const raw = json?.match ?? null;
-        const confidence =
-          raw && typeof raw.confidence === "number" ? raw.confidence : 0;
-
-        setSmartMatch(
-          raw
-            ? {
-                ...raw,
-                autoAcceptReady:
-                  Boolean(raw.menuRepairItemId) &&
-                  confidence >= 0.9 &&
-                  raw.pricingStatus === "fresh",
-                matchTier:
-                  confidence >= 0.9
-                    ? "high"
-                    : confidence >= 0.7
-                      ? "medium"
-                      : "low",
-              }
-            : null,
-        );
+        setSmartMatch(json?.match ?? null);
       } catch {
         setSmartMatch(null);
       } finally {
@@ -261,22 +239,6 @@ export function NewWorkOrderLineForm(props: {
       setLabor(String(match.laborHours));
     }
     setJobType("repair");
-  }
-
-  function pricingBadgeClass(status: SmartRepairMatch["pricingStatus"]): string {
-    if (status === "fresh") {
-      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
-    }
-    if (status === "stale") {
-      return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
-    }
-    return "border-red-500/40 bg-red-500/10 text-red-200";
-  }
-
-  function pricingMessage(status: SmartRepairMatch["pricingStatus"]): string {
-    if (status === "fresh") return "Fresh pricing — safe for auto-add.";
-    if (status === "stale") return "Stale pricing — review before using.";
-    return "Expired pricing — auto-add blocked until pricing is refreshed.";
   }
 
   async function addLine() {
@@ -469,87 +431,62 @@ export function NewWorkOrderLineForm(props: {
 
         {lineType === "job" && smartMatchLoading ? (
           <div className="sm:col-span-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
-            Looking for a matching quoted repair…
+            Checking completed repairs for this vehicle…
           </div>
         ) : lineType === "job" && smartMatch ? (
           <div className="sm:col-span-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs uppercase tracking-[0.16em] text-emerald-200/80">
-                  Smart repair match
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+                  {smartMatch.menuRepairItemId
+                    ? "Previously completed repair"
+                    : "Suggested service"}
                 </div>
-                <div className="mt-1 text-sm font-semibold text-emerald-100">
+                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {smartMatch.label}
                 </div>
+                {smartMatch.menuRepairItemId && smartMatchVehicle ? (
+                  <div className="mt-1 text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                    {smartMatchVehicle}
+                    {smartMatch.vehicle?.engine
+                      ? ` · ${smartMatch.vehicle.engine}`
+                      : ""}
+                  </div>
+                ) : null}
                 {(smartMatch.correction || smartMatch.complaint) && (
-                  <div className="mt-1 text-xs text-emerald-50/85">
+                  <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                     {smartMatch.correction || smartMatch.complaint}
                   </div>
                 )}
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-emerald-100/90">
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
                   {typeof smartMatch.laborHours === "number" && (
                     <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
                       {smartMatch.laborHours} hr
                     </span>
                   )}
-                  {typeof smartMatch.confidence === "number" && (
+                  {smartMatch.menuRepairItemId &&
+                  typeof smartMatch.usageCount === "number" ? (
                     <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      {Math.round(smartMatch.confidence * 100)}% confidence
-                    </span>
-                  )}
-                  {smartMatch.menuRepairItemId && (
-                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      vehicle-specific repair
-                    </span>
-                  )}
-                  {smartMatch.sourceLabel && (
-                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      source: {smartMatch.sourceLabel}
-                    </span>
-                  )}
-                  {smartMatch.compatibilityStatus && (
-                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      {smartMatch.compatibilityStatus}
-                    </span>
-                  )}
-                  {smartMatch.matchTier && (
-                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      {smartMatch.matchTier} confidence tier
-                    </span>
-                  )}
-                  {smartMatch.autoAcceptReady && (
-                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      quote-skip ready
-                    </span>
-                  )}
-
-                  {typeof smartMatch.acceptedCount === "number" &&
-                  smartMatch.acceptedCount > 0 ? (
-                    <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      {smartMatch.acceptedCount} accepted
+                      Used {smartMatch.usageCount}{" "}
+                      {smartMatch.usageCount === 1 ? "time" : "times"}
                     </span>
                   ) : null}
-                  {typeof smartMatch.acceptanceRate === "number" &&
-                  smartMatch.acceptanceRate > 0 ? (
+                  {smartMatch.menuRepairItemId ? (
                     <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      {Math.round(smartMatch.acceptanceRate * 100)}% win rate
+                      Exact YMM match
                     </span>
                   ) : null}
-
-                  {topRepairDefault ? (
+                  {smartMatch.menuRepairItemId ? (
                     <span className="rounded-full border border-emerald-400/30 px-2 py-0.5">
-                      default winner
+                      {smartMatch.pricingStatus === "fresh"
+                        ? "Confirm price and fitment"
+                        : "Pricing review required"}
                     </span>
                   ) : null}
                 </div>
                 {smartMatch.whyShown && (
-                  <div className="mt-2 text-[11px] text-emerald-100/85">
+                  <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
                     Why shown: {smartMatch.whyShown}
-                  </div>
-                )}
-                {smartMatch.compatibilitySummary && (
-                  <div className="mt-1 text-[11px] text-emerald-100/85">
-                    Fit check: {smartMatch.compatibilitySummary}
                   </div>
                 )}
               </div>
@@ -558,9 +495,11 @@ export function NewWorkOrderLineForm(props: {
                 <button
                   type="button"
                   onClick={() => applySmartMatch(smartMatch)}
-                  className="rounded-md border border-emerald-400/40 bg-emerald-400/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:bg-emerald-400/20"
+                  className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-500/20 dark:text-emerald-200"
                 >
-                  Use match
+                  {smartMatch.menuRepairItemId
+                    ? "Use previous repair"
+                    : "Use suggested service"}
                 </button>
                 <button
                   type="button"
@@ -652,60 +591,6 @@ export function NewWorkOrderLineForm(props: {
           </>
         )}
       </div>
-
-      {lineType === "job" && smartMatch && (
-        <div className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-3 text-xs text-[color:var(--theme-text-primary)]">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-[color:var(--theme-text-primary)]">
-              Smart repair match:
-            </span>
-            <span>{smartMatch.label}</span>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${pricingBadgeClass(
-                smartMatch.pricingStatus,
-              )}`}
-            >
-              {smartMatch.pricingStatus ?? "expired"}
-            </span>
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-[color:var(--theme-text-secondary)]">
-            <span>
-              Confidence:{" "}
-              {typeof smartMatch.confidence === "number"
-                ? smartMatch.confidence.toFixed(2)
-                : "—"}
-            </span>
-            <span>
-              Accepted: {typeof smartMatch.acceptedCount === "number" ? smartMatch.acceptedCount : 0}
-            </span>
-            <span>
-              Win rate:{" "}
-              {typeof smartMatch.acceptanceRate === "number"
-                ? `${Math.round(smartMatch.acceptanceRate * 100)}%`
-                : "—"}
-            </span>
-          </div>
-
-          <div className="mt-2 text-[11px] text-[color:var(--theme-text-secondary)]">
-            Pricing valid until: {smartMatch.pricingValidUntil ?? "No active pricing snapshot"}
-          </div>
-
-          <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
-            {pricingMessage(smartMatch.pricingStatus)}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => applySmartMatch(smartMatch)}
-              className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-200"
-            >
-              Use smart match
-            </button>
-          </div>
-        </div>
-      )}
 
       {err && (
         <div className="rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-200">
