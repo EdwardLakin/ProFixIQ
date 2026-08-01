@@ -16,7 +16,7 @@ import {
 } from "@/features/work-orders/lib/operational-stage";
 
 const migration = readFileSync(
-  "supabase/migrations/20260801220406_correct_work_order_lifecycle_review_findings.sql",
+  "supabase/migrations/20260801221903_correct_work_order_lifecycle_review_findings.sql",
   "utf8",
 );
 const workOrderList = readFileSync(
