@@ -37,6 +37,7 @@ import { normalizeCustomerForIntake } from "@/features/inspections/lib/customerN
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
 import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestRecallEnrichment";
+import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -62,6 +63,7 @@ const subtlePanel =
   "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]";
 const softButton =
   "rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-overlay)]";
+const formControlClass = `${ui.input} min-h-11 rounded-xl`;
 
 /* =============================================================================
    Types & helpers
@@ -2367,7 +2369,7 @@ export default function CreateWorkOrderPage() {
                   <select
                     value={priority}
                     onChange={(e) => setPriority(Number(e.target.value))}
-                    className="input"
+                    className={formControlClass}
                     disabled={loading}
                   >
                     <option value={1}>Urgent</option>
@@ -2387,7 +2389,7 @@ export default function CreateWorkOrderPage() {
                   <select
                     value={type}
                     onChange={(e) => setType(e.target.value as WOType)}
-                    className="input"
+                    className={formControlClass}
                     disabled={loading}
                   >
                     <option value="maintenance">Maintenance</option>
@@ -2407,7 +2409,7 @@ export default function CreateWorkOrderPage() {
                     type="datetime-local"
                     value={expectedCompletionInput}
                     onChange={(e) => setExpectedCompletionInput(e.target.value)}
-                    className="input"
+                    className={formControlClass}
                     disabled={loading}
                   />
                   <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
@@ -2636,7 +2638,7 @@ export default function CreateWorkOrderPage() {
                       onChange={(e) =>
                         setPhotoFiles(Array.from(e.target.files ?? []))
                       }
-                      className="input"
+                      className={formControlClass}
                       disabled={loading}
                     />
                   </div>
@@ -2651,7 +2653,7 @@ export default function CreateWorkOrderPage() {
                       onChange={(e) =>
                         setDocFiles(Array.from(e.target.files ?? []))
                       }
-                      className="input"
+                      className={formControlClass}
                       disabled={loading}
                     />
                   </div>
@@ -2663,7 +2665,7 @@ export default function CreateWorkOrderPage() {
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    className="input min-h-32"
+                    className={`${formControlClass} min-h-32`}
                     rows={4}
                     placeholder="Optional note for the technician"
                     disabled={loading}
@@ -2958,7 +2960,7 @@ export default function CreateWorkOrderPage() {
                     <input
                       value={intakeConcern}
                       onChange={(e) => setIntakeConcern(e.target.value)}
-                      className="input"
+                      className={formControlClass}
                       placeholder="e.g. No start / rough idle / brake noise…"
                       disabled={intakeSaving}
                     />
@@ -2971,7 +2973,7 @@ export default function CreateWorkOrderPage() {
                     <textarea
                       value={intakeDetails}
                       onChange={(e) => setIntakeDetails(e.target.value)}
-                      className="input"
+                      className={formControlClass}
                       rows={3}
                       placeholder="Anything else they said?"
                       disabled={intakeSaving}
@@ -2986,7 +2988,7 @@ export default function CreateWorkOrderPage() {
                       <select
                         value={intakeContactPref}
                         onChange={(e) => setIntakeContactPref(e.target.value)}
-                        className="input"
+                        className={formControlClass}
                         disabled={intakeSaving}
                       >
                         <option>Text or call</option>
@@ -3003,7 +3005,7 @@ export default function CreateWorkOrderPage() {
                       <input
                         value={intakeMileage}
                         onChange={(e) => setIntakeMileage(e.target.value)}
-                        className="input"
+                        className={formControlClass}
                         placeholder="e.g. 245,000"
                         disabled={intakeSaving}
                       />
