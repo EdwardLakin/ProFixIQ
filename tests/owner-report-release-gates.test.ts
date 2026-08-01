@@ -28,13 +28,13 @@ describe("owner report release gates", () => {
     expect(route).not.toContain("chat.completions");
   });
 
-  it("allows owner-report ready-to-invoice focus links to open the matching board filter", () => {
+  it("uses the canonical ready filter while preserving legacy deep links", () => {
     const reportBuilder = source(
       "features/owner/reports/server/buildOwnerIntelligenceReport.ts",
     );
     const filters = source("features/shared/lib/workboard/filters.ts");
 
-    expect(reportBuilder).toContain('/work-orders/board?stage=ready_to_invoice');
-    expect(filters).toContain('"ready_to_invoice"');
+    expect(reportBuilder).toContain('/work-orders/board?stage=ready');
+    expect(filters).toContain('ready_to_invoice: "ready"');
   });
 });

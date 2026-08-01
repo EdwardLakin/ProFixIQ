@@ -83,29 +83,23 @@ export default async function OperationsDashboardView() {
       label: "Jobs completed today",
       value: payload.topSummary.completedToday,
       icon: CheckCircle2,
-      href: "/work-orders/board?stage=completed",
+      href: "/work-orders/board?stage=closed",
     },
   ].filter((item) => !(isTechnicianView && item.href === "/parts/requests"));
+  const flowCount = (stageLabel: string) =>
+    payload.flowMix.find(
+      (item) => item.label.toLowerCase() === stageLabel.toLowerCase(),
+    )?.value ?? 0;
   const flow = [
-    [
-      "Awaiting",
-      payload.flowMix.find((item) => item.label.toLowerCase() === "awaiting")
-        ?.value ?? 0,
-      "awaiting",
-    ],
-    [
-      "In progress",
-      payload.flowMix.find((item) => item.label.toLowerCase() === "in progress")
-        ?.value ?? 0,
-      "in_progress",
-    ],
-    [
-      "Awaiting approval",
-      payload.topSummary.waitingApprovals,
-      "awaiting_approval",
-    ],
-    ["Waiting parts", payload.topSummary.blockedJobs, "waiting_parts"],
-    ["Ready to invoice", payload.topSummary.completedToday, "completed"],
+    ["Intake", flowCount("intake"), "intake"],
+    ["Estimate", flowCount("estimate"), "estimate"],
+    ["Awaiting approval", flowCount("awaiting approval"), "awaiting_approval"],
+    ["Authorized", flowCount("authorized"), "authorized"],
+    ["Waiting", flowCount("waiting"), "waiting"],
+    ["In progress", flowCount("in progress"), "in_progress"],
+    ["Quality check", flowCount("quality check"), "quality_check"],
+    ["Ready", flowCount("ready"), "ready"],
+    ["Closed", payload.topSummary.completedToday, "closed"],
   ] as const;
 
   return (
@@ -246,7 +240,7 @@ export default async function OperationsDashboardView() {
             <p className="text-sm text-[color:var(--theme-text-secondary)]">
               Jobs by current stage
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9">
               {flow.map(([label, value, stage], index) => (
                 <Link
                   key={label}

@@ -92,7 +92,7 @@ describe("canonical open parts obligations", () => {
     expect(counts.has("wo-2")).toBe(false);
   });
 
-  it("repairs a stale waiting-parts board row after handoff", () => {
+  it("clears a stale parts signal without inventing a new lifecycle stage", () => {
     const row: WorkOrderBoardRow = {
       work_order_id: "wo-handed-off",
       custom_id: "EL000005",
@@ -102,7 +102,7 @@ describe("canonical open parts obligations", () => {
       jobs_total: 1,
       jobs_completed: 0,
       progress_pct: 0,
-      overall_stage: "waiting_parts",
+      overall_stage: "waiting",
       risk_level: "none",
       has_waiting_parts: true,
       parts_blocker_count: 1,
@@ -111,7 +111,7 @@ describe("canonical open parts obligations", () => {
 
     expect(reconcileBoardPartsState([row], new Map(), new Set())).toEqual([
       expect.objectContaining({
-        overall_stage: "awaiting",
+        overall_stage: "authorized",
         has_waiting_parts: false,
         parts_blocker_count: 0,
         jobs_waiting_parts: 0,

@@ -9,6 +9,7 @@ import {
   type OpenPartsItem,
   type OpenPartsRequest,
 } from "@/features/parts/lib/open-parts-obligations";
+import { normalizeWorkOrderOperationalStage } from "@/features/work-orders/lib/operational-stage";
 
 type ViewName =
   | "v_work_order_board_cards_shop"
@@ -58,7 +59,10 @@ export function useWorkOrderBoard(
       return;
     }
 
-    const boardRows = (data ?? []) as WorkOrderBoardRow[];
+    const boardRows = ((data ?? []) as WorkOrderBoardRow[]).map((row) => ({
+      ...row,
+      overall_stage: normalizeWorkOrderOperationalStage(row.overall_stage),
+    }));
 
     if (variant !== "shop" || boardRows.length === 0) {
       setRows(boardRows);

@@ -24,12 +24,15 @@ import {
 } from "../../lib/workboard/utils";
 
 const stageIcon: Partial<Record<WorkOrderBoardStage, typeof Clock3>> = {
-  awaiting: Clock3,
-  in_progress: Wrench,
+  intake: Clock3,
+  estimate: Clock3,
   awaiting_approval: AlertTriangle,
-  waiting_parts: Package,
-  on_hold: Clock3,
-  completed: CheckCircle2,
+  authorized: CheckCircle2,
+  waiting: Package,
+  in_progress: Wrench,
+  quality_check: Wrench,
+  ready: CheckCircle2,
+  closed: CheckCircle2,
 };
 
 function attentionCount(rows: WorkOrderBoardRow[]) {
@@ -75,9 +78,7 @@ export default function WorkOrderBoardWidget(props: {
   const inProgress = rows.filter(
     (row) => row.overall_stage === "in_progress",
   ).length;
-  const waitingParts = rows.filter(
-    (row) => row.overall_stage === "waiting_parts",
-  ).length;
+  const waitingParts = rows.filter((row) => row.has_waiting_parts).length;
 
   return (
     <section aria-labelledby="compact-work-board-title" className="space-y-4">
@@ -155,7 +156,7 @@ export default function WorkOrderBoardWidget(props: {
       ) : (
         <div className="divide-y divide-[color:var(--theme-border-soft)] overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
           {rows.map((row) => {
-            const Icon = stageIcon[row.overall_stage ?? "awaiting"] ?? Clock3;
+            const Icon = stageIcon[row.overall_stage ?? "intake"] ?? Clock3;
             const blockers = buildBlockers(row, variant);
             return (
               <div

@@ -10,8 +10,8 @@ import type { WorkOrderBoardRow } from "@/features/shared/lib/workboard/types";
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
 const mockRows: WorkOrderBoardRow[] = [
-  boardRow("wo-waiting", "WO-WAITING", "waiting_parts"),
-  boardRow("wo-hold", "WO-HOLD", "on_hold"),
+  boardRow("wo-waiting", "WO-WAITING", "waiting", true),
+  boardRow("wo-hold", "WO-HOLD", "waiting"),
   boardRow("wo-approval", "WO-APPROVAL", "awaiting_approval"),
   boardRow("wo-progress", "WO-PROGRESS", "in_progress"),
 ];
@@ -29,6 +29,7 @@ function boardRow(
   work_order_id: string,
   custom_id: string,
   overall_stage: WorkOrderBoardRow["overall_stage"],
+  has_waiting_parts = false,
 ): WorkOrderBoardRow {
   return {
     work_order_id,
@@ -41,6 +42,7 @@ function boardRow(
     progress_pct: 25,
     assigned_summary: null,
     overall_stage,
+    has_waiting_parts,
     risk_level: "none",
     priority: 3,
     is_waiter: false,
@@ -101,12 +103,13 @@ describe("Phase D1 dashboard source contracts", () => {
 });
 
 describe("WorkOrderBoard stage query initialization", () => {
-  it.each(["waiting_parts", "on_hold", "awaiting_approval"] as const)(
-    "accepts %s as a valid board stage",
-    (stage) => {
-      expect(parseWorkOrderBoardStageFilter(stage)).toBe(stage);
-    },
-  );
+  it.each([
+    ["waiting_parts", "waiting"],
+    ["on_hold", "waiting"],
+    ["awaiting_approval", "awaiting_approval"],
+  ] as const)("maps %s to the canonical %s board stage", (stage, expected) => {
+    expect(parseWorkOrderBoardStageFilter(stage)).toBe(expected);
+  });
 
   it("falls invalid board stages back to all", () => {
     expect(parseWorkOrderBoardStageFilter("dispatch_everything")).toBe("all");
@@ -116,13 +119,13 @@ describe("WorkOrderBoard stage query initialization", () => {
   it("initializes the visible board from a valid stage and lets its summary card clear the filter", async () => {
     const user = userEvent.setup();
     const { rerender } = render(
-      <WorkOrderBoard variant="shop" title="Board" initialStage="waiting_parts" />,
+      <WorkOrderBoard variant="shop" title="Board" initialStage="waiting" />,
     );
 
     expect(screen.getByText("WO-WAITING")).toBeInTheDocument();
-    expect(screen.queryByText("WO-HOLD")).not.toBeInTheDocument();
+    expect(screen.getByText("WO-HOLD")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /waiting parts/i }));
+    await user.click(screen.getByRole("button", { name: /^waiting2$/i }));
     expect(screen.getByText("WO-WAITING")).toBeInTheDocument();
     expect(screen.getByText("WO-HOLD")).toBeInTheDocument();
 
@@ -135,9 +138,9 @@ describe("WorkOrderBoard stage query initialization", () => {
     render(<WorkOrderBoard variant="shop" title="Board" />);
 
     expect(screen.getByRole("button", { name: /at risk/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /ready to work/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /waiting parts/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /ready to invoice/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /authorized/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^waiting/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^ready/i })).toBeInTheDocument();
     expect(screen.queryByLabelText("Board stage views")).not.toBeInTheDocument();
   });
 });

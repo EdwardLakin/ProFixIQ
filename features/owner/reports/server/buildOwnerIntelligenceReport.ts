@@ -487,7 +487,7 @@ function buildFocus(args: {
       title: "Parts are holding work",
       detail: `${args.waitingForPartsCount} work order${args.waitingForPartsCount === 1 ? "" : "s"} account for ${round(args.waitingForPartsHours, 1)} measured waiting hours.`,
       severity: args.waitingForPartsHours >= 24 ? "critical" : "watch",
-      href: "/work-orders/board?stage=waiting_parts",
+      href: "/work-orders/board?stage=waiting",
     });
   }
 
@@ -507,7 +507,7 @@ function buildFocus(args: {
       title: "Completed work is waiting to bill",
       detail: `${args.readyToInvoiceCount} repair order${args.readyToInvoiceCount === 1 ? "" : "s"} account for ${round(args.readyToInvoiceHours, 1)} hours since technician completion.`,
       severity: args.readyToInvoiceHours >= 12 ? "critical" : "watch",
-      href: "/work-orders/board?stage=ready_to_invoice",
+      href: "/work-orders/board?stage=ready",
     });
   }
 
@@ -837,11 +837,13 @@ export async function buildOwnerIntelligenceReport(args: {
     (row) => row.overall_stage === "awaiting_approval",
   );
   const waitingPartsCards = boardCards.filter(
-    (row) => row.overall_stage === "waiting_parts" || row.has_waiting_parts === true,
+    (row) => row.has_waiting_parts === true,
   );
-  const onHoldCards = boardCards.filter((row) => row.overall_stage === "on_hold");
+  const onHoldCards = boardCards.filter(
+    (row) => row.overall_stage === "waiting" && row.has_waiting_parts !== true,
+  );
   const readyToInvoiceCards = boardCards.filter(
-    (row) => row.overall_stage === "ready_to_invoice",
+    (row) => row.overall_stage === "ready",
   );
   const stageHours = (rows: BoardCardRow[]) =>
     rows.reduce((sum, row) => sum + safeNumber(row.time_in_stage_seconds) / 3_600, 0);

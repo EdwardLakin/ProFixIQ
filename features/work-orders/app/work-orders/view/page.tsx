@@ -28,9 +28,12 @@ import {
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
-import StatusPickerModal, {
-  type WorkOrderStatus,
-} from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
+import {
+  WORK_ORDER_OPERATIONAL_STAGE_LABELS,
+  normalizeWorkOrderOperationalStage,
+  workOrderOperationalStageProgress,
+  type WorkOrderOperationalStage,
+} from "@/features/work-orders/lib/operational-stage";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -146,20 +149,6 @@ function workOrderDisplayId(
   return customId || `#${workOrder.id.slice(0, 8)}`;
 }
 
-function isStatusPickerStatus(x: string): x is WorkOrderStatus {
-  return (
-    x === "awaiting_approval" ||
-    x === "awaiting" ||
-    x === "queued" ||
-    x === "in_progress" ||
-    x === "on_hold" ||
-    x === "planned" ||
-    x === "completed" ||
-    x === "ready_to_invoice" ||
-    x === "invoiced"
-  );
-}
-
 function rollupTechStatus(lines: Array<Pick<Line, "status">>): TechRollup {
   const s = new Set(
     (lines ?? []).map((l) => String(l.status ?? "awaiting").toLowerCase()),
@@ -176,16 +165,12 @@ function rollupTechStatus(lines: Array<Pick<Line, "status">>): TechRollup {
   return "awaiting";
 }
 
-function stageAccent(status: string | null | undefined): {
+function stageAccent(status: WorkOrderOperationalStage): {
   badge: string;
   border: string;
   progress: string;
 } {
-  const key = String(status ?? "awaiting")
-    .toLowerCase()
-    .replaceAll(" ", "_");
-
-  if (key === "in_progress") {
+  if (status === "in_progress") {
     return {
       badge: "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-100",
       border: "border-sky-500/30",
@@ -193,12 +178,7 @@ function stageAccent(status: string | null | undefined): {
     };
   }
 
-  if (
-    key === "new" ||
-    key === "awaiting" ||
-    key === "awaiting_inspection" ||
-    key === "recommended"
-  ) {
+  if (status === "intake" || status === "estimate") {
     return {
       badge: "border-sky-500/45 bg-sky-500/10 text-sky-700 dark:text-sky-100",
       border: "border-sky-500/25",
@@ -206,7 +186,7 @@ function stageAccent(status: string | null | undefined): {
     };
   }
 
-  if (key === "awaiting_approval") {
+  if (status === "awaiting_approval") {
     return {
       badge:
         "border-blue-500/45 bg-blue-500/10 text-blue-700 dark:text-blue-100",
@@ -215,16 +195,7 @@ function stageAccent(status: string | null | undefined): {
     };
   }
 
-  if (key === "queued") {
-    return {
-      badge:
-        "border-indigo-500/45 bg-indigo-500/10 text-indigo-700 dark:text-indigo-100",
-      border: "border-indigo-500/25",
-      progress: "bg-indigo-400",
-    };
-  }
-
-  if (key === "approved") {
+  if (status === "authorized") {
     return {
       badge:
         "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
@@ -233,7 +204,7 @@ function stageAccent(status: string | null | undefined): {
     };
   }
 
-  if (key === "on_hold" || key === "waiting_parts") {
+  if (status === "waiting") {
     return {
       badge:
         "border-amber-500/45 bg-amber-500/10 text-amber-700 dark:text-amber-100",
@@ -242,16 +213,16 @@ function stageAccent(status: string | null | undefined): {
     };
   }
 
-  if (key === "planned") {
+  if (status === "quality_check") {
     return {
       badge:
-        "border-purple-500/45 bg-purple-500/10 text-purple-700 dark:text-purple-100",
-      border: "border-purple-500/30",
-      progress: "bg-purple-400",
+        "border-teal-500/45 bg-teal-500/10 text-teal-700 dark:text-teal-100",
+      border: "border-teal-500/30",
+      progress: "bg-teal-400",
     };
   }
 
-  if (key === "completed" || key === "ready_to_invoice") {
+  if (status === "ready") {
     return {
       badge:
         "border-emerald-500/45 bg-emerald-500/10 text-emerald-700 dark:text-emerald-100",
@@ -260,7 +231,7 @@ function stageAccent(status: string | null | undefined): {
     };
   }
 
-  if (key === "invoiced") {
+  if (status === "closed") {
     return {
       badge:
         "border-teal-500/45 bg-teal-500/10 text-teal-700 dark:text-teal-100",
@@ -330,47 +301,15 @@ export default function WorkOrdersView(): JSX.Element {
   const [assignedByWo, setAssignedByWo] = useState<Record<string, boolean>>({});
   const [hasLinesByWo, setHasLinesByWo] = useState<Record<string, boolean>>({});
 
-  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
-  const [statusPickerWoId, setStatusPickerWoId] = useState<string | null>(null);
-  const [statusPickerCurrent, setStatusPickerCurrent] =
-    useState<WorkOrderStatus>("awaiting");
+  const [operationalStageByWo, setOperationalStageByWo] = useState<
+    Record<string, WorkOrderOperationalStage>
+  >({});
   const workforceDrilldownActive = useMemo(
     () =>
       searchParams.get("assignment") === "unassigned" &&
       searchParams.get("status") === "active" &&
       searchParams.get("source") === "workforce",
     [searchParams],
-  );
-
-  const openStatusPicker = useCallback((wo: Row) => {
-    const raw = String(wo.status ?? "awaiting")
-      .toLowerCase()
-      .replaceAll(" ", "_");
-
-    const current = isStatusPickerStatus(raw) ? raw : "awaiting";
-
-    setStatusPickerWoId(wo.id);
-    setStatusPickerCurrent(current);
-    setStatusPickerOpen(true);
-  }, []);
-
-  const applyWorkOrderStatus = useCallback(
-    async (woId: string, next: WorkOrderStatus) => {
-      const { error } = await supabase
-        .from("work_orders")
-        .update({
-          status: next,
-        } as DB["public"]["Tables"]["work_orders"]["Update"])
-        .eq("id", woId);
-
-      if (error) {
-        toast.error(error.message);
-        return;
-      }
-
-      toast.success(`Status updated → ${next.replaceAll("_", " ")}`);
-    },
-    [supabase],
   );
 
   const load = useCallback(async () => {
@@ -554,14 +493,22 @@ export default function WorkOrdersView(): JSX.Element {
       setTechRollupByWo({});
       setAssignedByWo({});
       setHasLinesByWo({});
+      setOperationalStageByWo({});
       setLoading(false);
       return;
     }
 
-    const { data: lines, error: lnErr } = await supabase
-      .from("work_order_lines")
-      .select("id,work_order_id,status,assigned_tech_id")
-      .in("work_order_id", ids);
+    const [linesResult, stagesResult] = await Promise.all([
+      supabase
+        .from("work_order_lines")
+        .select("id,work_order_id,status,assigned_tech_id")
+        .in("work_order_id", ids),
+      supabase
+        .from("v_work_order_board_cards_shop")
+        .select("work_order_id,overall_stage")
+        .in("work_order_id", ids),
+    ]);
+    const { data: lines, error: lnErr } = linesResult;
 
     if (lnErr) {
       console.warn(
@@ -571,9 +518,24 @@ export default function WorkOrdersView(): JSX.Element {
       setTechRollupByWo({});
       setAssignedByWo({});
       setHasLinesByWo({});
+      setOperationalStageByWo({});
       setLoading(false);
       return;
     }
+
+    if (stagesResult.error) {
+      console.warn(
+        "[WorkOrdersView] failed to load canonical lifecycle stages:",
+        stagesResult.error.message,
+      );
+    }
+    const stageMap: Record<string, WorkOrderOperationalStage> = {};
+    for (const stageRow of stagesResult.data ?? []) {
+      stageMap[stageRow.work_order_id] = normalizeWorkOrderOperationalStage(
+        stageRow.overall_stage,
+      );
+    }
+    setOperationalStageByWo(stageMap);
 
     const lineRows = (lines ?? []) as Array<
       Pick<Line, "id" | "work_order_id" | "status" | "assigned_tech_id">
@@ -785,7 +747,6 @@ export default function WorkOrdersView(): JSX.Element {
 
   const currentActor = getActorCapabilities({ role: currentRole });
   const canAssign = currentActor.canAssignWork;
-  const canPickStatus = currentActor.canManageWorkOrders;
 
   useEffect(() => {
     void load();
@@ -887,7 +848,7 @@ export default function WorkOrdersView(): JSX.Element {
   );
 
   const total = rows.length;
-  const summaryNow = useMemo(() => Date.now(), [rows]);
+  const summaryNow = useMemo(() => Date.now(), []);
 
   const activeCount = useMemo(
     () =>
@@ -1167,10 +1128,12 @@ export default function WorkOrdersView(): JSX.Element {
                   ? `${row.vehicles.year ?? ""} ${row.vehicles.make ?? ""} ${row.vehicles.model ?? ""}`.trim()
                   : "";
                 const plate = row.vehicles?.license_plate ?? "";
-                const statusLower = normalizeStatusKey(row.status);
+                const operationalStage =
+                  operationalStageByWo[row.id] ??
+                  normalizeWorkOrderOperationalStage(row.status);
                 const isInvoiceStage =
-                  statusLower === "ready_to_invoice" ||
-                  statusLower === "completed";
+                  operationalStage === "quality_check" ||
+                  operationalStage === "ready";
                 const review = reviewByWo[row.id];
                 const reviewedOk = Boolean(review?.ok);
                 const issueCount = review?.issues?.length ?? 0;
@@ -1194,28 +1157,23 @@ export default function WorkOrdersView(): JSX.Element {
                       86400000,
                   ),
                 );
-                const accent = stageAccent(row.status);
+                const accent = stageAccent(operationalStage);
                 const priority = priorityLabel(row.priority);
                 const progressPct =
-                  techRollup === "completed"
-                    ? 100
-                    : techRollup === "in_progress"
-                      ? 55
-                      : techRollup === "on_hold"
-                        ? 25
-                        : 8;
+                  workOrderOperationalStageProgress(operationalStage);
                 const operationalNote =
-                  canonicalStatus === "awaiting_approval"
+                  operationalStage === "awaiting_approval"
                     ? "Needs approval"
-                    : canonicalStatus === "waiting_parts" ||
-                        techRollup === "on_hold"
-                      ? "Waiting for parts"
+                    : operationalStage === "waiting"
+                      ? "Waiting on the next operational dependency"
                       : !hasAssignedTech
                         ? "Technician unassigned"
                         : shouldShowInspectionPending
                           ? "Inspection pending"
-                          : canonicalStatus === "ready_to_invoice"
-                            ? "Invoice review ready"
+                          : operationalStage === "quality_check"
+                            ? "Final quality check"
+                            : operationalStage === "ready"
+                              ? "Invoice review ready"
                             : `Technician ${techRollup.replaceAll("_", " ")}`;
 
                 return (
@@ -1275,7 +1233,7 @@ export default function WorkOrdersView(): JSX.Element {
                           <span
                             className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] ${accent.badge}`}
                           >
-                            {canonicalStatus.replaceAll("_", " ")}
+                            {WORK_ORDER_OPERATIONAL_STAGE_LABELS[operationalStage]}
                           </span>
                           <span className="truncate text-xs font-medium text-[color:var(--theme-text-secondary)]">
                             {operationalNote}
@@ -1349,19 +1307,6 @@ export default function WorkOrdersView(): JSX.Element {
                         Open
                       </Link>
 
-                      {canPickStatus ? (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openStatusPicker(row);
-                          }}
-                          className="rounded-lg border border-purple-500/45 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-700 transition hover:bg-purple-500/15 dark:text-purple-100"
-                        >
-                          Change stage
-                        </button>
-                      ) : null}
-
                       {isInvoiceStage ? (
                         <button
                           type="button"
@@ -1380,7 +1325,7 @@ export default function WorkOrdersView(): JSX.Element {
                         </button>
                       ) : null}
 
-                      {statusLower === "ready_to_invoice" ? (
+                      {operationalStage === "ready" ? (
                         <button
                           type="button"
                           onClick={(event) => {
@@ -1483,19 +1428,6 @@ export default function WorkOrdersView(): JSX.Element {
           </section>
         )}
 
-        {statusPickerOpen && statusPickerWoId ? (
-          <StatusPickerModal
-            isOpen={statusPickerOpen}
-            onClose={() => setStatusPickerOpen(false)}
-            current={statusPickerCurrent}
-            onChange={async (pick) => {
-              const workOrderId = statusPickerWoId;
-              const next = pick.replace("status:", "") as WorkOrderStatus;
-              await applyWorkOrderStatus(workOrderId, next);
-              await load();
-            }}
-          />
-        ) : null}
       </div>
     </div>
   );

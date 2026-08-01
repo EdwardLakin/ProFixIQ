@@ -40,7 +40,7 @@ export default function WaitingPartsWidget({
           .from("v_work_order_board_cards_shop")
           .select("*")
           .eq("shop_id", shopId)
-          .eq("overall_stage", "waiting_parts")
+          .eq("has_waiting_parts", true)
           .order("time_in_stage_seconds", { ascending: false })
           .limit(12);
 
