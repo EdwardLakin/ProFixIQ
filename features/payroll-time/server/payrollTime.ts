@@ -2,6 +2,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { createHash } from "crypto";
 import { shopLocalDateTimeToUtc } from "@/features/shared/lib/utils/shopDayWindow";
 import {
+  buildPayrollPeriodRanges,
   calculatePayPeriodBounds,
   DEFAULT_BIWEEKLY_ANCHOR_DATE,
   type PayrollCadence,
@@ -269,6 +270,62 @@ function clampIso(iso: string, minIso: string, maxIso: string): string {
   return iso;
 }
 
+async function getEarliestPayrollSourceDate(
+  admin: any,
+  shopId: string,
+  timezone: string,
+): Promise<string | null> {
+  const [shiftResult, jobResult, creditResult] = await Promise.all([
+    admin
+      .from("tech_shifts")
+      .select("start_time")
+      .eq("shop_id", shopId)
+      .neq("excluded_from_payroll", true)
+      .order("start_time", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    admin
+      .from("work_order_line_labor_segments")
+      .select("started_at")
+      .eq("shop_id", shopId)
+      .order("started_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    admin
+      .from("work_order_line_flat_rate_credits")
+      .select("credited_at")
+      .eq("shop_id", shopId)
+      .order("credited_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const sourceError =
+    shiftResult.error ?? jobResult.error ?? creditResult.error;
+  if (sourceError) throw new Error(sourceError.message);
+
+  const timestamps = [
+    shiftResult.data?.start_time,
+    jobResult.data?.started_at,
+    creditResult.data?.credited_at,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => ({ value, timestamp: new Date(value).getTime() }))
+    .filter((value) => Number.isFinite(value.timestamp))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  return timestamps[0] ? toShopDate(timestamps[0].value, timezone) : null;
+}
+
+function periodsOverlap(
+  left: { periodStart: string; periodEnd: string },
+  right: { period_start: string; period_end: string },
+) {
+  return (
+    left.periodStart <= right.period_end &&
+    left.periodEnd >= right.period_start
+  );
+}
+
 export async function getOrCreateCurrentPeriod(shopId: string) {
   const admin = createAdminSupabase() as any;
   const today = new Date();
@@ -332,7 +389,8 @@ export async function getOrCreateCurrentPeriod(shopId: string) {
 
   const cadence = (payrollSettings?.cadence ?? "biweekly") as PayrollCadence;
   const weekStartsOn = Number(payrollSettings?.week_starts_on ?? 1);
-  const todayUtc = startOfUtcDay(`${toShopDate(today.toISOString(), timezone)}T00:00:00.000Z`);
+  const currentWorkDate = toShopDate(today.toISOString(), timezone);
+  const todayUtc = startOfUtcDay(`${currentWorkDate}T00:00:00.000Z`);
   const { start: periodStart, end: periodEnd } = calculatePayPeriodBounds({
     shopDate: todayUtc,
     cadence,
@@ -343,46 +401,75 @@ export async function getOrCreateCurrentPeriod(shopId: string) {
   const periodStartIso = toIsoDate(periodStart);
   const periodEndIso = toIsoDate(periodEnd);
 
-  const existing = await admin
+  const { data: existingPeriods, error: existingPeriodsError } = await admin
+    .from("payroll_pay_periods")
+    .select("id, period_start, period_end, status")
+    .eq("shop_id", shopId)
+    .order("period_start", { ascending: true });
+  if (existingPeriodsError) throw new Error(existingPeriodsError.message);
+
+  const earliestSourceDate = await getEarliestPayrollSourceDate(
+    admin,
+    shopId,
+    timezone,
+  );
+  const calculatedRanges = buildPayrollPeriodRanges({
+    firstWorkDate: earliestSourceDate ?? currentWorkDate,
+    currentWorkDate,
+    cadence,
+    weekStartsOn,
+    anchorDate: payrollSettings?.period_anchor_date ?? null,
+  });
+  const rangesToCreate = calculatedRanges.filter((range) => {
+    const isCurrent =
+      range.periodStart === periodStartIso && range.periodEnd === periodEndIso;
+    const exactPeriodExists = (existingPeriods ?? []).some(
+      (period: { period_start: string; period_end: string }) =>
+        period.period_start === range.periodStart &&
+        period.period_end === range.periodEnd,
+    );
+    if (exactPeriodExists) return false;
+    if (isCurrent) return true;
+    return !(existingPeriods ?? []).some(
+      (period: { period_start: string; period_end: string }) =>
+        periodsOverlap(range, period),
+    );
+  });
+
+  const periodRows = rangesToCreate.map((range) => ({
+    shop_id: shopId,
+    period_start: range.periodStart,
+    period_end: range.periodEnd,
+    start_date: range.periodStart,
+    end_date: range.periodEnd,
+    processed: false,
+    status: "open",
+    notes:
+      range.periodStart === periodStartIso && range.periodEnd === periodEndIso
+        ? "Automatically created by Workforce Payroll."
+        : "Automatically created from recorded Workforce time.",
+  }));
+  if (periodRows.length > 0) {
+    const created = await admin
+      .from("payroll_pay_periods")
+      .upsert(periodRows, {
+        onConflict: "shop_id,period_start,period_end",
+        ignoreDuplicates: true,
+      });
+    if (created.error) throw new Error(created.error.message);
+  }
+
+  const currentPeriod = await admin
     .from("payroll_pay_periods")
     .select("*")
     .eq("shop_id", shopId)
     .eq("period_start", periodStartIso)
     .eq("period_end", periodEndIso)
     .maybeSingle();
+  if (currentPeriod.error) throw new Error(currentPeriod.error.message);
+  if (!currentPeriod.data) throw new Error("Current payroll period was not created");
 
-  if (existing.error) throw new Error(existing.error.message);
-  if (existing.data) return { settings: payrollSettings, period: existing.data };
-
-  const created = await admin
-    .from("payroll_pay_periods")
-    .insert({
-      shop_id: shopId,
-      period_start: periodStartIso,
-      period_end: periodEndIso,
-      status: "open",
-      notes: "Automatically created by Workforce Payroll.",
-    })
-    .select("*")
-    .single();
-
-  if (created.error) {
-    // A concurrent request can win the unique
-    // (shop_id, period_start, period_end) insert. Resolve that exact row rather
-    // than rendering an empty payroll screen.
-    const concurrent = await admin
-      .from("payroll_pay_periods")
-      .select("*")
-      .eq("shop_id", shopId)
-      .eq("period_start", periodStartIso)
-      .eq("period_end", periodEndIso)
-      .maybeSingle();
-    if (concurrent.error || !concurrent.data) {
-      throw new Error(created.error.message);
-    }
-    return { settings: payrollSettings, period: concurrent.data };
-  }
-  return { settings: payrollSettings, period: created.data };
+  return { settings: payrollSettings, period: currentPeriod.data };
 }
 
 async function getPeriodSourceState(admin: any, shopId: string, period: any, timezone: string) {
