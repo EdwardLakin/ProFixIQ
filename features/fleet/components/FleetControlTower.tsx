@@ -6,17 +6,11 @@ import FleetIssueTables from "./FleetIssueTables";
 import FleetAISummary from "./FleetAISummary";
 import FleetUnitEconomicsPanel from "./FleetUnitEconomicsPanel";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
-import Link from "next/link";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import {
   MaintenanceControlTower,
   getOperationsVerticalConfig,
 } from "@/features/operations";
-import {
-  mapDispatchAssignmentToOperationsAssignment,
-  mapFleetIssueToOperationsIssue,
-  mapFleetUnitToOperationsAsset,
-} from "@/features/fleet/lib/fleetOperationsAdapters";
 
 export type FleetUnitStatus = "in_service" | "limited" | "oos";
 
@@ -157,14 +151,6 @@ export default function FleetControlTower({
       prev === "inspection_due_30" ? "all" : "inspection_due_30",
     );
 
-  useMemo(
-    () => ({
-      assets: filteredUnits.map(mapFleetUnitToOperationsAsset),
-      issues: issues.map(mapFleetIssueToOperationsIssue),
-      assignments: assignments.map(mapDispatchAssignmentToOperationsAssignment),
-    }),
-    [filteredUnits, issues, assignments],
-  );
   const terminology = getOperationsVerticalConfig("fleet")?.terminology;
 
   return (
@@ -188,25 +174,11 @@ export default function FleetControlTower({
         label: `${terminology?.inspectionPluralLabel ?? "Inspections"} due in next 30 days`,
         onClear: () => setFocusFilter("all"),
       }}
+      layout="dashboard-first"
+      renderContentWhenError
       workOrderBoard={
         uiContext.capabilities.canViewDispatch ? (
-          <div className="metal-card rounded-3xl p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
-                  Work board
-                </div>
-                <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                  Fleet jobs in progress
-                </div>
-              </div>
-              <Link
-                href={`${routePrefix}/board`}
-                className="text-xs text-[color:var(--theme-text-secondary)] underline decoration-[color:var(--theme-border-strong)] underline-offset-4 hover:text-[color:var(--theme-text-primary)]"
-              >
-                Open full board →
-              </Link>
-            </div>
+          <div className="metal-card rounded-3xl p-4 sm:p-5">
             <WorkOrderBoardWidget
               variant="fleet"
               href={`${routePrefix}/board`}
@@ -216,8 +188,11 @@ export default function FleetControlTower({
       }
       error={
         error ? (
-          <div className="rounded-2xl border border-red-700 bg-red-900/30 px-4 py-3 text-xs text-red-200">
-            {error}
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-100">
+            <div className="font-semibold">Live fleet feed is temporarily unavailable</div>
+            <div className="mt-1 text-xs opacity-80">
+              {error} Dashboard sections remain visible with the data currently available.
+            </div>
           </div>
         ) : null
       }
