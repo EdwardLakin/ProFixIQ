@@ -1,6 +1,11 @@
 import Stripe from "stripe";
 
-export const STRIPE_API_VERSION = "2024-04-10";
+/**
+ * Keep the SDK request version aligned with the live webhook endpoints while
+ * the repository completes its Stripe SDK upgrade. Do not introduce route-local
+ * Stripe versions.
+ */
+export const STRIPE_API_VERSION = "2025-04-30.basil";
 
 export function createStripeClient(secretKey: string): Stripe {
   return new Stripe(secretKey, {
