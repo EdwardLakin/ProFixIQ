@@ -130,7 +130,6 @@ function ProductVisual({ type }: { type: (typeof stories)[number]["visual"] }) {
     </div>
   );
 }
-
 export default function ProFixIQLanding() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [sessionExists, setSessionExists] = useState(false);
@@ -227,7 +226,7 @@ export default function ProFixIQLanding() {
           <div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><div className="marketing-eyebrow">Complete platform</div><h2 className="marketing-heading mt-4 max-w-2xl">Everything included. No feature tax.</h2></div><p className="max-w-lg text-base leading-7 text-[color:var(--marketing-muted)]">Choose a plan by team size. The operating system stays complete at every level.</p></div><div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-4">{modules.map(({ title, items, icon: Icon }) => <div key={title} className="rounded-2xl border border-[color:var(--marketing-border)] bg-white p-6 shadow-sm"><Icon size={21} className="text-[color:var(--marketing-copper-dark)]" /><h3 className="mt-8 text-lg font-bold">{title}</h3><p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">{items}</p></div>)}</div></div>
         </section>
 
-        <section id="pricing" className="scroll-mt-24 bg-white py-20 sm:py-28"><div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="mx-auto max-w-3xl text-center"><div className="marketing-eyebrow">Simple pricing</div><h2 className="marketing-heading mt-4">One complete product. Sized for your shop.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">All core features are included. Plans scale by the number of active users at each location.</p></div><div className="mt-12"><PricingSection onCheckout={startCheckout} onStartFree={() => { window.location.href = "/compare-plans"; }} /></div></div></section>
+        <section id="pricing" className="scroll-mt-24 bg-white py-20 sm:py-28"><div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="mx-auto max-w-3xl text-center"><div className="marketing-eyebrow">Simple pricing</div><h2 className="marketing-heading mt-4">One complete product. Sized for your shop.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">All core features are included. Plans scale by the number of active users at each location.</p></div><div className="mt-12"><PricingSection surface="light" onCheckout={startCheckout} onStartFree={() => { window.location.href = "/compare-plans"; }} /></div></div></section>
       </main>
 
       <LandingChatbot />

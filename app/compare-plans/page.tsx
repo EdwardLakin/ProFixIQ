@@ -115,6 +115,7 @@ export default function ComparePlansPage() {
             </div>
           ) : null}
           <PricingSection
+            surface="dark"
             onCheckout={handleCheckout}
             onStartFree={() => {
               toast.message("Choose a plan to continue", {
