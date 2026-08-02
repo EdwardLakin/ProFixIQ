@@ -12,14 +12,10 @@ import {
   saveShopPaymentSettings,
 } from "@/features/stripe/lib/server/shop-payment-settings";
 
-const REQUEST_MAX_BYTES = 8 * 1024;
+const REQUEST_MAX_BYTES = 4 * 1024;
 const settingsSchema = z.object({
   portal_payments_enabled: z.boolean().optional(),
   default_currency: z.enum(["cad", "usd"]).optional(),
-  allow_partial_payments: z.boolean().optional(),
-  minimum_payment_cents: z.number().int().min(50).optional(),
-  default_deposit_percent: z.number().min(0).max(100).optional(),
-  require_payment_before_release: z.boolean().optional(),
   receipt_email_enabled: z.boolean().optional(),
 }).strict();
 
