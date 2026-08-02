@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { approveAiActionPreview, rejectAiActionPreview } from "@/features/ai/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type DecisionBody = {
   decision: "approved" | "rejected";
@@ -66,9 +67,10 @@ export async function PATCH(
   };
 
   try {
+    const admin = createAdminSupabase();
     const approval = body.decision === "approved"
-      ? await approveAiActionPreview(access.supabase, actor, { approvalId, decisionNote: body.decisionNote })
-      : await rejectAiActionPreview(access.supabase, actor, { approvalId, decisionNote: body.decisionNote });
+      ? await approveAiActionPreview(admin, actor, { approvalId, decisionNote: body.decisionNote })
+      : await rejectAiActionPreview(admin, actor, { approvalId, decisionNote: body.decisionNote });
 
     return NextResponse.json({
       approval: {
