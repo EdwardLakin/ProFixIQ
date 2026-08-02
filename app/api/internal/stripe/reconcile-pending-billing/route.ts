@@ -3,6 +3,7 @@ import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireInternalApiSecret } from "@/features/shared/lib/server/api-route-guard";
 import { reconcileShopSubscriptionSeats } from "@/features/stripe/lib/server/subscription-seat-reconciliation";
+import { resolveStripePriceContract } from "@/features/stripe/lib/server/stripe-price-contract";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,32 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const pendingShops = shops ?? [];
+  if (pendingShops.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      results: [],
+    });
+  }
+
+  let priceContract;
+  try {
+    priceContract = await resolveStripePriceContract(stripe);
+  } catch (priceError) {
+    return NextResponse.json(
+      {
+        error:
+          priceError instanceof Error
+            ? priceError.message
+            : "Stripe price contract could not be resolved",
+      },
+      { status: 503 },
+    );
+  }
+
   const results: Array<{
     shop_id: string;
     ok: boolean;
@@ -50,12 +77,13 @@ export async function GET(req: Request) {
     error?: string;
   }> = [];
 
-  for (const shop of shops ?? []) {
+  for (const shop of pendingShops) {
     try {
       const result = await reconcileShopSubscriptionSeats({
         stripe,
         supabase,
         shopId: shop.id,
+        priceContract,
       });
       results.push({ shop_id: shop.id, ok: true, state: result.state });
     } catch (reconcileError) {
