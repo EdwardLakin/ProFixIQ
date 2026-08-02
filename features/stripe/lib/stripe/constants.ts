@@ -1,60 +1,55 @@
-// features/stripe/lib/stripe/constants.ts
+import {
+  BASE_MONTHLY_PRICE,
+  BASE_PRICE_LOOKUP_KEY,
+  DEFAULT_STRIPE_PLATFORM_FEE_BPS,
+  UNLIMITED_MONTHLY_PRICE,
+  UNLIMITED_PRICE_LOOKUP_KEY,
+} from "@/features/stripe/lib/stripe/billing-model";
+import {
+  normalizeCanonicalPlan,
+  type CanonicalPlan,
+} from "@/features/stripe/lib/stripe/plan-normalization";
 
-import { normalizeCanonicalPlan, type CanonicalPlan } from "@/features/stripe/lib/stripe/plan-normalization";
+/** @deprecated Read the shop payment policy instead of assuming a global fee. */
+export const STRIPE_PLATFORM_FEE_BPS = DEFAULT_STRIPE_PLATFORM_FEE_BPS;
 
-export const STRIPE_PLATFORM_FEE_BPS = 300; // 3.00%
+export type PlanKey = Exclude<CanonicalPlan, "pro">;
 
-export type PlanKey = CanonicalPlan;
-
-/**
- * Stripe Price lookup keys (must match Stripe exactly).
- * We keep existing Stripe lookup key names for compatibility,
- * while app/DB canonical plan keys are starter/pro/unlimited.
- */
 export const PLAN_LOOKUP_KEYS: Record<PlanKey, string> = {
+  starter: BASE_PRICE_LOOKUP_KEY,
+  unlimited: UNLIMITED_PRICE_LOOKUP_KEY,
+};
+
+export const LEGACY_PLAN_LOOKUP_KEYS = {
   starter: "profixiq_starter10_monthly",
   pro: "profixiq_pro50_monthly",
   unlimited: "profixiq_unlimited_monthly1",
-};
+} as const;
 
-/**
- * User limits for each plan (enforced in app).
- */
+/** Base-plan users above ten are billed as seats, not blocked. */
 export const PLAN_LIMITS: Record<PlanKey, number> = {
-  starter: 10,
-  pro: 50,
+  starter: Number.MAX_SAFE_INTEGER,
   unlimited: Number.MAX_SAFE_INTEGER,
 };
 
-/**
- * UI pricing display (Stripe is source of truth, but this powers labels).
- */
 export const PLAN_PRICING: Record<PlanKey, number> = {
-  starter: 299,
-  pro: 399,
-  unlimited: 599,
+  starter: BASE_MONTHLY_PRICE,
+  unlimited: UNLIMITED_MONTHLY_PRICE,
 };
 
 const PLAN_DISPLAY_LABELS: Record<string, string> = {
-  starter: "Complete 10",
-  pro: "Complete 50",
-  unlimited: "Complete Unlimited",
-  complete_10: "Complete 10",
-  complete_50: "Complete 50",
-  complete_100: "Complete 100",
-  complete_unlimited: "Complete Unlimited",
-};
-
-const COMPLETE_PLAN_LIMITS: Record<string, number> = {
-  complete_10: 10,
-  complete_50: 50,
-  complete_100: 100,
-  complete_unlimited: Number.MAX_SAFE_INTEGER,
+  starter: "ProFixIQ Complete",
+  pro: "ProFixIQ Complete",
+  unlimited: "ProFixIQ Unlimited",
+  complete_10: "ProFixIQ Complete",
+  complete_50: "ProFixIQ Complete",
+  complete_100: "ProFixIQ Complete",
+  complete_unlimited: "ProFixIQ Unlimited",
 };
 
 export function getPlanDisplayLabel(plan: unknown): string {
   const normalized = String(plan ?? "").trim().toLowerCase();
-  if (!normalized) return "Complete 10";
+  if (!normalized) return "ProFixIQ Complete";
   if (PLAN_DISPLAY_LABELS[normalized]) return PLAN_DISPLAY_LABELS[normalized];
 
   const canonical = normalizeCanonicalPlan(normalized);
@@ -63,10 +58,7 @@ export function getPlanDisplayLabel(plan: unknown): string {
 }
 
 export function resolveSeatLimitForPlan(plan: unknown): number | null {
-  const normalized = String(plan ?? "").trim().toLowerCase();
-  if (!normalized) return null;
-  if (COMPLETE_PLAN_LIMITS[normalized] !== undefined) return COMPLETE_PLAN_LIMITS[normalized];
-
-  const canonical = normalizeCanonicalPlan(normalized);
-  return canonical ? PLAN_LIMITS[canonical] : null;
+  const canonical = normalizeCanonicalPlan(plan);
+  if (!canonical) return null;
+  return PLAN_LIMITS[canonical === "pro" ? "starter" : canonical];
 }

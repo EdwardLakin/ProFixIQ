@@ -47,14 +47,24 @@ describe("P0-006 Stripe identity boundary", () => {
     );
   });
 
-  it("keeps price, trial, discount, redirects, and Stripe retries server-owned", async () => {
+  it("keeps price, trial, governed discounts, redirects, and Stripe retries server-owned", async () => {
     const checkout = await source("app/api/stripe/checkout/route.ts");
     const landing = await source("features/shared/components/ProFixIQLanding.tsx");
     const comparison = await source("app/compare-plans/page.tsx");
+    const discountMigration = await source(
+      "supabase/migrations/20260802170000_stripe_billing_model_connect_correction.sql",
+    );
 
-    expect(checkout).toContain("resolveConfiguredPriceId(parsed.data.planKey)");
+    expect(checkout).toContain(
+      "resolveStripePlanPriceId(stripe, parsed.data.planKey)",
+    );
+    expect(checkout).not.toContain("STRIPE_PRICE_BASE_MONTHLY");
     expect(checkout).toContain("configuredTrialDays()");
-    expect(checkout).toContain("STRIPE_FOUNDING_COUPON_ID");
+    expect(checkout).toContain("allow_promotion_codes: true");
+    expect(checkout).not.toContain("STRIPE_FOUNDING_COUPON_ID");
+    expect(discountMigration).toContain(
+      "create table if not exists public.billing_discount_grants",
+    );
     expect(checkout).toContain("profixiq:acquisition:${intent.id}");
     expect(checkout).toContain("profixiq:shop-checkout:${shop.id}:${attemptId}");
     expect(landing).not.toContain("enableTrial:");

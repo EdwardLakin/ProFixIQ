@@ -20,6 +20,7 @@ function subscription() {
     status: "active",
     trial_end: null,
     current_period_end: 1_787_788_800,
+    metadata: {},
     items: {
       data: [
         {
@@ -73,7 +74,8 @@ describe("P1-012 Stripe subscription ordering", () => {
           stripe_current_period_end: new Date(
             1_787_788_800 * 1000,
           ).toISOString(),
-          plan: "pro",
+          stripe_pricing_model: "legacy",
+          plan: "starter",
           stripe_checkout_session_id: null,
         },
       },

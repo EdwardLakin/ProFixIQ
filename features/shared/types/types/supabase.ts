@@ -1612,6 +1612,72 @@ export type Database = {
           },
         ]
       }
+      billing_discount_grants: {
+        Row: {
+          approved_by: string | null
+          created_at: string
+          discount_class: string
+          duration: string
+          duration_in_months: number | null
+          id: string
+          metadata: Json
+          percent_off: number | null
+          revoked_at: string | null
+          shop_id: string | null
+          status: string
+          stripe_coupon_id: string | null
+          stripe_promotion_code_id: string | null
+          terms_version: string | null
+        }
+        Insert: {
+          approved_by?: string | null
+          created_at?: string
+          discount_class: string
+          duration: string
+          duration_in_months?: number | null
+          id?: string
+          metadata?: Json
+          percent_off?: number | null
+          revoked_at?: string | null
+          shop_id?: string | null
+          status?: string
+          stripe_coupon_id?: string | null
+          stripe_promotion_code_id?: string | null
+          terms_version?: string | null
+        }
+        Update: {
+          approved_by?: string | null
+          created_at?: string
+          discount_class?: string
+          duration?: string
+          duration_in_months?: number | null
+          id?: string
+          metadata?: Json
+          percent_off?: number | null
+          revoked_at?: string | null
+          shop_id?: string | null
+          status?: string
+          stripe_coupon_id?: string | null
+          stripe_promotion_code_id?: string | null
+          terms_version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_discount_grants_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_discount_grants_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bookings: {
         Row: {
           cancellation_reason: string | null
@@ -15792,6 +15858,63 @@ export type Database = {
           },
         ]
       }
+      shop_payment_settings: {
+        Row: {
+          allow_partial_payments: boolean
+          created_at: string
+          default_currency: string
+          default_deposit_percent: number
+          minimum_payment_cents: number
+          platform_fee_bps: number
+          portal_payments_enabled: boolean
+          receipt_email_enabled: boolean
+          require_payment_before_release: boolean
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          allow_partial_payments?: boolean
+          created_at?: string
+          default_currency?: string
+          default_deposit_percent?: number
+          minimum_payment_cents?: number
+          platform_fee_bps?: number
+          portal_payments_enabled?: boolean
+          receipt_email_enabled?: boolean
+          require_payment_before_release?: boolean
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          allow_partial_payments?: boolean
+          created_at?: string
+          default_currency?: string
+          default_deposit_percent?: number
+          minimum_payment_cents?: number
+          platform_fee_bps?: number
+          portal_payments_enabled?: boolean
+          receipt_email_enabled?: boolean
+          require_payment_before_release?: boolean
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_payment_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_payment_settings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_payroll_settings: {
         Row: {
           breaks_are_paid: boolean
@@ -17074,6 +17197,7 @@ export type Database = {
           address: string | null
           auto_generate_pdf: boolean | null
           auto_send_quote_email: boolean | null
+          billable_user_count: number
           business_name: string | null
           city: string | null
           country: string | null
@@ -17117,8 +17241,15 @@ export type Database = {
           slug: string | null
           street: string | null
           stripe_account_id: string | null
+          stripe_billing_sync_error: string | null
+          stripe_billing_sync_required: boolean
+          stripe_billing_synced_at: string | null
           stripe_charges_enabled: boolean
           stripe_checkout_session_id: string | null
+          stripe_connect_charge_model: string | null
+          stripe_connect_dashboard_type: string | null
+          stripe_connect_fees_collector: string | null
+          stripe_connect_losses_collector: string | null
           stripe_current_period_end: string | null
           stripe_customer_id: string | null
           stripe_default_currency: string
@@ -17126,6 +17257,7 @@ export type Database = {
           stripe_onboarding_completed: boolean
           stripe_payouts_enabled: boolean
           stripe_platform_fee_bps: number
+          stripe_pricing_model: string
           stripe_subscription_id: string | null
           stripe_subscription_status: string | null
           stripe_trial_end: string | null
@@ -17142,6 +17274,7 @@ export type Database = {
           address?: string | null
           auto_generate_pdf?: boolean | null
           auto_send_quote_email?: boolean | null
+          billable_user_count?: number
           business_name?: string | null
           city?: string | null
           country?: string | null
@@ -17185,8 +17318,15 @@ export type Database = {
           slug?: string | null
           street?: string | null
           stripe_account_id?: string | null
+          stripe_billing_sync_error?: string | null
+          stripe_billing_sync_required?: boolean
+          stripe_billing_synced_at?: string | null
           stripe_charges_enabled?: boolean
           stripe_checkout_session_id?: string | null
+          stripe_connect_charge_model?: string | null
+          stripe_connect_dashboard_type?: string | null
+          stripe_connect_fees_collector?: string | null
+          stripe_connect_losses_collector?: string | null
           stripe_current_period_end?: string | null
           stripe_customer_id?: string | null
           stripe_default_currency?: string
@@ -17194,6 +17334,7 @@ export type Database = {
           stripe_onboarding_completed?: boolean
           stripe_payouts_enabled?: boolean
           stripe_platform_fee_bps?: number
+          stripe_pricing_model?: string
           stripe_subscription_id?: string | null
           stripe_subscription_status?: string | null
           stripe_trial_end?: string | null
@@ -17210,6 +17351,7 @@ export type Database = {
           address?: string | null
           auto_generate_pdf?: boolean | null
           auto_send_quote_email?: boolean | null
+          billable_user_count?: number
           business_name?: string | null
           city?: string | null
           country?: string | null
@@ -17253,8 +17395,15 @@ export type Database = {
           slug?: string | null
           street?: string | null
           stripe_account_id?: string | null
+          stripe_billing_sync_error?: string | null
+          stripe_billing_sync_required?: boolean
+          stripe_billing_synced_at?: string | null
           stripe_charges_enabled?: boolean
           stripe_checkout_session_id?: string | null
+          stripe_connect_charge_model?: string | null
+          stripe_connect_dashboard_type?: string | null
+          stripe_connect_fees_collector?: string | null
+          stripe_connect_losses_collector?: string | null
           stripe_current_period_end?: string | null
           stripe_customer_id?: string | null
           stripe_default_currency?: string
@@ -17262,6 +17411,7 @@ export type Database = {
           stripe_onboarding_completed?: boolean
           stripe_payouts_enabled?: boolean
           stripe_platform_fee_bps?: number
+          stripe_pricing_model?: string
           stripe_subscription_id?: string | null
           stripe_subscription_status?: string | null
           stripe_trial_end?: string | null

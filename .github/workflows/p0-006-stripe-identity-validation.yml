@@ -13,6 +13,7 @@ on:
       - "features/shared/types/types/supabase.ts"
       - "features/stripe/**"
       - "tests/p0-006-stripe-identity.test.ts"
+      - "tests/stripe-base-plus-seats-contract.test.ts"
       - "tsconfig.p0-006.json"
       - ".github/workflows/p0-006-stripe-identity-validation.yml"
 
@@ -51,5 +52,9 @@ jobs:
           features/stripe/lib/client/claim-acquisition.ts
           features/stripe/lib/server/canonical-shop-billing.ts
           features/stripe/lib/server/stripe-acquisition-intent.ts
+          features/stripe/lib/server/stripe-price-contract.ts
+          features/stripe/lib/stripe/billing-model.ts
           tests/p0-006-stripe-identity.test.ts
+          tests/stripe-base-plus-seats-contract.test.ts
       - run: pnpm exec vitest run tests/p0-006-stripe-identity.test.ts
+      - run: pnpm exec vitest run tests/stripe-base-plus-seats-contract.test.ts

@@ -6,6 +6,10 @@ import {
   PLAN_PRICING,
   type PlanKey,
 } from "@/features/stripe/lib/stripe/constants";
+import {
+  ADDITIONAL_USER_MONTHLY_PRICE,
+  INCLUDED_USERS,
+} from "@/features/stripe/lib/stripe/billing-model";
 import styles from "./PricingSection.module.css";
 
 export type BillingInterval = "monthly" | "yearly";
@@ -40,28 +44,20 @@ const plans: Array<{
 }> = [
   {
     key: "starter",
-    name: "Complete 10",
+    name: "ProFixIQ Complete",
     price: `$${PLAN_PRICING.starter}`,
-    users: "Up to 10 active users",
+    users: `${INCLUDED_USERS} users included, then $${ADDITIONAL_USER_MONTHLY_PRICE} per additional user`,
     description:
-      "A complete operating system for independent and smaller repair teams.",
-  },
-  {
-    key: "pro",
-    name: "Complete 50",
-    price: `$${PLAN_PRICING.pro}`,
-    users: "Up to 50 active users",
-    description:
-      "Full platform access for growing shops with larger operational teams.",
+      "The complete ProFixIQ platform for repair shops of any size. Billing grows with your active team and never removes features.",
     featured: true,
   },
   {
     key: "unlimited",
-    name: "Complete Unlimited",
+    name: "ProFixIQ Unlimited",
     price: `$${PLAN_PRICING.unlimited}`,
     users: "Unlimited active users",
     description:
-      "Unlimited users per location for high-volume and multi-team operations.",
+      "A predictable flat monthly price for shops with 17 or more active users.",
   },
 ];
 
@@ -94,7 +90,7 @@ export default function PricingSection({
       className={styles.root}
       data-surface={surface}
     >
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-2">
         {plans.map((plan) => {
           const isBusy = busyKey === plan.key;
           return (
@@ -108,7 +104,7 @@ export default function PricingSection({
                 <div
                   className={`${styles.badge} absolute right-6 top-0 -translate-y-1/2 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em]`}
                 >
-                  Most popular
+                  Best for most shops
                 </div>
               ) : null}
 
@@ -173,14 +169,13 @@ export default function PricingSection({
       </div>
 
       <div
-        className={`${styles.notice} mt-6 flex flex-col gap-2 rounded-2xl border px-5 py-4 text-xs leading-5 sm:flex-row sm:items-center sm:justify-between`}
+        className={`${styles.notice} mx-auto mt-6 flex max-w-5xl flex-col gap-2 rounded-2xl border px-5 py-4 text-xs leading-5 sm:flex-row sm:items-center sm:justify-between`}
       >
         <span>
-          All plans include the complete core platform. Cancel anytime.
+          Both options include the complete platform. No feature gating. Cancel anytime.
         </span>
         <span>
-          Payment processing, SMS, storage overages, and unusually heavy AI
-          usage may be billed separately.
+          Complete automatically caps at Unlimited pricing when the shop reaches 17 active users.
         </span>
       </div>
     </section>

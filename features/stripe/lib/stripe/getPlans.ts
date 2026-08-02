@@ -1,11 +1,9 @@
-// features/stripe/lib/stripe/getPlans.ts
 "use server";
 
 import { createStripeClient } from "./client";
 import {
   PLAN_LOOKUP_KEYS,
   PLAN_LIMITS,
-  PLAN_PRICING,
   type PlanKey,
 } from "./constants";
 
@@ -15,14 +13,15 @@ export type StripePlan = {
   key: PlanKey;
   priceId: string;
   amount: number;
+  currency: string;
   userLimit: number;
   lookupKey: string;
 };
 
-const DISPLAY_ORDER: PlanKey[] = ["starter", "pro", "unlimited"];
+const DISPLAY_ORDER: PlanKey[] = ["starter", "unlimited"];
 
 export async function getStripePlans(): Promise<StripePlan[]> {
-  const lookupKeys = DISPLAY_ORDER.map((k) => PLAN_LOOKUP_KEYS[k]);
+  const lookupKeys = DISPLAY_ORDER.map((key) => PLAN_LOOKUP_KEYS[key]);
 
   const prices = await stripe.prices.list({
     lookup_keys: lookupKeys,
@@ -34,10 +33,11 @@ export async function getStripePlans(): Promise<StripePlan[]> {
   return DISPLAY_ORDER.map((key) => {
     const lookupKey = PLAN_LOOKUP_KEYS[key];
     const price = prices.data.find(
-      (p) => p.lookup_key === lookupKey && p.type === "recurring",
+      (candidate) =>
+        candidate.lookup_key === lookupKey && candidate.type === "recurring",
     );
 
-    if (!price?.id) {
+    if (!price?.id || typeof price.unit_amount !== "number") {
       throw new Error(`Stripe price not found for ${key} (${lookupKey})`);
     }
 
@@ -45,7 +45,8 @@ export async function getStripePlans(): Promise<StripePlan[]> {
       key,
       lookupKey,
       priceId: price.id,
-      amount: PLAN_PRICING[key],
+      amount: price.unit_amount / 100,
+      currency: price.currency.toUpperCase(),
       userLimit: PLAN_LIMITS[key],
     };
   });

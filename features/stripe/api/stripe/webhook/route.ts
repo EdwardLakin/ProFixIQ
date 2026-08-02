@@ -25,6 +25,7 @@ import {
   completeStripeWebhookEvent,
   failStripeWebhookEvent,
 } from "@/features/stripe/lib/server/stripe-webhook-receipts";
+import { saveShopPaymentSettings } from "@/features/stripe/lib/server/shop-payment-settings";
 
 type DB = Database;
 type AdminClient = ReturnType<typeof createAdminSupabase>;
@@ -38,6 +39,17 @@ type FinancialMetadata = {
   operationKey: string;
 };
 
+type ShopConnectState = {
+  id: string;
+  stripe_onboarding_completed: boolean | null;
+};
+
+type ConnectController = {
+  fees?: { payer?: string | null } | null;
+  losses?: { payments?: string | null } | null;
+  stripe_dashboard?: { type?: string | null } | null;
+};
+
 function isUuid(value: unknown): value is string {
   return (
     typeof value === "string" &&
@@ -48,7 +60,22 @@ function isUuid(value: unknown): value is string {
 }
 
 function normalizeCurrency(value: unknown): "CAD" | "USD" {
-  return String(value ?? "").trim().toUpperCase() === "CAD" ? "CAD" : "USD";
+  return String(value ?? "").trim().toUpperCase() === "USD" ? "USD" : "CAD";
+}
+
+function connectedAccountId(event: Stripe.Event): string | null {
+  const value = String(event.account ?? "").trim();
+  return value.startsWith("acct_") ? value : null;
+}
+
+function requestOptions(event: Stripe.Event): Stripe.RequestOptions | undefined {
+  const accountId = connectedAccountId(event);
+  return accountId ? { stripeAccount: accountId } : undefined;
+}
+
+function metadataNumber(metadata: Stripe.Metadata | null | undefined, key: string): number {
+  const value = Math.trunc(Number(metadata?.[key] ?? 0));
+  return Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
 async function resolveFinancialMetadata(args: {
@@ -78,37 +105,51 @@ async function resolveFinancialMetadata(args: {
     workOrderId,
     invoiceVersionId,
     actorUserId: isUuid(actor) ? actor : null,
-    operationKey: String(metadata.operation_key ?? "").trim() || args.fallbackOperationKey,
+    operationKey:
+      String(metadata.operation_key ?? "").trim() || args.fallbackOperationKey,
   };
 }
 
-async function persistLegacyPayment(args: {
+async function persistPayment(args: {
   supabase: AdminClient;
   session: Stripe.Checkout.Session;
   invoiceVersionId: string;
+  connectedAccountId: string | null;
   paymentEventId?: string | null;
 }): Promise<void> {
+  const platformFeeCents = metadataNumber(
+    args.session.metadata,
+    "platform_fee_cents",
+  );
+  const amountCents = args.session.amount_total ?? 0;
   const payload = {
     shop_id: args.session.metadata?.shop_id ?? null,
     work_order_id: args.session.metadata?.work_order_id ?? null,
+    customer_id: args.session.metadata?.customer_id ?? null,
     invoice_version_id: args.invoiceVersionId,
     payment_event_id: args.paymentEventId ?? null,
     stripe_session_id: args.session.id,
+    stripe_checkout_session_id: args.session.id,
     stripe_payment_intent_id: toStripeId(args.session.payment_intent, "pi_"),
-    amount_cents: args.session.amount_total ?? 0,
-    currency: String(args.session.currency ?? "usd").toLowerCase(),
+    stripe_connected_account_id: args.connectedAccountId,
+    amount_cents: amountCents,
+    amount: amountCents / 100,
+    platform_fee_cents: platformFeeCents,
+    currency: String(args.session.currency ?? "cad").toLowerCase(),
     status: "succeeded",
     paid_at: new Date().toISOString(),
+    created_by: args.session.metadata?.created_by ?? null,
     metadata: {
       purpose: args.session.metadata?.purpose ?? "portal_invoice_payment",
       operation_key: args.session.metadata?.operation_key ?? null,
+      charge_model: args.connectedAccountId ? "direct" : "platform",
     },
   } as unknown as DB["public"]["Tables"]["payments"]["Insert"];
 
   const { error } = await args.supabase
     .from("payments")
     .upsert(payload, { onConflict: "stripe_session_id" });
-  if (error) console.error("[stripe/webhook] legacy payment persistence failed:", error.message);
+  if (error) throw new Error(`Stripe payment persistence failed: ${error.message}`);
 }
 
 async function postStripeFinancialEvent(args: {
@@ -121,6 +162,7 @@ async function postStripeFinancialEvent(args: {
   paymentId?: string | null;
   paymentMethod?: string | null;
   occurredAt?: number | null;
+  connectedAccountId?: string | null;
   extra?: Record<string, unknown>;
 }) {
   const resolved = await resolveFinancialMetadata({
@@ -153,8 +195,20 @@ async function postStripeFinancialEvent(args: {
     occurredAt: args.occurredAt
       ? new Date(args.occurredAt * 1000).toISOString()
       : new Date().toISOString(),
-    metadata: { ...args.extra, stripe_operation_key: resolved.operationKey },
+    metadata: {
+      ...args.extra,
+      stripe_operation_key: resolved.operationKey,
+      stripe_connected_account_id: args.connectedAccountId ?? null,
+      stripe_platform_fee_cents: metadataNumber(
+        args.metadata,
+        "platform_fee_cents",
+      ),
+    },
   });
+}
+
+function readController(account: Stripe.Account): ConnectController {
+  return ((account as Stripe.Account & { controller?: ConnectController }).controller ?? {});
 }
 
 async function syncShopConnectFlagsByAccountId(args: {
@@ -163,25 +217,47 @@ async function syncShopConnectFlagsByAccountId(args: {
   accountId: string;
 }) {
   const account = await args.stripe.accounts.retrieve(args.accountId);
-  const { data: shops } = await args.supabase
+  const { data: shops, error: shopLookupError } = await args.supabase
     .from("shops")
-    .select("id")
+    .select("id, stripe_onboarding_completed")
     .eq("stripe_account_id", args.accountId)
     .limit(1);
-  const shopId = shops?.[0]?.id;
-  if (!shopId) return;
+  if (shopLookupError) throw new Error(shopLookupError.message);
+  const shop = (shops?.[0] ?? null) as ShopConnectState | null;
+  if (!shop) return;
+
+  const controller = readController(account);
+  const onboardingCompleted = Boolean(
+    account.charges_enabled && account.payouts_enabled && account.details_submitted,
+  );
   const { error } = await args.supabase
     .from("shops")
     .update({
       stripe_charges_enabled: Boolean(account.charges_enabled),
       stripe_payouts_enabled: Boolean(account.payouts_enabled),
       stripe_details_submitted: Boolean(account.details_submitted),
-      stripe_onboarding_completed: Boolean(
-        account.charges_enabled && account.payouts_enabled && account.details_submitted,
-      ),
+      stripe_onboarding_completed: onboardingCompleted,
+      stripe_default_currency:
+        String(account.default_currency ?? "").toLowerCase() === "usd" ? "usd" : "cad",
+      stripe_connect_charge_model:
+        controller.fees?.payer === "account" ? "direct" : "legacy",
+      stripe_connect_dashboard_type:
+        controller.stripe_dashboard?.type ?? null,
+      stripe_connect_fees_collector:
+        controller.fees?.payer === "account" ? "stripe" : "application",
+      stripe_connect_losses_collector:
+        controller.losses?.payments === "stripe" ? "stripe" : "application",
     } as DB["public"]["Tables"]["shops"]["Update"])
-    .eq("id", shopId);
-  if (error) console.error("[stripe/webhook] connect flag sync failed:", error.message);
+    .eq("id", shop.id);
+  if (error) throw new Error(error.message);
+
+  if (!shop.stripe_onboarding_completed && onboardingCompleted) {
+    await saveShopPaymentSettings(args.supabase, shop.id, {
+      portal_payments_enabled: true,
+      default_currency:
+        String(account.default_currency ?? "").toLowerCase() === "usd" ? "usd" : "cad",
+    });
+  }
 }
 
 async function resolveShopIdForSubscription(args: {
@@ -239,12 +315,7 @@ async function recordAcquisitionCheckout(args: {
   ]);
   const customerId = toStripeId(args.session.customer, "cus_");
   const subscriptionId = toStripeId(args.session.subscription, "sub_");
-  if (
-    priceId !== metadata.priceId ||
-    !checkoutEmail ||
-    !customerId ||
-    !subscriptionId
-  ) {
+  if (priceId !== metadata.priceId || !checkoutEmail || !customerId || !subscriptionId) {
     console.warn("[stripe/webhook] acquisition checkout artifacts did not match", {
       eventId: args.event.id,
       sessionId: args.session.id,
@@ -338,6 +409,7 @@ async function linkVerifiedOwnerCheckout(args: {
         stripe_customer_id: customerId,
         stripe_subscription_id: subscriptionId,
         stripe_checkout_session_id: args.session.id,
+        stripe_billing_sync_required: true,
       } as unknown as DB["public"]["Tables"]["shops"]["Update"])
       .eq("id", shopId)
       .eq("stripe_customer_id", customerId),
@@ -358,8 +430,36 @@ async function linkVerifiedOwnerCheckout(args: {
   });
 }
 
+async function syncSubscriptionFromInvoice(ctx: WebhookContext, invoice: Stripe.Invoice) {
+  if (connectedAccountId(ctx.event)) return;
+  const subscriptionId = toStripeId(invoice.subscription, "sub_");
+  const customerId = toStripeId(invoice.customer, "cus_");
+  if (!subscriptionId || !customerId) return;
+  const subscription = await ctx.stripe.subscriptions.retrieve(subscriptionId);
+  const shopId = await resolveShopIdForSubscription({
+    stripe: ctx.stripe,
+    supabase: ctx.supabase,
+    subscription,
+    customerId,
+  });
+  if (!shopId) return;
+  await syncCanonicalShopBilling({
+    stripe: ctx.stripe,
+    supabase: ctx.supabase,
+    shopId,
+    customerId,
+    subscriptionId,
+    webhookEvent: {
+      id: ctx.event.id,
+      createdAt: new Date(ctx.event.created * 1000).toISOString(),
+    },
+  });
+}
+
 async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
   const { event, stripe, supabase } = ctx;
+  const accountId = connectedAccountId(event);
+  const options = requestOptions(event);
 
   switch (event.type) {
     case "account.updated": {
@@ -379,24 +479,27 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
           currency: session.currency,
           eventId: event.id,
           paymentId: toStripeId(session.payment_intent, "pi_"),
-          paymentMethod: "card",
+          paymentMethod: accountId ? "stripe_direct" : "stripe",
           occurredAt: event.created,
+          connectedAccountId: accountId,
           extra: { stripe_session_id: session.id },
         });
         const invoiceVersionId = String(session.metadata?.invoice_version_id ?? "").trim();
         if (isUuid(invoiceVersionId)) {
           const paymentEvent = result?.payment_event as { id?: unknown } | undefined;
-          await persistLegacyPayment({
+          await persistPayment({
             supabase,
             session,
             invoiceVersionId,
-            paymentEventId: typeof paymentEvent?.id === "string" ? paymentEvent.id : null,
+            connectedAccountId: accountId,
+            paymentEventId:
+              typeof paymentEvent?.id === "string" ? paymentEvent.id : null,
           });
         }
         return;
       }
 
-      if (session.mode === "subscription") {
+      if (session.mode === "subscription" && !accountId) {
         const purpose = String(session.metadata?.purpose ?? "").trim();
         if (purpose === STRIPE_ACQUISITION_PURPOSE) {
           await recordAcquisitionCheckout({ event, session, stripe, supabase });
@@ -417,8 +520,9 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
         currency: intent.currency,
         eventId: event.id,
         paymentId: intent.id,
-        paymentMethod: "card",
+        paymentMethod: accountId ? "stripe_direct" : "stripe",
         occurredAt: event.created,
+        connectedAccountId: accountId,
         extra: { failure_message: intent.last_payment_error?.message ?? null },
       });
       return;
@@ -427,7 +531,9 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
     case "charge.refunded": {
       const charge = event.data.object as Stripe.Charge;
       const intentId = toStripeId(charge.payment_intent, "pi_");
-      const intent = intentId ? await stripe.paymentIntents.retrieve(intentId) : null;
+      const intent = intentId
+        ? await stripe.paymentIntents.retrieve(intentId, options)
+        : null;
       await postStripeFinancialEvent({
         supabase,
         metadata: intent?.metadata,
@@ -436,8 +542,9 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
         currency: charge.currency,
         eventId: event.id,
         paymentId: intentId ?? charge.id,
-        paymentMethod: charge.payment_method_details?.type ?? "card",
+        paymentMethod: charge.payment_method_details?.type ?? "stripe",
         occurredAt: event.created,
+        connectedAccountId: accountId,
         extra: { stripe_charge_id: charge.id },
       });
       return;
@@ -446,9 +553,13 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
     case "charge.dispute.created":
     case "charge.dispute.closed": {
       const dispute = event.data.object as Stripe.Dispute;
-      const charge = await stripe.charges.retrieve(toStripeId(dispute.charge, "ch_") ?? "");
+      const chargeId = toStripeId(dispute.charge, "ch_");
+      if (!chargeId) return;
+      const charge = await stripe.charges.retrieve(chargeId, options);
       const intentId = toStripeId(charge.payment_intent, "pi_");
-      const intent = intentId ? await stripe.paymentIntents.retrieve(intentId) : null;
+      const intent = intentId
+        ? await stripe.paymentIntents.retrieve(intentId, options)
+        : null;
       const kind: PaymentEventKind =
         event.type === "charge.dispute.created"
           ? "dispute_opened"
@@ -463,8 +574,9 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
         currency: dispute.currency,
         eventId: event.id,
         paymentId: intentId ?? dispute.id,
-        paymentMethod: charge.payment_method_details?.type ?? "card",
+        paymentMethod: charge.payment_method_details?.type ?? "stripe",
         occurredAt: event.created,
+        connectedAccountId: accountId,
         extra: { dispute_id: dispute.id, dispute_status: dispute.status },
       });
       return;
@@ -473,6 +585,7 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
+      if (accountId) return;
       const subscription = event.data.object as Stripe.Subscription;
       const customerId = toStripeId(subscription.customer, "cus_");
       if (!customerId) return;
@@ -497,6 +610,13 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
       return;
     }
 
+    case "invoice.paid":
+    case "invoice.payment_succeeded":
+    case "invoice.payment_failed": {
+      await syncSubscriptionFromInvoice(ctx, event.data.object as Stripe.Invoice);
+      return;
+    }
+
     default:
       return;
   }
@@ -505,14 +625,19 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
 export async function handleStripeWebhook(req: Request): Promise<Response> {
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "";
   if (!endpointSecret || !process.env.STRIPE_SECRET_KEY) {
-    return NextResponse.json({ error: "Missing Stripe webhook configuration" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Missing Stripe webhook configuration" },
+      { status: 500 },
+    );
   }
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: "Missing Supabase env vars" }, { status: 500 });
   }
 
   const signature = req.headers.get("stripe-signature");
-  if (!signature) return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
+  if (!signature) {
+    return NextResponse.json({ error: "Missing Stripe signature" }, { status: 400 });
+  }
 
   const stripe = createStripeClient(process.env.STRIPE_SECRET_KEY);
   const supabase = createAdminSupabase();
@@ -536,16 +661,11 @@ export async function handleStripeWebhook(req: Request): Promise<Response> {
         );
       }
       return NextResponse.json(
-        {
-          received: true,
-          duplicate: claim.alreadyProcessed,
-        },
+        { received: true, duplicate: claim.alreadyProcessed },
         { status: 200 },
       );
     }
-    if (!claim.claimToken) {
-      throw new Error("Stripe webhook claim token missing");
-    }
+    if (!claim.claimToken) throw new Error("Stripe webhook claim token missing");
 
     claimToken = claim.claimToken;
     await processStripeWebhookEvent({ event, stripe, supabase });
