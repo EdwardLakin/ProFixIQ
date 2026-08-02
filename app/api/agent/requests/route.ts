@@ -93,13 +93,19 @@ function asNullableString(value: unknown): string | null {
   return text || null;
 }
 
-function agentApiSecret(): string {
-  return String(
-    process.env.AGENT_API_SECRET
-      ?? process.env.PROFIXIQ_AGENT_API_SECRET
-      ?? process.env.INTERNAL_AGENT_SECRET
-      ?? "",
+function agentApiSecrets() {
+  const canonical = String(process.env.AGENT_API_SECRET ?? "").trim();
+  const profixiqAlias = String(
+    process.env.PROFIXIQ_AGENT_API_SECRET ?? "",
   ).trim();
+  const internalAlias = String(process.env.INTERNAL_AGENT_SECRET ?? "").trim();
+
+  return {
+    canonical,
+    profixiqAlias,
+    internalAlias,
+    primary: canonical || profixiqAlias || internalAlias,
+  };
 }
 
 type CreateAgentRequestBody = {
@@ -247,7 +253,7 @@ export async function POST(req: NextRequest) {
   const actualBehavior = asNullableString(body.actual) ?? description;
   const route = asNullableString(body.location);
   const browser = asNullableString(body.device);
-  const agentSecret = agentApiSecret();
+  const agentSecrets = agentApiSecrets();
 
   const contextForAgent = {
     ...structuredContext,
@@ -269,7 +275,7 @@ export async function POST(req: NextRequest) {
     if (!AGENT_SERVICE_URL) {
       throw new Error("PROFIXIQ_AGENT_URL is not configured");
     }
-    if (!agentSecret) {
+    if (!agentSecrets.primary) {
       throw new Error("AGENT_API_SECRET is not configured");
     }
 
@@ -305,9 +311,9 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-agent-api-secret": agentSecret,
-        "x-agent-secret": agentSecret,
-        Authorization: `Bearer ${agentSecret}`,
+        "x-agent-api-secret": agentSecrets.canonical || agentSecrets.primary,
+        "x-agent-secret": agentSecrets.profixiqAlias || agentSecrets.primary,
+        Authorization: `Bearer ${agentSecrets.internalAlias || agentSecrets.primary}`,
       },
       body: JSON.stringify(payload),
       cache: "no-store",
