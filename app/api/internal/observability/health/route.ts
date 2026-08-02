@@ -51,14 +51,17 @@ function projectionUnavailable(error: unknown): boolean {
 async function loadHealthInputs() {
   const supabase = createAdminSupabase();
   const now = new Date();
-  const rpc = supabase.rpc as unknown as (
-    name: string,
-    args: Record<string, unknown>,
-  ) => Promise<{ data: unknown; error: unknown }>;
+  const projectionClient = supabase as unknown as {
+    rpc: (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: unknown; error: unknown }>;
+  };
 
-  const projectionResult = await rpc("get_operational_observability_health", {
-    p_now: now.toISOString(),
-  });
+  const projectionResult = await projectionClient.rpc(
+    "get_operational_observability_health",
+    { p_now: now.toISOString() },
+  );
 
   if (!projectionResult.error) {
     return {
@@ -99,6 +102,11 @@ async function loadHealthInputs() {
       last_event_at: null,
       unresolved_failure_count: null,
       health_status: null,
+      ai_active_recommendation_count: null,
+      ai_stale_recommendation_count: null,
+      ai_pending_approval_count: null,
+      ai_last_expiration_event_at: null,
+      ai_cron_probably_running: null,
     })) satisfies OperationalHealthProjection[],
     projectionUsed: false,
   };
