@@ -11,23 +11,6 @@ type ExistingAlertState = {
   status: string;
   firstSeenAt: string | null;
 };
-type OperationalEventCountResult = {
-  count: number | null;
-  error: { message: string } | null;
-};
-type OperationalEventCountQuery = PromiseLike<OperationalEventCountResult> & {
-  eq: (column: string, value: string) => OperationalEventCountQuery;
-  gte: (column: string, value: string) => OperationalEventCountQuery;
-  lt: (column: string, value: string) => OperationalEventCountQuery;
-};
-type OperationalEventCountClient = {
-  from: (table: "operational_events") => {
-    select: (
-      columns: string,
-      options: { count: "exact"; head: true },
-    ) => OperationalEventCountQuery;
-  };
-};
 
 const MIN_PREVIOUS_EVENTS_FOR_DROP_ALERT = 20;
 const VOLUME_DROP_RATIO = 0.25;
@@ -37,6 +20,22 @@ const OBSERVABILITY_ALERT_CODES = [
   "operational_event_volume_drop",
   "ai_expiration_cron_stalled",
 ] as const;
+
+export type OperationalHealthProjection = {
+  shop_id: string;
+  recent_business_writes: number | string | null;
+  events_last_6h: number | string | null;
+  events_last_24h: number | string | null;
+  events_previous_24h: number | string | null;
+  last_event_at: string | null;
+  unresolved_failure_count: number | string | null;
+  health_status: string | null;
+  ai_active_recommendation_count: number | string | null;
+  ai_stale_recommendation_count: number | string | null;
+  ai_pending_approval_count: number | string | null;
+  ai_last_expiration_event_at: string | null;
+  ai_cron_probably_running: boolean | null;
+};
 
 type SyncAlertInput = {
   supabase: ServerClient;
@@ -49,6 +48,11 @@ type SyncAlertInput = {
   metadata: Json;
   existing?: ExistingAlertState;
 };
+
+function numeric(value: number | string | null | undefined): number {
+  const parsed = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 async function syncAlert(input: SyncAlertInput): Promise<void> {
   const now = new Date().toISOString();
@@ -128,32 +132,6 @@ async function loadExistingAlertStates(input: {
   );
 }
 
-async function countPrevious24hEvents(input: {
-  supabase: ServerClient;
-  shopId: string;
-  now: Date;
-  installed: boolean;
-}): Promise<number> {
-  if (!input.installed) return 0;
-
-  const client = input.supabase as unknown as OperationalEventCountClient;
-  const end = new Date(
-    input.now.getTime() - 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const start = new Date(
-    input.now.getTime() - 48 * 60 * 60 * 1000,
-  ).toISOString();
-  const { count, error } = await client
-    .from("operational_events")
-    .select("id", { count: "exact", head: true })
-    .eq("shop_id", input.shopId)
-    .gte("occurred_at", start)
-    .lt("occurred_at", end);
-
-  if (error) throw new Error(error.message);
-  return Number.isFinite(count) ? Number(count) : 0;
-}
-
 export function hasOperationalEventVolumeDropped(input: {
   installed: boolean;
   recentBusinessWrites: number;
@@ -183,51 +161,85 @@ export async function syncOperationalObservabilityAlerts(input: {
   supabase: ServerClient;
   shopId: string;
   now?: Date;
+  operationalHealth?: OperationalHealthProjection;
 }): Promise<OperationalObservabilityAlertSummary> {
   const now = input.now ?? new Date();
   const [operational, ai, existingAlerts] = await Promise.all([
-    getOperationalObservability({
-      supabase: input.supabase,
-      shopId: input.shopId,
-      now,
-      limit: 1,
-    }),
-    getAiOperationsObservability({
-      supabase: input.supabase,
-      actorContext: {
-        shopId: input.shopId,
-        actorId: "internal-observability-health",
-        role: "system",
-        source: "system",
-      },
-      now,
-    }),
+    input.operationalHealth
+      ? Promise.resolve(null)
+      : getOperationalObservability({
+          supabase: input.supabase,
+          shopId: input.shopId,
+          now,
+          limit: 1,
+        }),
+    input.operationalHealth
+      ? Promise.resolve(null)
+      : getAiOperationsObservability({
+          supabase: input.supabase,
+          actorContext: {
+            shopId: input.shopId,
+            actorId: "internal-observability-health",
+            role: "system",
+            source: "system",
+          },
+          now,
+        }),
     loadExistingAlertStates({
       supabase: input.supabase,
       shopId: input.shopId,
     }),
   ]);
 
-  const eventsPrevious24h = await countPrevious24hEvents({
-    supabase: input.supabase,
-    shopId: input.shopId,
-    now,
-    installed: operational.installed,
-  });
-  const pipelineStalled =
-    operational.installed && operational.pipeline.status === "stalled";
-  const activeFailures = operational.installed
-    ? operational.pipeline.unresolvedFailures
+  const installed = input.operationalHealth
+    ? true
+    : operational?.installed === true;
+  const pipelineStatus =
+    input.operationalHealth?.health_status ??
+    operational?.pipeline.status ??
+    "not_installed";
+  const recentBusinessWrites = input.operationalHealth
+    ? numeric(input.operationalHealth.recent_business_writes)
+    : operational?.pipeline.recentBusinessWrites ?? 0;
+  const eventsLast24h = input.operationalHealth
+    ? numeric(input.operationalHealth.events_last_24h)
+    : operational?.pipeline.eventsLast24h ?? 0;
+  const eventsPrevious24h = input.operationalHealth
+    ? numeric(input.operationalHealth.events_previous_24h)
+    : operational?.pipeline.eventsPrevious24h ?? 0;
+  const lastEventAt =
+    input.operationalHealth?.last_event_at ??
+    operational?.pipeline.lastEventAt ??
+    null;
+  const activeFailures = installed
+    ? input.operationalHealth
+      ? numeric(input.operationalHealth.unresolved_failure_count)
+      : operational?.pipeline.unresolvedFailures ?? 0
     : 0;
+  const failuresLast24h =
+    operational?.pipeline.failuresLast24h ?? activeFailures;
+  const pipelineStalled = installed && pipelineStatus === "stalled";
   const eventVolumeDropped = hasOperationalEventVolumeDropped({
-    installed: operational.installed,
-    recentBusinessWrites: operational.pipeline.recentBusinessWrites,
-    eventsLast24h: operational.pipeline.eventsLast24h,
+    installed,
+    recentBusinessWrites,
+    eventsLast24h,
     eventsPrevious24h,
   });
-  const aiExpirationNeedsReview = ai.health.cronProbablyRunning === false;
+  const aiCronProbablyRunning = input.operationalHealth
+    ? input.operationalHealth.ai_cron_probably_running
+    : ai?.health.cronProbablyRunning ?? "unknown";
+  const aiStaleBacklog = input.operationalHealth
+    ? numeric(input.operationalHealth.ai_stale_recommendation_count) > 0
+    : ai?.health.hasStaleBacklog ?? false;
+  const aiPendingApprovalBacklog = input.operationalHealth
+    ? numeric(input.operationalHealth.ai_pending_approval_count) > 0
+    : ai?.health.hasPendingApprovalBacklog ?? false;
+  const aiLastExpirationEventAt = input.operationalHealth
+    ? input.operationalHealth.ai_last_expiration_event_at
+    : ai?.expiration.lastExpirationEventAt ?? null;
+  const aiExpirationNeedsReview = aiCronProbablyRunning === false;
 
-  if (operational.installed) {
+  if (installed) {
     await Promise.all([
       syncAlert({
         supabase: input.supabase,
@@ -237,12 +249,12 @@ export async function syncOperationalObservabilityAlerts(input: {
         level: "critical",
         title: "Operational event pipeline may be stalled",
         message: pipelineStalled
-          ? `${operational.pipeline.recentBusinessWrites} recent work-order writes were found, but the canonical event stream has not reported recent activity.`
+          ? `${recentBusinessWrites} recent work-order writes were found, but the canonical event stream has not reported recent activity.`
           : "Operational event activity has recovered.",
         metadata: {
-          pipeline_status: operational.pipeline.status,
-          last_event_at: operational.pipeline.lastEventAt,
-          recent_business_writes: operational.pipeline.recentBusinessWrites,
+          pipeline_status: pipelineStatus,
+          last_event_at: lastEventAt,
+          recent_business_writes: recentBusinessWrites,
         },
         existing: existingAlerts.get("operational_event_pipeline_stalled"),
       }),
@@ -259,7 +271,7 @@ export async function syncOperationalObservabilityAlerts(input: {
             : "Operational event failures have been resolved.",
         metadata: {
           failure_count: activeFailures,
-          failures_last_24h: operational.pipeline.failuresLast24h,
+          failures_last_24h: failuresLast24h,
         },
         existing: existingAlerts.get("operational_event_write_failure"),
       }),
@@ -271,12 +283,12 @@ export async function syncOperationalObservabilityAlerts(input: {
         level: "warning",
         title: "Operational event volume dropped",
         message: eventVolumeDropped
-          ? `Canonical event volume fell from ${eventsPrevious24h} to ${operational.pipeline.eventsLast24h} while shop records continued changing.`
+          ? `Canonical event volume fell from ${eventsPrevious24h} to ${eventsLast24h} while shop records continued changing.`
           : "Operational event volume is within the expected range.",
         metadata: {
-          events_last_24h: operational.pipeline.eventsLast24h,
+          events_last_24h: eventsLast24h,
           events_previous_24h: eventsPrevious24h,
-          recent_business_writes: operational.pipeline.recentBusinessWrites,
+          recent_business_writes: recentBusinessWrites,
         },
         existing: existingAlerts.get("operational_event_volume_drop"),
       }),
@@ -294,18 +306,18 @@ export async function syncOperationalObservabilityAlerts(input: {
       ? "Stale AI recommendations or approvals exist without recent expiration activity."
       : "AI expiration processing is reporting healthy activity.",
     metadata: {
-      cron_probably_running: ai.health.cronProbablyRunning,
-      stale_backlog: ai.health.hasStaleBacklog,
-      pending_approval_backlog: ai.health.hasPendingApprovalBacklog,
-      last_expiration_event_at: ai.expiration.lastExpirationEventAt,
+      cron_probably_running: aiCronProbablyRunning,
+      stale_backlog: aiStaleBacklog,
+      pending_approval_backlog: aiPendingApprovalBacklog,
+      last_expiration_event_at: aiLastExpirationEventAt,
     },
     existing: existingAlerts.get("ai_expiration_cron_stalled"),
   });
 
   return {
     shopId: input.shopId,
-    installed: operational.installed,
-    pipelineStatus: operational.pipeline.status,
+    installed,
+    pipelineStatus,
     pipelineStalled,
     activeFailures,
     eventVolumeDropped,

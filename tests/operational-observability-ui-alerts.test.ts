@@ -9,8 +9,16 @@ const page = readFileSync(
   "app/dashboard/operations/observability/page.tsx",
   "utf8",
 );
+const operationsPage = readFileSync(
+  "app/dashboard/operations/page.tsx",
+  "utf8",
+);
 const workspace = readFileSync(
   "features/operations/components/OperationalObservabilityWorkspace.tsx",
+  "utf8",
+);
+const healthStrip = readFileSync(
+  "features/operations/components/OperationalHealthAlertStrip.tsx",
   "utf8",
 );
 const workOrderPage = readFileSync("app/work-orders/[id]/page.tsx", "utf8");
@@ -20,6 +28,10 @@ const workOrderTimeline = readFileSync(
 );
 const alertService = readFileSync(
   "features/operations/server/syncOperationalObservabilityAlerts.ts",
+  "utf8",
+);
+const healthRoute = readFileSync(
+  "app/api/internal/observability/health/route.ts",
   "utf8",
 );
 const cronConfig = readFileSync("vercel.json", "utf8");
@@ -34,15 +46,18 @@ describe("operational observability UI and alerting", () => {
     expect(page).toContain("initialFilters={{");
   });
 
-  it("provides searchable workflow and failure timelines", () => {
+  it("provides searchable workflow, failure, and record-filtered timelines", () => {
     expect(workspace).toContain("Recent operational events");
     expect(workspace).toContain("Event-write failures");
     expect(workspace).toContain("Operational domains");
     expect(workspace).toContain("Review-layer health");
     expect(workspace).toContain("Search event, entity, role or source");
+    expect(workspace).toContain("initialFilters");
+    expect(workspace).toContain("Clear record filter");
   });
 
-  it("surfaces a role-gated canonical timeline on each work order", () => {
+  it("adds the authorized work-order timeline without replacing the work-order client", () => {
+    expect(workOrderPage).toContain("<WorkOrderIdClient />");
     expect(workOrderPage).toContain("<WorkOrderOperationalTimelineDock />");
     expect(workOrderTimeline).toContain(
       'const ALLOWED_ROLES = new Set(["owner", "admin", "manager"])',
@@ -50,6 +65,16 @@ describe("operational observability UI and alerting", () => {
     expect(workOrderTimeline).toContain("correlationId=");
     expect(workOrderTimeline).toContain("Operational timeline");
     expect(workOrderTimeline).toContain("Full observability");
+  });
+
+  it("surfaces operational health directly above Shop Operations", () => {
+    expect(operationsPage).toContain("<OperationalHealthAlertStrip />");
+    expect(operationsPage).toContain("<OperationsDashboardView />");
+    expect(healthStrip).toContain("Event pipeline stalled");
+    expect(healthStrip).toContain("Event capture failures");
+    expect(healthStrip).toContain("Event volume dropped");
+    expect(healthStrip).toContain("AI expiration processing");
+    expect(healthStrip).toContain("response.status === 401 || response.status === 403");
   });
 
   it("creates idempotent internal alerts for pipeline, volume, failure, and AI health", () => {
@@ -63,6 +88,16 @@ describe("operational observability UI and alerting", () => {
       'input.existing?.status === "acknowledged"',
     );
     expect(alertService).toContain("events_previous_24h");
+    expect(alertService).toContain(
+      'status: preserveAcknowledgement ? "acknowledged" : "active"',
+    );
+  });
+
+  it("uses the service-role health projection with a pre-migration fallback", () => {
+    expect(healthRoute).toContain("get_operational_observability_health");
+    expect(healthRoute).toContain("projectionUsed");
+    expect(healthRoute).toContain("projectionUnavailable");
+    expect(healthRoute).toContain("operationalHealth:");
   });
 
   it("schedules the internal health check without enabling branch deployments", () => {
