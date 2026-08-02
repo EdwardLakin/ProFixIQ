@@ -10,6 +10,7 @@ import { loadEstimateDetail } from "@/features/estimates/server/data";
 import { saveEstimateSchema } from "@/features/estimates/server/schemas";
 import {
   estimateMutationError,
+  nullableRpcString,
   requireIdempotencyKey,
 } from "@/features/estimates/server/http";
 
@@ -115,8 +116,8 @@ export async function PATCH(
       p_work_order_id: parsedId.data,
       p_expected_revision: parsed.data.expectedRevision,
       p_lines: lines,
-      p_notes: parsed.data.notes ?? null,
-      p_expires_at: parsed.data.expiresAt ?? null,
+      p_notes: nullableRpcString(parsed.data.notes),
+      p_expires_at: nullableRpcString(parsed.data.expiresAt),
       p_idempotency_key: idempotency.key,
     },
   );

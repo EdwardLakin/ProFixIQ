@@ -2,6 +2,14 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
+// PostgreSQL allows NULL function arguments, but generated Supabase RPC types
+// cannot represent parameter nullability. Keep that mismatch at this boundary.
+export function nullableRpcString(
+  value: string | null | undefined,
+): string {
+  return value ?? (null as unknown as string);
+}
+
 export function requireIdempotencyKey(
   request: Request,
 ): { ok: true; key: string } | { ok: false; response: NextResponse } {

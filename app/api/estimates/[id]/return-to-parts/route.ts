@@ -5,6 +5,7 @@ import { ESTIMATE_ADVISOR_ROLES } from "@/features/estimates/lib/access";
 import { returnEstimateSchema } from "@/features/estimates/server/schemas";
 import {
   estimateMutationError,
+  nullableRpcString,
   requireIdempotencyKey,
 } from "@/features/estimates/server/http";
 
@@ -41,7 +42,7 @@ export async function POST(
       p_quote_line_ids: parsedBody.data.quoteLineIds,
       p_expected_revision: parsedBody.data.expectedRevision,
       p_reason_code: parsedBody.data.reasonCode,
-      p_note: parsedBody.data.note ?? null,
+      p_note: nullableRpcString(parsedBody.data.note),
       p_idempotency_key: idempotency.key,
     },
   );

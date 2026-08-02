@@ -9,6 +9,7 @@ import { loadEstimateList } from "@/features/estimates/server/data";
 import { createEstimateSchema } from "@/features/estimates/server/schemas";
 import {
   estimateMutationError,
+  nullableRpcString,
   requireIdempotencyKey,
 } from "@/features/estimates/server/http";
 
@@ -111,8 +112,8 @@ export async function POST(request: Request) {
     p_customer: customer,
     p_vehicle: vehicle,
     p_lines: lines,
-    p_notes: input.notes ?? null,
-    p_expires_at: input.expiresAt ?? null,
+    p_notes: nullableRpcString(input.notes),
+    p_expires_at: nullableRpcString(input.expiresAt),
     p_idempotency_key: idempotency.key,
   });
 

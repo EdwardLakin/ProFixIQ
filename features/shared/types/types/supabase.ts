@@ -3221,121 +3221,6 @@ export type Database = {
         }
         Relationships: []
       }
-      estimate_internal_details: {
-        Row: {
-          created_at: string
-          line_notes: Json
-          notes: string | null
-          shop_id: string
-          updated_at: string
-          work_order_id: string
-        }
-        Insert: {
-          created_at?: string
-          line_notes?: Json
-          notes?: string | null
-          shop_id: string
-          updated_at?: string
-          work_order_id: string
-        }
-        Update: {
-          created_at?: string
-          line_notes?: Json
-          notes?: string | null
-          shop_id?: string
-          updated_at?: string
-          work_order_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "estimate_internal_details_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "estimate_internal_details_work_order_id_fkey"
-            columns: ["work_order_id"]
-            isOneToOne: true
-            referencedRelation: "work_orders"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      estimate_events: {
-        Row: {
-          actor_profile_id: string | null
-          changed_quote_line_ids: string[]
-          created_at: string
-          event_type: string
-          id: string
-          idempotency_key: string
-          note: string | null
-          reason_code: string | null
-          result: Json
-          revision: number
-          shop_id: string
-          snapshot: Json
-          updated_at: string
-          work_order_id: string | null
-        }
-        Insert: {
-          actor_profile_id?: string | null
-          changed_quote_line_ids?: string[]
-          created_at?: string
-          event_type: string
-          id?: string
-          idempotency_key: string
-          note?: string | null
-          reason_code?: string | null
-          result?: Json
-          revision: number
-          shop_id: string
-          snapshot?: Json
-          updated_at?: string
-          work_order_id?: string | null
-        }
-        Update: {
-          actor_profile_id?: string | null
-          changed_quote_line_ids?: string[]
-          created_at?: string
-          event_type?: string
-          id?: string
-          idempotency_key?: string
-          note?: string | null
-          reason_code?: string | null
-          result?: Json
-          revision?: number
-          shop_id?: string
-          snapshot?: Json
-          updated_at?: string
-          work_order_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "estimate_events_actor_profile_id_fkey"
-            columns: ["actor_profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "estimate_events_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "estimate_events_work_order_id_fkey"
-            columns: ["work_order_id"]
-            isOneToOne: false
-            referencedRelation: "work_orders"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       employee_documents: {
         Row: {
           bucket_id: string
@@ -3409,6 +3294,191 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_events: {
+        Row: {
+          actor_profile_id: string | null
+          changed_quote_line_ids: string[]
+          created_at: string
+          event_type: string
+          id: string
+          idempotency_key: string
+          note: string | null
+          reason_code: string | null
+          result: Json
+          revision: number
+          shop_id: string
+          snapshot: Json
+          updated_at: string
+          work_order_id: string | null
+        }
+        Insert: {
+          actor_profile_id?: string | null
+          changed_quote_line_ids?: string[]
+          created_at?: string
+          event_type: string
+          id?: string
+          idempotency_key: string
+          note?: string | null
+          reason_code?: string | null
+          result?: Json
+          revision: number
+          shop_id: string
+          snapshot?: Json
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Update: {
+          actor_profile_id?: string | null
+          changed_quote_line_ids?: string[]
+          created_at?: string
+          event_type?: string
+          id?: string
+          idempotency_key?: string
+          note?: string | null
+          reason_code?: string | null
+          result?: Json
+          revision?: number
+          shop_id?: string
+          snapshot?: Json
+          updated_at?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_events_actor_profile_id_fkey"
+            columns: ["actor_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "estimate_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "estimate_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "estimate_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "estimate_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_internal_details: {
+        Row: {
+          created_at: string
+          line_notes: Json
+          notes: string | null
+          shop_id: string
+          updated_at: string
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          line_notes?: Json
+          notes?: string | null
+          shop_id: string
+          updated_at?: string
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          line_notes?: Json
+          notes?: string | null
+          shop_id?: string
+          updated_at?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_internal_details_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_internal_details_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_internal_details_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "estimate_internal_details_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "estimate_internal_details_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "estimate_internal_details_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "estimate_internal_details_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -8718,8 +8788,8 @@ export type Database = {
           quote_line_id: string | null
           requested_by: string | null
           shop_id: string
-          source_menu_item_id: string | null
           source_context: string | null
+          source_menu_item_id: string | null
           source_revision: number | null
           status: Database["public"]["Enums"]["part_request_status"]
           work_order_id: string | null
@@ -8735,8 +8805,8 @@ export type Database = {
           quote_line_id?: string | null
           requested_by?: string | null
           shop_id: string
-          source_menu_item_id?: string | null
           source_context?: string | null
+          source_menu_item_id?: string | null
           source_revision?: number | null
           status?: Database["public"]["Enums"]["part_request_status"]
           work_order_id?: string | null
@@ -8752,8 +8822,8 @@ export type Database = {
           quote_line_id?: string | null
           requested_by?: string | null
           shop_id?: string
-          source_menu_item_id?: string | null
           source_context?: string | null
+          source_menu_item_id?: string | null
           source_revision?: number | null
           status?: Database["public"]["Enums"]["part_request_status"]
           work_order_id?: string | null
@@ -21315,7 +21385,6 @@ export type Database = {
           customer_id: string | null
           customer_name: string | null
           customer_signature_url: string | null
-          expected_completion_at: string | null
           estimate_authorized_at: string | null
           estimate_converted_at: string | null
           estimate_created_at: string | null
@@ -21328,6 +21397,7 @@ export type Database = {
           estimate_sent_at: string | null
           estimate_sent_by: string | null
           estimate_status: string | null
+          expected_completion_at: string | null
           external_id: string | null
           id: string
           import_confidence: number | null
@@ -21401,7 +21471,6 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string | null
           customer_signature_url?: string | null
-          expected_completion_at?: string | null
           estimate_authorized_at?: string | null
           estimate_converted_at?: string | null
           estimate_created_at?: string | null
@@ -21414,6 +21483,7 @@ export type Database = {
           estimate_sent_at?: string | null
           estimate_sent_by?: string | null
           estimate_status?: string | null
+          expected_completion_at?: string | null
           external_id?: string | null
           id?: string
           import_confidence?: number | null
@@ -21487,7 +21557,6 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string | null
           customer_signature_url?: string | null
-          expected_completion_at?: string | null
           estimate_authorized_at?: string | null
           estimate_converted_at?: string | null
           estimate_created_at?: string | null
@@ -21500,6 +21569,7 @@ export type Database = {
           estimate_sent_at?: string | null
           estimate_sent_by?: string | null
           estimate_status?: string | null
+          expected_completion_at?: string | null
           external_id?: string | null
           id?: string
           import_confidence?: number | null
@@ -21564,6 +21634,27 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_estimate_created_by_fkey"
+            columns: ["estimate_created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_estimate_parts_completed_by_fkey"
+            columns: ["estimate_parts_completed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_estimate_sent_by_fkey"
+            columns: ["estimate_sent_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -22725,86 +22816,6 @@ export type Database = {
     }
     Functions: {
       _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
-      complete_estimate_parts_quote_atomic: {
-        Args: {
-          p_expected_revision: number
-          p_idempotency_key: string
-          p_shop_id: string
-          p_work_order_id: string
-        }
-        Returns: Json
-      }
-      create_estimate_atomic: {
-        Args: {
-          p_customer: Json
-          p_expires_at: string | null
-          p_idempotency_key: string
-          p_lines: Json
-          p_notes: string | null
-          p_shop_id: string
-          p_vehicle: Json
-        }
-        Returns: Json
-      }
-      finalize_estimate_send_atomic: {
-        Args: {
-          p_actor_profile_id: string
-          p_actor_user_id: string
-          p_event_id: string
-          p_quote_url: string
-          p_revision: number
-          p_sent_at: string
-          p_shop_id: string
-          p_work_order_id: string
-        }
-        Returns: Json
-      }
-      reserve_estimate_send_atomic: {
-        Args: {
-          p_actor_profile_id: string
-          p_actor_user_id: string
-          p_allow_resend: boolean
-          p_idempotency_key: string
-          p_quote_line_ids: string[]
-          p_revision: number
-          p_shop_id: string
-          p_work_order_id: string
-        }
-        Returns: Json
-      }
-      return_estimate_to_parts_atomic: {
-        Args: {
-          p_expected_revision: number
-          p_idempotency_key: string
-          p_note: string | null
-          p_quote_line_ids: string[]
-          p_reason_code: string
-          p_shop_id: string
-          p_work_order_id: string
-        }
-        Returns: Json
-      }
-      save_estimate_draft_atomic: {
-        Args: {
-          p_expected_revision: number
-          p_expires_at: string | null
-          p_idempotency_key: string
-          p_lines: Json
-          p_notes: string | null
-          p_shop_id: string
-          p_work_order_id: string
-        }
-        Returns: Json
-      }
-      submit_estimate_to_parts_atomic: {
-        Args: {
-          p_expected_revision: number
-          p_idempotency_key: string
-          p_shop_id: string
-          p_work_order_id: string
-        }
-        Returns: Json
-      }
       accept_customer_portal_invite_atomic: {
         Args: {
           p_actor_email: string
@@ -23267,6 +23278,37 @@ export type Database = {
         Args: { target_profile_id: string }
         Returns: boolean
       }
+      can_read_estimate_internal_details: {
+        Args: { p_shop_id: string }
+        Returns: boolean
+      }
+      can_select_estimate_quote_line: {
+        Args: {
+          p_approved_at: string
+          p_declined_at: string
+          p_deferred_at: string
+          p_sent_to_customer_at: string
+          p_shop_id: string
+          p_stage: string
+          p_status: string
+          p_work_order_id: string
+          p_work_order_line_id: string
+        }
+        Returns: boolean
+      }
+      can_select_estimate_work_order: {
+        Args: {
+          p_customer_id: string
+          p_estimate_number: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: boolean
+      }
+      can_update_estimate_part_request_items: {
+        Args: { p_shop_id: string }
+        Returns: boolean
+      }
       can_update_part_request_items: {
         Args: { p_shop_id: string }
         Returns: boolean
@@ -23407,6 +23449,15 @@ export type Database = {
           user_id: string
         }[]
       }
+      complete_estimate_parts_quote_atomic: {
+        Args: {
+          p_expected_revision: number
+          p_idempotency_key: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       complete_financial_outbox_claim: {
         Args: { p_outbox_id: string; p_worker_id: string }
         Returns: boolean
@@ -23470,6 +23521,18 @@ export type Database = {
           p_started_at: string
           p_technician_id: string
           p_work_order_line_id: string
+        }
+        Returns: Json
+      }
+      create_estimate_atomic: {
+        Args: {
+          p_customer: Json
+          p_expires_at: string
+          p_idempotency_key: string
+          p_lines: Json
+          p_notes: string
+          p_shop_id: string
+          p_vehicle: Json
         }
         Returns: Json
       }
@@ -23565,6 +23628,18 @@ export type Database = {
           customer_id: string | null
           customer_name: string | null
           customer_signature_url: string | null
+          estimate_authorized_at: string | null
+          estimate_converted_at: string | null
+          estimate_created_at: string | null
+          estimate_created_by: string | null
+          estimate_expires_at: string | null
+          estimate_number: string | null
+          estimate_parts_completed_at: string | null
+          estimate_parts_completed_by: string | null
+          estimate_revision: number
+          estimate_sent_at: string | null
+          estimate_sent_by: string | null
+          estimate_status: string | null
           expected_completion_at: string | null
           external_id: string | null
           id: string
@@ -23594,6 +23669,7 @@ export type Database = {
           priority: number | null
           quote: Json | null
           quote_url: string | null
+          record_type: string
           scheduled_at: string | null
           shop_id: string
           shop_supplies_amount_override: number | null
@@ -23640,6 +23716,13 @@ export type Database = {
         }
         Returns: Json
       }
+      estimate_actor_for_shop: {
+        Args: { p_allowed_roles: string[]; p_shop_id: string }
+        Returns: {
+          canonical_role: string
+          profile_id: string
+        }[]
+      }
       evaluate_fleet_pm_due_events: {
         Args: { p_fleet_id: string; p_vehicle_id?: string }
         Returns: {
@@ -23652,6 +23735,19 @@ export type Database = {
       fail_stripe_webhook_event: {
         Args: { p_claim_token: string; p_error: string; p_event_id: string }
         Returns: boolean
+      }
+      finalize_estimate_send_atomic: {
+        Args: {
+          p_actor_profile_id: string
+          p_actor_user_id: string
+          p_event_id: string
+          p_quote_url: string
+          p_revision: number
+          p_sent_at: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
       }
       finalize_inspection_pdf_atomic: {
         Args: {
@@ -24296,6 +24392,10 @@ export type Database = {
       profixiq_workforce_profile_id: { Args: never; Returns: string }
       profixiq_workforce_role: { Args: never; Returns: string }
       profixiq_workforce_shop_id: { Args: never; Returns: string }
+      recalculate_estimate_work_order_totals: {
+        Args: { p_shop_id: string; p_work_order_id: string }
+        Returns: undefined
+      }
       receive_part_request_item: {
         Args: {
           p_idempotency_key?: string
@@ -24406,6 +24506,31 @@ export type Database = {
         }
         Returns: Json
       }
+      reserve_estimate_send_atomic: {
+        Args: {
+          p_actor_profile_id: string
+          p_actor_user_id: string
+          p_allow_resend: boolean
+          p_idempotency_key: string
+          p_quote_line_ids: string[]
+          p_revision: number
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      return_estimate_to_parts_atomic: {
+        Args: {
+          p_expected_revision: number
+          p_idempotency_key: string
+          p_note: string
+          p_quote_line_ids: string[]
+          p_reason_code: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       review_menu_item_part_intake: {
         Args: {
           p_actor_auth_user_id: string
@@ -24416,6 +24541,18 @@ export type Database = {
           p_request_item_id: string
           p_shop_id: string
           p_unit_cost: number
+        }
+        Returns: Json
+      }
+      save_estimate_draft_atomic: {
+        Args: {
+          p_expected_revision: number
+          p_expires_at: string
+          p_idempotency_key: string
+          p_lines: Json
+          p_notes: string
+          p_shop_id: string
+          p_work_order_id: string
         }
         Returns: Json
       }
@@ -24641,6 +24778,15 @@ export type Database = {
           user_id: string
         }[]
       }
+      submit_estimate_to_parts_atomic: {
+        Args: {
+          p_expected_revision: number
+          p_idempotency_key: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       submit_staff_time_off_request: {
         Args: {
           p_actor_profile_id: string
@@ -24730,6 +24876,7 @@ export type Database = {
         Returns: Json
       }
       user_is_in_shop: { Args: { target_shop_id: string }; Returns: boolean }
+      validate_estimate_lines: { Args: { p_lines: Json }; Returns: undefined }
       void_invoice_version: {
         Args: {
           p_actor_user_id: string
@@ -25403,3 +25550,4 @@ export const Constants = {
     },
   },
 } as const
+
