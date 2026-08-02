@@ -14,7 +14,7 @@ export default async function NewEstimatePage() {
   const supabase = createServerSupabaseRSC();
   const { data: shop } = await supabase
     .from("shops")
-    .select("labor_rate")
+    .select("labor_rate,timezone")
     .eq("id", profile.shop_id)
     .maybeSingle();
 
@@ -22,6 +22,7 @@ export default async function NewEstimatePage() {
     <EstimateBuilder
       shopId={profile.shop_id}
       defaultLaborRate={Number(shop?.labor_rate ?? 0)}
+      shopTimezone={shop?.timezone ?? "UTC"}
     />
   );
 }

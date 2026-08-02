@@ -145,6 +145,7 @@ export type EstimateDetail = {
   shop: {
     id: string;
     laborRate: number;
+    timezone: string;
   };
   estimate: {
     id: string;
@@ -168,8 +169,18 @@ export type EstimateDetail = {
 
 export type EstimateListPayload = {
   actor: EstimateActor;
-  shop: { id: string; laborRate: number };
+  shop: { id: string; laborRate: number; timezone: string };
   estimates: EstimateListItem[];
+  queueCounts: {
+    waiting: number;
+    advisor: number;
+    sent: number;
+  };
+  pageInfo: {
+    offset: number;
+    limit: number;
+    hasMore: boolean;
+  };
 };
 
 export const EMPTY_ESTIMATE_CUSTOMER: EstimateCustomerForm = {

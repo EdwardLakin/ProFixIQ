@@ -44,7 +44,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
   } = await routeSupabase.auth.getUser();
 
   if (userError || !user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   const body = (await req.json().catch(() => null)) as Body | null;
@@ -116,7 +119,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
     !workOrder.shop_id ||
     workOrder.customer_id !== customer.id
   ) {
-    return NextResponse.json({ ok: false, error: "Quote not found" }, { status: 404 });
+    return NextResponse.json(
+      { ok: false, error: "Quote not found" },
+      { status: 404 },
+    );
   }
 
   const result = await applyWorkOrderQuoteLineDecision({
@@ -132,9 +138,16 @@ export async function POST(req: NextRequest, context: RouteContext) {
   });
 
   if (!result.ok) {
-    const status = result.error?.includes("FINANCIALLY_LOCKED") ? 409 : 400;
+    const status =
+      result.expired || result.error?.includes("FINANCIALLY_LOCKED")
+        ? 409
+        : 400;
     return NextResponse.json(
-      { ok: false, error: result.error ?? "Unable to update quote decision" },
+      {
+        ok: false,
+        expired: result.expired === true,
+        error: result.error ?? "Unable to update quote decision",
+      },
       { status },
     );
   }

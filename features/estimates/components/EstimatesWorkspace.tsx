@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -77,74 +77,72 @@ export default function EstimatesWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestSerial = useRef(0);
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/estimates", { cache: "no-store" });
-      const body = (await response.json().catch(() => null)) as
-        | EstimateListPayload
-        | { error?: string }
-        | null;
-      if (!response.ok || !body || !("estimates" in body)) {
-        throw new Error(
-          body && "error" in body && body.error
-            ? body.error
+  const load = useCallback(
+    async (reset = true, offset = 0) => {
+      const serial = ++requestSerial.current;
+      if (reset) setLoading(true);
+      else setLoadingMore(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          search: search.trim(),
+          status,
+          offset: reset ? "0" : String(offset),
+        });
+        const response = await fetch(`/api/estimates?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const body = (await response.json().catch(() => null)) as
+          | EstimateListPayload
+          | { error?: string }
+          | null;
+        if (!response.ok || !body || !("estimates" in body)) {
+          throw new Error(
+            body && "error" in body && body.error
+              ? body.error
+              : "Could not load estimates.",
+          );
+        }
+        if (serial !== requestSerial.current) return;
+        setPayload((current) =>
+          reset || !current
+            ? body
+            : {
+                ...body,
+                estimates: [...current.estimates, ...body.estimates],
+              },
+        );
+      } catch (loadError) {
+        if (serial !== requestSerial.current) return;
+        setError(
+          loadError instanceof Error
+            ? loadError.message
             : "Could not load estimates.",
         );
+      } finally {
+        if (serial === requestSerial.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
-      setPayload(body);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Could not load estimates.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+    },
+    [search, status],
+  );
 
   useEffect(() => {
-    void load();
-  }, []);
+    const timer = window.setTimeout(() => void load(true), 250);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
-  const visible = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return (payload?.estimates ?? []).filter((estimate) => {
-      const matchesStatus =
-        status === "all" ||
-        estimate.estimateStatus === status ||
-        (status === "approved" &&
-          estimate.estimateStatus === "partially_approved") ||
-        (status === "declined" &&
-          ["deferred", "expired"].includes(estimate.estimateStatus));
-      if (!matchesStatus) return false;
-      if (!term) return true;
-      return [
-        estimate.estimateNumber,
-        estimate.customId,
-        estimate.customerName,
-        estimate.vehicleLabel,
-        estimate.vehicleVin,
-        estimate.vehicleUnitNumber,
-      ].some((value) => value?.toLowerCase().includes(term));
-    });
-  }, [payload, search, status]);
-
-  const queueCounts = useMemo(() => {
-    const estimates = payload?.estimates ?? [];
-    return {
-      waiting: estimates.filter(
-        (item) => item.estimateStatus === "waiting_for_parts",
-      ).length,
-      advisor: estimates.filter(
-        (item) => item.estimateStatus === "ready_for_advisor",
-      ).length,
-      sent: estimates.filter((item) => item.estimateStatus === "sent").length,
-    };
-  }, [payload]);
+  const visible = payload?.estimates ?? [];
+  const queueCounts = payload?.queueCounts ?? {
+    waiting: 0,
+    advisor: 0,
+    sent: 0,
+  };
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -170,7 +168,7 @@ export default function EstimatesWorkspace() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => void load()}
+              onClick={() => void load(true)}
               disabled={loading}
               className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-muted)] px-4 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--brand-primary)] disabled:opacity-50"
             >
@@ -283,72 +281,89 @@ export default function EstimatesWorkspace() {
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {visible.map((estimate) => {
-            const total = estimate.laborTotal + estimate.partsTotal;
-            return (
-              <Link
-                key={estimate.id}
-                href={`/estimates/${estimate.id}`}
-                className="group flex min-h-64 flex-col rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-soft)] transition hover:-translate-y-0.5 hover:border-[color:var(--brand-primary)]"
+        <>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {visible.map((estimate) => {
+              const total = estimate.laborTotal + estimate.partsTotal;
+              return (
+                <Link
+                  key={estimate.id}
+                  href={`/estimates/${estimate.id}`}
+                  className="group flex min-h-64 flex-col rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 shadow-[var(--theme-shadow-soft)] transition hover:-translate-y-0.5 hover:border-[color:var(--brand-primary)]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-mono text-sm font-bold text-[color:var(--theme-text-primary)]">
+                        {estimate.estimateNumber}
+                      </div>
+                      <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                        Revision {estimate.estimateRevision} · Updated{" "}
+                        {shortDate(estimate.updatedAt)}
+                      </div>
+                    </div>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusClass(estimate.estimateStatus)}`}
+                    >
+                      {estimateStatusLabel(estimate.estimateStatus)}
+                    </span>
+                  </div>
+
+                  <div className="mt-5">
+                    <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
+                      {estimate.customerName}
+                    </h2>
+                    <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+                      {estimate.vehicleLabel}
+                    </p>
+                    <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                      {estimate.vehicleUnitNumber
+                        ? `Unit ${estimate.vehicleUnitNumber}`
+                        : estimate.vehicleVin || "No VIN recorded"}
+                    </p>
+                  </div>
+
+                  <div className="mt-auto border-t border-[color:var(--theme-border-soft)] pt-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-[color:var(--theme-text-secondary)]">
+                        Next:{" "}
+                        <strong className="text-[color:var(--theme-text-primary)]">
+                          {estimateNextOwner(estimate.estimateStatus)}
+                        </strong>
+                      </span>
+                      <span className="font-semibold text-[color:var(--theme-text-primary)]">
+                        {payload?.actor.mode === "parts"
+                          ? `${money(estimate.partsTotal)} parts`
+                          : `${money(total)} subtotal`}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-sm font-semibold text-[color:var(--brand-primary)]">
+                      {estimatePrimaryAction(
+                        estimate.estimateStatus,
+                        payload?.actor.mode ?? "advisor",
+                      )}
+                      <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+          {payload?.pageInfo.hasMore ? (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={() => void load(false, visible.length)}
+                disabled={loadingMore}
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-5 text-sm font-semibold text-[color:var(--theme-text-primary)] disabled:opacity-50"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-mono text-sm font-bold text-[color:var(--theme-text-primary)]">
-                      {estimate.estimateNumber}
-                    </div>
-                    <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                      Revision {estimate.estimateRevision} · Updated{" "}
-                      {shortDate(estimate.updatedAt)}
-                    </div>
-                  </div>
-                  <span
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusClass(estimate.estimateStatus)}`}
-                  >
-                    {estimateStatusLabel(estimate.estimateStatus)}
-                  </span>
-                </div>
-
-                <div className="mt-5">
-                  <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
-                    {estimate.customerName}
-                  </h2>
-                  <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                    {estimate.vehicleLabel}
-                  </p>
-                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                    {estimate.vehicleUnitNumber
-                      ? `Unit ${estimate.vehicleUnitNumber}`
-                      : estimate.vehicleVin || "No VIN recorded"}
-                  </p>
-                </div>
-
-                <div className="mt-auto border-t border-[color:var(--theme-border-soft)] pt-4">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-[color:var(--theme-text-secondary)]">
-                      Next:{" "}
-                      <strong className="text-[color:var(--theme-text-primary)]">
-                        {estimateNextOwner(estimate.estimateStatus)}
-                      </strong>
-                    </span>
-                    <span className="font-semibold text-[color:var(--theme-text-primary)]">
-                      {payload?.actor.mode === "parts"
-                        ? `${money(estimate.partsTotal)} parts`
-                        : `${money(total)} subtotal`}
-                    </span>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-sm font-semibold text-[color:var(--brand-primary)]">
-                    {estimatePrimaryAction(
-                      estimate.estimateStatus,
-                      payload?.actor.mode ?? "advisor",
-                    )}
-                    <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+                <RefreshCw
+                  className={`h-4 w-4 ${loadingMore ? "animate-spin" : ""}`}
+                />
+                {loadingMore ? "Loading…" : "Load more estimates"}
+              </button>
+            </div>
+          ) : null}
+        </>
       )}
     </main>
   );

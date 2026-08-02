@@ -6,6 +6,7 @@ import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import { estimateActorForRole } from "@/features/estimates/lib/access";
 import { isEstimateStatus } from "@/features/estimates/lib/status";
 import { isPartsRequestItemPriced } from "@/features/parts/lib/status-display";
+import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
 import type {
   EstimateCustomerForm,
   EstimateDetail,
@@ -283,44 +284,99 @@ export async function loadEstimateList(input: {
   supabase: ServerSupabase;
   shopId: string;
   role: CanonicalRole;
+  search?: string;
+  status?: string;
+  offset?: number;
+  limit?: number;
 }): Promise<EstimateListPayload> {
   const actor = estimateActorForRole(input.role);
-  let query = input.supabase
+  const offset = Math.max(0, Math.trunc(input.offset ?? 0));
+  const limit = Math.min(100, Math.max(1, Math.trunc(input.limit ?? 48)));
+  const search = asText(input.search).slice(0, 200);
+  const { data: rawIdRows, error: idError } = await input.supabase.rpc(
+    "search_estimate_work_order_ids",
+    {
+      p_shop_id: input.shopId,
+      p_mode: actor.mode,
+      p_status: input.status ?? "all",
+      p_search: search,
+      p_offset: offset,
+      p_limit: limit + 1,
+    },
+  );
+  if (idError) throw new Error(idError.message);
+  const idRows = Array.isArray(rawIdRows)
+    ? (rawIdRows as Array<{ work_order_id: string }>)
+    : [];
+  const orderedIds = (idRows ?? []).map((row) => row.work_order_id);
+  const hasMore = orderedIds.length > limit;
+  const pageIds = orderedIds.slice(0, limit);
+
+  const query = input.supabase
     .from("work_orders")
     .select(ESTIMATE_SELECT)
     .eq("shop_id", input.shopId)
     .not("estimate_number", "is", null)
-    .order("updated_at", { ascending: false })
-    .limit(150);
+    .in(
+      "id",
+      pageIds.length > 0 ? pageIds : ["00000000-0000-0000-0000-000000000000"],
+    );
 
-  if (actor.mode === "parts") {
-    query = query.eq("estimate_status", "waiting_for_parts");
-  }
-
-  const [estimateResult, shopResult] = await Promise.all([
-    query.returns<EstimateJoinedRow[]>(),
+  const queueCount = (status: string) =>
     input.supabase
-      .from("shops")
-      .select("id,labor_rate")
-      .eq("id", input.shopId)
-      .maybeSingle<
-        Pick<DB["public"]["Tables"]["shops"]["Row"], "id" | "labor_rate">
-      >(),
-  ]);
+      .from("work_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", input.shopId)
+      .not("estimate_number", "is", null)
+      .eq("estimate_status", status);
+
+  const [estimateResult, shopResult, waitingCount, advisorCount, sentCount] =
+    await Promise.all([
+      query.returns<EstimateJoinedRow[]>(),
+      input.supabase
+        .from("shops")
+        .select("id,labor_rate,timezone")
+        .eq("id", input.shopId)
+        .maybeSingle<
+          Pick<
+            DB["public"]["Tables"]["shops"]["Row"],
+            "id" | "labor_rate" | "timezone"
+          >
+        >(),
+      queueCount("waiting_for_parts"),
+      queueCount("ready_for_advisor"),
+      queueCount("sent"),
+    ]);
 
   if (estimateResult.error) throw new Error(estimateResult.error.message);
   if (shopResult.error) throw new Error(shopResult.error.message);
+  const countError =
+    waitingCount.error ?? advisorCount.error ?? sentCount.error;
+  if (countError) throw new Error(countError.message);
+  const rowOrder = new Map(pageIds.map((id, index) => [id, index]));
+  const pageRows = [...(estimateResult.data ?? [])].sort(
+    (left, right) =>
+      (rowOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+      (rowOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+  );
 
   return {
     actor,
     shop: {
       id: input.shopId,
       laborRate: asNumber(shopResult.data?.labor_rate),
+      timezone: getShopDayRange(shopResult.data?.timezone).timezone,
     },
-    estimates: (estimateResult.data ?? []).map((row) => {
+    estimates: pageRows.map((row) => {
       const item = listItem(row);
       return actor.mode === "parts" ? { ...item, laborTotal: 0 } : item;
     }),
+    queueCounts: {
+      waiting: waitingCount.count ?? 0,
+      advisor: advisorCount.count ?? 0,
+      sent: sentCount.count ?? 0,
+    },
+    pageInfo: { offset, limit, hasMore },
   };
 }
 
@@ -482,10 +538,13 @@ export async function loadEstimateDetail(input: {
       .returns<EstimateEventRow[]>(),
     input.supabase
       .from("shops")
-      .select("id,labor_rate")
+      .select("id,labor_rate,timezone")
       .eq("id", input.shopId)
       .maybeSingle<
-        Pick<DB["public"]["Tables"]["shops"]["Row"], "id" | "labor_rate">
+        Pick<
+          DB["public"]["Tables"]["shops"]["Row"],
+          "id" | "labor_rate" | "timezone"
+        >
       >(),
     input.supabase
       .from("estimate_internal_details")
@@ -523,7 +582,11 @@ export async function loadEstimateDetail(input: {
 
   return {
     actor,
-    shop: { id: input.shopId, laborRate: shopLaborRate },
+    shop: {
+      id: input.shopId,
+      laborRate: shopLaborRate,
+      timezone: getShopDayRange(shopResult.data?.timezone).timezone,
+    },
     estimate: {
       id: estimateRow.id,
       estimateNumber:

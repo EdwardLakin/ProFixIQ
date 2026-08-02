@@ -1,6 +1,7 @@
 import "server-only";
 
 import { z } from "zod";
+import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
 
 const nullableTrimmed = z.string().trim().max(500).nullable().optional();
 const optionalUuid = z.string().uuid().nullable().optional();
@@ -26,12 +27,34 @@ const customerSchema = z.object({
   postal_code: nullableTrimmed,
 });
 
+const vinSchema = z
+  .string()
+  .trim()
+  .max(80)
+  .nullable()
+  .optional()
+  .transform((value, context) => {
+    if (!value) return null;
+    const normalized = normalizeVinInput(value);
+    if (!normalized.isValid) {
+      context.addIssue({ code: "custom", message: normalized.message });
+      return z.NEVER;
+    }
+    return normalized.vin;
+  });
+
+const expiresOnSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .nullable()
+  .optional();
+
 const vehicleSchema = z.object({
   id: optionalUuid,
   year: z.string().trim().max(4).nullable().optional(),
   make: nullableTrimmed,
   model: nullableTrimmed,
-  vin: z.string().trim().max(17).nullable().optional(),
+  vin: vinSchema,
   license_plate: nullableTrimmed,
   mileage: nullableTrimmed,
   color: nullableTrimmed,
@@ -65,6 +88,7 @@ export const createEstimateSchema = z.object({
   vehicle: vehicleSchema,
   lines: z.array(estimateLineSchema).min(1).max(50),
   notes: z.string().trim().max(8_000).nullable().optional(),
+  expiresOn: expiresOnSchema,
   expiresAt: z.string().datetime().nullable().optional(),
 });
 
@@ -72,6 +96,7 @@ export const saveEstimateSchema = z.object({
   expectedRevision: z.number().int().positive(),
   lines: z.array(estimateLineSchema).min(1).max(50),
   notes: z.string().trim().max(8_000).nullable().optional(),
+  expiresOn: expiresOnSchema,
   expiresAt: z.string().datetime().nullable().optional(),
 });
 

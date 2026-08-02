@@ -24634,6 +24634,19 @@ export type Database = {
         }
         Returns: Json
       }
+      search_estimate_work_order_ids: {
+        Args: {
+          p_limit: number
+          p_mode: string
+          p_offset: number
+          p_search: string
+          p_shop_id: string
+          p_status: string
+        }
+        Returns: {
+          work_order_id: string
+        }[]
+      }
       seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
         Args: { _line_ids: string[]; _set_wo_status?: boolean; _wo: string }
