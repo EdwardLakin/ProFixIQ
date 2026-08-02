@@ -6,7 +6,7 @@ const failureHardening = readFileSync(
   "utf8",
 );
 const semanticsHardening = readFileSync(
-  "supabase/migrations/20260802154500_operational_event_semantics_hardening.sql",
+  "supabase/migrations/20260802154501_operational_event_semantics_hardening.sql",
   "utf8",
 );
 
