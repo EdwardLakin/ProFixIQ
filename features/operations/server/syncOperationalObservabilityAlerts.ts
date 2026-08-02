@@ -119,10 +119,17 @@ async function countPrevious24hEvents(input: {
 }): Promise<number> {
   if (!input.installed) return 0;
 
-  const fromTable = (input.supabase as unknown as { from: (table: string) => any }).from;
-  const end = new Date(input.now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  const start = new Date(input.now.getTime() - 48 * 60 * 60 * 1000).toISOString();
-  const { count, error } = await fromTable("operational_events")
+  const client = input.supabase as unknown as {
+    from: (table: string) => any;
+  };
+  const end = new Date(
+    input.now.getTime() - 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const start = new Date(
+    input.now.getTime() - 48 * 60 * 60 * 1000,
+  ).toISOString();
+  const { count, error } = await client
+    .from("operational_events")
     .select("id", { count: "exact", head: true })
     .eq("shop_id", input.shopId)
     .gte("occurred_at", start)
