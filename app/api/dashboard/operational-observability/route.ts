@@ -10,6 +10,14 @@ function optionalUuid(value: string | null): string | null {
   return UUID_PATTERN.test(value) ? value : null;
 }
 
+function finiteDomainCounts(value: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, count]) => Number.isFinite(count))
+      .map(([domain, count]) => [domain, Number(count)]),
+  );
+}
+
 export async function GET(request: Request) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageWorkOrders",
@@ -52,9 +60,11 @@ export async function GET(request: Request) {
       }),
     ]);
 
-    const byDomain = ai.recommendations.byDomain as Record<string, number>;
+    const byDomain = finiteDomainCounts(
+      ai.recommendations.byDomain as Record<string, number>,
+    );
     const categorizedRecommendations = Object.values(byDomain).reduce(
-      (sum, value) => sum + (Number.isFinite(value) ? Number(value) : 0),
+      (sum, value) => sum + value,
       0,
     );
 
