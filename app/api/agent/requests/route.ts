@@ -95,8 +95,9 @@ function asNullableString(value: unknown): string | null {
 
 function agentApiSecret(): string {
   return String(
-    process.env.PROFIXIQ_AGENT_API_SECRET
-      ?? process.env.AGENT_API_SECRET
+    process.env.AGENT_API_SECRET
+      ?? process.env.PROFIXIQ_AGENT_API_SECRET
+      ?? process.env.INTERNAL_AGENT_SECRET
       ?? "",
   ).trim();
 }
@@ -269,7 +270,7 @@ export async function POST(req: NextRequest) {
       throw new Error("PROFIXIQ_AGENT_URL is not configured");
     }
     if (!agentSecret) {
-      throw new Error("PROFIXIQ_AGENT_API_SECRET is not configured");
+      throw new Error("AGENT_API_SECRET is not configured");
     }
 
     const endpoint = intent === "refactor" ? "/refactors" : "/feature-requests";
@@ -305,6 +306,8 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         "x-agent-api-secret": agentSecret,
+        "x-agent-secret": agentSecret,
+        Authorization: `Bearer ${agentSecret}`,
       },
       body: JSON.stringify(payload),
       cache: "no-store",
