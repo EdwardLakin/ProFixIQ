@@ -1,24 +1,21 @@
-export type CanonicalPlan = "starter" | "unlimited";
+export type CanonicalPlan = "starter" | "pro" | "unlimited";
 export type CompletePlanKey = "complete_10" | "complete_50" | "complete_100" | "complete_unlimited";
 export type KnownPlanInput =
   | CanonicalPlan
   | CompletePlanKey
-  | "pro"
   | "pro50"
   | "pro_plus"
   | "starter10"
   | "free"
   | "diy";
 
-const CANONICAL_PLAN_SET = new Set<CanonicalPlan>(["starter", "unlimited"]);
+const CANONICAL_PLAN_SET = new Set<CanonicalPlan>(["starter", "pro", "unlimited"]);
 
 /**
- * The v2 commercial model has only two canonical billing states:
- * - starter: $299 base subscription with 10 included users and billable seats above 10
- * - unlimited: $600 flat subscription
- *
- * Historical capped plans normalize to starter so the seat reconciler can derive
- * the correct Stripe subscription from the shop's actual active-user count.
+ * The v2 commercial model bills only base-plus-seats or unlimited. The legacy
+ * `pro` type remains in the public TypeScript union during rollout so older UI
+ * and stored data compile safely, but all capped-plan aliases normalize to the
+ * base subscription for reconciliation.
  */
 const PLAN_ALIASES: Record<string, CanonicalPlan> = {
   starter: "starter",
