@@ -388,6 +388,184 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_action_approvals: {
+        Row: {
+          action_preview_id: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          expires_at: string | null
+          id: string
+          metadata: Json
+          owner_pin_required: boolean
+          owner_pin_verification_ref: string | null
+          owner_pin_verified: boolean
+          requested_at: string
+          requested_by: string | null
+          shop_id: string
+          status: string
+        }
+        Insert: {
+          action_preview_id: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          owner_pin_required?: boolean
+          owner_pin_verification_ref?: string | null
+          owner_pin_verified?: boolean
+          requested_at?: string
+          requested_by?: string | null
+          shop_id: string
+          status?: string
+        }
+        Update: {
+          action_preview_id?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          expires_at?: string | null
+          id?: string
+          metadata?: Json
+          owner_pin_required?: boolean
+          owner_pin_verification_ref?: string | null
+          owner_pin_verified?: boolean
+          requested_at?: string
+          requested_by?: string | null
+          shop_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_action_approvals_action_preview_id_fkey"
+            columns: ["action_preview_id"]
+            isOneToOne: false
+            referencedRelation: "ai_action_previews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_approvals_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_approvals_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_approvals_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_approvals_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_action_events: {
+        Row: {
+          action_preview_id: string | null
+          actor_id: string | null
+          actor_role: string | null
+          approval_id: string | null
+          created_at: string
+          event_type: string
+          id: string
+          idempotency_key: string | null
+          metadata: Json
+          payload: Json
+          recommendation_id: string | null
+          shop_id: string
+          source: string
+        }
+        Insert: {
+          action_preview_id?: string | null
+          actor_id?: string | null
+          actor_role?: string | null
+          approval_id?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          payload?: Json
+          recommendation_id?: string | null
+          shop_id: string
+          source?: string
+        }
+        Update: {
+          action_preview_id?: string | null
+          actor_id?: string | null
+          actor_role?: string | null
+          approval_id?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          payload?: Json
+          recommendation_id?: string | null
+          shop_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_action_events_action_preview_id_fkey"
+            columns: ["action_preview_id"]
+            isOneToOne: false
+            referencedRelation: "ai_action_previews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_events_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "ai_action_approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_events_recommendation_id_fkey"
+            columns: ["recommendation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_recommendations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_action_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_action_previews: {
         Row: {
           action_type: string
@@ -8156,6 +8334,170 @@ export type Database = {
           },
           {
             foreignKeyName: "offline_mutation_receipts_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operational_event_failures: {
+        Row: {
+          attempt_count: number
+          context: Json
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          error_message: string
+          event_type: string | null
+          fingerprint: string
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          resolved_at: string | null
+          shop_id: string | null
+          source_table: string | null
+          sqlstate: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          context?: Json
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          error_message: string
+          event_type?: string | null
+          fingerprint: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          resolved_at?: string | null
+          shop_id?: string | null
+          source_table?: string | null
+          sqlstate?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          context?: Json
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          error_message?: string
+          event_type?: string | null
+          fingerprint?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          resolved_at?: string | null
+          shop_id?: string | null
+          source_table?: string | null
+          sqlstate?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operational_event_failures_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operational_event_failures_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      operational_events: {
+        Row: {
+          actor_role: string | null
+          actor_user_id: string | null
+          causation_id: string | null
+          correlation_id: string | null
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          event_type: string
+          id: string
+          idempotency_key: string | null
+          metadata: Json
+          occurred_at: string
+          parent_entity_id: string | null
+          parent_entity_type: string | null
+          schema_version: number
+          severity: string
+          shop_id: string
+          source: string
+        }
+        Insert: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          causation_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          event_type: string
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          occurred_at?: string
+          parent_entity_id?: string | null
+          parent_entity_type?: string | null
+          schema_version?: number
+          severity?: string
+          shop_id: string
+          source?: string
+        }
+        Update: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          causation_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          event_type?: string
+          id?: string
+          idempotency_key?: string | null
+          metadata?: Json
+          occurred_at?: string
+          parent_entity_id?: string | null
+          parent_entity_type?: string | null
+          schema_version?: number
+          severity?: string
+          shop_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operational_events_causation_id_fkey"
+            columns: ["causation_id"]
+            isOneToOne: false
+            referencedRelation: "operational_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operational_events_causation_id_fkey"
+            columns: ["causation_id"]
+            isOneToOne: false
+            referencedRelation: "unified_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operational_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operational_events_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
@@ -22086,6 +22428,32 @@ export type Database = {
           },
         ]
       }
+      operational_event_health: {
+        Row: {
+          active_domains_last_7d: number | null
+          events_last_24h: number | null
+          events_last_7d: number | null
+          last_event_at: string | null
+          shop_id: string | null
+          unresolved_failure_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operational_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operational_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_stock_summary: {
         Row: {
           category: string | null
@@ -22173,6 +22541,54 @@ export type Database = {
           },
           {
             foreignKeyName: "shop_reviews_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      unified_events: {
+        Row: {
+          created_at: string | null
+          entity_id: string | null
+          entity_table: string | null
+          event_type: string | null
+          id: string | null
+          payload: Json | null
+          shop_id: string | null
+          source_system: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          entity_id?: string | null
+          entity_table?: string | null
+          event_type?: string | null
+          id?: string | null
+          payload?: Json | null
+          shop_id?: string | null
+          source_system?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          entity_id?: string | null
+          entity_table?: string | null
+          event_type?: string | null
+          id?: string | null
+          payload?: Json | null
+          shop_id?: string | null
+          source_system?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operational_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "operational_events_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
@@ -23827,6 +24243,19 @@ export type Database = {
       get_invoice_net_issued_parts: {
         Args: { p_shop_id: string; p_work_order_id: string }
         Returns: Json
+      }
+      get_operational_observability_health: {
+        Args: { p_now?: string }
+        Returns: {
+          events_last_24h: number
+          events_last_6h: number
+          events_previous_24h: number
+          health_status: string
+          last_event_at: string
+          recent_business_writes: number
+          shop_id: string
+          unresolved_failure_count: number
+        }[]
       }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }
