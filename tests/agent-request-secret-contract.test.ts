@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveAgentApiSecrets } from "@/features/shared/lib/server/agent-api-secrets";
 
 const routeSource = readFileSync(
   join(process.cwd(), "app/api/agent/requests/route.ts"),
@@ -9,20 +10,30 @@ const routeSource = readFileSync(
 
 describe("ProFixIQ-Agent request authentication contract", () => {
   it("prefers the canonical shared secret over legacy aliases", () => {
-    const canonicalIndex = routeSource.indexOf("process.env.AGENT_API_SECRET");
-    const profixiqAliasIndex = routeSource.indexOf(
-      "process.env.PROFIXIQ_AGENT_API_SECRET",
-    );
-    const internalAliasIndex = routeSource.indexOf(
-      "process.env.INTERNAL_AGENT_SECRET",
-    );
+    expect(resolveAgentApiSecrets({
+      AGENT_API_SECRET: " canonical-secret ",
+      PROFIXIQ_AGENT_API_SECRET: "profixiq-alias",
+      INTERNAL_AGENT_SECRET: "internal-alias",
+    })).toEqual({
+      canonical: "canonical-secret",
+      profixiqAlias: "profixiq-alias",
+      internalAlias: "internal-alias",
+      primary: "canonical-secret",
+    });
+  });
 
-    expect(canonicalIndex).toBeGreaterThan(-1);
-    expect(profixiqAliasIndex).toBeGreaterThan(canonicalIndex);
-    expect(internalAliasIndex).toBeGreaterThan(profixiqAliasIndex);
-    expect(routeSource).toContain(
-      "primary: canonical || profixiqAlias || internalAlias",
-    );
+  it("skips blank canonical values and falls back to the first nonblank alias", () => {
+    expect(resolveAgentApiSecrets({
+      AGENT_API_SECRET: "   ",
+      PROFIXIQ_AGENT_API_SECRET: " profixiq-alias ",
+      INTERNAL_AGENT_SECRET: "internal-alias",
+    }).primary).toBe("profixiq-alias");
+
+    expect(resolveAgentApiSecrets({
+      AGENT_API_SECRET: "",
+      PROFIXIQ_AGENT_API_SECRET: "\t",
+      INTERNAL_AGENT_SECRET: " internal-alias ",
+    }).primary).toBe("internal-alias");
   });
 
   it("presents each configured credential through a supported auth channel", () => {
