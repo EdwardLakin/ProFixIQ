@@ -1,9 +1,6 @@
 begin;
 
 create schema if not exists private;
-revoke all on schema private from public;
-revoke all on schema private from anon;
-revoke all on schema private from authenticated;
 
 create table if not exists public.operational_events (
   id uuid primary key default gen_random_uuid(),
@@ -512,6 +509,13 @@ begin
       into v_shop_id
     from public.work_orders wo
     where wo.id = private.operational_event_uuid(v_row ->> 'work_order_id');
+
+    if v_shop_id is null then
+      select c.shop_id
+        into v_shop_id
+      from public.customers c
+      where c.id = private.operational_event_uuid(v_row ->> 'customer_id');
+    end if;
   end if;
 
   if v_shop_id is null then
@@ -540,6 +544,8 @@ begin
       into v_actor_role
     from public.profiles p
     where p.id = v_actor_user_id
+       or p.user_id = v_actor_user_id
+    order by (p.id = v_actor_user_id) desc
     limit 1;
   end if;
 
@@ -668,19 +674,6 @@ begin
     else
       return new;
     end if;
-  elsif tg_table_name = 'work_order_lines'
-    and tg_op = 'UPDATE'
-    and (v_old ->> 'assigned_tech_id') is distinct from (v_row ->> 'assigned_tech_id')
-  then
-    v_event_type := 'work_order_line.assignment.changed';
-  elsif tg_table_name = 'work_order_lines'
-    and tg_op = 'UPDATE'
-    and (
-      (v_old ->> 'cause') is distinct from (v_row ->> 'cause')
-      or (v_old ->> 'correction') is distinct from (v_row ->> 'correction')
-    )
-  then
-    v_event_type := 'work_order_line.documentation.updated';
   elsif tg_op = 'INSERT' then
     v_event_type := v_prefix || '.created';
   elsif tg_op = 'DELETE' then
@@ -709,6 +702,19 @@ begin
     v_event_type := v_prefix || '.status.' || private.operational_event_slug(v_new_status);
   elsif v_old_stage is distinct from v_new_stage and v_new_stage is not null then
     v_event_type := v_prefix || '.stage.' || private.operational_event_slug(v_new_stage);
+  elsif tg_table_name = 'work_order_lines'
+    and tg_op = 'UPDATE'
+    and (v_old ->> 'assigned_tech_id') is distinct from (v_row ->> 'assigned_tech_id')
+  then
+    v_event_type := 'work_order_line.assignment.changed';
+  elsif tg_table_name = 'work_order_lines'
+    and tg_op = 'UPDATE'
+    and (
+      (v_old ->> 'cause') is distinct from (v_row ->> 'cause')
+      or (v_old ->> 'correction') is distinct from (v_row ->> 'correction')
+    )
+  then
+    v_event_type := 'work_order_line.documentation.updated';
   else
     return new;
   end if;
@@ -764,6 +770,19 @@ begin
     'new_status', v_new_status,
     'old_stage', v_old_stage,
     'new_stage', v_new_stage,
+    'assignment_changed', case
+      when tg_table_name = 'work_order_lines'
+        then (v_old ->> 'assigned_tech_id') is distinct from (v_row ->> 'assigned_tech_id')
+      else null
+    end,
+    'documentation_changed', case
+      when tg_table_name = 'work_order_lines'
+        then (
+          (v_old ->> 'cause') is distinct from (v_row ->> 'cause')
+          or (v_old ->> 'correction') is distinct from (v_row ->> 'correction')
+        )
+      else null
+    end,
     'work_order_id', v_work_order_id,
     'work_order_line_id', v_work_order_line_id,
     'inspection_id', v_inspection_id,
