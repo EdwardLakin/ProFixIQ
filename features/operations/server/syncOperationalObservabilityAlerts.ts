@@ -21,6 +21,17 @@ const OBSERVABILITY_ALERT_CODES = [
   "ai_expiration_cron_stalled",
 ] as const;
 
+export type OperationalHealthProjection = {
+  shop_id: string;
+  recent_business_writes: number | string | null;
+  events_last_6h: number | string | null;
+  events_last_24h: number | string | null;
+  events_previous_24h: number | string | null;
+  last_event_at: string | null;
+  unresolved_failure_count: number | string | null;
+  health_status: string | null;
+};
+
 type SyncAlertInput = {
   supabase: ServerClient;
   shopId: string;
@@ -32,6 +43,11 @@ type SyncAlertInput = {
   metadata: Json;
   existing?: ExistingAlertState;
 };
+
+function numeric(value: number | string | null | undefined): number {
+  const parsed = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 async function syncAlert(input: SyncAlertInput): Promise<void> {
   const now = new Date().toISOString();
@@ -111,34 +127,6 @@ async function loadExistingAlertStates(input: {
   );
 }
 
-async function countPrevious24hEvents(input: {
-  supabase: ServerClient;
-  shopId: string;
-  now: Date;
-  installed: boolean;
-}): Promise<number> {
-  if (!input.installed) return 0;
-
-  const client = input.supabase as unknown as {
-    from: (table: string) => any;
-  };
-  const end = new Date(
-    input.now.getTime() - 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const start = new Date(
-    input.now.getTime() - 48 * 60 * 60 * 1000,
-  ).toISOString();
-  const { count, error } = await client
-    .from("operational_events")
-    .select("id", { count: "exact", head: true })
-    .eq("shop_id", input.shopId)
-    .gte("occurred_at", start)
-    .lt("occurred_at", end);
-
-  if (error) throw new Error(error.message);
-  return Number.isFinite(count) ? Number(count) : 0;
-}
-
 export function hasOperationalEventVolumeDropped(input: {
   installed: boolean;
   recentBusinessWrites: number;
@@ -168,15 +156,18 @@ export async function syncOperationalObservabilityAlerts(input: {
   supabase: ServerClient;
   shopId: string;
   now?: Date;
+  operationalHealth?: OperationalHealthProjection;
 }): Promise<OperationalObservabilityAlertSummary> {
   const now = input.now ?? new Date();
   const [operational, ai, existingAlerts] = await Promise.all([
-    getOperationalObservability({
-      supabase: input.supabase,
-      shopId: input.shopId,
-      now,
-      limit: 1,
-    }),
+    input.operationalHealth
+      ? Promise.resolve(null)
+      : getOperationalObservability({
+          supabase: input.supabase,
+          shopId: input.shopId,
+          now,
+          limit: 1,
+        }),
     getAiOperationsObservability({
       supabase: input.supabase,
       actorContext: {
@@ -193,26 +184,43 @@ export async function syncOperationalObservabilityAlerts(input: {
     }),
   ]);
 
-  const eventsPrevious24h = await countPrevious24hEvents({
-    supabase: input.supabase,
-    shopId: input.shopId,
-    now,
-    installed: operational.installed,
-  });
-  const pipelineStalled =
-    operational.installed && operational.pipeline.status === "stalled";
-  const activeFailures = operational.installed
-    ? operational.pipeline.unresolvedFailures
+  const installed = input.operationalHealth
+    ? true
+    : operational?.installed === true;
+  const pipelineStatus =
+    input.operationalHealth?.health_status ??
+    operational?.pipeline.status ??
+    "not_installed";
+  const recentBusinessWrites = input.operationalHealth
+    ? numeric(input.operationalHealth.recent_business_writes)
+    : operational?.pipeline.recentBusinessWrites ?? 0;
+  const eventsLast24h = input.operationalHealth
+    ? numeric(input.operationalHealth.events_last_24h)
+    : operational?.pipeline.eventsLast24h ?? 0;
+  const eventsPrevious24h = input.operationalHealth
+    ? numeric(input.operationalHealth.events_previous_24h)
+    : operational?.pipeline.eventsPrevious24h ?? 0;
+  const lastEventAt =
+    input.operationalHealth?.last_event_at ??
+    operational?.pipeline.lastEventAt ??
+    null;
+  const activeFailures = installed
+    ? input.operationalHealth
+      ? numeric(input.operationalHealth.unresolved_failure_count)
+      : operational?.pipeline.unresolvedFailures ?? 0
     : 0;
+  const failuresLast24h =
+    operational?.pipeline.failuresLast24h ?? activeFailures;
+  const pipelineStalled = installed && pipelineStatus === "stalled";
   const eventVolumeDropped = hasOperationalEventVolumeDropped({
-    installed: operational.installed,
-    recentBusinessWrites: operational.pipeline.recentBusinessWrites,
-    eventsLast24h: operational.pipeline.eventsLast24h,
+    installed,
+    recentBusinessWrites,
+    eventsLast24h,
     eventsPrevious24h,
   });
   const aiExpirationNeedsReview = ai.health.cronProbablyRunning === false;
 
-  if (operational.installed) {
+  if (installed) {
     await Promise.all([
       syncAlert({
         supabase: input.supabase,
@@ -222,12 +230,12 @@ export async function syncOperationalObservabilityAlerts(input: {
         level: "critical",
         title: "Operational event pipeline may be stalled",
         message: pipelineStalled
-          ? `${operational.pipeline.recentBusinessWrites} recent work-order writes were found, but the canonical event stream has not reported recent activity.`
+          ? `${recentBusinessWrites} recent work-order writes were found, but the canonical event stream has not reported recent activity.`
           : "Operational event activity has recovered.",
         metadata: {
-          pipeline_status: operational.pipeline.status,
-          last_event_at: operational.pipeline.lastEventAt,
-          recent_business_writes: operational.pipeline.recentBusinessWrites,
+          pipeline_status: pipelineStatus,
+          last_event_at: lastEventAt,
+          recent_business_writes: recentBusinessWrites,
         },
         existing: existingAlerts.get("operational_event_pipeline_stalled"),
       }),
@@ -244,7 +252,7 @@ export async function syncOperationalObservabilityAlerts(input: {
             : "Operational event failures have been resolved.",
         metadata: {
           failure_count: activeFailures,
-          failures_last_24h: operational.pipeline.failuresLast24h,
+          failures_last_24h: failuresLast24h,
         },
         existing: existingAlerts.get("operational_event_write_failure"),
       }),
@@ -256,12 +264,12 @@ export async function syncOperationalObservabilityAlerts(input: {
         level: "warning",
         title: "Operational event volume dropped",
         message: eventVolumeDropped
-          ? `Canonical event volume fell from ${eventsPrevious24h} to ${operational.pipeline.eventsLast24h} while shop records continued changing.`
+          ? `Canonical event volume fell from ${eventsPrevious24h} to ${eventsLast24h} while shop records continued changing.`
           : "Operational event volume is within the expected range.",
         metadata: {
-          events_last_24h: operational.pipeline.eventsLast24h,
+          events_last_24h: eventsLast24h,
           events_previous_24h: eventsPrevious24h,
-          recent_business_writes: operational.pipeline.recentBusinessWrites,
+          recent_business_writes: recentBusinessWrites,
         },
         existing: existingAlerts.get("operational_event_volume_drop"),
       }),
@@ -289,8 +297,8 @@ export async function syncOperationalObservabilityAlerts(input: {
 
   return {
     shopId: input.shopId,
-    installed: operational.installed,
-    pipelineStatus: operational.pipeline.status,
+    installed,
+    pipelineStatus,
     pipelineStalled,
     activeFailures,
     eventVolumeDropped,
