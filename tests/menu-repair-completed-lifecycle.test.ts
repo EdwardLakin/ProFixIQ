@@ -152,6 +152,19 @@ describe("completed repair memory", () => {
     expect(menuPage).toContain("Learned from completed work");
     expect(menuPage).toContain("Exact YMM suggestions only");
     expect(menuPage).toContain("Create service");
+    expect(menuPage).toMatch(
+      /\.from\("menu_items"\)[\s\S]{0,500}\.order\("created_at", \{ ascending: false \}\)/,
+    );
+    expect(menuPage).not.toMatch(
+      /\.from\("menu_items"\)[\s\S]{0,500}\.order\("updated_at"/,
+    );
+    expect(menuPage).toMatch(
+      /\.from\("menu_items"\)[\s\S]{0,700}\.limit\(1000\)/,
+    );
+    expect(menuPage).toContain("shopServicesLoadFailed");
+    expect(menuPage).toContain("Your saved services have not been removed.");
+    expect(menuPage).toContain("Retry loading services");
+    expect(menuPage).toContain("statusCounts[status]");
     expect(inspectionBuilder).toContain('buildMethod === "template"');
     expect(inspectionBuilder).toContain('buildMethod === "prompt"');
     expect(inspectionBuilder).toContain('buildMethod === "manual"');
