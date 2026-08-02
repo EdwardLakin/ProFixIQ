@@ -20,12 +20,21 @@ describe("ProFixIQ-Agent request authentication contract", () => {
     expect(canonicalIndex).toBeGreaterThan(-1);
     expect(profixiqAliasIndex).toBeGreaterThan(canonicalIndex);
     expect(internalAliasIndex).toBeGreaterThan(profixiqAliasIndex);
+    expect(routeSource).toContain(
+      "primary: canonical || profixiqAlias || internalAlias",
+    );
   });
 
-  it("sends the canonical and legacy-compatible authentication headers", () => {
-    expect(routeSource).toContain('"x-agent-api-secret": agentSecret');
-    expect(routeSource).toContain('"x-agent-secret": agentSecret');
-    expect(routeSource).toContain("Authorization: `Bearer ${agentSecret}`");
+  it("presents each configured credential through a supported auth channel", () => {
+    expect(routeSource).toContain(
+      '"x-agent-api-secret": agentSecrets.canonical || agentSecrets.primary',
+    );
+    expect(routeSource).toContain(
+      '"x-agent-secret": agentSecrets.profixiqAlias || agentSecrets.primary',
+    );
+    expect(routeSource).toContain(
+      "Authorization: `Bearer ${agentSecrets.internalAlias || agentSecrets.primary}`",
+    );
   });
 
   it("fails before dispatch when no shared secret is configured", () => {
