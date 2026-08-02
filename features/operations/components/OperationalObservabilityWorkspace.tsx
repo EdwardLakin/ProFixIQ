@@ -204,7 +204,7 @@ function severityClass(severity: EventItem["severity"]): string {
   if (severity === "warning") {
     return "border-amber-500/35 bg-amber-500/10 text-amber-800 dark:text-amber-100";
   }
-  return "border-blue-500/25 bg-blue-500/8 text-blue-700 dark:text-blue-200";
+  return "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:text-blue-200";
 }
 
 function aiCronLabel(value: boolean | "unknown"): string {
@@ -286,7 +286,7 @@ export default function OperationalObservabilityWorkspace() {
 
   if (error || !data) {
     return (
-      <section className="rounded-2xl border border-red-500/30 bg-red-500/8 p-5">
+      <section className="rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
         <h2 className="font-semibold text-red-700 dark:text-red-200">
           Observability is unavailable
         </h2>
@@ -521,7 +521,7 @@ export default function OperationalObservabilityWorkspace() {
                     className={`rounded-xl border p-3 ${
                       failure.resolved_at
                         ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
-                        : "border-red-500/30 bg-red-500/8"
+                        : "border-red-500/30 bg-red-500/10"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -571,13 +571,13 @@ export default function OperationalObservabilityWorkspace() {
             <div className="mt-3 flex flex-wrap gap-2">
               <Link
                 href="/dashboard/ai-recommendations"
-                className="inline-flex min-h-9 items-center rounded-lg border border-blue-500/30 bg-blue-500/8 px-3 text-xs font-semibold text-blue-700 dark:text-blue-200"
+                className="inline-flex min-h-9 items-center rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 text-xs font-semibold text-blue-700 dark:text-blue-200"
               >
                 Recommendations
               </Link>
               <Link
                 href="/dashboard/ai-approvals"
-                className="inline-flex min-h-9 items-center rounded-lg border border-amber-500/30 bg-amber-500/8 px-3 text-xs font-semibold text-amber-800 dark:text-amber-100"
+                className="inline-flex min-h-9 items-center rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-semibold text-amber-800 dark:text-amber-100"
               >
                 Approval inbox
               </Link>
@@ -635,7 +635,7 @@ function Metric({
     <div
       className={`rounded-2xl border p-4 ${
         warn
-          ? "border-amber-500/30 bg-amber-500/8"
+          ? "border-amber-500/30 bg-amber-500/10"
           : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
       }`}
     >
