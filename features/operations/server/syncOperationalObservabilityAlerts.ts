@@ -7,19 +7,30 @@ import { getOperationalObservability } from "./getOperationalObservability";
 
 type ServerClient = SupabaseClient<Database>;
 type AlertLevel = "info" | "warning" | "critical";
+type ExistingAlertState = {
+  status: string;
+  firstSeenAt: string | null;
+};
 
 const MIN_PREVIOUS_EVENTS_FOR_DROP_ALERT = 20;
 const VOLUME_DROP_RATIO = 0.25;
+const OBSERVABILITY_ALERT_CODES = [
+  "operational_event_pipeline_stalled",
+  "operational_event_write_failure",
+  "operational_event_volume_drop",
+  "ai_expiration_cron_stalled",
+] as const;
 
 type SyncAlertInput = {
   supabase: ServerClient;
   shopId: string;
   active: boolean;
-  code: string;
+  code: (typeof OBSERVABILITY_ALERT_CODES)[number];
   level: AlertLevel;
   title: string;
   message: string;
   metadata: Json;
+  existing?: ExistingAlertState;
 };
 
 async function syncAlert(input: SyncAlertInput): Promise<void> {
@@ -42,6 +53,10 @@ async function syncAlert(input: SyncAlertInput): Promise<void> {
     return;
   }
 
+  const preserveAcknowledgement = input.existing?.status === "acknowledged";
+  const continuingIncident =
+    input.existing?.status === "active" || preserveAcknowledgement;
+
   const { error } = await input.supabase.from("assistant_notifications").upsert(
     {
       shop_id: input.shopId,
@@ -56,8 +71,12 @@ async function syncAlert(input: SyncAlertInput): Promise<void> {
       href: "/dashboard/operations/observability",
       entity_type: "shop",
       entity_id: input.shopId,
-      status: "active",
+      status: preserveAcknowledgement ? "acknowledged" : "active",
       metadata: input.metadata,
+      first_seen_at:
+        continuingIncident && input.existing?.firstSeenAt
+          ? input.existing.firstSeenAt
+          : now,
       last_seen_at: now,
       resolved_at: null,
       updated_at: now,
@@ -66,6 +85,30 @@ async function syncAlert(input: SyncAlertInput): Promise<void> {
   );
 
   if (error) throw new Error(error.message);
+}
+
+async function loadExistingAlertStates(input: {
+  supabase: ServerClient;
+  shopId: string;
+}): Promise<Map<string, ExistingAlertState>> {
+  const { data, error } = await input.supabase
+    .from("assistant_notifications")
+    .select("code, status, first_seen_at")
+    .eq("shop_id", input.shopId)
+    .eq("source", "observability")
+    .in("code", [...OBSERVABILITY_ALERT_CODES]);
+
+  if (error) throw new Error(error.message);
+
+  return new Map(
+    (data ?? []).map((row) => [
+      row.code,
+      {
+        status: row.status,
+        firstSeenAt: row.first_seen_at,
+      },
+    ]),
+  );
 }
 
 async function countPrevious24hEvents(input: {
@@ -89,6 +132,21 @@ async function countPrevious24hEvents(input: {
   return Number.isFinite(count) ? Number(count) : 0;
 }
 
+export function hasOperationalEventVolumeDropped(input: {
+  installed: boolean;
+  recentBusinessWrites: number;
+  eventsLast24h: number;
+  eventsPrevious24h: number;
+}): boolean {
+  return (
+    input.installed &&
+    input.recentBusinessWrites > 0 &&
+    input.eventsPrevious24h >= MIN_PREVIOUS_EVENTS_FOR_DROP_ALERT &&
+    input.eventsLast24h <=
+      Math.floor(input.eventsPrevious24h * VOLUME_DROP_RATIO)
+  );
+}
+
 export type OperationalObservabilityAlertSummary = {
   shopId: string;
   installed: boolean;
@@ -105,7 +163,7 @@ export async function syncOperationalObservabilityAlerts(input: {
   now?: Date;
 }): Promise<OperationalObservabilityAlertSummary> {
   const now = input.now ?? new Date();
-  const [operational, ai] = await Promise.all([
+  const [operational, ai, existingAlerts] = await Promise.all([
     getOperationalObservability({
       supabase: input.supabase,
       shopId: input.shopId,
@@ -122,6 +180,10 @@ export async function syncOperationalObservabilityAlerts(input: {
       },
       now,
     }),
+    loadExistingAlertStates({
+      supabase: input.supabase,
+      shopId: input.shopId,
+    }),
   ]);
 
   const eventsPrevious24h = await countPrevious24hEvents({
@@ -135,12 +197,12 @@ export async function syncOperationalObservabilityAlerts(input: {
   const activeFailures = operational.installed
     ? operational.pipeline.unresolvedFailures
     : 0;
-  const eventVolumeDropped =
-    operational.installed &&
-    operational.pipeline.recentBusinessWrites > 0 &&
-    eventsPrevious24h >= MIN_PREVIOUS_EVENTS_FOR_DROP_ALERT &&
-    operational.pipeline.eventsLast24h <=
-      Math.floor(eventsPrevious24h * VOLUME_DROP_RATIO);
+  const eventVolumeDropped = hasOperationalEventVolumeDropped({
+    installed: operational.installed,
+    recentBusinessWrites: operational.pipeline.recentBusinessWrites,
+    eventsLast24h: operational.pipeline.eventsLast24h,
+    eventsPrevious24h,
+  });
   const aiExpirationNeedsReview = ai.health.cronProbablyRunning === false;
 
   if (operational.installed) {
@@ -160,6 +222,7 @@ export async function syncOperationalObservabilityAlerts(input: {
           last_event_at: operational.pipeline.lastEventAt,
           recent_business_writes: operational.pipeline.recentBusinessWrites,
         },
+        existing: existingAlerts.get("operational_event_pipeline_stalled"),
       }),
       syncAlert({
         supabase: input.supabase,
@@ -176,6 +239,7 @@ export async function syncOperationalObservabilityAlerts(input: {
           failure_count: activeFailures,
           failures_last_24h: operational.pipeline.failuresLast24h,
         },
+        existing: existingAlerts.get("operational_event_write_failure"),
       }),
       syncAlert({
         supabase: input.supabase,
@@ -192,6 +256,7 @@ export async function syncOperationalObservabilityAlerts(input: {
           events_previous_24h: eventsPrevious24h,
           recent_business_writes: operational.pipeline.recentBusinessWrites,
         },
+        existing: existingAlerts.get("operational_event_volume_drop"),
       }),
     ]);
   }
@@ -212,6 +277,7 @@ export async function syncOperationalObservabilityAlerts(input: {
       pending_approval_backlog: ai.health.hasPendingApprovalBacklog,
       last_expiration_event_at: ai.expiration.lastExpirationEventAt,
     },
+    existing: existingAlerts.get("ai_expiration_cron_stalled"),
   });
 
   return {
