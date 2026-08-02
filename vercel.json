@@ -5,6 +5,10 @@
       "schedule": "17 3 * * *"
     },
     {
+      "path": "/api/internal/observability/health",
+      "schedule": "7 * * * *"
+    },
+    {
       "path": "/api/internal/import-jobs/tick",
       "schedule": "* * * * *"
     },
