@@ -9,9 +9,7 @@ import {
   LEGACY_PLAN_LOOKUP_KEYS,
   PLAN_LOOKUP_KEYS,
 } from "@/features/stripe/lib/stripe/constants";
-import {
-  ADDITIONAL_SEAT_LOOKUP_KEY,
-} from "@/features/stripe/lib/stripe/billing-model";
+import { ADDITIONAL_SEAT_LOOKUP_KEY } from "@/features/stripe/lib/stripe/billing-model";
 import {
   normalizeCanonicalPlan,
   type CanonicalPlan,
@@ -19,6 +17,9 @@ import {
 import { collectCustomerSubscriptionDiagnostics } from "@/features/stripe/lib/server/subscription-discovery";
 
 type DB = Database;
+type ShopBillingUpdate = DB["public"]["Tables"]["shops"]["Update"] & {
+  stripe_pricing_model?: "legacy" | "base_plus_seats_v2" | null;
+};
 
 type ProfileStripeArtifacts = {
   shop_id: string | null;
@@ -129,7 +130,7 @@ export function toCanonicalShopBillingUpdate(args: {
   customerId: string | null;
   subscription: Stripe.Subscription;
   checkoutSessionId?: string | null;
-}): DB["public"]["Tables"]["shops"]["Update"] {
+}): ShopBillingUpdate {
   const { customerId, subscription, checkoutSessionId } = args;
   const resolvedPlan = normalizeCanonicalPlan(
     resolveCanonicalPlanFromSubscription(subscription),
@@ -149,7 +150,7 @@ export function toCanonicalShopBillingUpdate(args: {
     stripe_pricing_model: pricingModel,
     plan: resolvedPlan,
     ...(checkoutSessionId ? { stripe_checkout_session_id: checkoutSessionId } : {}),
-  } as unknown as DB["public"]["Tables"]["shops"]["Update"];
+  } as ShopBillingUpdate;
 }
 
 export async function getProfileStripeArtifacts(
@@ -214,7 +215,10 @@ export async function syncCanonicalShopBilling(params: {
     return { applied: data === true };
   }
 
-  const { error } = await supabase.from("shops").update(update).eq("id", shopId);
+  const { error } = await supabase
+    .from("shops")
+    .update(update as DB["public"]["Tables"]["shops"]["Update"])
+    .eq("id", shopId);
   if (error) throw new Error(error.message);
   return { applied: true };
 }
