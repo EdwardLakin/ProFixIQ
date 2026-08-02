@@ -1,17 +1,17 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-07-28T20:38:19.027Z
+Generated: 2026-08-02T02:31:19.456Z
 
 ## Summary
-- Total route count: **388**
-- Routes exporting GET: **125**
-- Routes exporting POST: **273**
-- Routes exporting PUT: **10**
-- Routes exporting PATCH: **23**
+- Total route count: **398**
+- Routes exporting GET: **131**
+- Routes exporting POST: **278**
+- Routes exporting PUT: **9**
+- Routes exporting PATCH: **25**
 - Routes exporting DELETE: **12**
 - Routes with service-role pattern: **22**
-- Routes using requireShopScopedApiAccess: **132**
-- Routes with auth.getUser references: **137**
+- Routes using requireShopScopedApiAccess: **148**
+- Routes with auth.getUser references: **129**
 
 ## High-Risk Routes
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -56,7 +56,6 @@ Generated: 2026-07-28T20:38:19.027Z
 - `app/api/payments/checkout/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/approve/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/export/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/payroll-time/periods/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/rebuild/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/settings/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/scheduling/shifts/[id]/route.ts` | methods: PATCH, DELETE | riskFlags: mutating_without_obvious_auth_marker
@@ -175,7 +174,7 @@ Generated: 2026-07-28T20:38:19.027Z
 - `app/api/payroll-time/export/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/exports/[batchId]/download/route.ts` | methods: GET | riskFlags: none
 - `app/api/payroll-time/exports/route.ts` | methods: GET | riskFlags: none
-- `app/api/payroll-time/periods/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/payroll-time/periods/route.ts` | methods: GET | riskFlags: none
 - `app/api/payroll-time/rebuild/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/settings/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/scheduling/shifts/[id]/route.ts` | methods: PATCH, DELETE | riskFlags: mutating_without_obvious_auth_marker

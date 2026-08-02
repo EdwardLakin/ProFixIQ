@@ -90,7 +90,7 @@ describe("dashboard server shop context", () => {
     expect(calls).toContainEqual({
       table: "profiles",
       method: "select",
-      columns: "completed_onboarding, email, full_name, role, shop_id",
+      columns: "id, role, shop_id, completed_onboarding, email, full_name",
     });
     expect(calls).toContainEqual({
       table: "profiles",
@@ -111,10 +111,14 @@ describe("dashboard server shop context", () => {
     });
   });
 
-  it("keeps middleware and dashboard resolver profile lookup semantics aligned", () => {
+  it("keeps dashboard identity aligned with the canonical staff profile lookup", () => {
     const middlewareSource = readFileSync("middleware.ts", "utf8");
     const resolverSource = readFileSync(
       "features/dashboard/server/dashboard-shell-data.ts",
+      "utf8",
+    );
+    const staffResolverSource = readFileSync(
+      "features/shared/lib/server/admin-access.ts",
       "utf8",
     );
 
@@ -123,10 +127,11 @@ describe("dashboard server shop context", () => {
     expect(middlewareSource).toContain(".limit(1)");
     expect(middlewareSource).toContain(".maybeSingle()");
 
-    expect(resolverSource).toContain('.from("profiles")');
-    expect(resolverSource).toContain('.eq("id", userId)');
-    expect(resolverSource).toContain(".limit(1)");
-    expect(resolverSource).toContain(".maybeSingle<DashboardProfile>()");
+    expect(resolverSource).toContain("resolveAuthenticatedStaffProfile");
+    expect(staffResolverSource).toContain('.from("profiles")');
+    expect(staffResolverSource).toContain('.eq("id", authUserId)');
+    expect(staffResolverSource).toContain('.eq("user_id", authUserId)');
+    expect(staffResolverSource).toContain(".maybeSingle<ProfileScope>()");
     expect(resolverSource).not.toContain("createServer" + "ComponentClient");
     expect(resolverSource).not.toContain("@supabase/" + "auth-helpers-nextjs");
   });

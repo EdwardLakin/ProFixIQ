@@ -41,7 +41,18 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/dashboard": {
     title: () => "Shop Overview",
     icon: "🏠",
-    roles: ["owner", "admin", "manager", "advisor", "parts", "dispatcher", "driver", "fleet_manager", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "parts",
+      "dispatcher",
+      "driver",
+      "fleet_manager",
+      "lead_hand",
+      "foreman",
+    ],
   },
   // ----------------------------------------------------------------
   // Work Orders
@@ -49,27 +60,95 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/work-orders": {
     title: () => "Work Orders",
     icon: "📋",
-    roles: ["owner", "admin", "manager", "advisor", "service", "mechanic", "tech"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "mechanic",
+      "tech",
+    ],
   },
   "/work-orders/view": {
     title: () => "View Work Orders",
     icon: "📋",
-    roles: ["owner", "admin", "manager", "advisor", "service", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/work-orders/create": {
     title: () => "New Work Order",
     icon: "➕",
     roles: ["owner", "admin", "manager", "advisor", "service"],
   },
+  "/estimates": {
+    title: () => "Estimates",
+    icon: "🧾",
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "foreman",
+      "parts",
+      "lead_hand",
+    ],
+  },
+  "/estimates/new": {
+    title: () => "New Estimate",
+    icon: "➕",
+    roles: ["owner", "admin", "manager", "advisor", "service", "foreman"],
+  },
+  "/estimates/[id]": {
+    title: (href) => `Estimate · ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
+    icon: "🧾",
+    persist: { keyParams: ["id"] },
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "foreman",
+      "parts",
+      "lead_hand",
+    ],
+  },
   "/work-orders/board": {
     title: () => "Work Order Board",
     icon: "📊",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/work-orders/queue": {
     title: () => "Job Queue",
     icon: "🧰",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/work-orders/quote-review": {
     title: () => "Quote Review",
@@ -119,12 +198,20 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     title: (href) => `WO #${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
     icon: "🔧",
     persist: { keyParams: ["id"] },
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
 
   "/work-orders/view/[id]": {
-    title: (href) =>
-      `Work Order ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
+    title: (href) => `Work Order ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
     icon: "🔧",
     showInTabs: false,
     persist: { keyParams: ["id"] },
@@ -154,19 +241,46 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/inspections": {
     title: () => "Inspections",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
 
   // Runtime screens
   "/inspections/run": {
     title: () => "Run Inspection",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/inspections/fill": {
     title: () => "Inspection",
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
 
   // Inspection templates (tiles.ts uses /inspections/templates for this)
@@ -221,7 +335,16 @@ export const ROUTE_META: Record<string, RouteMeta> = {
       return `Inspection – ${nice}`;
     },
     icon: "📝",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
 
   // ----------------------------------------------------------------
@@ -452,12 +575,28 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/chat": {
     title: () => "Team Chat",
     icon: "💬",
-    roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts", "tech"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "mechanic",
+      "parts",
+      "tech",
+    ],
   },
   "/tech/queue": {
     title: () => "Tech Job Queue",
     icon: "🧰",
-    roles: ["owner", "admin", "manager", "mechanic", "tech", "lead_hand", "foreman"],
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "mechanic",
+      "tech",
+      "lead_hand",
+      "foreman",
+    ],
   },
   "/tech/performance": {
     title: () => "My Performance",
@@ -561,8 +700,7 @@ export function metaFor(
     }
   }
 
-  const last =
-    href.split("?")[0].split("/").filter(Boolean).pop() ?? href;
+  const last = href.split("?")[0].split("/").filter(Boolean).pop() ?? href;
   const nice = last
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());

@@ -72,6 +72,8 @@ const ROLE_ALIASES: Record<string, CanonicalRole> = {
   manager: "manager",
   advisor: "advisor",
   service: "service",
+  service_advisor: "service",
+  "service advisor": "service",
   parts: "parts",
   mechanic: "mechanic",
   tech: "mechanic",
@@ -292,8 +294,12 @@ const FLEET_ROLE_ALIASES: Record<string, FleetRoleTier> = {
   owner: "manager",
 };
 
-export function canonicalizeRole(role: string | null | undefined): CanonicalRole {
-  const key = String(role ?? "").trim().toLowerCase();
+export function canonicalizeRole(
+  role: string | null | undefined,
+): CanonicalRole {
+  const key = String(role ?? "")
+    .trim()
+    .toLowerCase();
   return ROLE_ALIASES[key] ?? "unknown";
 }
 
@@ -316,8 +322,12 @@ export function canSendQuotes(role: string | null | undefined): boolean {
   return getActorCapabilities({ role }).canAuthorizeQuotes;
 }
 
-export function resolveFleetRoleTier(role: string | null | undefined): FleetRoleTier {
-  const key = String(role ?? "").trim().toLowerCase();
+export function resolveFleetRoleTier(
+  role: string | null | undefined,
+): FleetRoleTier {
+  const key = String(role ?? "")
+    .trim()
+    .toLowerCase();
   return FLEET_ROLE_ALIASES[key] ?? "none";
 }
 
