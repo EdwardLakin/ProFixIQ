@@ -153,6 +153,7 @@ export default function MenuItemsPage() {
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [shopDefaults, setShopDefaults] = useState<ShopDefaults | null>(null);
   const [loadingLibrary, setLoadingLibrary] = useState(true);
+  const [shopServicesLoadFailed, setShopServicesLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [libraryTab, setLibraryTab] = useState<LibraryTab>("shop");
@@ -222,17 +223,24 @@ export default function MenuItemsPage() {
   }, [shopId, supabase]);
 
   const fetchMenuItems = useCallback(async () => {
-    if (!shopId) return setMenuItems([]);
+    if (!shopId) {
+      setMenuItems([]);
+      setShopServicesLoadFailed(false);
+      return;
+    }
     const { data, error } = await supabase
       .from("menu_items")
       .select("*, inspection_template:inspection_templates(template_name)")
       .eq("shop_id", shopId)
-      .order("updated_at", { ascending: false })
-      .limit(200);
+      .order("created_at", { ascending: false })
+      .limit(1000);
     if (error) {
+      console.error("[menu] shop services load failed", error);
+      setShopServicesLoadFailed(true);
       toast.error("Could not load shop services.");
       return;
     }
+    setShopServicesLoadFailed(false);
     setMenuItems((data ?? []) as MenuItemRow[]);
   }, [shopId, supabase]);
 
@@ -496,6 +504,17 @@ export default function MenuItemsPage() {
       }),
     [learnedRepairs, query, statusFilter],
   );
+  const statusCounts = useMemo(() => {
+    const items = libraryTab === "shop" ? menuItems : learnedRepairs;
+    return items.reduce(
+      (counts, item) => {
+        if (item.is_active) counts.active += 1;
+        else counts.inactive += 1;
+        return counts;
+      },
+      { active: 0, inactive: 0 },
+    );
+  }, [learnedRepairs, libraryTab, menuItems]);
 
   const flatMaster = useMemo(
     () => masterServicesList.flatMap((category) => category.items.map((item) => item.item)),
@@ -560,7 +579,7 @@ export default function MenuItemsPage() {
                   <span className="sm:hidden">Shop</span>
                   <span className="hidden sm:inline">Shop services</span>
                   <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-500">
-                    {menuItems.length}
+                    {shopServicesLoadFailed ? "—" : menuItems.length}
                   </span>
                 </button>
                 <button
@@ -589,13 +608,18 @@ export default function MenuItemsPage() {
                     key={status}
                     type="button"
                     onClick={() => setStatusFilter(status)}
-                    className={`min-h-9 rounded-lg border px-3 text-xs font-semibold capitalize transition ${
+                    className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold capitalize transition ${
                       statusFilter === status
                         ? "border-blue-500/40 bg-blue-500/10 text-blue-500"
                         : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
                     }`}
                   >
-                    {status}
+                    <span>{status}</span>
+                    <span className="rounded-full bg-[color:var(--theme-surface-subtle)] px-1.5 py-0.5 text-[10px] tabular-nums">
+                      {libraryTab === "shop" && shopServicesLoadFailed
+                        ? "—"
+                        : statusCounts[status]}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -619,7 +643,11 @@ export default function MenuItemsPage() {
 
           <div className="p-3 sm:p-4">
             <div className="mb-3 flex items-center justify-between px-1 text-xs text-[color:var(--theme-text-muted)]">
-              <span>{currentCount} {currentCount === 1 ? "result" : "results"}</span>
+              <span>
+                {libraryTab === "shop" && shopServicesLoadFailed
+                  ? "Services unavailable"
+                  : `${currentCount} ${currentCount === 1 ? "result" : "results"}`}
+              </span>
               {libraryTab === "learned" ? (
                 <span className="hidden sm:inline">Exact YMM suggestions only</span>
               ) : null}
@@ -628,6 +656,26 @@ export default function MenuItemsPage() {
             {loadingLibrary ? (
               <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-4 py-12 text-center text-sm text-[color:var(--theme-text-secondary)]">
                 Loading services…
+              </div>
+            ) : libraryTab === "shop" && shopServicesLoadFailed ? (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-500/35 bg-red-500/5 px-5 py-10 text-center"
+              >
+                <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  Shop services could not be loaded.
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Your saved services have not been removed. Retry the request
+                  to load them.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void fetchMenuItems()}
+                  className={`${QUIET_BUTTON} mt-4`}
+                >
+                  Retry loading services
+                </button>
               </div>
             ) : libraryTab === "shop" ? (
               <div className="space-y-2">
@@ -731,7 +779,9 @@ export default function MenuItemsPage() {
               </div>
             )}
 
-            {!loadingLibrary && currentCount === 0 ? (
+            {!loadingLibrary &&
+            !(libraryTab === "shop" && shopServicesLoadFailed) &&
+            currentCount === 0 ? (
               <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-5 py-12 text-center">
                 <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500">
                   {libraryTab === "shop" ? <Sparkles className="h-5 w-5" /> : <History className="h-5 w-5" />}
