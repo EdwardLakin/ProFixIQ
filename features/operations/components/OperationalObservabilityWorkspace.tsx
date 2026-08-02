@@ -78,6 +78,7 @@ type Payload = {
       status: PipelineStatus;
       lastEventAt: string | null;
       eventsLast24h: number;
+      eventsPrevious24h: number;
       eventsLast7d: number;
       recentBusinessWrites: number;
       unresolvedFailures: number;
@@ -212,13 +213,41 @@ function aiCronLabel(value: boolean | "unknown"): string {
   return value ? "Running" : "Needs review";
 }
 
-export default function OperationalObservabilityWorkspace() {
+type OperationalObservabilityFilters = {
+  entityType?: string | null;
+  entityId?: string | null;
+  correlationId?: string | null;
+};
+
+export default function OperationalObservabilityWorkspace({
+  initialFilters,
+}: {
+  initialFilters?: OperationalObservabilityFilters;
+}) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [domain, setDomain] = useState<Domain | "all">("all");
+  const apiQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    if (initialFilters?.entityType) {
+      params.set("entityType", initialFilters.entityType);
+    }
+    if (initialFilters?.entityId) {
+      params.set("entityId", initialFilters.entityId);
+    }
+    if (initialFilters?.correlationId) {
+      params.set("correlationId", initialFilters.correlationId);
+    }
+    return params.toString();
+  }, [
+    initialFilters?.correlationId,
+    initialFilters?.entityId,
+    initialFilters?.entityType,
+  ]);
+  const timelineFiltered = apiQuery.length > 0;
 
   const load = useCallback(async (background = false) => {
     if (background) setRefreshing(true);
@@ -226,9 +255,10 @@ export default function OperationalObservabilityWorkspace() {
     setError(null);
 
     try {
-      const response = await fetch("/api/dashboard/operational-observability", {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        `/api/dashboard/operational-observability${apiQuery ? `?${apiQuery}` : ""}`,
+        { cache: "no-store" },
+      );
       const body = (await response.json().catch(() => ({}))) as Payload & {
         error?: string;
       };
@@ -246,7 +276,7 @@ export default function OperationalObservabilityWorkspace() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [apiQuery]);
 
   useEffect(() => {
     void load();
@@ -344,7 +374,7 @@ export default function OperationalObservabilityWorkspace() {
           icon={Activity}
           label="Events · 24h"
           value={data.operational.pipeline.eventsLast24h}
-          detail={`${data.operational.pipeline.eventsLast7d} in 7 days`}
+          detail={`${data.operational.pipeline.eventsLast7d} in 7 days · ${data.operational.pipeline.eventsPrevious24h} prior day`}
         />
         <Metric
           icon={Workflow}
@@ -434,6 +464,17 @@ export default function OperationalObservabilityWorkspace() {
               ) : null
             }
           >
+            {timelineFiltered ? (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-800 dark:text-blue-100">
+                <span>This timeline is filtered to the selected operational record.</span>
+                <Link
+                  href="/dashboard/operations/observability"
+                  className="font-semibold underline underline-offset-2"
+                >
+                  Clear record filter
+                </Link>
+              </div>
+            ) : null}
             <div className="mb-3 flex flex-col gap-2 sm:flex-row">
               <label className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--theme-text-muted)]" />
