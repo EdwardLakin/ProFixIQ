@@ -9,8 +9,16 @@ const page = readFileSync(
   "app/dashboard/operations/observability/page.tsx",
   "utf8",
 );
+const operationsPage = readFileSync(
+  "app/dashboard/operations/page.tsx",
+  "utf8",
+);
 const workspace = readFileSync(
   "features/operations/components/OperationalObservabilityWorkspace.tsx",
+  "utf8",
+);
+const healthStrip = readFileSync(
+  "features/operations/components/OperationalHealthAlertStrip.tsx",
   "utf8",
 );
 const workOrderPage = readFileSync("app/work-orders/[id]/page.tsx", "utf8");
@@ -55,6 +63,16 @@ describe("operational observability UI and alerting", () => {
     );
     expect(workOrderTimeline).toContain("correlationId=");
     expect(workOrderTimeline).toContain("Full observability");
+  });
+
+  it("surfaces operational health directly above Shop Operations", () => {
+    expect(operationsPage).toContain("<OperationalHealthAlertStrip />");
+    expect(operationsPage).toContain("<OperationsDashboardView />");
+    expect(healthStrip).toContain("Event pipeline stalled");
+    expect(healthStrip).toContain("Event capture failures");
+    expect(healthStrip).toContain("Event volume dropped");
+    expect(healthStrip).toContain("AI expiration processing");
+    expect(healthStrip).toContain("response.status === 401 || response.status === 403");
   });
 
   it("creates internal alerts for pipeline, volume, failure, and AI health", () => {
