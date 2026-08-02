@@ -24,7 +24,7 @@ on:
       - ".github/workflows/operational-observability-validation.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   application:
@@ -33,6 +33,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -77,6 +79,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
       - uses: supabase/setup-cli@v2
         with:
           version: 2.101.0
@@ -126,6 +130,22 @@ jobs:
           path: generated-operational-supabase-types.ts
           if-no-files-found: error
           retention-days: 2
+      - name: Commit generated Supabase types to the PR branch
+        if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/operational-observability-p0-p4'
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if cmp -s features/shared/types/types/supabase.ts generated-operational-supabase-types.ts; then
+            exit 0
+          fi
+          cp generated-operational-supabase-types.ts features/shared/types/types/supabase.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add features/shared/types/types/supabase.ts
+          git commit -m "Regenerate Supabase types for operational observability"
+          git push origin "HEAD:${HEAD_REF}"
       - name: Verify committed Supabase types
         shell: bash
         run: |
