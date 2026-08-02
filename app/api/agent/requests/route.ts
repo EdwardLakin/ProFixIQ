@@ -1,6 +1,7 @@
 // app/api/agent/requests/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { resolveAgentApiSecrets } from "@/features/shared/lib/server/agent-api-secrets";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -91,21 +92,6 @@ function normalizeIntent(raw: unknown): AgentIntent {
 function asNullableString(value: unknown): string | null {
   const text = typeof value === "string" ? value.trim() : "";
   return text || null;
-}
-
-function agentApiSecrets() {
-  const canonical = String(process.env.AGENT_API_SECRET ?? "").trim();
-  const profixiqAlias = String(
-    process.env.PROFIXIQ_AGENT_API_SECRET ?? "",
-  ).trim();
-  const internalAlias = String(process.env.INTERNAL_AGENT_SECRET ?? "").trim();
-
-  return {
-    canonical,
-    profixiqAlias,
-    internalAlias,
-    primary: canonical || profixiqAlias || internalAlias,
-  };
 }
 
 type CreateAgentRequestBody = {
@@ -253,7 +239,7 @@ export async function POST(req: NextRequest) {
   const actualBehavior = asNullableString(body.actual) ?? description;
   const route = asNullableString(body.location);
   const browser = asNullableString(body.device);
-  const agentSecrets = agentApiSecrets();
+  const agentSecrets = resolveAgentApiSecrets();
 
   const contextForAgent = {
     ...structuredContext,
