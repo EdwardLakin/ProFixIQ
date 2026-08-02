@@ -24247,6 +24247,11 @@ export type Database = {
       get_operational_observability_health: {
         Args: { p_now?: string }
         Returns: {
+          ai_active_recommendation_count: number
+          ai_cron_probably_running: boolean
+          ai_last_expiration_event_at: string
+          ai_pending_approval_count: number
+          ai_stale_recommendation_count: number
           events_last_24h: number
           events_last_6h: number
           events_previous_24h: number
