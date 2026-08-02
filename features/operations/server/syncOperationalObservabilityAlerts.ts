@@ -30,6 +30,11 @@ export type OperationalHealthProjection = {
   last_event_at: string | null;
   unresolved_failure_count: number | string | null;
   health_status: string | null;
+  ai_active_recommendation_count: number | string | null;
+  ai_stale_recommendation_count: number | string | null;
+  ai_pending_approval_count: number | string | null;
+  ai_last_expiration_event_at: string | null;
+  ai_cron_probably_running: boolean | null;
 };
 
 type SyncAlertInput = {
@@ -168,16 +173,18 @@ export async function syncOperationalObservabilityAlerts(input: {
           now,
           limit: 1,
         }),
-    getAiOperationsObservability({
-      supabase: input.supabase,
-      actorContext: {
-        shopId: input.shopId,
-        actorId: "internal-observability-health",
-        role: "system",
-        source: "system",
-      },
-      now,
-    }),
+    input.operationalHealth
+      ? Promise.resolve(null)
+      : getAiOperationsObservability({
+          supabase: input.supabase,
+          actorContext: {
+            shopId: input.shopId,
+            actorId: "internal-observability-health",
+            role: "system",
+            source: "system",
+          },
+          now,
+        }),
     loadExistingAlertStates({
       supabase: input.supabase,
       shopId: input.shopId,
@@ -218,7 +225,19 @@ export async function syncOperationalObservabilityAlerts(input: {
     eventsLast24h,
     eventsPrevious24h,
   });
-  const aiExpirationNeedsReview = ai.health.cronProbablyRunning === false;
+  const aiCronProbablyRunning = input.operationalHealth
+    ? input.operationalHealth.ai_cron_probably_running
+    : ai?.health.cronProbablyRunning ?? "unknown";
+  const aiStaleBacklog = input.operationalHealth
+    ? numeric(input.operationalHealth.ai_stale_recommendation_count) > 0
+    : ai?.health.hasStaleBacklog ?? false;
+  const aiPendingApprovalBacklog = input.operationalHealth
+    ? numeric(input.operationalHealth.ai_pending_approval_count) > 0
+    : ai?.health.hasPendingApprovalBacklog ?? false;
+  const aiLastExpirationEventAt = input.operationalHealth
+    ? input.operationalHealth.ai_last_expiration_event_at
+    : ai?.expiration.lastExpirationEventAt ?? null;
+  const aiExpirationNeedsReview = aiCronProbablyRunning === false;
 
   if (installed) {
     await Promise.all([
@@ -287,10 +306,10 @@ export async function syncOperationalObservabilityAlerts(input: {
       ? "Stale AI recommendations or approvals exist without recent expiration activity."
       : "AI expiration processing is reporting healthy activity.",
     metadata: {
-      cron_probably_running: ai.health.cronProbablyRunning,
-      stale_backlog: ai.health.hasStaleBacklog,
-      pending_approval_backlog: ai.health.hasPendingApprovalBacklog,
-      last_expiration_event_at: ai.expiration.lastExpirationEventAt,
+      cron_probably_running: aiCronProbablyRunning,
+      stale_backlog: aiStaleBacklog,
+      pending_approval_backlog: aiPendingApprovalBacklog,
+      last_expiration_event_at: aiLastExpirationEventAt,
     },
     existing: existingAlerts.get("ai_expiration_cron_stalled"),
   });
