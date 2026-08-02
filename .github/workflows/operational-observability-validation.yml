@@ -1,0 +1,117 @@
+name: Operational Observability Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/dashboard/operational-observability/**"
+      - "app/api/internal/observability/**"
+      - "app/dashboard/operations/observability/**"
+      - "app/work-orders/[id]/page.tsx"
+      - "features/dashboard/components/OperationalViewSwitcher.tsx"
+      - "features/operations/components/OperationalObservabilityWorkspace.tsx"
+      - "features/operations/components/WorkOrderOperationalTimelineDock.tsx"
+      - "features/operations/server/getOperationalObservability.ts"
+      - "features/operations/server/getOperationalObservability.test.ts"
+      - "features/operations/server/syncOperationalObservabilityAlerts.ts"
+      - "features/operations/server/syncOperationalObservabilityAlerts.test.ts"
+      - "supabase/migrations/*operational_observability*.sql"
+      - "supabase/migrations/*operational_event*.sql"
+      - "tests/dashboard-operational-observability-route.test.ts"
+      - "tests/operational-observability-*.test.ts"
+      - "tests/security/operational-observability.runtime.sql"
+      - "vercel.json"
+      - ".github/workflows/operational-observability-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    name: application
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm typecheck
+      - name: Focused lint
+        run: >-
+          pnpm eslint
+          app/api/dashboard/operational-observability/route.ts
+          app/api/internal/observability/health/route.ts
+          app/dashboard/operations/observability/page.tsx
+          app/work-orders/[id]/page.tsx
+          features/dashboard/components/OperationalViewSwitcher.tsx
+          features/operations/components/OperationalObservabilityWorkspace.tsx
+          features/operations/components/WorkOrderOperationalTimelineDock.tsx
+          features/operations/server/getOperationalObservability.ts
+          features/operations/server/getOperationalObservability.test.ts
+          features/operations/server/syncOperationalObservabilityAlerts.ts
+          features/operations/server/syncOperationalObservabilityAlerts.test.ts
+          tests/dashboard-operational-observability-route.test.ts
+          tests/operational-observability-contract.test.ts
+          tests/operational-observability-hardening.test.ts
+          tests/operational-observability-ui-alerts.test.ts
+      - name: Focused tests
+        run: >-
+          pnpm vitest run
+          features/operations/server/getOperationalObservability.test.ts
+          features/operations/server/syncOperationalObservabilityAlerts.test.ts
+          tests/dashboard-operational-observability-route.test.ts
+          tests/operational-observability-contract.test.ts
+          tests/operational-observability-hardening.test.ts
+          tests/operational-observability-ui-alerts.test.ts
+
+  database:
+    name: database
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+          github-token: ${{ github.token }}
+      - name: Initialize ephemeral Supabase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase --version
+      - name: Start local Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db start 2>&1 | tee operational-observability-db-start.log
+      - name: Replay all migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db reset --local --no-seed --debug \
+            2>&1 | tee operational-observability-db-reset.log
+      - name: Verify observability database contract
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/operational-observability.runtime.sql \
+            2>&1 | tee operational-observability-runtime.log
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup
