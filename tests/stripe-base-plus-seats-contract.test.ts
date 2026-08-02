@@ -45,6 +45,7 @@ function recurringPrice(input: {
     nickname: null,
     product: "prod_test",
     recurring: {
+      aggregate_usage: null,
       interval: "month",
       interval_count: 1,
       meter: null,
