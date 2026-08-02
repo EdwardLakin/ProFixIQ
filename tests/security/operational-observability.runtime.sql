@@ -8,10 +8,26 @@ declare
   v_policy text;
   v_reloptions text;
   v_missing_triggers text[];
+  v_missing_ai_tables text[];
 begin
   if to_regclass('public.operational_events') is null
      or to_regclass('public.operational_event_failures') is null then
     raise exception 'Operational observability tables are missing';
+  end if;
+
+  select array_agg(expected.name order by expected.name)
+    into v_missing_ai_tables
+  from unnest(array[
+    'ai_evidence_snapshots',
+    'ai_recommendations',
+    'ai_action_previews',
+    'ai_action_approvals',
+    'ai_action_events'
+  ]::text[]) as expected(name)
+  where to_regclass('public.' || expected.name) is null;
+
+  if v_missing_ai_tables is not null then
+    raise exception 'Tracked AI operating substrate is incomplete: %', v_missing_ai_tables;
   end if;
 
   if not exists (
@@ -34,6 +50,17 @@ begin
       and c.relrowsecurity
   ) then
     raise exception 'operational_event_failures must have RLS enabled';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'ai_action_events'
+      and c.relrowsecurity
+  ) then
+    raise exception 'ai_action_events must have RLS enabled';
   end if;
 
   select coalesce(qual, '')
@@ -152,6 +179,18 @@ begin
   end if;
   if position('select coalesce(p.user_id, p.id), p.role' in v_definition) = 0 then
     raise exception 'Operational actors must use a canonical user identity';
+  end if;
+
+  select pg_get_functiondef('private.capture_operational_punch_event()'::regprocedure)
+    into v_definition;
+
+  if position('coalesce(p.user_id, new.user_id, auth.uid(), p.id)' in v_definition) = 0 then
+    raise exception 'Punch events must normalize profile and auth identity';
+  end if;
+  if position('''operational''' in v_definition) = 0
+     or position('''punch_events''' in v_definition) = 0
+     or position('v_event_type' in v_definition) = 0 then
+    raise exception 'Punch idempotency must be semantic-event scoped';
   end if;
 
   select array_agg(expected.name order by expected.name)
