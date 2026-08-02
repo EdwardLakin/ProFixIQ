@@ -324,6 +324,62 @@ function portalQuoteUrlFor(workOrderId: string): string | null {
   return appUrl ? `${appUrl}/portal/quotes/${workOrderId}` : null;
 }
 
+async function upsertEstimatePortalNotification(input: {
+  userId: string;
+  customerId: string | null;
+  workOrderId: string;
+  revision: number;
+  shopName: string;
+}): Promise<void> {
+  const { error } = await supabaseAdmin.from("portal_notifications").upsert(
+    {
+      user_id: input.userId,
+      customer_id: input.customerId,
+      work_order_id: input.workOrderId,
+      kind: "quote_ready",
+      title: "Quote ready",
+      body: `Your estimate at ${input.shopName || "the shop"} is ready to review in your portal.`,
+      event_key: `estimate:quote_ready:${input.workOrderId}:revision:${input.revision}`,
+    },
+    { onConflict: "user_id,event_key" },
+  );
+  if (error) throw new Error(error.message);
+}
+
+async function repairEstimatePortalNotification(input: {
+  customerId: string | null;
+  shopId: string;
+  workOrderId: string;
+  revision: number;
+}): Promise<void> {
+  if (!input.customerId) return;
+  const [customerResult, shopResult] = await Promise.all([
+    supabaseAdmin
+      .from("customers")
+      .select("id,user_id")
+      .eq("id", input.customerId)
+      .eq("shop_id", input.shopId)
+      .maybeSingle<Pick<CustomerRow, "id" | "user_id">>(),
+    supabaseAdmin
+      .from("shops")
+      .select("name,shop_name")
+      .eq("id", input.shopId)
+      .maybeSingle<Pick<ShopRow, "name" | "shop_name">>(),
+  ]);
+  const loadError = customerResult.error ?? shopResult.error;
+  if (loadError) throw new Error(loadError.message);
+  if (!customerResult.data?.user_id) return;
+  await upsertEstimatePortalNotification({
+    userId: customerResult.data.user_id,
+    customerId: customerResult.data.id,
+    workOrderId: input.workOrderId,
+    revision: input.revision,
+    shopName:
+      safeStr(shopResult.data?.shop_name).trim() ||
+      safeStr(shopResult.data?.name).trim(),
+  });
+}
+
 async function findAcceptedEstimateEmail(input: {
   shopId: string;
   workOrderId: string;
@@ -436,7 +492,7 @@ export async function POST(req: Request) {
     const { data: wo, error: woErr } = await supabaseAdmin
       .from("work_orders")
       .select(
-        "id, customer_id, shop_id, vehicle_id, quote_url, shop_supplies_enabled_override, shop_supplies_amount_override, estimate_number, estimate_status, estimate_revision",
+        "id, customer_id, shop_id, vehicle_id, quote_url, shop_supplies_enabled_override, shop_supplies_amount_override, estimate_number, estimate_status, estimate_revision, estimate_expires_at",
       )
       .eq("id", workOrderId)
       .eq("shop_id", access.profile.shop_id)
@@ -453,6 +509,7 @@ export async function POST(req: Request) {
           | "estimate_number"
           | "estimate_status"
           | "estimate_revision"
+          | "estimate_expires_at"
         >
       >();
 
@@ -573,6 +630,13 @@ export async function POST(req: Request) {
               : access.authUserId,
           });
 
+          await repairEstimatePortalNotification({
+            customerId: wo.customer_id,
+            shopId: wo.shop_id,
+            workOrderId,
+            revision: wo.estimate_revision,
+          });
+
           return NextResponse.json({
             ok: true,
             trace,
@@ -582,6 +646,12 @@ export async function POST(req: Request) {
           });
         }
       } else if (existingSend.event?.event_type === "sent") {
+        await repairEstimatePortalNotification({
+          customerId: wo.customer_id,
+          shopId: wo.shop_id,
+          workOrderId,
+          revision: wo.estimate_revision,
+        });
         return estimateSendReplayResponse(existingSend.event, trace);
       }
     }
@@ -896,12 +966,31 @@ export async function POST(req: Request) {
       }
 
       const reservation = jsonRecord((reservationData ?? {}) as Json);
+      if (reservation.ok === false && reservation.expired === true) {
+        return NextResponse.json(
+          {
+            ok: false,
+            trace,
+            expired: true,
+            error:
+              safeStr(reservation.error) ||
+              "This estimate has expired and cannot be sent.",
+          },
+          { status: 409 },
+        );
+      }
       const reservationEventId = safeStr(reservation.eventId);
       const reservationEventType = safeStr(reservation.eventType);
       const reservationDeliveryState = safeStr(reservation.deliveryState);
       const reservationIsReplay = reservation.replay === true;
 
       if (reservationIsReplay && reservationEventType === "sent") {
+        await repairEstimatePortalNotification({
+          customerId: wo.customer_id,
+          shopId: wo.shop_id,
+          workOrderId,
+          revision: wo.estimate_revision,
+        });
         return NextResponse.json({
           ok: true,
           trace,
@@ -1154,6 +1243,16 @@ export async function POST(req: Request) {
             {
               step: "portal_quote_notification_insert",
               run: async () => {
+                if (wo.estimate_number) {
+                  await upsertEstimatePortalNotification({
+                    userId: portalUserId,
+                    customerId: portalCustomerId,
+                    workOrderId,
+                    revision: wo.estimate_revision,
+                    shopName,
+                  });
+                  return;
+                }
                 const { error } = await supabaseAdmin
                   .from("portal_notifications")
                   .insert({

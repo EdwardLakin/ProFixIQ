@@ -6,7 +6,6 @@ import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/w
 
 export const runtime = "nodejs";
 
-
 export async function POST(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
 
@@ -26,7 +25,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (profileErr || !profile?.shop_id) {
-      return NextResponse.json({ error: "Unable to resolve actor profile" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Unable to resolve actor profile" },
+        { status: 403 },
+      );
     }
 
     const actor = getActorCapabilities({ role: profile.role });
@@ -38,7 +40,10 @@ export async function POST(req: NextRequest) {
     const id = segments[segments.length - 2];
 
     if (!id) {
-      return NextResponse.json({ error: "Missing quote line id" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing quote line id" },
+        { status: 400 },
+      );
     }
 
     const { data: q, error: qErr } = await supabase
@@ -48,14 +53,20 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (qErr || !q) {
-      return NextResponse.json({ error: "Quote line not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Quote line not found" },
+        { status: 404 },
+      );
     }
 
     if (q.shop_id !== profile.shop_id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const result = await applyWorkOrderQuoteLineDecision({
       supabase,
       quoteLineIds: [q.id],
@@ -76,8 +87,11 @@ export async function POST(req: NextRequest) {
 
     if (!result.ok) {
       return NextResponse.json(
-        { error: result.error ?? "Failed to decline quote" },
-        { status: 400 },
+        {
+          expired: result.expired === true,
+          error: result.error ?? "Failed to decline quote",
+        },
+        { status: result.expired ? 409 : 400 },
       );
     }
 
@@ -87,6 +101,9 @@ export async function POST(req: NextRequest) {
       idempotent: result.idempotent === true,
     });
   } catch {
-    return NextResponse.json({ error: "Failed to decline quote" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to decline quote" },
+      { status: 500 },
+    );
   }
 }

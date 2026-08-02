@@ -13,6 +13,7 @@ import {
   nullableRpcString,
   requireIdempotencyKey,
 } from "@/features/estimates/server/http";
+import { resolveEstimateExpiry } from "@/features/estimates/server/expiry";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -108,6 +109,12 @@ export async function PATCH(
       manufacturer: part.manufacturer,
     })),
   }));
+  const expiresAt = await resolveEstimateExpiry({
+    supabase: access.supabase,
+    shopId: access.profile.shop_id,
+    expiresOn: parsed.data.expiresOn,
+    expiresAt: parsed.data.expiresAt,
+  });
 
   const { data, error } = await access.supabase.rpc(
     "save_estimate_draft_atomic",
@@ -117,7 +124,7 @@ export async function PATCH(
       p_expected_revision: parsed.data.expectedRevision,
       p_lines: lines,
       p_notes: nullableRpcString(parsed.data.notes),
-      p_expires_at: nullableRpcString(parsed.data.expiresAt),
+      p_expires_at: nullableRpcString(expiresAt),
       p_idempotency_key: idempotency.key,
     },
   );

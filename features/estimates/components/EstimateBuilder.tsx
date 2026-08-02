@@ -43,6 +43,7 @@ type Props = {
   estimateId?: string;
   shopId?: string;
   defaultLaborRate?: number;
+  shopTimezone?: string;
 };
 
 type MutationResult = {
@@ -103,11 +104,15 @@ function money(value: number): string {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
-function dateTime(value: string | null | undefined): string {
+function dateTime(
+  value: string | null | undefined,
+  timezone?: string,
+): string {
   if (!value) return "—";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "—";
   return parsed.toLocaleString("en-CA", {
+    timeZone: timezone,
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -116,17 +121,24 @@ function dateTime(value: string | null | undefined): string {
   });
 }
 
-function dateInput(value: string | null | undefined): string {
+function dateInput(value: string | null | undefined, timezone: string): string {
   if (!value) return "";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toISOString().slice(0, 10);
-}
-
-function expiryIso(value: string): string | null {
-  if (!value) return null;
-  const parsed = new Date(`${value}T23:59:59`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(parsed);
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+    return year && month && day ? `${year}-${month}-${day}` : "";
+  } catch {
+    return parsed.toISOString().slice(0, 10);
+  }
 }
 
 function customerName(customer: EstimateCustomerForm): string {
@@ -173,11 +185,31 @@ function statusTone(status: EstimateStatus): string {
 function isReturnableEstimateLine(
   line: EstimateLineDraft,
 ): line is ReturnableEstimateLine {
+  const status = String(line.status ?? "")
+    .trim()
+    .toLowerCase();
+  const stage = String(line.stage ?? "")
+    .trim()
+    .toLowerCase();
   return Boolean(
     line.id &&
     line.parts.length > 0 &&
     !line.approvedAt &&
-    !line.workOrderLineId,
+    !line.workOrderLineId &&
+    ![
+      "approved",
+      "converted",
+      "declined",
+      "deferred",
+      "rejected",
+      "cancelled",
+      "canceled",
+      "superseded",
+      "voided",
+    ].includes(status) &&
+    !["customer_approved", "customer_declined", "customer_deferred"].includes(
+      stage,
+    ),
   );
 }
 
@@ -214,10 +246,12 @@ export default function EstimateBuilder({
   estimateId,
   shopId: initialShopId,
   defaultLaborRate = 0,
+  shopTimezone = "UTC",
 }: Props) {
   const router = useRouter();
   const isNew = !estimateId;
   const idempotencyKeysRef = useRef(new Map<string, string>());
+  const submitRevisionRef = useRef(new Map<string, number>());
   const createdEstimateRef = useRef<MutationResult | null>(null);
   const [detail, setDetail] = useState<EstimateDetail | null>(null);
   const [loading, setLoading] = useState(!isNew);
@@ -273,7 +307,9 @@ export default function EstimateBuilder({
       setSelectedVehicleId(body.estimate.vehicle.id ?? null);
       setLines(body.estimate.lines);
       setNotes(body.estimate.notes ?? "");
-      setExpiresOn(dateInput(body.estimate.expiresAt));
+      setExpiresOn(
+        dateInput(body.estimate.expiresAt, body.shop.timezone || shopTimezone),
+      );
       setReturnLineIds(
         new Set(
           body.estimate.lines
@@ -290,7 +326,7 @@ export default function EstimateBuilder({
     } finally {
       setLoading(false);
     }
-  }, [estimateId]);
+  }, [estimateId, shopTimezone]);
 
   useEffect(() => {
     void loadDetail();
@@ -444,7 +480,7 @@ export default function EstimateBuilder({
         })),
       })),
       notes: notes || null,
-      expiresAt: expiryIso(expiresOn),
+      expiresOn: expiresOn || null,
     };
   }
 
@@ -467,9 +503,10 @@ export default function EstimateBuilder({
       if (!created.workOrderId)
         throw new Error("Estimate was created without an id.");
       createdEstimateRef.current = created;
+      let currentRevision = created.estimateRevision ?? 1;
       if (existingCreated || created.idempotent) {
         try {
-          await runMutation(
+          const saved = await runMutation(
             `save-created-draft:${created.workOrderId}`,
             `/api/estimates/${created.workOrderId}`,
             {
@@ -480,6 +517,7 @@ export default function EstimateBuilder({
               },
             },
           );
+          currentRevision = saved.estimateRevision ?? currentRevision;
         } catch (saveError) {
           // A lost submit response can leave this browser on the new page even
           // though the server already advanced the canonical estimate. Verify
@@ -512,7 +550,7 @@ export default function EstimateBuilder({
           `submit-parts:${created.workOrderId}`,
           `/api/estimates/${created.workOrderId}/submit-parts`,
           {
-            body: { expectedRevision: created.estimateRevision ?? 1 },
+            body: { expectedRevision: currentRevision },
           },
         );
       }
@@ -529,11 +567,11 @@ export default function EstimateBuilder({
     }
   }
 
-  async function saveDraft(showNotice = true) {
-    if (!detail) return;
+  async function saveDraft(showNotice = true): Promise<MutationResult> {
+    if (!detail) throw new Error("Estimate detail is not loaded.");
     const validationError = validateDraft();
     if (validationError) throw new Error(validationError);
-    await runMutation(
+    const result = await runMutation(
       `save-draft:${detail.estimate.id}`,
       `/api/estimates/${detail.estimate.id}`,
       {
@@ -545,6 +583,7 @@ export default function EstimateBuilder({
       },
     );
     if (showNotice) setNotice("Draft saved.");
+    return result;
   }
 
   async function handleSave() {
@@ -571,14 +610,32 @@ export default function EstimateBuilder({
     setError(null);
     setNotice(null);
     try {
-      await saveDraft(false);
+      const actionKey = `submit-parts:${detail.estimate.id}`;
+      const pendingRevision = submitRevisionRef.current.get(actionKey);
+      if (idempotencyKeysRef.current.has(actionKey) && pendingRevision) {
+        await runMutation(
+          actionKey,
+          `/api/estimates/${detail.estimate.id}/submit-parts`,
+          { body: { expectedRevision: pendingRevision } },
+        );
+        submitRevisionRef.current.delete(actionKey);
+        setNotice("Estimate submitted to Parts.");
+        await loadDetail();
+        return;
+      }
+
+      const saved = await saveDraft(false);
+      const submitRevision =
+        saved.estimateRevision ?? detail.estimate.estimateRevision;
+      submitRevisionRef.current.set(actionKey, submitRevision);
       await runMutation(
-        `submit-parts:${detail.estimate.id}`,
+        actionKey,
         `/api/estimates/${detail.estimate.id}/submit-parts`,
         {
-          body: { expectedRevision: detail.estimate.estimateRevision },
+          body: { expectedRevision: submitRevision },
         },
       );
+      submitRevisionRef.current.delete(actionKey);
       setNotice("Estimate submitted to Parts.");
       await loadDetail();
     } catch (actionError) {
@@ -1546,7 +1603,10 @@ export default function EstimateBuilder({
                     Expires
                   </dt>
                   <dd className="font-medium text-[color:var(--theme-text-primary)]">
-                    {dateTime(detail.estimate.expiresAt)}
+                    {dateTime(
+                      detail.estimate.expiresAt,
+                      detail.shop.timezone,
+                    )}
                   </dd>
                 </div>
               ) : null}
@@ -1699,7 +1759,8 @@ export default function EstimateBuilder({
                       {event.eventType.replaceAll("_", " ")}
                     </div>
                     <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                      Revision {event.revision} · {dateTime(event.createdAt)}
+                      Revision {event.revision} ·{" "}
+                      {dateTime(event.createdAt, detail.shop.timezone)}
                     </div>
                     {event.note ? (
                       <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">

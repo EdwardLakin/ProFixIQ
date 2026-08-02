@@ -47,6 +47,8 @@ type RpcResult = {
   approval_state?: string | null;
   part_relink?: Partial<RelinkQuoteLinePartsResult>;
   idempotent?: boolean;
+  expired?: boolean;
+  error?: string;
 };
 
 function emptyPartRelinkResult(): RelinkQuoteLinePartsResult {
@@ -104,6 +106,7 @@ export async function applyWorkOrderQuoteLineDecision(params: {
   approvalState: string | null;
   partRelink: RelinkQuoteLinePartsResult;
   idempotent?: boolean;
+  expired?: boolean;
   error?: string;
 }> {
   const quoteLineIds = [
@@ -201,5 +204,10 @@ export async function applyWorkOrderQuoteLineDecision(params: {
       typeof result.approval_state === "string" ? result.approval_state : null,
     partRelink,
     idempotent: result.idempotent === true,
+    expired: result.expired === true,
+    error:
+      result.ok === false && typeof result.error === "string"
+        ? result.error
+        : undefined,
   };
 }

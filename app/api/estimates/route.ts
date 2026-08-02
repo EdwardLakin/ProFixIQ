@@ -12,21 +12,39 @@ import {
   nullableRpcString,
   requireIdempotencyKey,
 } from "@/features/estimates/server/http";
+import { resolveEstimateExpiry } from "@/features/estimates/server/expiry";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET() {
+const listStatusValues = new Set([
+  "all",
+  "draft",
+  "waiting_for_parts",
+  "ready_for_advisor",
+  "sent",
+  "approved",
+  "declined",
+]);
+
+export async function GET(request: Request) {
   const access = await requireShopScopedApiAccess({
     allowRoles: ESTIMATE_VIEW_ROLES,
   });
   if (!access.ok) return access.response;
 
   try {
+    const url = new URL(request.url);
+    const rawStatus = url.searchParams.get("status") ?? "all";
+    const status = listStatusValues.has(rawStatus) ? rawStatus : "all";
+    const offset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10);
     const payload = await loadEstimateList({
       supabase: access.supabase,
       shopId: access.profile.shop_id,
       role: access.canonicalRole,
+      search: url.searchParams.get("search") ?? "",
+      status,
+      offset: Number.isFinite(offset) ? offset : 0,
     });
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store" },
@@ -63,6 +81,12 @@ export async function POST(request: Request) {
   }
 
   const input = parsed.data;
+  const expiresAt = await resolveEstimateExpiry({
+    supabase: access.supabase,
+    shopId: access.profile.shop_id,
+    expiresOn: input.expiresOn,
+    expiresAt: input.expiresAt,
+  });
   const customer: Json = {
     id: input.customer.id ?? null,
     businessName: input.customer.business_name ?? null,
@@ -113,7 +137,7 @@ export async function POST(request: Request) {
     p_vehicle: vehicle,
     p_lines: lines,
     p_notes: nullableRpcString(input.notes),
-    p_expires_at: nullableRpcString(input.expiresAt),
+    p_expires_at: nullableRpcString(expiresAt),
     p_idempotency_key: idempotency.key,
   });
 

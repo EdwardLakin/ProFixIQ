@@ -134,8 +134,11 @@ export async function POST(req: NextRequest) {
 
     if (!result.ok) {
       return NextResponse.json(
-        { error: result.error ?? "Failed to authorize quote line" },
-        { status: 400 },
+        {
+          expired: result.expired === true,
+          error: result.error ?? "Failed to authorize quote line",
+        },
+        { status: result.expired ? 409 : 400 },
       );
     }
 
