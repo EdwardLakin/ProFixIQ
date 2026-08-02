@@ -2,11 +2,24 @@ import OperationalObservabilityWorkspace from "@/features/operations/components/
 import { OperationalViewSwitcher } from "@/features/dashboard/components/OperationalViewSwitcher";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 
-export default async function OperationalObservabilityPage() {
-  const { profile } = await requireShopPageAccess({
-    requiredCapability: "canManageWorkOrders",
-    allowRoles: ["owner", "admin", "manager"],
-  });
+type PageProps = {
+  searchParams: Promise<{
+    entityType?: string;
+    entityId?: string;
+    correlationId?: string;
+  }>;
+};
+
+export default async function OperationalObservabilityPage({
+  searchParams,
+}: PageProps) {
+  const [{ profile }, filters] = await Promise.all([
+    requireShopPageAccess({
+      requiredCapability: "canManageWorkOrders",
+      allowRoles: ["owner", "admin", "manager"],
+    }),
+    searchParams,
+  ]);
 
   return (
     <main className="w-full space-y-4">
@@ -24,7 +37,13 @@ export default async function OperationalObservabilityPage() {
         </p>
       </header>
 
-      <OperationalObservabilityWorkspace />
+      <OperationalObservabilityWorkspace
+        initialFilters={{
+          entityType: filters.entityType ?? null,
+          entityId: filters.entityId ?? null,
+          correlationId: filters.correlationId ?? null,
+        }}
+      />
     </main>
   );
 }
