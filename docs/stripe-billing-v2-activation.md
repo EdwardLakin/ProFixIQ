@@ -128,7 +128,11 @@ Apply in repository order. The relevant additions are:
 20260802101450_restore_ai_action_events_substrate.sql
 20260802170000_stripe_billing_model_connect_correction.sql
 20260802170100_stripe_subscription_snapshot_v2.sql
+20260802170200_harden_ai_substrate_membership_policies.sql
+20260802170300_restore_plan_user_limit_contract.sql
 ```
+
+The first, fourth, and fifth migrations also repair pre-existing ordered-migration gaps that were exposed by clean replay. They are idempotent on the production schema and preserve the compatibility helper contract while keeping staff creation non-blocking.
 
 After application:
 
@@ -136,12 +140,13 @@ After application:
 2. Verify direct client writes cannot change Stripe-owned fields on `shops`.
 3. Verify each shop has a `billable_user_count` snapshot.
 4. Verify subscription webhook snapshots can persist `stripe_pricing_model`.
-5. Run Supabase security and performance advisors.
+5. Verify the restored AI operating-intelligence substrate uses persisted profile membership rather than request-local shop context.
+6. Run Supabase security and performance advisors.
 
 ## Deployment sequence
 
 1. Merge PR #1284 after every required workflow is green.
-2. Apply the three migrations to production.
+2. Apply the five migrations to production in repository order.
 3. Configure the new price IDs and server-only reconciliation variables.
 4. Deploy the production application.
 5. Create/update both webhook endpoints and set the Connect signing secret.
