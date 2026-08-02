@@ -13,7 +13,7 @@ import {
 /** @deprecated Read the shop payment policy instead of assuming a global fee. */
 export const STRIPE_PLATFORM_FEE_BPS = DEFAULT_STRIPE_PLATFORM_FEE_BPS;
 
-export type PlanKey = CanonicalPlan;
+export type PlanKey = Exclude<CanonicalPlan, "pro">;
 
 export const PLAN_LOOKUP_KEYS: Record<PlanKey, string> = {
   starter: BASE_PRICE_LOOKUP_KEY,
@@ -59,5 +59,6 @@ export function getPlanDisplayLabel(plan: unknown): string {
 
 export function resolveSeatLimitForPlan(plan: unknown): number | null {
   const canonical = normalizeCanonicalPlan(plan);
-  return canonical ? PLAN_LIMITS[canonical] : null;
+  if (!canonical) return null;
+  return PLAN_LIMITS[canonical === "pro" ? "starter" : canonical];
 }
