@@ -22,6 +22,7 @@ const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/work-orders/board": "Dashboard",
   "/dashboard/workforce/attendance": "Workforce",
   "/work-orders/create?autostart=1": "Operations",
+  "/estimates": "Operations",
   "/work-orders/view": "Operations",
   "/work-orders/quote-review": "Operations",
   "/customers/search": "Operations",
@@ -71,7 +72,9 @@ const OWNER_TITLE_OVERRIDES_BY_HREF: Record<string, string> = {
   "/parts/requests": "Parts Requests",
 };
 
-export function getOwnerTileOverrides(tile: Tile): Pick<Tile, "section" | "title"> {
+export function getOwnerTileOverrides(
+  tile: Tile,
+): Pick<Tile, "section" | "title"> {
   if (tile.href === "/dashboard/appointments" && tile.title === "Scheduling") {
     return { section: "People & Workforce", title: tile.title };
   }

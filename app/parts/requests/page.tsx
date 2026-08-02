@@ -72,20 +72,33 @@ type RequestModel = {
 type WorkOrderListRow = {
   id: string;
   custom_id: string | null;
+  estimate_number: string | null;
   customers:
-    | { first_name: string | null; last_name: string | null }
-    | { first_name: string | null; last_name: string | null }[]
+    | {
+        business_name: string | null;
+        first_name: string | null;
+        last_name: string | null;
+      }
+    | {
+        business_name: string | null;
+        first_name: string | null;
+        last_name: string | null;
+      }[]
     | null;
   vehicles:
     | {
         year: string | number | null;
         make: string | null;
         model: string | null;
+        vin: string | null;
+        unit_number: string | null;
       }
     | {
         year: string | number | null;
         make: string | null;
         model: string | null;
+        vin: string | null;
+        unit_number: string | null;
       }[]
     | null;
 };
@@ -96,6 +109,9 @@ type WoBucket = {
   menuItemId: string | null;
   menuItemName: string | null;
   customId: string | null;
+  estimateNumber: string | null;
+  estimateRevision: number | null;
+  isEstimate: boolean;
   customerName: string | null;
   vehicleLabel: string | null;
   models: RequestModel[];
@@ -203,6 +219,7 @@ function firstJoin<T>(value: T | T[] | null | undefined): T | null {
 
 function customerName(row: WorkOrderListRow | undefined): string | null {
   const customer = firstJoin(row?.customers);
+  if (customer?.business_name?.trim()) return customer.business_name.trim();
   const label = [customer?.first_name, customer?.last_name]
     .map((value) => String(value ?? "").trim())
     .filter(Boolean)
@@ -212,10 +229,19 @@ function customerName(row: WorkOrderListRow | undefined): string | null {
 
 function vehicleLabel(row: WorkOrderListRow | undefined): string | null {
   const vehicle = firstJoin(row?.vehicles);
-  const label = [vehicle?.year, vehicle?.make, vehicle?.model]
+  const vehicleName = [vehicle?.year, vehicle?.make, vehicle?.model]
     .map((value) => String(value ?? "").trim())
     .filter(Boolean)
     .join(" ");
+  const unitNumber = String(vehicle?.unit_number ?? "").trim();
+  const vin = String(vehicle?.vin ?? "").trim();
+  const label = [
+    vehicleName,
+    unitNumber ? `Unit ${unitNumber}` : "",
+    vin ? `VIN ${vin}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return label || null;
 }
 
@@ -239,8 +265,7 @@ function buildBuckets(
   return [...grouped.entries()]
     .map(([bucketId, requestModels]) => {
       const workOrderId = requestModels[0]?.request.work_order_id ?? null;
-      const menuItemId =
-        requestModels[0]?.request.source_menu_item_id ?? null;
+      const menuItemId = requestModels[0]?.request.source_menu_item_id ?? null;
       const workOrder = workOrderId ? workOrders[workOrderId] : undefined;
       const menuItem = menuItemId ? menuItems[menuItemId] : undefined;
       const items = requestModels.flatMap((model) => model.items);
@@ -258,9 +283,22 @@ function buildBuckets(
       );
       const customer = customerName(workOrder);
       const vehicle = vehicleLabel(workOrder);
+      const isEstimate =
+        requestModels.some(
+          (model) => model.request.source_context === "estimate",
+        ) || Boolean(workOrder?.estimate_number);
+      const estimateRevision = requestModels.reduce<number | null>(
+        (latest, model) => {
+          const revision = model.request.source_revision;
+          if (revision == null) return latest;
+          return latest == null ? revision : Math.max(latest, revision);
+        },
+        null,
+      );
       const searchBlob = [
         workOrderId,
         workOrder?.custom_id,
+        workOrder?.estimate_number,
         menuItem?.name,
         "menu intake",
         ...requestModels.map((model) => model.request.notes),
@@ -279,6 +317,9 @@ function buildBuckets(
         menuItemId,
         menuItemName: menuItem?.name?.trim() || null,
         customId: workOrder?.custom_id ?? null,
+        estimateNumber: workOrder?.estimate_number ?? null,
+        estimateRevision,
+        isEstimate,
         customerName: customer,
         vehicleLabel: vehicle,
         models: requestModels,
@@ -295,7 +336,11 @@ function buildBuckets(
 
 function workOrderLabel(bucket: WoBucket): string {
   if (bucket.workOrderId) {
-    return bucket.customId || `#${bucket.workOrderId.slice(0, 8)}`;
+    return (
+      bucket.estimateNumber ||
+      bucket.customId ||
+      `#${bucket.workOrderId.slice(0, 8)}`
+    );
   }
   if (bucket.menuItemId) {
     return `Menu intake · ${bucket.menuItemName || "Service menu item"}`;
@@ -441,7 +486,9 @@ function QueueCard({
     ? "No parts were added. Dismiss this abandoned request or open it to review."
     : bucket.menuItemId && !bucket.workOrderId
       ? "Link each requested part to the inventory catalog and confirm its cost on the menu item."
-    : (meta?.next ?? "Review the completed request history.");
+      : bucket.isEstimate && bucket.stage === "needs_quote"
+        ? "Price every estimate item here, then complete the current revision from Estimates."
+        : (meta?.next ?? "Review the completed request history.");
 
   return (
     <article className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3 shadow-[var(--theme-shadow-soft)]">
@@ -461,21 +508,31 @@ function QueueCard({
             </p>
           ) : null}
         </div>
-        {canDismissEmpty ? (
-          <span className="max-w-[48%] truncate rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
-            Empty request
-          </span>
-        ) : meta ? (
-          <span
-            className={`max-w-[48%] truncate rounded-md border px-2 py-1 text-[10px] font-semibold ${meta.pill}`}
-          >
-            Next: {isMenuIntake ? "Review recipe" : meta.action}
-          </span>
-        ) : (
-          <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
-            Closed
-          </span>
-        )}
+        <div className="flex max-w-[52%] flex-col items-end gap-1">
+          {bucket.isEstimate ? (
+            <span className="truncate rounded-md border border-violet-400/35 bg-violet-400/10 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:text-violet-300">
+              Estimate
+              {bucket.estimateRevision
+                ? ` · Rev ${bucket.estimateRevision}`
+                : ""}
+            </span>
+          ) : null}
+          {canDismissEmpty ? (
+            <span className="truncate rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
+              Empty request
+            </span>
+          ) : meta ? (
+            <span
+              className={`truncate rounded-md border px-2 py-1 text-[10px] font-semibold ${meta.pill}`}
+            >
+              Next: {isMenuIntake ? "Review recipe" : meta.action}
+            </span>
+          ) : (
+            <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold text-[color:var(--theme-text-secondary)]">
+              Closed
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="mt-2.5 grid grid-cols-2 divide-x divide-[color:var(--theme-border-soft)] border-y border-[color:var(--theme-border-soft)] py-2 text-center">
@@ -740,7 +797,7 @@ export default function PartsRequestsPage(): JSX.Element {
           const { data: rows, error: workOrderError } = await supabase
             .from("work_orders")
             .select(
-              "id,custom_id,customers(first_name,last_name),vehicles(year,make,model)",
+              "id,custom_id,estimate_number,customers(business_name,first_name,last_name),vehicles(year,make,model,vin,unit_number)",
             )
             .in("id", workOrderIds.slice(chunkStart, chunkStart + 200));
           if (workOrderError) throw workOrderError;
@@ -1087,7 +1144,9 @@ export default function PartsRequestsPage(): JSX.Element {
           <Metric
             icon={ClipboardList}
             value={metricBuckets.length}
-            label={tab === "active" ? "Active request groups" : "Completed groups"}
+            label={
+              tab === "active" ? "Active request groups" : "Completed groups"
+            }
             tone="copper"
           />
           <Metric
@@ -1205,20 +1264,14 @@ export default function PartsRequestsPage(): JSX.Element {
       />
       <MenuItemPartsIntakeModal
         open={menuIntakeBucket !== null}
-        menuItemName={
-          menuIntakeBucket?.menuItemName || "Service menu item"
-        }
+        menuItemName={menuIntakeBucket?.menuItemName || "Service menu item"}
         items={(menuIntakeBucket?.items ?? []).map(
           (item): MenuIntakeQueueItem => ({
             id: item.id,
             description: item.description,
             partId: item.part_id,
-            quantity: Math.max(
-              Number(item.qty_requested ?? item.qty ?? 1),
-              1,
-            ),
-            unitCost:
-              item.unit_cost === null ? null : Number(item.unit_cost),
+            quantity: Math.max(Number(item.qty_requested ?? item.qty ?? 1), 1),
+            unitCost: item.unit_cost === null ? null : Number(item.unit_cost),
             unitPrice:
               item.unit_price === null ? null : Number(item.unit_price),
             quotedPrice:

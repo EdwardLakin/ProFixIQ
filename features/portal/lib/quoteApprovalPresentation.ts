@@ -6,7 +6,9 @@ function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function isPendingCustomerQuoteLine(row: Record<string, unknown>): boolean {
+export function isPendingCustomerQuoteLine(
+  row: Record<string, unknown>,
+): boolean {
   const status = (text(row.status) ?? "").trim().toLowerCase();
   const stage = (text(row.stage) ?? "").trim().toLowerCase();
   const terminalStatuses = new Set([
@@ -16,6 +18,7 @@ export function isPendingCustomerQuoteLine(row: Record<string, unknown>): boolea
     "deferred",
     "rejected",
     "cancelled",
+    "superseded",
   ]);
 
   if (

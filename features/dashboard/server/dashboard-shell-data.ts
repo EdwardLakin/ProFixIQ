@@ -1,4 +1,5 @@
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import type { Database } from "@shared/types/types/supabase";
 
 type DashboardProfile = Pick<
@@ -73,12 +74,9 @@ export async function resolveDashboardServerContext(
     };
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("completed_onboarding, email, full_name, role, shop_id")
-    .eq("id", userId)
-    .limit(1)
-    .maybeSingle<DashboardProfile>();
+  const { profile: resolvedProfile, error: profileError } =
+    await resolveAuthenticatedStaffProfile(supabase, userId);
+  const profile: DashboardProfile | null = resolvedProfile;
 
   const shopId = profile?.shop_id ?? null;
   let shop: DashboardShop | null = null;
@@ -111,7 +109,7 @@ export async function resolveDashboardServerContext(
   logDashboardContextDiagnostics({
     userId,
     profile: profile ?? null,
-    profileError: profileError?.message ?? null,
+    profileError,
     shopLoaded: Boolean(shop),
     shopIdUsed: shopId,
     shopError: shopErrorMessage,

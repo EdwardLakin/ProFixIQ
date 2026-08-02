@@ -47,18 +47,25 @@ describe("quote email and customer portal alignment", () => {
     ]);
   });
 
-  it("marks the work order pending when quote email persistence completes", () => {
+  it("preserves partial estimate approval while marking a first send pending", () => {
     const sendRoute = read("app/api/quotes/send/route.ts");
-    const newlySentQuotePersistence = sendRoute.indexOf(
-      "...(sendableQuoteLineIds.length > 0",
+    const migration = read(
+      "supabase/migrations/20260802024436_advisor_estimate_workflow.sql",
     );
-    const approvalStatePersistence = sendRoute.indexOf(
-      "work_order_quote_approval_state_update",
+    const reservation = sendRoute.indexOf('"reserve_estimate_send_atomic"');
+    const finalization = sendRoute.lastIndexOf(
+      '"finalize_estimate_send_atomic"',
     );
-    expect(newlySentQuotePersistence).toBeGreaterThanOrEqual(0);
-    expect(approvalStatePersistence).toBeGreaterThan(newlySentQuotePersistence);
-    expect(sendRoute).toContain("work_order_quote_approval_state_update");
-    expect(sendRoute).toContain('approval_state: "pending"');
+    expect(reservation).toBeGreaterThanOrEqual(0);
+    expect(finalization).toBeGreaterThan(reservation);
+    expect(migration).toContain("when v_has_approved_lines then 'partial'");
+    expect(migration).toContain("else 'pending'");
+    expect(migration).toContain("update public.work_order_quote_lines q");
+    expect(migration).toContain("update public.work_orders w");
+    expect(sendRoute).toContain('req.headers.get("Idempotency-Key")');
+    expect(sendRoute).toContain("estimateSendReplayResponse");
+    expect(sendRoute).toContain("findAcceptedEstimateEmail");
+    expect(sendRoute).toContain("recoverAcceptedEstimateSend");
   });
 
   it("derives portal-home attention from unresolved canonical quote lines", () => {

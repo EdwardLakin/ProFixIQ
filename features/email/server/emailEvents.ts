@@ -50,6 +50,9 @@ export async function sendQuoteReadyEmail(input: {
   brandSecondaryColor?: string | null;
   year?: number;
   createdBy?: string | null;
+  idempotencyKey?: string | null;
+  workOrderId?: string | null;
+  estimateRevision?: number | null;
 }) {
   return sendDynamicTemplateEmail({
     shopId: input.shopId,
@@ -58,6 +61,13 @@ export async function sendQuoteReadyEmail(input: {
     createdBy: input.createdBy,
     metadata: {
       kind: "quote_ready",
+      ...(input.idempotencyKey
+        ? {
+            estimate_send_key: input.idempotencyKey,
+            work_order_id: input.workOrderId ?? null,
+            estimate_revision: input.estimateRevision ?? null,
+          }
+        : {}),
     } as Json,
     dynamicTemplateData: {
       quote_url: input.quoteUrl,
