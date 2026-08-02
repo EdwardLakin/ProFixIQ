@@ -43,6 +43,7 @@ describe("operational observability UI and alerting", () => {
     expect(page).toContain('requiredCapability: "canManageWorkOrders"');
     expect(page).toContain('allowRoles: ["owner", "admin", "manager"]');
     expect(page).toContain("<OperationalObservabilityWorkspace");
+    expect(page).toContain("initialFilters={{");
   });
 
   it("provides searchable workflow, failure, and record-filtered timelines", () => {
@@ -62,6 +63,7 @@ describe("operational observability UI and alerting", () => {
       'const ALLOWED_ROLES = new Set(["owner", "admin", "manager"])',
     );
     expect(workOrderTimeline).toContain("correlationId=");
+    expect(workOrderTimeline).toContain("Operational timeline");
     expect(workOrderTimeline).toContain("Full observability");
   });
 
@@ -75,14 +77,20 @@ describe("operational observability UI and alerting", () => {
     expect(healthStrip).toContain("response.status === 401 || response.status === 403");
   });
 
-  it("creates internal alerts for pipeline, volume, failure, and AI health", () => {
+  it("creates idempotent internal alerts for pipeline, volume, failure, and AI health", () => {
     expect(alertService).toContain("operational_event_pipeline_stalled");
     expect(alertService).toContain("operational_event_write_failure");
     expect(alertService).toContain("operational_event_volume_drop");
     expect(alertService).toContain("ai_expiration_cron_stalled");
     expect(alertService).toContain('source: "observability"');
     expect(alertService).toContain('role: "owner"');
-    expect(alertService).toContain('status: preserveAcknowledgement ? "acknowledged" : "active"');
+    expect(alertService).toContain(
+      'input.existing?.status === "acknowledged"',
+    );
+    expect(alertService).toContain("events_previous_24h");
+    expect(alertService).toContain(
+      'status: preserveAcknowledgement ? "acknowledged" : "active"',
+    );
   });
 
   it("uses the service-role health projection with a pre-migration fallback", () => {
