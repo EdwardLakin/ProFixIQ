@@ -13,6 +13,11 @@ const workspace = readFileSync(
   "features/operations/components/OperationalObservabilityWorkspace.tsx",
   "utf8",
 );
+const workOrderPage = readFileSync("app/work-orders/[id]/page.tsx", "utf8");
+const workOrderTimeline = readFileSync(
+  "features/operations/components/WorkOrderOperationalTimelineDock.tsx",
+  "utf8",
+);
 const alertService = readFileSync(
   "features/operations/server/syncOperationalObservabilityAlerts.ts",
   "utf8",
@@ -36,13 +41,27 @@ describe("operational observability UI and alerting", () => {
     expect(workspace).toContain("Search event, entity, role or source");
   });
 
-  it("creates internal alerts for pipeline, volume, failure, and AI health", () => {
+  it("surfaces a role-gated canonical timeline on each work order", () => {
+    expect(workOrderPage).toContain("<WorkOrderOperationalTimelineDock />");
+    expect(workOrderTimeline).toContain(
+      'const ALLOWED_ROLES = new Set(["owner", "admin", "manager"])',
+    );
+    expect(workOrderTimeline).toContain("correlationId=");
+    expect(workOrderTimeline).toContain("Operational timeline");
+    expect(workOrderTimeline).toContain("Full observability");
+  });
+
+  it("creates idempotent internal alerts for pipeline, volume, failure, and AI health", () => {
     expect(alertService).toContain("operational_event_pipeline_stalled");
     expect(alertService).toContain("operational_event_write_failure");
     expect(alertService).toContain("operational_event_volume_drop");
     expect(alertService).toContain("ai_expiration_cron_stalled");
     expect(alertService).toContain('source: "observability"');
     expect(alertService).toContain('role: "owner"');
+    expect(alertService).toContain(
+      'input.existing?.status === "acknowledged"',
+    );
+    expect(alertService).toContain("events_previous_24h");
   });
 
   it("schedules the internal health check without enabling branch deployments", () => {
