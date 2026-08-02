@@ -6,7 +6,7 @@ on:
       - "app/api/dashboard/operational-observability/**"
       - "app/api/internal/observability/**"
       - "app/dashboard/operations/observability/**"
-      - "app/work-orders/[id]/page.tsx"
+      - "app/work-orders/**/page.tsx"
       - "features/dashboard/components/OperationalViewSwitcher.tsx"
       - "features/operations/components/OperationalObservabilityWorkspace.tsx"
       - "features/operations/components/WorkOrderOperationalTimelineDock.tsx"
@@ -14,6 +14,7 @@ on:
       - "features/operations/server/getOperationalObservability.test.ts"
       - "features/operations/server/syncOperationalObservabilityAlerts.ts"
       - "features/operations/server/syncOperationalObservabilityAlerts.test.ts"
+      - "features/shared/types/types/supabase.ts"
       - "supabase/migrations/*operational_observability*.sql"
       - "supabase/migrations/*operational_event*.sql"
       - "tests/dashboard-operational-observability-route.test.ts"
@@ -48,7 +49,7 @@ jobs:
           app/api/dashboard/operational-observability/route.ts
           app/api/internal/observability/health/route.ts
           app/dashboard/operations/observability/page.tsx
-          app/work-orders/[id]/page.tsx
+          "app/work-orders/[id]/page.tsx"
           features/dashboard/components/OperationalViewSwitcher.tsx
           features/operations/components/OperationalObservabilityWorkspace.tsx
           features/operations/components/WorkOrderOperationalTimelineDock.tsx
@@ -112,6 +113,26 @@ jobs:
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
             -f tests/security/operational-observability.runtime.sql \
             2>&1 | tee operational-observability-runtime.log
+      - name: Generate Supabase types from replayed schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local --schema public \
+            > generated-operational-supabase-types.ts
+      - name: Upload generated Supabase types
+        uses: actions/upload-artifact@v4
+        with:
+          name: operational-observability-supabase-types
+          path: generated-operational-supabase-types.ts
+          if-no-files-found: error
+          retention-days: 2
+      - name: Verify committed Supabase types
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff -u \
+            features/shared/types/types/supabase.ts \
+            generated-operational-supabase-types.ts
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup
