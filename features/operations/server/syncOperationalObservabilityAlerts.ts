@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Database } from "@shared/types/types/supabase";
+import type { Database, Json } from "@shared/types/types/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAiOperationsObservability } from "@/features/ai/server";
 import { getOperationalObservability } from "./getOperationalObservability";
@@ -19,7 +19,7 @@ type SyncAlertInput = {
   level: AlertLevel;
   title: string;
   message: string;
-  metadata: Record<string, unknown>;
+  metadata: Json;
 };
 
 async function syncAlert(input: SyncAlertInput): Promise<void> {
