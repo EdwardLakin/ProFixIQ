@@ -8,6 +8,7 @@ declare
   v_policy text;
   v_reloptions text;
   v_missing_triggers text[];
+  v_missing_ai_tenant_triggers text[];
   v_missing_ai_tables text[];
 begin
   if to_regclass('public.operational_events') is null
@@ -61,6 +62,72 @@ begin
       and c.relrowsecurity
   ) then
     raise exception 'ai_action_events must have RLS enabled';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.ai_action_approvals', 'INSERT')
+     or has_table_privilege('authenticated', 'public.ai_action_approvals', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.ai_action_approvals', 'DELETE') then
+    raise exception 'AI approvals must be mutated only through the authorized server path';
+  end if;
+  if has_table_privilege('authenticated', 'public.ai_action_events', 'INSERT')
+     or has_table_privilege('authenticated', 'public.ai_action_events', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.ai_action_events', 'DELETE') then
+    raise exception 'Authenticated clients must not forge AI action events';
+  end if;
+  if exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in ('ai_action_approvals', 'ai_action_events')
+      and 'authenticated' = any(roles)
+      and cmd in ('INSERT', 'UPDATE', 'DELETE', 'ALL')
+  ) then
+    raise exception 'AI approvals/events must not retain authenticated write policies';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_index i
+    where i.indexrelid = 'public.idx_ai_action_approvals_one_pending_per_preview'::regclass
+      and i.indisunique
+      and pg_get_expr(i.indpred, i.indrelid) like '%status%pending%'
+  ) then
+    raise exception 'AI approvals require one database-enforced pending row per preview';
+  end if;
+
+  select array_agg(expected.trigger_name order by expected.trigger_name)
+    into v_missing_ai_tenant_triggers
+  from (values
+    ('ai_recommendations', 'trg_ai_recommendations_tenant_links'),
+    ('ai_action_previews', 'trg_ai_action_previews_tenant_links'),
+    ('ai_action_approvals', 'trg_ai_action_approvals_tenant_links'),
+    ('ai_action_events', 'trg_ai_action_events_tenant_links')
+  ) as expected(table_name, trigger_name)
+  where not exists (
+    select 1
+    from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = expected.table_name
+      and t.tgname = expected.trigger_name
+      and not t.tgisinternal
+      and t.tgenabled <> 'D'
+  );
+
+  if v_missing_ai_tenant_triggers is not null then
+    raise exception 'AI tenant-link triggers are missing: %', v_missing_ai_tenant_triggers;
+  end if;
+
+  select pg_get_functiondef('private.enforce_ai_record_tenant_links()'::regprocedure)
+    into v_definition;
+
+  if position('evidence_snapshot_ids' in v_definition) = 0
+     or position('ai_recommendations' in v_definition) = 0
+     or position('ai_action_previews' in v_definition) = 0
+     or position('ai_action_approvals' in v_definition) = 0
+     or position('ai_action_events' in v_definition) = 0 then
+    raise exception 'AI tenant-link enforcement must cover every linked AI record';
   end if;
 
   select coalesce(qual, '')
@@ -169,8 +236,11 @@ begin
   select pg_get_functiondef('private.capture_operational_event()'::regprocedure)
     into v_definition;
 
-  if position('when tg_op = ''UPDATE'' then nullif(v_row ->> ''updated_at''' in v_definition) = 0 then
-    raise exception 'Operational status events must use transition updated_at';
+  if position('when tg_op = ''UPDATE'' then nullif(v_row ->> ''updated_at''' in v_definition) = 0
+     or position('nullif(v_row ->> ''sent_at''' in v_definition) = 0
+     or position('when tg_op = ''UPDATE'' then nullif(v_row ->> ''updated_at''' in v_definition)
+        > position('nullif(v_row ->> ''sent_at''' in v_definition) then
+    raise exception 'Operational status events must prefer transition updated_at over sent_at';
   end if;
   if position('''operational'',' || E'\n    tg_table_name' in v_definition) = 0
      or position('coalesce(v_entity_id::text, ''na'')' in v_definition) = 0
@@ -193,24 +263,45 @@ begin
     raise exception 'Punch idempotency must be semantic-event scoped';
   end if;
 
-  select array_agg(expected.name order by expected.name)
+  select array_agg(
+      expected.table_name || ':' || expected.trigger_name
+      order by expected.table_name, expected.trigger_name
+    )
     into v_missing_triggers
-  from unnest(array[
-    'trg_operational_event_work_orders',
-    'trg_operational_event_work_order_lines',
-    'trg_operational_event_inspections',
-    'trg_operational_event_quote_lines',
-    'trg_operational_event_part_requests',
-    'trg_operational_event_part_request_items',
-    'trg_operational_event_labor_segments',
-    'trg_operational_event_punches',
-    'trg_operational_event_invoices',
-    'trg_operational_event_payments'
-  ]::text[]) as expected(name)
+  from (values
+    ('work_orders', 'trg_operational_event_work_orders'),
+    ('work_order_lines', 'trg_operational_event_work_order_lines'),
+    ('inspections', 'trg_operational_event_inspections'),
+    ('inspection_items', 'trg_operational_event_inspection_items'),
+    ('work_order_quote_lines', 'trg_operational_event_quote_lines'),
+    ('part_requests', 'trg_operational_event_part_requests'),
+    ('part_request_items', 'trg_operational_event_part_request_items'),
+    ('purchase_orders', 'trg_operational_event_purchase_orders'),
+    ('purchase_order_lines', 'trg_operational_event_purchase_order_lines'),
+    ('work_order_parts', 'trg_operational_event_work_order_parts'),
+    ('parts_disposition_events', 'trg_operational_event_parts_dispositions'),
+    ('work_order_line_labor_segments', 'trg_operational_event_labor_segments'),
+    ('punch_events', 'trg_operational_event_punches'),
+    ('payroll_time_entries', 'trg_operational_event_payroll_entries'),
+    ('invoices', 'trg_operational_event_invoices'),
+    ('invoice_versions', 'trg_operational_event_invoice_versions'),
+    ('payment_events', 'trg_operational_event_payments'),
+    ('bookings', 'trg_operational_event_bookings'),
+    ('fleet_service_requests', 'trg_operational_event_fleet_requests'),
+    ('estimate_events', 'trg_operational_event_estimates'),
+    ('ai_action_events', 'trg_operational_event_ai_actions'),
+    ('portal_notifications', 'trg_operational_event_portal_notifications'),
+    ('conversations', 'trg_operational_event_conversations'),
+    ('messages', 'trg_operational_event_messages')
+  ) as expected(table_name, trigger_name)
   where not exists (
     select 1
     from pg_trigger t
-    where t.tgname = expected.name
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = expected.table_name
+      and t.tgname = expected.trigger_name
       and not t.tgisinternal
       and t.tgenabled <> 'D'
   );

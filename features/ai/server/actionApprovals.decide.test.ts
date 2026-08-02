@@ -6,18 +6,18 @@ const getAiActionPreviewMock = vi.fn();
 const logAiActionEventMock = vi.fn();
 
 vi.mock("./actionPreviews", () => ({
-  getAiActionPreview: (...args: unknown[]) => getAiActionPreviewMock.apply(null, args),
+  getAiActionPreview: (...args: unknown[]) => getAiActionPreviewMock(...args),
 }));
 
 vi.mock("./actionEvents", () => ({
-  logAiActionEvent: (...args: unknown[]) => logAiActionEventMock.apply(null, args),
+  logAiActionEvent: (...args: unknown[]) => logAiActionEventMock(...args),
 }));
 
 import { approveAiActionPreview, rejectAiActionPreview } from "./actionApprovals";
 
 const ACTOR = { shopId: "shop_1", actorId: "actor_1", source: "manual" as const };
 
-function mockFromTable(initialStatus: "pending" | "approved") {
+function mockFromTable(initialStatus: "pending" | "approved", updateApplies = true) {
   const calledTables: string[] = [];
 
   vi.spyOn(types, "fromTable").mockImplementation((_, table: string) => {
@@ -44,12 +44,12 @@ function mockFromTable(initialStatus: "pending" | "approved") {
             }),
           }),
         }),
-        update: (payload: Record<string, unknown>) => ({
-          eq: () => ({
-            eq: () => ({
-              select: () => ({
-                single: async () => ({
-                  data: {
+        update: (payload: Record<string, unknown>) => {
+          const updateQuery = {
+            eq: vi.fn(),
+            select: vi.fn(() => ({
+              maybeSingle: async () => ({
+                  data: updateApplies ? {
                     id: "approval_1",
                     shop_id: "shop_1",
                     action_preview_id: "preview_1",
@@ -60,13 +60,14 @@ function mockFromTable(initialStatus: "pending" | "approved") {
                     metadata: {},
                     decided_at: "2026-04-24T12:30:00.000Z",
                     decided_by: "actor_1",
-                  },
+                  } : null,
                   error: null,
                 }),
-              }),
-            }),
-          }),
-        }),
+              })),
+          };
+          updateQuery.eq.mockReturnValue(updateQuery);
+          return updateQuery;
+        },
       } as never;
     }
 
@@ -133,5 +134,14 @@ describe("approve/reject ai action approvals", () => {
     await expect(approveAiActionPreview({} as never, ACTOR, { approvalId: "approval_1" })).rejects.toThrow(
       "invalid approval status transition",
     );
+  });
+
+  it("rejects a decision when another request wins the pending-state update", async () => {
+    mockFromTable("pending", false);
+
+    await expect(rejectAiActionPreview({} as never, ACTOR, { approvalId: "approval_1" })).rejects.toThrow(
+      "invalid approval status transition",
+    );
+    expect(logAiActionEventMock).not.toHaveBeenCalled();
   });
 });

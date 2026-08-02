@@ -6,6 +6,7 @@ on:
       - "features/shared/types/types/supabase.ts"
       - "supabase/migrations/20260802101400_ai_operating_intelligence_substrate_reconciliation.sql"
       - "supabase/migrations/20260802161000_operational_event_semantics_hardening.sql"
+      - "supabase/migrations/20260802171440_harden_ai_action_integrity.sql"
       - "tests/operational-observability-clean-replay-hardening.test.ts"
       - "tests/security/operational-observability.runtime.sql"
       - ".github/workflows/operational-observability-clean-replay-validation.yml"

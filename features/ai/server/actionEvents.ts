@@ -1,4 +1,7 @@
+import "server-only";
+
 import type { Json } from "@shared/types/types/supabase";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   type AiActorContext,
   type AiActionEventRecord,
@@ -21,13 +24,38 @@ type LogAiActionEventInput = {
   metadata?: Json;
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeEventActor(ctx: AiActorContext, source: string, metadata: Json): {
+  actorId: string | null;
+  metadata: Json;
+} {
+  if (UUID_PATTERN.test(ctx.actorId)) {
+    return { actorId: ctx.actorId, metadata };
+  }
+
+  if (source !== "system") {
+    throw new Error("AI action event actorId must be a profile UUID");
+  }
+
+  return {
+    actorId: null,
+    metadata: {
+      ...(normalizeObjectJson(metadata) as Record<string, Json>),
+      system_actor_id: ctx.actorId,
+    },
+  };
+}
+
 export async function logAiActionEvent(
-  supabase: AiServerClient,
+  _supabase: AiServerClient,
   actor: AiActorContext,
   input: LogAiActionEventInput,
 ): Promise<AiActionEventRecord> {
   const ctx = ensureActorContext(actor);
   const eventType = assertAiActionEventType(input.eventType);
+  const source = input.source ?? ctx.source;
+  const normalizedActor = normalizeEventActor(ctx, source, normalizeObjectJson(input.metadata));
 
   const insertPayload = {
     shop_id: ctx.shopId,
@@ -35,15 +63,17 @@ export async function logAiActionEvent(
     action_preview_id: input.actionPreviewId ?? null,
     approval_id: input.approvalId ?? null,
     event_type: eventType,
-    actor_id: ctx.actorId,
+    actor_id: normalizedActor.actorId,
     actor_role: input.actorRole ?? actor.role ?? null,
-    source: input.source ?? ctx.source,
+    source,
     idempotency_key: input.idempotencyKey ?? null,
     payload: normalizeObjectJson(input.payload),
-    metadata: normalizeObjectJson(input.metadata),
+    metadata: normalizedActor.metadata,
   };
 
-  const { data, error } = await fromTable(supabase, "ai_action_events")
+  // Audit events are a trusted server-side append. The browser role has no
+  // direct INSERT privilege on this table.
+  const { data, error } = await fromTable(createAdminSupabase(), "ai_action_events")
     .insert(insertPayload)
     .select("*")
     .single<AiActionEventRecord>();
