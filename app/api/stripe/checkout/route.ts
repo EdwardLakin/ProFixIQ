@@ -20,17 +20,19 @@ import {
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+type CheckoutCreateParams = Stripe.Checkout.SessionCreateParams & {
+  integration_identifier?: string;
+};
 
 const REQUEST_MAX_BYTES = 8 * 1024;
-const PLAN_PRICE_ENV_BY_KEY: Record<PlanKey, string> = {
-  starter: "STRIPE_PRICE_STARTER_MONTHLY",
-  pro: "STRIPE_PRICE_PRO_MONTHLY",
-  unlimited: "STRIPE_PRICE_UNLIMITED_MONTHLY",
+const PLAN_PRICE_ENV_BY_KEY: Record<PlanKey, readonly string[]> = {
+  starter: ["STRIPE_PRICE_BASE_MONTHLY", "STRIPE_PRICE_STARTER_MONTHLY"],
+  unlimited: ["STRIPE_PRICE_UNLIMITED_MONTHLY"],
 };
 
 const checkoutSchema = z
   .object({
-    planKey: z.enum(["starter", "pro", "unlimited"]),
+    planKey: z.enum(["starter", "unlimited"]),
     checkoutAttemptId: z.string().uuid().optional(),
     flow: z.enum(["acquisition", "owner"]).optional(),
     source: z.enum(["pricing_cta"]).optional(),
@@ -87,15 +89,27 @@ function getShopDisplayName(shop: ShopScope): string {
 }
 
 function resolveConfiguredPriceId(planKey: PlanKey): string {
-  const envName = PLAN_PRICE_ENV_BY_KEY[planKey];
-  const priceId = mustEnv(envName);
-  if (!/^price_[A-Za-z0-9]+$/.test(priceId)) throw new Error(`invalid ${envName}`);
-  return priceId;
+  const envNames = PLAN_PRICE_ENV_BY_KEY[planKey];
+  for (const envName of envNames) {
+    const priceId = String(process.env[envName] ?? "").trim();
+    if (!priceId) continue;
+    if (!/^price_[A-Za-z0-9]+$/.test(priceId)) throw new Error(`invalid ${envName}`);
+    return priceId;
+  }
+  throw new Error(`missing ${envNames.join(" or ")}`);
 }
 
 function configuredTrialDays(): number {
   const parsed = Math.trunc(Number(process.env.STRIPE_TRIAL_DAYS ?? "14"));
-  return Number.isFinite(parsed) && parsed >= 1 && parsed <= 60 ? parsed : 14;
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 60 ? parsed : 14;
+}
+
+function automaticTaxEnabled(): boolean {
+  return String(process.env.STRIPE_AUTOMATIC_TAX_ENABLED ?? "").trim().toLowerCase() === "true";
+}
+
+function integrationIdentifier(prefix: string): string {
+  return `${prefix}_${randomBytes(4).toString("hex")}`;
 }
 
 function ownerTrialEligible(shop: ShopScope): boolean {
@@ -122,6 +136,7 @@ async function createCustomerIfMissing(input: {
       email: input.shop.email ?? undefined,
       name: getShopDisplayName(input.shop),
       metadata: {
+        app: "profixiq",
         shop_id: input.shop.id,
         supabase_user_id: input.actorId,
         source: "profixiq",
@@ -144,18 +159,48 @@ function acquisitionMetadata(input: {
   planKey: PlanKey;
   priceId: string;
   trialDays: number;
-  foundingDiscountApplied: boolean;
 }): Stripe.MetadataParam {
   return {
+    app: "profixiq",
     purpose: STRIPE_ACQUISITION_PURPOSE,
     source: "pricing_cta",
     acquisition_intent_id: input.intentId,
     acquisition_nonce: input.nonce,
     plan_key: input.planKey,
     price_id: input.priceId,
+    pricing_model: "base_plus_seats_v2",
     trial_enabled: input.trialDays > 0 ? "true" : "false",
     trial_days: String(input.trialDays),
-    founding_discount_applied: input.foundingDiscountApplied ? "true" : "false",
+  };
+}
+
+function buildCheckoutParams(input: {
+  customerId?: string;
+  priceId: string;
+  successUrl: string;
+  cancelUrl: string;
+  clientReferenceId?: string;
+  trialDays: number;
+  metadata: Stripe.MetadataParam;
+  identifierPrefix: string;
+}): CheckoutCreateParams {
+  return {
+    mode: "subscription",
+    ...(input.customerId ? { customer: input.customerId } : {}),
+    line_items: [{ price: input.priceId, quantity: 1 }],
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+    allow_promotion_codes: true,
+    ...(input.clientReferenceId
+      ? { client_reference_id: input.clientReferenceId }
+      : {}),
+    ...(automaticTaxEnabled() ? { automatic_tax: { enabled: true } } : {}),
+    subscription_data: {
+      ...(input.trialDays > 0 ? { trial_period_days: input.trialDays } : {}),
+      metadata: input.metadata,
+    },
+    metadata: input.metadata,
+    integration_identifier: integrationIdentifier(input.identifierPrefix),
   };
 }
 
@@ -177,13 +222,10 @@ export async function POST(req: Request) {
       return noStoreJson({ error: "Invalid checkout flow" }, 400);
     }
 
-    const secretKey = mustEnv("STRIPE_SECRET_KEY");
-    const stripe = createStripeClient(secretKey);
+    const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
     const priceId = resolveConfiguredPriceId(parsed.data.planKey);
     const baseUrl = getBaseUrl();
     const trialDays = configuredTrialDays();
-    const couponId = String(process.env.STRIPE_FOUNDING_COUPON_ID ?? "").trim();
-    const foundingDiscountApplied = Boolean(couponId);
     const attemptId = parsed.data.checkoutAttemptId ?? randomUUID();
 
     if (isAcquisition) {
@@ -195,7 +237,7 @@ export async function POST(req: Request) {
         planKey: parsed.data.planKey,
         priceId,
         trialDays,
-        foundingDiscountApplied,
+        foundingDiscountApplied: false,
       });
 
       const successUrl = `${baseUrl}/auth/callback?flow=acquisition&session_id={CHECKOUT_SESSION_ID}`;
@@ -208,7 +250,11 @@ export async function POST(req: Request) {
           return noStoreJson({ ok: true, sessionId: existing.id, url: existing.url });
         }
         if (existing.status === "complete") {
-          return noStoreJson({ ok: true, sessionId: existing.id, url: successUrl.replace("{CHECKOUT_SESSION_ID}", existing.id) });
+          return noStoreJson({
+            ok: true,
+            sessionId: existing.id,
+            url: successUrl.replace("{CHECKOUT_SESSION_ID}", existing.id),
+          });
         }
         return noStoreJson({ error: "Checkout attempt is no longer active" }, 409);
       }
@@ -219,24 +265,17 @@ export async function POST(req: Request) {
         planKey: parsed.data.planKey,
         priceId,
         trialDays,
-        foundingDiscountApplied,
       });
       const session = await stripe.checkout.sessions.create(
-        {
-          mode: "subscription",
-          payment_method_types: ["card"],
-          line_items: [{ price: priceId, quantity: 1 }],
-          success_url: successUrl,
-          cancel_url: `${baseUrl}/compare-plans`,
-          ...(!foundingDiscountApplied ? { allow_promotion_codes: true } : {}),
-          client_reference_id: intent.id,
-          ...(foundingDiscountApplied ? { discounts: [{ coupon: couponId }] } : {}),
-          subscription_data: {
-            ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
-            metadata,
-          },
+        buildCheckoutParams({
+          priceId,
+          successUrl,
+          cancelUrl: `${baseUrl}/compare-plans`,
+          clientReferenceId: intent.id,
+          trialDays,
           metadata,
-        },
+          identifierPrefix: "profixiq_acquisition",
+        }),
         { idempotencyKey: `profixiq:acquisition:${intent.id}` },
       );
       await attachStripeAcquisitionCheckout({
@@ -276,32 +315,27 @@ export async function POST(req: Request) {
     });
     const enableTrial = ownerTrialEligible(shop);
     const metadata: Stripe.MetadataParam = {
+      app: "profixiq",
       shop_id: shop.id,
       supabase_user_id: access.profile.id,
       purpose: "profixiq_subscription",
       source: "owner_settings",
       plan_key: parsed.data.planKey,
       price_id: priceId,
+      pricing_model: "base_plus_seats_v2",
       trial_enabled: enableTrial ? "true" : "false",
       trial_days: enableTrial ? String(trialDays) : "0",
-      founding_discount_applied: foundingDiscountApplied ? "true" : "false",
     };
     const session = await stripe.checkout.sessions.create(
-      {
-        mode: "subscription",
-        customer: customerId,
-        payment_method_types: ["card"],
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${baseUrl}/dashboard/owner/settings#billing-stripe`,
-        cancel_url: `${baseUrl}/dashboard/owner/settings#billing-stripe`,
-        ...(!foundingDiscountApplied ? { allow_promotion_codes: true } : {}),
-        ...(foundingDiscountApplied ? { discounts: [{ coupon: couponId }] } : {}),
-        subscription_data: {
-          ...(enableTrial ? { trial_period_days: trialDays } : {}),
-          metadata,
-        },
+      buildCheckoutParams({
+        customerId,
+        priceId,
+        successUrl: `${baseUrl}/dashboard/owner/settings#billing-stripe`,
+        cancelUrl: `${baseUrl}/dashboard/owner/settings#billing-stripe`,
+        trialDays: enableTrial ? trialDays : 0,
         metadata,
-      },
+        identifierPrefix: "profixiq_owner",
+      }),
       { idempotencyKey: `profixiq:shop-checkout:${shop.id}:${attemptId}` },
     );
     return noStoreJson({ ok: true, sessionId: session.id, url: session.url });
