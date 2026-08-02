@@ -68,6 +68,27 @@ async function syncAlert(input: SyncAlertInput): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+async function countPrevious24hEvents(input: {
+  supabase: ServerClient;
+  shopId: string;
+  now: Date;
+  installed: boolean;
+}): Promise<number> {
+  if (!input.installed) return 0;
+
+  const fromTable = (input.supabase as unknown as { from: (table: string) => any }).from;
+  const end = new Date(input.now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const start = new Date(input.now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+  const { count, error } = await fromTable("operational_events")
+    .select("id", { count: "exact", head: true })
+    .eq("shop_id", input.shopId)
+    .gte("occurred_at", start)
+    .lt("occurred_at", end);
+
+  if (error) throw new Error(error.message);
+  return Number.isFinite(count) ? Number(count) : 0;
+}
+
 export type OperationalObservabilityAlertSummary = {
   shopId: string;
   installed: boolean;
@@ -103,6 +124,12 @@ export async function syncOperationalObservabilityAlerts(input: {
     }),
   ]);
 
+  const eventsPrevious24h = await countPrevious24hEvents({
+    supabase: input.supabase,
+    shopId: input.shopId,
+    now,
+    installed: operational.installed,
+  });
   const pipelineStalled =
     operational.installed && operational.pipeline.status === "stalled";
   const activeFailures = operational.installed
@@ -111,9 +138,9 @@ export async function syncOperationalObservabilityAlerts(input: {
   const eventVolumeDropped =
     operational.installed &&
     operational.pipeline.recentBusinessWrites > 0 &&
-    operational.pipeline.eventsPrevious24h >= MIN_PREVIOUS_EVENTS_FOR_DROP_ALERT &&
+    eventsPrevious24h >= MIN_PREVIOUS_EVENTS_FOR_DROP_ALERT &&
     operational.pipeline.eventsLast24h <=
-      Math.floor(operational.pipeline.eventsPrevious24h * VOLUME_DROP_RATIO);
+      Math.floor(eventsPrevious24h * VOLUME_DROP_RATIO);
   const aiExpirationNeedsReview = ai.health.cronProbablyRunning === false;
 
   if (operational.installed) {
@@ -158,11 +185,11 @@ export async function syncOperationalObservabilityAlerts(input: {
         level: "warning",
         title: "Operational event volume dropped",
         message: eventVolumeDropped
-          ? `Canonical event volume fell from ${operational.pipeline.eventsPrevious24h} to ${operational.pipeline.eventsLast24h} while shop records continued changing.`
+          ? `Canonical event volume fell from ${eventsPrevious24h} to ${operational.pipeline.eventsLast24h} while shop records continued changing.`
           : "Operational event volume is within the expected range.",
         metadata: {
           events_last_24h: operational.pipeline.eventsLast24h,
-          events_previous_24h: operational.pipeline.eventsPrevious24h,
+          events_previous_24h: eventsPrevious24h,
           recent_business_writes: operational.pipeline.recentBusinessWrites,
         },
       }),
