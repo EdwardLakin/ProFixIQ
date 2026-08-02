@@ -3,13 +3,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import {
   ADDITIONAL_SEAT_LOOKUP_KEY,
-  BASE_PRICE_LOOKUP_KEY,
   calculateMonthlySubscriptionPrice,
   getAdditionalSeatQuantity,
   shouldUseUnlimitedPrice,
-  UNLIMITED_PRICE_LOOKUP_KEY,
 } from "@/features/stripe/lib/stripe/billing-model";
-import { LEGACY_PLAN_LOOKUP_KEYS } from "@/features/stripe/lib/stripe/constants";
+import {
+  LEGACY_PLAN_LOOKUP_KEYS,
+} from "@/features/stripe/lib/stripe/constants";
+import {
+  resolveStripePriceContract,
+  type StripePriceContract,
+} from "@/features/stripe/lib/server/stripe-price-contract";
 
 type DB = Database;
 
@@ -19,12 +23,6 @@ type ShopBillingSeatRow = {
   stripe_subscription_id: string | null;
   stripe_subscription_status: string | null;
   billable_user_count: number | null;
-};
-
-type StripePriceContract = {
-  basePriceId: string;
-  additionalSeatPriceId: string;
-  unlimitedPriceId: string;
 };
 
 export type SeatReconciliationState =
@@ -51,33 +49,6 @@ export type SeatReconciliationResult = {
   reason?: string;
 };
 
-function configuredPriceId(names: readonly string[]): string {
-  for (const name of names) {
-    const value = String(process.env[name] ?? "").trim();
-    if (!value) continue;
-    if (!/^price_[A-Za-z0-9]+$/.test(value)) {
-      throw new Error(`Invalid ${name}`);
-    }
-    return value;
-  }
-  throw new Error(`Missing ${names.join(" or ")}`);
-}
-
-function getPriceContract(): StripePriceContract {
-  return {
-    basePriceId: configuredPriceId([
-      "STRIPE_PRICE_BASE_MONTHLY",
-      "STRIPE_PRICE_STARTER_MONTHLY",
-    ]),
-    additionalSeatPriceId: configuredPriceId([
-      "STRIPE_PRICE_ADDITIONAL_SEAT_MONTHLY",
-    ]),
-    unlimitedPriceId: configuredPriceId([
-      "STRIPE_PRICE_UNLIMITED_MONTHLY",
-    ]),
-  };
-}
-
 function normalize(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -97,8 +68,6 @@ function isRecognizedPrimaryPrice(
   return (
     price.id === contract.basePriceId ||
     price.id === contract.unlimitedPriceId ||
-    lookupKey === BASE_PRICE_LOOKUP_KEY ||
-    lookupKey === UNLIMITED_PRICE_LOOKUP_KEY ||
     lookupKey === LEGACY_PLAN_LOOKUP_KEYS.starter ||
     lookupKey === LEGACY_PLAN_LOOKUP_KEYS.pro ||
     lookupKey === LEGACY_PLAN_LOOKUP_KEYS.unlimited
@@ -151,8 +120,15 @@ export async function reconcileShopSubscriptionSeats(params: {
   supabase: SupabaseClient<DB>;
   shopId: string;
   applyUpdate?: boolean;
+  priceContract?: StripePriceContract;
 }): Promise<SeatReconciliationResult> {
-  const { stripe, supabase, shopId, applyUpdate = true } = params;
+  const {
+    stripe,
+    supabase,
+    shopId,
+    applyUpdate = true,
+    priceContract,
+  } = params;
 
   try {
     const { data: shop, error: shopError } = await supabase
@@ -225,7 +201,7 @@ export async function reconcileShopSubscriptionSeats(params: {
       };
     }
 
-    const contract = getPriceContract();
+    const contract = priceContract ?? await resolveStripePriceContract(stripe);
     const primaryItems = subscription.items.data.filter((item) =>
       isRecognizedPrimaryPrice(item.price, contract),
     );
