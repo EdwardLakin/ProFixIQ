@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { Json } from "@shared/types/types/supabase";
+import type { Database, Json } from "@shared/types/types/supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const DEFAULT_EVENT_LIMIT = 160;
 const MAX_EVENT_LIMIT = 300;
@@ -29,9 +30,7 @@ export type OperationalPipelineStatus =
   | "idle"
   | "not_installed";
 
-type OperationalServerClient = {
-  from: (table: string) => any;
-};
+type OperationalServerClient = SupabaseClient<Database>;
 
 type OperationalEventRow = {
   id: string;
