@@ -16,7 +16,6 @@ const REQUEST_MAX_BYTES = 8 * 1024;
 const settingsSchema = z.object({
   portal_payments_enabled: z.boolean().optional(),
   default_currency: z.enum(["cad", "usd"]).optional(),
-  platform_fee_bps: z.number().int().min(0).max(1000).optional(),
   allow_partial_payments: z.boolean().optional(),
   minimum_payment_cents: z.number().int().min(50).optional(),
   default_deposit_percent: z.number().min(0).max(100).optional(),
