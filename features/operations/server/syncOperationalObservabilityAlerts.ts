@@ -11,6 +11,23 @@ type ExistingAlertState = {
   status: string;
   firstSeenAt: string | null;
 };
+type OperationalEventCountResult = {
+  count: number | null;
+  error: { message: string } | null;
+};
+type OperationalEventCountQuery = PromiseLike<OperationalEventCountResult> & {
+  eq: (column: string, value: string) => OperationalEventCountQuery;
+  gte: (column: string, value: string) => OperationalEventCountQuery;
+  lt: (column: string, value: string) => OperationalEventCountQuery;
+};
+type OperationalEventCountClient = {
+  from: (table: "operational_events") => {
+    select: (
+      columns: string,
+      options: { count: "exact"; head: true },
+    ) => OperationalEventCountQuery;
+  };
+};
 
 const MIN_PREVIOUS_EVENTS_FOR_DROP_ALERT = 20;
 const VOLUME_DROP_RATIO = 0.25;
@@ -119,9 +136,7 @@ async function countPrevious24hEvents(input: {
 }): Promise<number> {
   if (!input.installed) return 0;
 
-  const client = input.supabase as unknown as {
-    from: (table: string) => any;
-  };
+  const client = input.supabase as unknown as OperationalEventCountClient;
   const end = new Date(
     input.now.getTime() - 24 * 60 * 60 * 1000,
   ).toISOString();
