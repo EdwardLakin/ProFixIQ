@@ -33,6 +33,8 @@ This runbook activates the ProFixIQ commercial and Connect architecture introduc
 
 All prices are recurring monthly licensed prices, have exclusive tax behavior, and use the ProFixIQ SaaS tax code.
 
+The v2 application resolves prices from the three unique lookup keys at runtime. Before Checkout or seat reconciliation, it verifies that each active price has the expected CAD amount, monthly licensed recurrence, ProFixIQ metadata, and v2 billing-model role. New price-ID environment variables are not required and catalog drift fails closed.
+
 ## Live discounts
 
 | Program | Coupon | Public code | Terms |
@@ -49,9 +51,6 @@ Lifetime coupons must be assigned to a specific approved customer or subscriptio
 ## Required production environment variables
 
 ```text
-STRIPE_PRICE_BASE_MONTHLY=price_1U02ZMITYwJQigUIzIpBpVyE
-STRIPE_PRICE_ADDITIONAL_SEAT_MONTHLY=price_1U02ZYITYwJQigUInUy1mRZL
-STRIPE_PRICE_UNLIMITED_MONTHLY=price_1U02ZlITYwJQigUIn5il2C7y
 STRIPE_TRIAL_DAYS=14
 STRIPE_AUTOMATIC_TAX_ENABLED=true
 STRIPE_CONNECT_WEBHOOK_SECRET=<secret from the connected-account webhook endpoint>
@@ -69,6 +68,8 @@ NEXT_PUBLIC_SITE_URL
 NEXT_PUBLIC_SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY
 ```
+
+Legacy `STRIPE_PRICE_*` variables may remain temporarily for historical subscription diagnostics, but v2 Checkout and seat reconciliation do not depend on them.
 
 Never expose any Stripe secret, webhook secret, service-role key, or reconciliation secret through a `NEXT_PUBLIC_` variable.
 
@@ -147,7 +148,7 @@ After application:
 
 1. Merge PR #1284 after every required workflow is green.
 2. Apply the five migrations to production in repository order.
-3. Configure the new price IDs and server-only reconciliation variables.
+3. Configure the server-only reconciliation, automatic-tax, and Connect webhook variables.
 4. Deploy the production application.
 5. Create/update both webhook endpoints and set the Connect signing secret.
 6. Confirm the platform endpoint and Connect endpoint each return HTTP 2xx for signed test events.
