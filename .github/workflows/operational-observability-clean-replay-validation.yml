@@ -1,0 +1,136 @@
+name: Operational Observability Clean Replay
+
+on:
+  pull_request:
+    paths:
+      - "features/shared/types/types/supabase.ts"
+      - "supabase/migrations/20260802101400_ai_operating_intelligence_substrate_reconciliation.sql"
+      - "supabase/migrations/20260802161000_operational_event_semantics_hardening.sql"
+      - "tests/operational-observability-clean-replay-hardening.test.ts"
+      - "tests/security/operational-observability.runtime.sql"
+      - ".github/workflows/operational-observability-clean-replay-validation.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  application:
+    name: application
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm typecheck
+      - name: Focused lint
+        run: >-
+          pnpm eslint
+          tests/operational-observability-clean-replay-hardening.test.ts
+      - name: Focused tests
+        run: >-
+          pnpm vitest run
+          tests/operational-observability-clean-replay-hardening.test.ts
+          tests/operational-observability-contract.test.ts
+          tests/operational-observability-ui-alerts.test.ts
+          features/operations/server/getOperationalObservability.test.ts
+          features/operations/server/syncOperationalObservabilityAlerts.test.ts
+          tests/dashboard-operational-observability-route.test.ts
+
+  database:
+    name: database
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.101.0
+          github-token: ${{ github.token }}
+      - name: Initialize ephemeral Supabase configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -f supabase/config.toml ]]; then
+            supabase init
+          fi
+          supabase --version
+      - name: Start local Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db start 2>&1 | tee operational-observability-db-start.log
+      - name: Replay all migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db reset --local --no-seed --debug \
+            2>&1 | tee operational-observability-db-reset.log
+      - name: Verify direct database authorization and semantics
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/operational-observability.runtime.sql \
+            2>&1 | tee operational-observability-runtime.log
+      - name: Generate Supabase types from replayed schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local --schema public \
+            > generated-operational-supabase-types.ts
+      - name: Commit exact generated types to this PR branch
+        if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/operational-observability-clean-replay-hardening'
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if cmp -s features/shared/types/types/supabase.ts generated-operational-supabase-types.ts; then
+            exit 0
+          fi
+          cp generated-operational-supabase-types.ts features/shared/types/types/supabase.ts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add features/shared/types/types/supabase.ts
+          git commit -m "Regenerate Supabase types for observability hardening"
+          git push origin "HEAD:${HEAD_REF}"
+      - name: Verify committed Supabase types
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff -u \
+            features/shared/types/types/supabase.ts \
+            generated-operational-supabase-types.ts
+      - name: Upload replay evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operational-observability-clean-replay
+          path: |
+            operational-observability-db-start.log
+            operational-observability-db-reset.log
+            operational-observability-runtime.log
+            generated-operational-supabase-types.ts
+          if-no-files-found: warn
+          retention-days: 3
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup
