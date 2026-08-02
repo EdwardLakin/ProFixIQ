@@ -10,7 +10,11 @@ import {
 
 export type OperationalView = {
   href: string;
-  label: "Shop Overview" | "Work Order Board" | "Attendance & Activity";
+  label:
+    | "Shop Overview"
+    | "Work Order Board"
+    | "Attendance & Activity"
+    | "Observability";
   roles: CanonicalRole[];
 };
 
@@ -48,6 +52,11 @@ export const OPERATIONAL_VIEWS: OperationalView[] = [
   {
     href: "/dashboard/workforce/attendance",
     label: "Attendance & Activity",
+    roles: ["owner", "admin", "manager"],
+  },
+  {
+    href: "/dashboard/operations/observability",
+    label: "Observability",
     roles: ["owner", "admin", "manager"],
   },
 ];
