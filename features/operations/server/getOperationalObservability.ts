@@ -78,6 +78,7 @@ export type OperationalObservability = {
     status: OperationalPipelineStatus;
     lastEventAt: string | null;
     eventsLast24h: number;
+    eventsPrevious24h: number;
     eventsLast7d: number;
     recentBusinessWrites: number;
     unresolvedFailures: number;
@@ -207,6 +208,7 @@ export async function getOperationalObservability(
   const now = input.now ?? new Date();
   const generatedAt = now.toISOString();
   const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const since48h = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
   const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const eventLimit = limitValue(input.limit);
 
@@ -227,6 +229,7 @@ export async function getOperationalObservability(
   const [
     eventsResult,
     events24Result,
+    eventsPrevious24Result,
     events7dResult,
     latestResult,
     failuresResult,
@@ -241,6 +244,12 @@ export async function getOperationalObservability(
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .gte("occurred_at", since24h),
+    input.supabase
+      .from("operational_events")
+      .select("id", { count: "exact", head: true })
+      .eq("shop_id", input.shopId)
+      .gte("occurred_at", since48h)
+      .lt("occurred_at", since24h),
     input.supabase
       .from("operational_events")
       .select("id", { count: "exact", head: true })
@@ -291,6 +300,7 @@ export async function getOperationalObservability(
         status: "not_installed",
         lastEventAt: null,
         eventsLast24h: 0,
+        eventsPrevious24h: 0,
         eventsLast7d: 0,
         recentBusinessWrites: safeCount(workOrdersResult.count) + safeCount(workOrderLinesResult.count),
         unresolvedFailures: 0,
@@ -310,6 +320,7 @@ export async function getOperationalObservability(
   const firstError = [
     eventsResult.error,
     events24Result.error,
+    eventsPrevious24Result.error,
     events7dResult.error,
     latestResult.error,
     failuresResult.error,
@@ -353,6 +364,7 @@ export async function getOperationalObservability(
       }),
       lastEventAt,
       eventsLast24h: safeCount(events24Result.count),
+      eventsPrevious24h: safeCount(eventsPrevious24Result.count),
       eventsLast7d: safeCount(events7dResult.count),
       recentBusinessWrites,
       unresolvedFailures,
