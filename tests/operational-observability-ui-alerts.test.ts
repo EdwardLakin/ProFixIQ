@@ -30,7 +30,8 @@ describe("operational observability UI and alerting", () => {
     expect(navigation).toContain('roles: ["owner", "admin", "manager"]');
     expect(page).toContain('requiredCapability: "canManageWorkOrders"');
     expect(page).toContain('allowRoles: ["owner", "admin", "manager"]');
-    expect(page).toContain("<OperationalObservabilityWorkspace />");
+    expect(page).toContain("<OperationalObservabilityWorkspace");
+    expect(page).toContain("initialFilters={{");
   });
 
   it("provides searchable workflow and failure timelines", () => {
