@@ -6,6 +6,7 @@ const SHARED_CHECKOUT =
 const STAFF_CHECKOUT = "app/api/stripe/payments/checkout/route.ts";
 const PORTAL_CHECKOUT = "app/api/portal/payments/checkout/route.ts";
 const CONNECT_ONBOARDING = "app/api/stripe/connect/onboard/route.ts";
+const CONNECT_WEBHOOK = "app/api/stripe/connect/webhook/route.ts";
 
 describe("Stripe Connect direct-charge architecture", () => {
   it("creates invoice Checkout Sessions in the connected shop account", async () => {
@@ -36,5 +37,15 @@ describe("Stripe Connect direct-charge architecture", () => {
     expect(source).toContain('stripe_dashboard: { type: "full" }');
     expect(source).toContain('stripe_connect_charge_model: "direct"');
     expect(source).not.toContain('type: "express"');
+  });
+
+  it("verifies connected-account events with a separate signing secret", async () => {
+    const source = await readFile(CONNECT_WEBHOOK, "utf8");
+
+    expect(source).toContain('mustEnv("STRIPE_CONNECT_WEBHOOK_SECRET")');
+    expect(source).toContain("constructEvent(");
+    expect(source).toContain("connectedAccountId.startsWith(\"acct_\")");
+    expect(source).toContain("handleStripeWebhook(delegatedRequest)");
+    expect(source).not.toContain("process.env.STRIPE_WEBHOOK_SECRET =");
   });
 });
