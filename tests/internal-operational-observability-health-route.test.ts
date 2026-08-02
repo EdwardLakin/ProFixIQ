@@ -26,13 +26,16 @@ function createShopQuery(input?: {
   error?: { message: string } | null;
 }) {
   const query = {
-    select: vi.fn(() => query),
-    order: vi.fn(() => query),
-    limit: vi.fn().mockResolvedValue({
-      data: input?.data ?? [{ id: "shop_1" }],
-      error: input?.error ?? null,
-    }),
+    select: vi.fn(),
+    order: vi.fn(),
+    limit: vi.fn(),
   };
+  query.select.mockReturnValue(query);
+  query.order.mockReturnValue(query);
+  query.limit.mockResolvedValue({
+    data: input?.data ?? [{ id: "shop_1" }],
+    error: input?.error ?? null,
+  });
   return query;
 }
 
