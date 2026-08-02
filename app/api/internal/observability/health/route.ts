@@ -12,6 +12,12 @@ export const dynamic = "force-dynamic";
 const MAX_SHOPS_PER_RUN = 500;
 const CONCURRENCY = 5;
 
+type ProjectionWarning = {
+  code: "projection_unavailable" | "projection_failed";
+  databaseCode: string | null;
+  message: string;
+};
+
 function parseBearerSecret(request: Request): string | null {
   const authorization = request.headers.get("authorization")?.trim();
   if (!authorization) return null;
@@ -48,6 +54,18 @@ function projectionUnavailable(error: unknown): boolean {
   );
 }
 
+function toProjectionWarning(error: unknown): ProjectionWarning {
+  const candidate = error as { code?: string } | null;
+  const unavailable = projectionUnavailable(error);
+  return {
+    code: unavailable ? "projection_unavailable" : "projection_failed",
+    databaseCode: candidate?.code ? String(candidate.code) : null,
+    message: unavailable
+      ? "Observability health projection is not installed; using per-shop fallback."
+      : "Observability health projection failed; using per-shop fallback.",
+  };
+}
+
 async function loadHealthInputs() {
   const supabase = createAdminSupabase();
   const now = new Date();
@@ -72,15 +90,15 @@ async function loadHealthInputs() {
         MAX_SHOPS_PER_RUN,
       ),
       projectionUsed: true,
+      projectionWarning: null,
     };
   }
 
-  if (!projectionUnavailable(projectionResult.error)) {
-    const message =
-      (projectionResult.error as { message?: string } | null)?.message ??
-      "Failed to load observability health projection";
-    throw new Error(message);
-  }
+  const projectionWarning = toProjectionWarning(projectionResult.error);
+  console.warn("[operational-observability] health projection fallback", {
+    code: projectionWarning.code,
+    databaseCode: projectionWarning.databaseCode,
+  });
 
   const { data: shops, error } = await supabase
     .from("shops")
@@ -109,6 +127,7 @@ async function loadHealthInputs() {
       ai_cron_probably_running: null,
     })) satisfies OperationalHealthProjection[],
     projectionUsed: false,
+    projectionWarning,
   };
 }
 
@@ -171,8 +190,10 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: warnings.length === 0,
+    degraded: healthInputs.projectionWarning !== null || warnings.length > 0,
     checkedShops: healthInputs.rows.length,
     projectionUsed: healthInputs.projectionUsed,
+    projectionWarning: healthInputs.projectionWarning,
     alerts: {
       pipelineStalled: summaries.filter((item) => item.pipelineStalled).length,
       activeFailures: summaries.reduce(
