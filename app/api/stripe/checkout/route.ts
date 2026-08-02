@@ -12,6 +12,7 @@ import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { PlanKey } from "@/features/stripe/lib/stripe/constants";
 import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { resolveStripePlanPriceId } from "@/features/stripe/lib/server/stripe-price-contract";
 import {
   attachStripeAcquisitionCheckout,
   beginStripeAcquisitionIntent,
@@ -25,10 +26,6 @@ type CheckoutCreateParams = Stripe.Checkout.SessionCreateParams & {
 };
 
 const REQUEST_MAX_BYTES = 8 * 1024;
-const PLAN_PRICE_ENV_BY_KEY: Record<PlanKey, readonly string[]> = {
-  starter: ["STRIPE_PRICE_BASE_MONTHLY", "STRIPE_PRICE_STARTER_MONTHLY"],
-  unlimited: ["STRIPE_PRICE_UNLIMITED_MONTHLY"],
-};
 
 const checkoutSchema = z
   .object({
@@ -86,17 +83,6 @@ function getBaseUrl(): string {
 
 function getShopDisplayName(shop: ShopScope): string {
   return String(shop.shop_name ?? shop.name ?? "").trim() || "ProFixIQ Shop";
-}
-
-function resolveConfiguredPriceId(planKey: PlanKey): string {
-  const envNames = PLAN_PRICE_ENV_BY_KEY[planKey];
-  for (const envName of envNames) {
-    const priceId = String(process.env[envName] ?? "").trim();
-    if (!priceId) continue;
-    if (!/^price_[A-Za-z0-9]+$/.test(priceId)) throw new Error(`invalid ${envName}`);
-    return priceId;
-  }
-  throw new Error(`missing ${envNames.join(" or ")}`);
 }
 
 function configuredTrialDays(): number {
@@ -223,7 +209,7 @@ export async function POST(req: Request) {
     }
 
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
-    const priceId = resolveConfiguredPriceId(parsed.data.planKey);
+    const priceId = await resolveStripePlanPriceId(stripe, parsed.data.planKey);
     const baseUrl = getBaseUrl();
     const trialDays = configuredTrialDays();
     const attemptId = parsed.data.checkoutAttemptId ?? randomUUID();
