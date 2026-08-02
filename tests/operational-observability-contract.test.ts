@@ -13,6 +13,10 @@ const punchIdentityMigration = readFileSync(
   "supabase/migrations/20260802154500_operational_observability_punch_identity.sql",
   "utf8",
 );
+const healthProjectionV2Migration = readFileSync(
+  "supabase/migrations/20260802160000_operational_observability_health_projection_v2.sql",
+  "utf8",
+);
 
 describe("canonical operational observability migrations", () => {
   it("creates an append-only tenant-scoped event contract", () => {
@@ -99,7 +103,7 @@ describe("canonical operational observability migrations", () => {
     );
   });
 
-  it("provides one service-role-only health projection for the hourly monitor", () => {
+  it("provides one service-role-only operational health projection", () => {
     expect(hardeningMigration).toContain(
       "create or replace function public.get_operational_observability_health",
     );
@@ -108,6 +112,29 @@ describe("canonical operational observability migrations", () => {
     expect(hardeningMigration).toContain("unresolved_failure_count");
     expect(hardeningMigration).toContain("grant execute on function public.get_operational_observability_health");
     expect(hardeningMigration).toContain("to service_role");
+  });
+
+  it("replaces the monitor projection with combined operational and AI health", () => {
+    expect(healthProjectionV2Migration).toContain(
+      "drop function if exists public.get_operational_observability_health",
+    );
+    expect(healthProjectionV2Migration).toContain(
+      "ai_active_recommendation_count bigint",
+    );
+    expect(healthProjectionV2Migration).toContain(
+      "ai_stale_recommendation_count bigint",
+    );
+    expect(healthProjectionV2Migration).toContain(
+      "ai_pending_approval_count bigint",
+    );
+    expect(healthProjectionV2Migration).toContain(
+      "ai_cron_probably_running boolean",
+    );
+    expect(healthProjectionV2Migration).toContain("security invoker");
+    expect(healthProjectionV2Migration).toContain("to service_role");
+    expect(healthProjectionV2Migration).toContain(
+      "from public.ai_action_events e",
+    );
   });
 
   it("captures punches from either profile identity or auth identity without mutating them", () => {
