@@ -32,6 +32,10 @@ export type OperationalPipelineStatus =
 
 type OperationalServerClient = SupabaseClient<Database>;
 
+function fromTable(client: OperationalServerClient, table: string) {
+  return client.from(table as never);
+}
+
 type OperationalEventRow = {
   id: string;
   shop_id: string;
@@ -211,8 +215,7 @@ export async function getOperationalObservability(
   const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const eventLimit = limitValue(input.limit);
 
-  let eventsQuery = input.supabase
-    .from("operational_events")
+  let eventsQuery = fromTable(input.supabase, "operational_events")
     .select(
       "id, shop_id, event_type, occurred_at, actor_user_id, actor_role, entity_type, entity_id, parent_entity_type, parent_entity_id, correlation_id, source, severity, metadata",
     )
@@ -238,54 +241,45 @@ export async function getOperationalObservability(
     workOrderLinesResult,
   ] = await Promise.all([
     eventsQuery,
-    input.supabase
-      .from("operational_events")
+    fromTable(input.supabase, "operational_events")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .gte("occurred_at", since24h),
-    input.supabase
-      .from("operational_events")
+    fromTable(input.supabase, "operational_events")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .gte("occurred_at", since48h)
       .lt("occurred_at", since24h),
-    input.supabase
-      .from("operational_events")
+    fromTable(input.supabase, "operational_events")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .gte("occurred_at", since7d),
-    input.supabase
-      .from("operational_events")
+    fromTable(input.supabase, "operational_events")
       .select("occurred_at")
       .eq("shop_id", input.shopId)
       .order("occurred_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    input.supabase
-      .from("operational_event_failures")
+    fromTable(input.supabase, "operational_event_failures")
       .select(
         "id, shop_id, event_type, entity_type, entity_id, source_table, sqlstate, error_message, context, attempt_count, first_seen_at, last_seen_at, resolved_at",
       )
       .eq("shop_id", input.shopId)
       .order("last_seen_at", { ascending: false })
       .limit(40),
-    input.supabase
-      .from("operational_event_failures")
+    fromTable(input.supabase, "operational_event_failures")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .is("resolved_at", null),
-    input.supabase
-      .from("operational_event_failures")
+    fromTable(input.supabase, "operational_event_failures")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .gte("last_seen_at", since24h),
-    input.supabase
-      .from("work_orders")
+    fromTable(input.supabase, "work_orders")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .gte("updated_at", since24h),
-    input.supabase
-      .from("work_order_lines")
+    fromTable(input.supabase, "work_order_lines")
       .select("id", { count: "exact", head: true })
       .eq("shop_id", input.shopId)
       .gte("updated_at", since24h),
