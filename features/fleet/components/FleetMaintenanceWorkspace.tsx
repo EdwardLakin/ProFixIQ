@@ -207,6 +207,9 @@ export default function FleetMaintenanceWorkspace({
             <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
               One queue for due work, deferrals, service requests, and PM programs.
             </p>
+            <p className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
+              {uiContext.actorLabel}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {data && data.fleets.length > 1 ? (
