@@ -74,6 +74,24 @@ describe("authentication and portal hardening", () => {
     expect(middleware).toContain("canUseMobile");
   });
 
+  it("activates fleet invites without a consumable email magic link", () => {
+    const inviteRoute = read("app/api/portal/fleet/invites/route.ts");
+    const acceptRoute = read("app/api/portal/fleet/invites/accept/route.ts");
+    const activationPage = read("app/portal/auth/fleet-invite/page.tsx");
+
+    expect(inviteRoute).toContain("portalLink,");
+    expect(inviteRoute).not.toContain("properties?.action_link");
+    expect(acceptRoute).toContain("password?: string");
+    expect(acceptRoute).toContain("enforceAuthRateLimit");
+    expect(acceptRoute).toContain("updateUserById");
+    expect(acceptRoute).toContain("email_confirm: true");
+    expect(acceptRoute).toContain("accept_fleet_portal_invite_atomic");
+    expect(activationPage).toContain("signInWithPassword");
+    expect(activationPage).not.toContain(
+      "Open the one-time invitation email on this device",
+    );
+  });
+
   it("keeps mobile as a separate premium surface with shared server validation", () => {
     const mobile = read("app/mobile/sign-in/page.tsx");
     const main = read("features/auth/components/SignIn.tsx");
