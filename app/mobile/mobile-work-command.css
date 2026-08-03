@@ -1,0 +1,306 @@
+/* Work-order detail and focused-job presentation refinements. */
+
+/* Remove implementation IDs from the normal mobile interface. */
+.mobile-work-order-command-detail
+  > .relative
+  > .flex.items-center.justify-between.gap-2
+  > span {
+  display: none;
+}
+
+.mobile-work-order-command-detail
+  > .relative
+  > .flex.items-center.justify-between.gap-2 {
+  min-height: 2.75rem;
+}
+
+.mobile-work-order-command-detail
+  > .relative
+  > .flex.items-center.justify-between.gap-2
+  button,
+.mobile-work-order-command-detail
+  > .relative
+  > .flex.items-center.justify-between.gap-2
+  a {
+  min-height: 2.65rem;
+  border-radius: 0.85rem !important;
+}
+
+/* The first real record panel becomes the compact identity surface. */
+.mobile-work-order-command-detail
+  > .relative
+  > .space-y-5
+  > .metal-panel:first-child {
+  overflow: hidden;
+  border-color: rgba(61, 113, 255, 0.45) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(25, 183, 255, 0.2), transparent 14rem),
+    linear-gradient(145deg, #0a1c40, #07142d) !important;
+  color: #fff !important;
+  box-shadow: 0 22px 54px rgba(3, 13, 32, 0.24) !important;
+}
+
+.mobile-work-order-command-detail
+  > .relative
+  > .space-y-5
+  > .metal-panel:first-child
+  :is(h1, p) {
+  color: inherit !important;
+}
+
+.mobile-work-order-command-detail
+  > .relative
+  > .space-y-5
+  > .metal-panel:first-child
+  p {
+  color: rgba(224, 235, 252, 0.74) !important;
+}
+
+.mobile-work-order-command-detail
+  > .relative
+  > .space-y-5
+  > .metal-panel:first-child
+  .overflow-x-auto
+  button {
+  border-color: rgba(160, 195, 247, 0.24) !important;
+  background: rgba(255, 255, 255, 0.075) !important;
+  color: #f8fbff !important;
+}
+
+/* Vehicle and customer information reads as two concise identity rows. */
+.mobile-work-order-command-detail section:has(> div > h2) {
+  padding: 0.9rem !important;
+}
+
+.mobile-work-order-command-detail section:has(> div > h2) > .mt-3.grid {
+  gap: 0.55rem !important;
+}
+
+.mobile-work-order-command-detail section:has(> div > h2) > .mt-3.grid > .metal-card {
+  min-height: 5.25rem;
+  border-radius: 0.9rem !important;
+  padding: 0.85rem !important;
+}
+
+.mobile-work-order-command-detail section:has(> div > h2) > .mt-3.grid > .metal-card h3 {
+  margin-bottom: 0.25rem !important;
+  font-size: 0.62rem !important;
+}
+
+.mobile-work-order-command-detail section:has(> div > h2) > .mt-3.grid > .metal-card p {
+  line-height: 1.45;
+}
+
+/* Job cards become operational rows instead of cards inside cards. */
+.mobile-work-order-command-detail [role="button"][aria-label^="Open job"] {
+  display: block;
+}
+
+.mobile-work-order-command-detail [role="button"][aria-label^="Open job"] > div {
+  border-radius: 1rem !important;
+  box-shadow: 0 12px 34px rgba(3, 13, 32, 0.1) !important;
+}
+
+.mobile-work-order-command-detail
+  [role="button"][aria-label^="Open job"]
+  :is(.rounded-xl.border, .rounded-2xl.border) {
+  box-shadow: none !important;
+}
+
+.mobile-work-order-command-detail
+  [role="button"][aria-label^="Open job"]
+  .grid.grid-cols-1,
+.mobile-work-order-command-detail
+  [role="button"][aria-label^="Open job"]
+  .grid.grid-cols-2,
+.mobile-work-order-command-detail
+  [role="button"][aria-label^="Open job"]
+  .grid.grid-cols-3 {
+  gap: 0.5rem !important;
+}
+
+.mobile-work-order-command-detail
+  [role="button"][aria-label^="Open job"]
+  .rounded-xl.border.px-3.py-3 {
+  min-height: 3.65rem;
+  padding: 0.65rem 0.75rem !important;
+  background: var(--theme-surface-subtle) !important;
+}
+
+.mobile-work-order-command-detail
+  [role="button"][aria-label^="Open job"]
+  button {
+  min-height: 2.75rem;
+  border-radius: 0.8rem !important;
+}
+
+/* Focused-job header owns the safe area and reads as app chrome. */
+.profixiq-mobile-command .app-shell > .metal-bar {
+  min-height: calc(4rem + env(safe-area-inset-top, 0px));
+}
+
+.profixiq-mobile-command .app-shell > .metal-bar > div.flex-1 {
+  font-size: 0.76rem !important;
+  line-height: 1.25;
+}
+
+.profixiq-mobile-command .app-shell > .metal-bar button {
+  min-height: 2.65rem;
+  border-color: rgba(160, 195, 247, 0.22) !important;
+  background: rgba(255, 255, 255, 0.075) !important;
+  color: #fff !important;
+}
+
+/* A healthy sync state becomes a quiet saved indicator. */
+.profixiq-mobile-command
+  .app-shell
+  > .metal-bar
+  + div
+  .mobile-tech-subpanel:has(.text-emerald-200) {
+  display: flex;
+  min-height: 2.2rem;
+  align-items: center;
+  justify-content: flex-end;
+  padding-block: 0.2rem !important;
+}
+
+.profixiq-mobile-command
+  .app-shell
+  > .metal-bar
+  + div
+  .mobile-tech-subpanel:has(.text-emerald-200)
+  > div:first-child
+  > span:first-child,
+.profixiq-mobile-command
+  .app-shell
+  > .metal-bar
+  + div
+  .mobile-tech-subpanel:has(.text-emerald-200)
+  > .mt-1 {
+  display: none;
+}
+
+.profixiq-mobile-command
+  .app-shell
+  > .metal-bar
+  + div
+  .mobile-tech-subpanel:has(.text-emerald-200)
+  > div:first-child {
+  justify-content: flex-end;
+}
+
+.profixiq-mobile-command
+  .app-shell
+  > .metal-bar
+  + div
+  .mobile-tech-subpanel:has(.text-emerald-200)
+  .text-emerald-200::before {
+  content: "✓ ";
+}
+
+/* The dominant job-state panel is raised and its action group stays in reach. */
+.profixiq-mobile-command
+  .app-shell
+  main.mobile-tech-page
+  > div
+  > .mobile-tech-panel:first-of-type {
+  overflow: visible;
+  border-color: rgba(61, 113, 255, 0.4) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(23, 71, 255, 0.1), transparent 14rem),
+    var(--theme-surface-panel) !important;
+}
+
+.profixiq-mobile-command
+  .app-shell
+  main.mobile-tech-page
+  > div
+  > .mobile-tech-panel:first-of-type
+  > .flex.flex-col.gap-2 {
+  position: fixed;
+  z-index: 55;
+  right: 0.75rem;
+  bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  left: 0.75rem;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem !important;
+  max-width: 50rem;
+  margin-inline: auto;
+  padding: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border-strong) 72%, transparent);
+  border-radius: 1.1rem;
+  background: color-mix(in srgb, var(--theme-surface-panel) 94%, transparent);
+  box-shadow: 0 22px 58px rgba(3, 13, 32, 0.26);
+  backdrop-filter: blur(22px);
+}
+
+.profixiq-mobile-command
+  .app-shell
+  main.mobile-tech-page
+  > div
+  > .mobile-tech-panel:first-of-type
+  > .flex.flex-col.gap-2
+  > button:first-child:last-child {
+  grid-column: 1 / -1;
+}
+
+.profixiq-mobile-command
+  .app-shell
+  main.mobile-tech-page
+  > div
+  > .mobile-tech-panel:first-of-type
+  > .flex.flex-col.gap-2
+  button {
+  min-height: 3.2rem;
+  text-align: center !important;
+}
+
+.profixiq-mobile-command .app-shell main.mobile-tech-page {
+  padding-bottom: calc(7.6rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* Secondary operational actions read as a compact tool grid. */
+.profixiq-mobile-command
+  .app-shell
+  main.mobile-tech-page
+  .mobile-tech-panel
+  > .grid.gap-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profixiq-mobile-command
+  .app-shell
+  main.mobile-tech-page
+  .mobile-tech-panel
+  > .grid.gap-2
+  button {
+  min-height: 3.1rem;
+  text-align: center !important;
+}
+
+/* Completed jobs use a restrained state rather than a large broken-looking button. */
+.profixiq-mobile-command
+  .app-shell
+  main.mobile-tech-page
+  > div
+  > .mobile-tech-panel:first-of-type
+  button.mobile-tech-btn-primary:disabled {
+  border-color: color-mix(in srgb, var(--theme-border-strong) 70%, transparent) !important;
+  background: var(--theme-surface-subtle) !important;
+  color: var(--theme-text-secondary) !important;
+  box-shadow: none !important;
+  opacity: 0.76 !important;
+}
+
+@media (min-width: 700px) {
+  .profixiq-mobile-command
+    .app-shell
+    main.mobile-tech-page
+    > div
+    > .mobile-tech-panel:first-of-type
+    > .flex.flex-col.gap-2 {
+    right: max(1rem, calc((100vw - 50rem) / 2));
+    left: max(1rem, calc((100vw - 50rem) / 2));
+  }
+}
