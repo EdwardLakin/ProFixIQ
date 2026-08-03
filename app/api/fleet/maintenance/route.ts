@@ -4,6 +4,8 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import {
+  canManageFleetForActor,
+  manageableFleetIdsForActor,
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
@@ -33,13 +35,17 @@ function numeric(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function canManage(actor: Awaited<ReturnType<typeof resolveFleetActorContext>>) {
-  return (
-    actor.isInternal ||
-    ["owner", "admin", "manager", "fleet_manager", "dispatcher"].includes(
-      actor.membershipRole ?? "",
-    )
-  );
+function canManage(
+  actor: Awaited<ReturnType<typeof resolveFleetActorContext>>,
+  fleetId?: string,
+  visibleFleetIds?: string[],
+) {
+  if (actor.isInternal) return true;
+  if (fleetId) return canManageFleetForActor(actor, fleetId);
+  if (visibleFleetIds?.length) {
+    return visibleFleetIds.every((id) => canManageFleetForActor(actor, id));
+  }
+  return manageableFleetIdsForActor(actor).length > 0;
 }
 
 function inActorScope(
@@ -73,7 +79,7 @@ async function listWorkspace(
   const fleetIds = fleetRows.map((row) => String(row.id));
   if (!fleetIds.length) {
     return {
-      canManage: canManage(actor),
+      canManage: canManage(actor, explicitFleetId ?? undefined, fleetIds),
       fleets: [],
       summary: { overdue: 0, due: 0, deferred: 0, converted: 0, clearUnits: 0 },
       items: [],
@@ -217,7 +223,7 @@ async function listWorkspace(
   const activeUnitIds = new Set(enrollments.map((row) => String(row.vehicle_id)));
   const unitsWithDue = new Set(items.map((item) => item.vehicleId));
   return {
-    canManage: canManage(actor),
+    canManage: canManage(actor, explicitFleetId ?? undefined, fleetIds),
     fleets: fleetRows.map((row) => ({
       id: String(row.id),
       name: clean(row.name) ?? "Fleet",
@@ -263,26 +269,58 @@ export async function POST(request: Request) {
     if (action === "list") {
       return NextResponse.json(await listWorkspace(actor, body.fleetId));
     }
-    if (!canManage(actor)) {
-      return NextResponse.json(
-        { error: "Fleet management access required" },
-        { status: 403 },
-      );
-    }
-
     const admin = createAdminSupabase();
 
     if (action === "evaluate") {
-      const fleetId = clean(body.fleetId);
-      if (!fleetId || (!actor.isInternal && !actor.fleetIds.includes(fleetId))) {
-        return NextResponse.json({ error: "Invalid fleet" }, { status: 400 });
+      const requestedFleetId = clean(body.fleetId);
+      let targetFleetIds: string[];
+      if (requestedFleetId) {
+        if (!canManage(actor, requestedFleetId)) {
+          return NextResponse.json(
+            { error: "Fleet management access required" },
+            { status: 403 },
+          );
+        }
+        const { data: fleet, error: fleetError } = await admin
+          .from("fleets")
+          .select("id")
+          .eq("id", requestedFleetId)
+          .eq("shop_id", actor.shopId)
+          .maybeSingle();
+        if (fleetError) throw new Error(fleetError.message);
+        if (!fleet) {
+          return NextResponse.json({ error: "Invalid fleet" }, { status: 400 });
+        }
+        targetFleetIds = [requestedFleetId];
+      } else if (actor.isInternal) {
+        const { data: fleets, error: fleetError } = await admin
+          .from("fleets")
+          .select("id")
+          .eq("shop_id", actor.shopId);
+        if (fleetError) throw new Error(fleetError.message);
+        targetFleetIds = (fleets ?? []).map((fleet) => fleet.id);
+      } else {
+        targetFleetIds = manageableFleetIdsForActor(actor);
       }
-      const { data, error } = await supabase.rpc("evaluate_fleet_pm_due_events", {
-        p_fleet_id: fleetId,
-        p_vehicle_id: clean(body.vehicleId) ?? undefined,
-      });
-      if (error) throw new Error(error.message);
-      return NextResponse.json({ ok: true, evaluated: data ?? [] });
+
+      if (!targetFleetIds.length) {
+        return NextResponse.json(
+          { error: "Fleet management access required" },
+          { status: 403 },
+        );
+      }
+
+      const evaluations = await Promise.all(
+        targetFleetIds.map(async (fleetId) => {
+          const { data, error } = await supabase.rpc("evaluate_fleet_pm_due_events", {
+            p_fleet_id: fleetId,
+            p_vehicle_id: clean(body.vehicleId) ?? undefined,
+          });
+          if (error) throw new Error(error.message);
+          return { fleetId, evaluated: data ?? [] };
+        }),
+      );
+      return NextResponse.json({ ok: true, evaluations });
     }
 
     const dueEventId = clean(body.dueEventId);
@@ -299,6 +337,12 @@ export async function POST(request: Request) {
     if (dueError) throw new Error(dueError.message);
     if (!dueRow || !inActorScope(actor, dueRow as unknown as Row)) {
       return NextResponse.json({ error: "PM item not found" }, { status: 404 });
+    }
+    if (!canManage(actor, String(dueRow.fleet_id))) {
+      return NextResponse.json(
+        { error: "Fleet management access required" },
+        { status: 403 },
+      );
     }
 
     if (action === "defer") {
@@ -323,7 +367,7 @@ export async function POST(request: Request) {
         !Array.isArray(dueRow.due_snapshot)
           ? (dueRow.due_snapshot as Record<string, unknown>)
           : {};
-      const { error } = await admin
+      const { data: deferred, error } = await admin
         .from("fleet_pm_due_events")
         .update({
           status: "deferred",
@@ -339,17 +383,42 @@ export async function POST(request: Request) {
           },
           updated_at: new Date().toISOString(),
         })
-        .eq("id", dueEventId);
+        .eq("id", dueEventId)
+        .in("status", ["pending", "deferred"])
+        .is("service_request_id", null)
+        .select("id")
+        .maybeSingle();
       if (error) throw new Error(error.message);
+      if (!deferred) {
+        return NextResponse.json(
+          { error: "This PM item can no longer be deferred" },
+          { status: 409 },
+        );
+      }
       return NextResponse.json({ ok: true });
     }
 
     if (dueRow.service_request_id) {
+      const { error: repairError } = await admin
+        .from("fleet_service_requests")
+        .update({
+          source_pm_due_event_id: dueEventId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", dueRow.service_request_id)
+        .eq("shop_id", dueRow.shop_id);
+      if (repairError) throw new Error(repairError.message);
       return NextResponse.json({
         ok: true,
         serviceRequestId: dueRow.service_request_id,
         idempotent: true,
       });
+    }
+    if (!["pending", "deferred"].includes(String(dueRow.status))) {
+      return NextResponse.json(
+        { error: "This PM item can no longer create a request" },
+        { status: 409 },
+      );
     }
 
     const dueReasons = Array.isArray(dueRow.due_reasons)
@@ -397,22 +466,45 @@ export async function POST(request: Request) {
     if (createError) throw new Error(createError.message);
     const requestId = String(serviceRequestId);
     const now = new Date().toISOString();
-    const [dueUpdate, requestUpdate] = await Promise.all([
-      admin
-        .from("fleet_pm_due_events")
-        .update({
-          status: "converted",
-          service_request_id: requestId,
-          updated_at: now,
-        })
-        .eq("id", dueEventId),
-      admin
-        .from("fleet_service_requests")
-        .update({ source_pm_due_event_id: dueEventId, updated_at: now })
-        .eq("id", requestId),
-    ]);
-    if (dueUpdate.error) throw new Error(dueUpdate.error.message);
+    const requestUpdate = await admin
+      .from("fleet_service_requests")
+      .update({ source_pm_due_event_id: dueEventId, updated_at: now })
+      .eq("id", requestId)
+      .eq("shop_id", dueRow.shop_id);
     if (requestUpdate.error) throw new Error(requestUpdate.error.message);
+
+    const { data: converted, error: dueUpdateError } = await admin
+      .from("fleet_pm_due_events")
+      .update({
+        status: "converted",
+        service_request_id: requestId,
+        updated_at: now,
+      })
+      .eq("id", dueEventId)
+      .in("status", ["pending", "deferred"])
+      .is("service_request_id", null)
+      .select("id")
+      .maybeSingle();
+    if (dueUpdateError) throw new Error(dueUpdateError.message);
+    if (!converted) {
+      const { data: current, error: currentError } = await admin
+        .from("fleet_pm_due_events")
+        .select("service_request_id")
+        .eq("id", dueEventId)
+        .maybeSingle();
+      if (currentError) throw new Error(currentError.message);
+      if (current?.service_request_id === requestId) {
+        return NextResponse.json({
+          ok: true,
+          serviceRequestId: requestId,
+          idempotent: true,
+        });
+      }
+      return NextResponse.json(
+        { error: "PM item changed while the request was being created; retry safely" },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({ ok: true, serviceRequestId: requestId });
   } catch (error) {
