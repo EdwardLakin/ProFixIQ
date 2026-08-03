@@ -85,6 +85,10 @@ describe("fleet pre-trip, defects, and compliance", () => {
       path: "/api/internal/fleet/pretrip-compliance",
       schedule: "11 * * * *",
     });
+    const cronRoute = read("app/api/internal/fleet/pretrip-compliance/route.ts");
+    expect(cronRoute).toContain("process.env.CRON_SECRET");
+    expect(cronRoute).toContain("`Bearer ${cronSecret}`");
+    expect(cronRoute).toContain('envSecretName: "INTERNAL_CRON_SECRET"');
     const middleware = read("middleware.ts");
     expect(middleware).toContain('pathname === "/portal/fleet/auth/sign-in"');
     expect(middleware).toContain("NextResponse.redirect(target, 308)");
