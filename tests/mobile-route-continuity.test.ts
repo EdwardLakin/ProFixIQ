@@ -134,11 +134,14 @@ describe("mobile route continuity", () => {
     expect(isOutsideDesktopAppShell("/mobile/jobs/line-id")).toBe(true);
   });
 
-  it("uses canonical fleet tenant and read scope for mobile service requests", () => {
+  it("uses the canonical fleet actor scope for mobile service requests", () => {
     const route = read("app/api/fleet/service-requests/route.ts");
-    expect(route).toContain("resolveFleetTenantContext");
-    expect(route).toContain("resolveFleetReadScope");
-    expect(route).toContain("fleetScope.allowedVehicleIds");
-    expect(route).toContain("actor.canManageFleetRequests");
+    expect(route).toContain("resolveFleetActorContext");
+    expect(route).toContain("resolveFleetActorScope");
+    expect(route).toContain("scope.fleetIds");
+    expect(route).toContain('.eq("shop_id", scope.shopId)');
+    expect(route).toContain(
+      'actor.isInternal || actor.actorType === "fleet_manager"',
+    );
   });
 });
