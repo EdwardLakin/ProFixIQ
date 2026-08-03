@@ -36,6 +36,18 @@ export type FleetPmItem = {
   anchorDate: string | null;
 };
 
+export type FleetUnitDefect = {
+  id: string;
+  label: string;
+  severity: string;
+  state: string;
+  description: string | null;
+  reportedAt: string;
+  deferredUntil: string | null;
+  serviceRequestId: string | null;
+  workOrderId: string | null;
+};
+
 export type FleetUnitRequest = {
   id: string;
   title: string;
@@ -124,6 +136,7 @@ export type FleetUnitWorkspacePayload = {
     openRequests: number;
     openApprovals: number;
     activePmDue: number;
+    activeDefects: number;
     lifetimeWorkOrders: number;
     lifetimeSpend: number;
     outstandingBalance: number;
@@ -131,6 +144,7 @@ export type FleetUnitWorkspacePayload = {
   summary: FleetSummaryBullet[];
   maintenance: FleetPmItem[];
   requests: FleetUnitRequest[];
+  defects: FleetUnitDefect[];
   workOrders: FleetWorkOrderHistory[];
   readings: FleetUnitReading[];
   pretrips: FleetPretripSummary[];
