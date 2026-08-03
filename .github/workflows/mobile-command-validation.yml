@@ -59,16 +59,28 @@ jobs:
           tests/pwa-install-prompt-safe-area.test.ts
 
       - name: Mobile contract tests
-        run: >-
-          pnpm exec vitest run
-          tests/mobile-native-route-audit.test.ts
-          tests/mobile-route-continuity.test.ts
-          tests/mobile-technician-first-ux.test.ts
-          tests/mobile-technician-stabilization.test.ts
-          tests/mobile-role-dashboard-layout.test.ts
-          tests/mobile-remaining-role-dashboards.test.ts
-          tests/mobile-global-menu-and-shift-scope.test.ts
-          tests/pwa-install-prompt-safe-area.test.ts
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm exec vitest run \
+            tests/mobile-native-route-audit.test.ts \
+            tests/mobile-route-continuity.test.ts \
+            tests/mobile-technician-first-ux.test.ts \
+            tests/mobile-technician-stabilization.test.ts \
+            tests/mobile-role-dashboard-layout.test.ts \
+            tests/mobile-remaining-role-dashboards.test.ts \
+            tests/mobile-global-menu-and-shift-scope.test.ts \
+            tests/pwa-install-prompt-safe-area.test.ts \
+            --reporter=verbose 2>&1 | tee mobile-contract-tests.log
+
+      - name: Upload mobile contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-command-contract-tests
+          path: mobile-contract-tests.log
+          if-no-files-found: ignore
+          retention-days: 5
 
       - name: Full test suite
         run: pnpm exec vitest run
