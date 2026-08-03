@@ -1,14 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
   BriefcaseBusiness,
+  CheckCircle2,
+  ChevronRight,
   ClipboardCheck,
+  Clock3,
   Gauge,
   MessageCircle,
   Wrench,
 } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 import { fetchMobileShiftState } from "@/features/mobile/shifts/client";
@@ -16,7 +20,6 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
-
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"] & {
   active_segment_started_at?: string | null;
 };
@@ -64,6 +67,21 @@ function firstNameFrom(fullName: string): string {
   return fullName.trim().split(/\s+/)[0] || "Tech";
 }
 
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function todayLabel(): string {
+  return new Date().toLocaleDateString([], {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 function formatStatus(value: string): string {
   return value
     .replaceAll("_", " ")
@@ -79,7 +97,7 @@ function vehicleLabel(vehicle: Vehicle | null): string | null {
     .replace(/\s+/g, " ")
     .trim();
   const plate = String(vehicle.license_plate ?? "").trim();
-  if (base && plate) return `${base} • ${plate}`;
+  if (base && plate) return `${base} · ${plate}`;
   return base || plate || null;
 }
 
@@ -88,6 +106,11 @@ function efficiencyText(value: number | null): string {
   if (value > 250) return "250%+";
   if (value < 0) return "0%";
   return `${value.toFixed(0)}%`;
+}
+
+function focusedJobHref(job: MobileTechJob): string {
+  const separator = job.href.includes("?") ? "&" : "?";
+  return `${job.href}${separator}focus=${encodeURIComponent(job.id)}`;
 }
 
 export function MobileTechHome({
@@ -263,7 +286,10 @@ export function MobileTechHome({
         if (workOrderError || !workOrder) {
           if (workOrderError) {
             // eslint-disable-next-line no-console
-            console.error("[MobileTechHome] current work order load failed", workOrderError);
+            console.error(
+              "[MobileTechHome] current work order load failed",
+              workOrderError,
+            );
           }
           setCurrentJobWorkOrder(null);
           setCurrentJobVehicle(null);
@@ -303,7 +329,7 @@ export function MobileTechHome({
   const shiftCopy = useMemo(() => {
     const start = shiftStart
       ? new Date(shiftStart).toLocaleTimeString([], {
-          hour: "2-digit",
+          hour: "numeric",
           minute: "2-digit",
         })
       : null;
@@ -319,29 +345,51 @@ export function MobileTechHome({
       return { label: "At lunch", detail: start ? `Shift started ${start}` : null };
     }
     if (shiftStatus === "ended") {
-      return { label: "Shift ended", detail: "Open the menu to start another shift." };
+      return {
+        label: "Shift ended",
+        detail: "Open shift controls when you return.",
+      };
     }
-    return { label: "Off shift", detail: "Open the menu when you are ready to clock in." };
+    return {
+      label: "Off shift",
+      detail: "Clock in before starting assigned work.",
+    };
   }, [loadingShift, shiftStart, shiftStatus]);
 
   return (
-    <div className="mobile-tech-page mx-auto w-full max-w-3xl space-y-4 px-3 py-3 sm:px-4">
+    <div className="mobile-tech-page">
       <section className="mobile-tech-panel p-4 text-[color:var(--theme-text-primary)]">
-        <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-          Technician
+        <div className="text-[0.64rem] font-extrabold uppercase tracking-[0.18em] text-[#8ed4ff]">
+          {todayLabel()}
         </div>
-        <h1 className="mt-2 text-2xl font-semibold leading-tight">
-          Welcome back, {firstName}
+        <h1 className="mt-2 text-2xl font-extrabold leading-tight text-white">
+          {greeting()}, {firstName}
         </h1>
-        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-          Your jobs, inspections, and shop tools.
+        <p className="mt-1 text-sm text-slate-300">
+          Current work, assigned jobs and today&apos;s performance.
         </p>
-        <ShiftStatusChip
+
+        <ShiftCommand
           status={shiftStatus}
           label={shiftCopy.label}
           detail={shiftCopy.detail}
           loading={loadingShift}
         />
+
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <HeroMetric
+            label="Open"
+            value={loadingStats ? "…" : openJobs}
+          />
+          <HeroMetric
+            label="Assigned"
+            value={loadingStats ? "…" : assignedJobs}
+          />
+          <HeroMetric
+            label="Done today"
+            value={loadingStats ? "…" : jobsCompletedToday}
+          />
+        </div>
       </section>
 
       <CurrentJobCard
@@ -352,18 +400,64 @@ export function MobileTechHome({
         vehicle={currentJobVehicle}
       />
 
+      {jobs.length > 0 ? (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <div>
+              <h2 className="text-[0.66rem] font-extrabold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+                Up next
+              </h2>
+              <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                Assigned work ready to continue.
+              </p>
+            </div>
+            <Link
+              href="/mobile/tech/queue"
+              className="text-xs font-bold text-[color:var(--accent-copper)]"
+            >
+              View all
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {jobs.slice(0, 4).map((job, index) => (
+              <Link
+                key={job.id}
+                href={focusedJobHref(job)}
+                className="mobile-tech-subpanel flex min-h-[4.5rem] items-center gap-3 border px-3 py-2.5 active:scale-[0.992]"
+              >
+                <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[color:var(--theme-surface-subtle)] text-sm font-extrabold text-[color:var(--accent-copper)]">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold text-[color:var(--theme-text-primary)]">
+                    {job.label}
+                  </span>
+                  <span className="mt-0.5 block text-[0.68rem] text-[color:var(--theme-text-secondary)]">
+                    {formatStatus(job.status)}
+                  </span>
+                </span>
+                <ChevronRight
+                  aria-hidden
+                  className="h-5 w-5 shrink-0 text-[color:var(--accent-copper)]"
+                />
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="space-y-2">
-        <h2 className="px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-          Work
+        <h2 className="px-1 text-[0.66rem] font-extrabold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+          Quick actions
         </h2>
         <div className="grid grid-cols-2 gap-2">
-          <QuickLinkCard
+          <ActionTile
             href="/mobile/tech/queue"
             title="My jobs"
             detail={loadingStats ? "Loading…" : `${openJobs} open`}
             icon={BriefcaseBusiness}
           />
-          <QuickLinkCard
+          <ActionTile
             href="/mobile/inspections"
             title="Inspections"
             detail="Start or continue"
@@ -372,88 +466,91 @@ export function MobileTechHome({
         </div>
       </section>
 
-      {jobs.length > 0 ? (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Today&apos;s jobs
+      <section className="mobile-command-panel overflow-hidden border">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <div>
+            <div className="text-[0.66rem] font-extrabold uppercase tracking-[0.17em] text-[color:var(--theme-text-muted)]">
+              Today
+            </div>
+            <h2 className="mt-1 text-base font-bold text-[color:var(--theme-text-primary)]">
+              Hours &amp; efficiency
             </h2>
-            <Link
-              href="/mobile/tech/queue"
-              className="text-xs font-medium text-[var(--accent-copper)]"
-            >
-              View all
-            </Link>
           </div>
-          <div className="space-y-2">
-            {jobs.slice(0, 4).map((job) => (
-              <Link
-                key={job.id}
-                href={job.href}
-                className="mobile-tech-subpanel flex min-h-14 items-center justify-between gap-3 px-3 py-2.5 active:scale-[0.99]"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                    {job.label}
-                  </div>
-                  <div className="mt-0.5 text-[0.68rem] text-[color:var(--theme-text-secondary)]">
-                    {formatStatus(job.status)}
-                  </div>
-                </div>
-                <span className="shrink-0 text-xs font-medium text-[var(--accent-copper)]">
-                  Open →
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="space-y-2">
-        <h2 className="px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-          Shop tools
-        </h2>
-        <div className="grid grid-cols-2 gap-2">
-          <QuickLinkCard
-            href="/mobile/messages"
-            title="Team chat"
-            detail="Messages from the shop"
-            icon={MessageCircle}
-          />
-          <QuickLinkCard
-            href="/mobile/tech/performance"
-            title="My performance"
-            detail="Hours and efficiency"
-            icon={Gauge}
+          <Gauge
+            aria-hidden
+            className="h-5 w-5 text-[color:var(--accent-copper)]"
           />
         </div>
-      </section>
-
-      <details className="mobile-tech-panel group overflow-hidden">
-        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-          <span>Hours &amp; efficiency</span>
-          <span className="text-xs text-[color:var(--theme-text-secondary)] group-open:rotate-180">
-            ▼
-          </span>
-        </summary>
-        <div className="space-y-3 border-t border-[color:var(--theme-border-soft)] px-4 py-4">
-          <PerformanceRow label="Today" stats={today} loading={loadingStats} />
-          <PerformanceRow label="This week" stats={week} loading={loadingStats} />
-          <div className="grid grid-cols-3 gap-2">
-            <Metric label="Open" value={loadingStats ? "…" : openJobs} />
-            <Metric label="Assigned" value={loadingStats ? "…" : assignedJobs} />
-            <Metric
-              label="Done today"
-              value={loadingStats ? "…" : jobsCompletedToday}
+        <div className="grid grid-cols-3 border-y border-[color:var(--theme-border-soft)]">
+          <PerformanceValue
+            label="Worked"
+            value={loadingStats ? "…" : `${today.workedHours.toFixed(1)}h`}
+          />
+          <PerformanceValue
+            label="Billed"
+            value={loadingStats ? "…" : `${today.billedHours.toFixed(1)}h`}
+            bordered
+          />
+          <PerformanceValue
+            label="Efficiency"
+            value={loadingStats ? "…" : efficiencyText(today.efficiencyPct)}
+          />
+        </div>
+        <details className="group">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            This week
+            <ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />
+          </summary>
+          <div className="grid grid-cols-3 border-t border-[color:var(--theme-border-soft)]">
+            <PerformanceValue
+              label="Worked"
+              value={loadingStats ? "…" : `${week.workedHours.toFixed(1)}h`}
+            />
+            <PerformanceValue
+              label="Billed"
+              value={loadingStats ? "…" : `${week.billedHours.toFixed(1)}h`}
+              bordered
+            />
+            <PerformanceValue
+              label="Efficiency"
+              value={loadingStats ? "…" : efficiencyText(week.efficiencyPct)}
             />
           </div>
-        </div>
-      </details>
+        </details>
+        <Link
+          href="/mobile/tech/performance"
+          className="flex min-h-12 items-center justify-between border-t border-[color:var(--theme-border-soft)] px-4 text-sm font-bold text-[color:var(--accent-copper)]"
+        >
+          Open performance
+          <ArrowRight aria-hidden className="h-4 w-4" />
+        </Link>
+      </section>
+
+      <Link
+        href="/mobile/messages"
+        className="mobile-command-row flex min-h-[4.5rem] items-center gap-3 border px-4"
+      >
+        <span className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[color:var(--theme-surface-subtle)] text-[color:var(--accent-copper)]">
+          <MessageCircle aria-hidden className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-[color:var(--theme-text-primary)]">
+            Team chat
+          </span>
+          <span className="mt-0.5 block text-xs text-[color:var(--theme-text-secondary)]">
+            Messages and updates from the shop.
+          </span>
+        </span>
+        <ChevronRight
+          aria-hidden
+          className="h-5 w-5 shrink-0 text-[color:var(--accent-copper)]"
+        />
+      </Link>
     </div>
   );
 }
 
-function ShiftStatusChip({
+function ShiftCommand({
   status,
   label,
   detail,
@@ -464,34 +561,38 @@ function ShiftStatusChip({
   detail: string | null;
   loading: boolean;
 }) {
-  const tone = loading
-    ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
-    : status === "active"
-      ? "border-emerald-400/45 bg-emerald-500/10"
-      : status === "break" || status === "lunch"
-        ? "border-amber-400/45 bg-amber-500/10"
-        : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]";
+  const active = status === "active";
+  const paused = status === "break" || status === "lunch";
 
   return (
-    <div className={`mt-4 flex items-center justify-between gap-3 rounded-2xl border px-3 py-2.5 ${tone}`}>
-      <div>
-        <div className="text-sm font-semibold">{label}</div>
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event("profixiq:mobile-menu-open"))}
+      className="mt-4 flex min-h-[4.35rem] w-full items-center gap-3 rounded-2xl border border-white/15 bg-white/[0.075] px-3 text-left active:scale-[0.992]"
+    >
+      <span className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.09] text-[#8ed4ff]">
+        <Clock3 aria-hidden className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-extrabold text-white">{label}</span>
         {detail ? (
-          <div className="mt-0.5 text-[0.7rem] text-[color:var(--theme-text-secondary)]">
+          <span className="mt-0.5 block truncate text-[0.7rem] text-slate-300">
             {detail}
-          </div>
+          </span>
         ) : null}
-      </div>
+      </span>
       <span
         className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-          status === "active"
-            ? "bg-emerald-400"
-            : status === "break" || status === "lunch"
-              ? "bg-amber-400"
-              : "bg-[color:var(--theme-text-muted)]"
+          loading
+            ? "animate-pulse bg-slate-400"
+            : active
+              ? "bg-emerald-400"
+              : paused
+                ? "bg-amber-400"
+                : "bg-slate-500"
         }`}
       />
-    </div>
+    </button>
   );
 }
 
@@ -513,31 +614,37 @@ function CurrentJobCard({
   if (loading) {
     return (
       <section className="mobile-tech-panel p-4">
-        <div className="h-4 w-24 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
-        <div className="mt-3 h-8 animate-pulse rounded-lg bg-[color:var(--theme-surface-subtle)]" />
+        <div className="h-4 w-28 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
+        <div className="mt-3 h-20 animate-pulse rounded-xl bg-[color:var(--theme-surface-subtle)]" />
       </section>
     );
   }
 
   if (!job || !workOrder) {
     return (
-      <section className="mobile-tech-panel p-4">
+      <section className="mobile-tech-panel border p-4">
         <div className="flex items-start gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]">
-            <Wrench className="h-5 w-5" />
-          </div>
+          <span className="inline-grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[color:var(--theme-surface-subtle)] text-[color:var(--accent-copper)]">
+            <Wrench aria-hidden className="h-5 w-5" />
+          </span>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold">No active job</div>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-              Open your assigned work when you are ready to start a line.
+            <div className="text-[0.65rem] font-extrabold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+              On shift
+            </div>
+            <div className="mt-1 text-base font-bold text-[color:var(--theme-text-primary)]">
+              No job currently running
+            </div>
+            <p className="mt-1 text-xs leading-4 text-[color:var(--theme-text-secondary)]">
+              Open your assigned queue and start the next ready job.
             </p>
           </div>
         </div>
         <Link
           href="/mobile/tech/queue"
-          className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-[color:var(--accent-copper)] px-4 text-sm font-semibold text-white"
+          className="mobile-command-primary mt-4 flex w-full items-center justify-center gap-2 px-4 text-sm font-bold"
         >
-          Open my jobs
+          Start next job
+          <ArrowRight aria-hidden className="h-4 w-4" />
         </Link>
       </section>
     );
@@ -547,34 +654,41 @@ function CurrentJobCard({
     job.description || job.complaint || String(job.job_type ?? "Job in progress");
   const workOrderLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
   const vehicleText = vehicleLabel(vehicle);
+  const href = `/mobile/work-orders/${workOrder.id}?focus=${encodeURIComponent(job.id)}`;
 
   return (
-    <Link
-      href={`/mobile/work-orders/${workOrder.id}`}
-      className="mobile-tech-panel block border border-[var(--accent-copper-soft)]/70 p-4 active:scale-[0.99]"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper)]">
-            Current job
-          </div>
-          <div className="mt-1 truncate text-base font-semibold text-[color:var(--theme-text-primary)]">
-            {label}
-          </div>
-          <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            WO {workOrderLabel}
-            {vehicleText ? ` • ${vehicleText}` : ""}
-          </div>
+    <section className="mobile-tech-panel overflow-hidden border border-blue-400/35 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="inline-flex items-center gap-2 text-[0.65rem] font-extrabold uppercase tracking-[0.17em] text-cyan-600 dark:text-cyan-300">
+          <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_0_5px_rgba(34,211,238,0.12)]" />
+          Current job
         </div>
-        <span className="shrink-0 text-sm font-semibold text-[var(--accent-copper)]">
-          Open →
+        <span className="text-xs font-bold text-[color:var(--theme-text-secondary)]">
+          {workOrderLabel}
         </span>
       </div>
-    </Link>
+      <h2 className="mt-4 text-xl font-extrabold tracking-[-0.035em] text-[color:var(--theme-text-primary)]">
+        {label}
+      </h2>
+      <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+        {vehicleText || "Vehicle details unavailable"}
+      </p>
+      <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+        <CheckCircle2 aria-hidden className="h-4 w-4" />
+        Active work is ready to continue
+      </div>
+      <Link
+        href={href}
+        className="mobile-command-primary mt-4 flex w-full items-center justify-center gap-2 px-4 text-sm font-bold"
+      >
+        Open current job
+        <ArrowRight aria-hidden className="h-4 w-4" />
+      </Link>
+    </section>
   );
 }
 
-function QuickLinkCard({
+function ActionTile({
   href,
   title,
   detail,
@@ -588,74 +702,58 @@ function QuickLinkCard({
   return (
     <Link
       href={href}
-      className="mobile-tech-subpanel min-w-0 p-3 active:scale-[0.99]"
+      className="mobile-tech-subpanel min-w-0 border p-3.5 active:scale-[0.992]"
     >
-      <div className="grid h-9 w-9 place-items-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-[var(--accent-copper)]">
-        <Icon className="h-4.5 w-4.5" />
-      </div>
-      <div className="mt-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+      <span className="inline-grid h-10 w-10 place-items-center rounded-xl bg-[color:var(--theme-surface-subtle)] text-[color:var(--accent-copper)]">
+        <Icon aria-hidden className="h-5 w-5" />
+      </span>
+      <span className="mt-3 block text-sm font-bold text-[color:var(--theme-text-primary)]">
         {title}
-      </div>
-      <div className="mt-1 text-[0.7rem] leading-4 text-[color:var(--theme-text-secondary)]">
+      </span>
+      <span className="mt-1 block text-[0.7rem] leading-4 text-[color:var(--theme-text-secondary)]">
         {detail}
-      </div>
+      </span>
     </Link>
   );
 }
 
-function PerformanceRow({
+function HeroMetric({
   label,
-  stats,
-  loading,
+  value,
 }: {
   label: string;
-  stats: PeriodStats;
-  loading: boolean;
+  value: number | string;
 }) {
   return (
-    <div className="mobile-tech-subpanel p-3">
-      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+    <div className="rounded-xl border border-white/10 bg-black/10 px-2 py-2.5 text-center">
+      <div className="text-lg font-extrabold text-white">{value}</div>
+      <div className="mt-0.5 text-[0.58rem] font-bold uppercase tracking-[0.12em] text-slate-400">
         {label}
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-        <PerformanceValue
-          label="Worked"
-          value={loading ? "…" : `${stats.workedHours.toFixed(1)}h`}
-        />
-        <PerformanceValue
-          label="Billed"
-          value={loading ? "…" : `${stats.billedHours.toFixed(1)}h`}
-        />
-        <PerformanceValue
-          label="Efficiency"
-          value={loading ? "…" : efficiencyText(stats.efficiencyPct)}
-        />
       </div>
     </div>
   );
 }
 
-function PerformanceValue({ label, value }: { label: string; value: string }) {
+function PerformanceValue({
+  label,
+  value,
+  bordered = false,
+}: {
+  label: string;
+  value: string;
+  bordered?: boolean;
+}) {
   return (
-    <div>
-      <div className="text-[0.6rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+    <div
+      className={`px-2 py-3.5 text-center ${
+        bordered ? "border-x border-[color:var(--theme-border-soft)]" : ""
+      }`}
+    >
+      <div className="text-[0.6rem] font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+      <div className="mt-1 text-base font-extrabold text-[color:var(--theme-text-primary)]">
         {value}
-      </div>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-2 text-center">
-      <div className="text-base font-semibold text-[color:var(--theme-text-primary)]">
-        {value}
-      </div>
-      <div className="mt-0.5 text-[0.58rem] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
-        {label}
       </div>
     </div>
   );
