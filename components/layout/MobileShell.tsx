@@ -21,7 +21,7 @@ function getTitleFromPath(pathname: string): string {
   if (/^\/mobile\/work-orders\/[^/]+/.test(pathname)) return "Work order";
   if (pathname.startsWith("/mobile/work-orders")) return "Work orders";
   if (pathname.startsWith("/mobile/appointments")) return "Appointments";
-  if (pathname.startsWith("/mobile/inspections/import")) return "Import inspection";
+  if (pathname === "/mobile/inspections/import") return "Import form";
   if (pathname.startsWith("/mobile/inspections")) return "Inspections";
   if (pathname.startsWith("/mobile/parts")) return "Parts workflow";
   if (pathname.startsWith("/mobile/messages")) return "Team chat";
