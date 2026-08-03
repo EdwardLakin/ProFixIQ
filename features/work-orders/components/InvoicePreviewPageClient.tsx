@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { toast } from "sonner";
 
 import type { Database } from "@shared/types/types/supabase";
 import type { RepairLine } from "@ai/lib/parseRepairOutput";
@@ -105,6 +106,7 @@ type ActiveInvoiceVersionSummary = {
 type SendInvoiceResponse = {
   ok?: boolean;
   error?: string;
+  issues?: ReviewIssue[];
   invoiceId?: string;
   invoiceVersion?: ActiveInvoiceVersionSummary;
 };
@@ -918,6 +920,7 @@ export default function InvoicePreviewPageClient({
 
   const finalizeInvoice = useCallback(async () => {
     if (finalizing || activeInvoiceVersion || !reviewOk) return;
+    let serverIssues: ReviewIssue[] = [];
     try {
       setFinalizing(true);
       setReviewError(null);
@@ -931,19 +934,23 @@ export default function InvoicePreviewPageClient({
       });
       const result = (await response.json().catch(() => null)) as SendInvoiceResponse | null;
       if (!response.ok || !result?.ok || !result.invoiceVersion) {
+        serverIssues = Array.isArray(result?.issues) ? result.issues : [];
         throw new Error(result?.error ?? "Invoice could not be finalized.");
       }
+      setReviewIssues([]);
       setInvoiceId(result.invoiceId ?? result.invoiceVersion.invoice_id);
       setActiveInvoiceVersion(result.invoiceVersion);
       setCanonicalInvoiceTotal(Math.max(0, Number(result.invoiceVersion.total)));
       if (result.invoiceVersion.snapshot) {
         setCanonicalSnapshot(result.invoiceVersion.snapshot);
       }
+      toast.success("Invoice finalized. QuickBooks sync is now available.");
       router.refresh();
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Invoice could not be finalized.";
       setReviewError(message);
-      setReviewIssues([{ kind: "error", message }]);
+      setReviewIssues(serverIssues);
+      toast.error(message);
     } finally {
       setFinalizing(false);
     }
@@ -1239,13 +1246,18 @@ export default function InvoicePreviewPageClient({
         ) : null}
 
         {/* Review issues panel */}
-        {!activeInvoiceVersion && !reviewOk ? (
-          <div className="rounded-xl border border-amber-500/30 bg-[color:var(--theme-surface-inset)] px-3 py-2">
+        {!activeInvoiceVersion && (!reviewOk || reviewError) ? (
+          <div
+            aria-live="polite"
+            className="rounded-xl border border-amber-500/30 bg-[color:var(--theme-surface-inset)] px-3 py-2"
+          >
             <div className="text-[0.7rem] uppercase tracking-[0.18em] text-amber-200">
-              Invoice needs attention
+              {reviewOk ? "Invoice finalization failed" : "Invoice needs attention"}
             </div>
             <div className="mt-1 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-              Complete the required items below before sending the invoice.
+              {reviewOk
+                ? "No invoice was issued. Review the error below and retry when ready."
+                : "Complete the required items below before sending the invoice."}
             </div>
 
             {reviewError ? (

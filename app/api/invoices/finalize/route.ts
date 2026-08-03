@@ -36,6 +36,7 @@ function invoicePartSignature(
 }
 
 export async function POST(request: Request) {
+  let workOrderId = "";
   try {
     const access = await requireShopScopedApiAccess({
       requiredCapabilities: ["canManageWorkOrders", "canAuthorizeQuotes"],
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     if (!access.ok) return access.response;
 
     const body = (await request.json().catch(() => null)) as Body | null;
-    const workOrderId = body?.workOrderId?.trim() ?? "";
+    workOrderId = body?.workOrderId?.trim() ?? "";
     if (!workOrderId) {
       return NextResponse.json(
         { error: "Missing work order ID." },
@@ -148,13 +149,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const now = new Date().toISOString();
     const { data: pending, error: pendingError } = await admin
       .from("invoices")
       .select("id")
       .eq("work_order_id", workOrderId)
       .eq("shop_id", workOrder.shop_id)
-      .in("status", ["draft", "issued_pending_send"])
+      .eq("status", "draft")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle<{ id: string }>();
@@ -171,8 +171,8 @@ export async function POST(request: Request) {
       discount_total: snapshot.discountTotal ?? 0,
       tax_total: snapshot.taxTotal ?? 0,
       total,
-      status: "issued_pending_send",
-      issued_at: now,
+      status: "draft",
+      issued_at: null,
     } as DB["public"]["Tables"]["invoices"]["Insert"];
 
     let invoiceId = pending?.id ?? null;
@@ -214,25 +214,6 @@ export async function POST(request: Request) {
         `invoice-finalize:${workOrder.shop_id}:${workOrderId}`,
     });
 
-    const [{ error: invoiceUpdateError }, { error: workOrderUpdateError }] =
-      await Promise.all([
-        admin
-          .from("invoices")
-          .update({ status: "issued", issued_at: now })
-          .eq("id", invoiceId)
-          .eq("shop_id", workOrder.shop_id),
-        admin
-          .from("work_orders")
-          .update({
-            status: "invoiced",
-            invoice_total: version.total,
-          } as DB["public"]["Tables"]["work_orders"]["Update"])
-          .eq("id", workOrderId)
-          .eq("shop_id", workOrder.shop_id),
-      ]);
-    if (invoiceUpdateError) throw new Error(invoiceUpdateError.message);
-    if (workOrderUpdateError) throw new Error(workOrderUpdateError.message);
-
     await logOperationalEvent({
       supabase: admin,
       event: "invoice_finalized",
@@ -253,8 +234,16 @@ export async function POST(request: Request) {
       inspectionAttachment,
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to finalize invoice.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("[invoices/finalize] failed", {
+      workOrderId: workOrderId || null,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Invoice finalization failed. Please retry; if it continues, contact support.",
+      },
+      { status: 500 },
+    );
   }
 }

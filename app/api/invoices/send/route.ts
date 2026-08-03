@@ -223,7 +223,7 @@ export async function POST(request: Request) {
         .select("id")
         .eq("work_order_id", workOrderId)
         .eq("shop_id", workOrder.shop_id)
-        .in("status", ["draft", "issued_pending_send"])
+        .eq("status", "draft")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle<{ id: string }>();
@@ -240,8 +240,8 @@ export async function POST(request: Request) {
         discount_total: snapshot.discountTotal ?? 0,
         tax_total: snapshot.taxTotal ?? 0,
         total: snapshot.total ?? 0,
-        status: "issued_pending_send",
-        issued_at: now,
+        status: "draft",
+        issued_at: null,
       } as DB["public"]["Tables"]["invoices"]["Insert"];
       invoiceId = pending?.id ?? null;
       if (invoiceId) {

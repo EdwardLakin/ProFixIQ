@@ -9,7 +9,7 @@ async function getRuntimeOpenAIClient() {
 
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import type { Json } from "@/features/shared/types/types/supabase";
+import type { Database, Json } from "@/features/shared/types/types/supabase";
 /* ========================================================================== */
 /*  QUOTE ENGINE – CENTRAL AI ENTRYPOINT                                      */
 /* ========================================================================== */
@@ -210,6 +210,21 @@ export interface AITrainingEvent {
   createdAt?: string;
 }
 
+function canonicalTrainingSource(
+  source: AIRecordSource,
+): Database["public"]["Enums"]["ai_training_source"] {
+  switch (source) {
+    case "apply_ai_quote":
+      return "quote";
+    case "inspection_to_quote":
+      return "inspection";
+    case "invoice_review":
+    case "menu_learning":
+    case "chat":
+      return "work_order";
+  }
+}
+
 async function insertTrainingEvent(event: AITrainingEvent): Promise<void> {
   const supabase = createAdminSupabase();
 
@@ -226,7 +241,7 @@ async function insertTrainingEvent(event: AITrainingEvent): Promise<void> {
     p_event_type: "training.event",
     p_payload: eventPayload,
     p_shop_id: shopId,
-    p_training_source: source,
+    p_training_source: canonicalTrainingSource(source),
   });
 
   if (error) {
