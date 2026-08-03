@@ -8,6 +8,7 @@ import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
 
 import "./mobile-command.css";
+import "./mobile-command-overrides.css";
 
 export default function MobileLayout({
   children,
