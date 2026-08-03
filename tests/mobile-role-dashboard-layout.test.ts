@@ -4,15 +4,17 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("mobile role dashboard layout", () => {
-  it("uses a shared overflow-safe dashboard shell and mobile href normalizer", () => {
+  it("uses shared command dashboard primitives and mobile href normalization", () => {
     const source = read(
       "features/mobile/dashboard/MobileDashboardPrimitives.tsx",
     );
-    expect(source).toContain("overflow-x-hidden");
-    expect(source).toContain("grid-cols-2");
-    expect(source).toContain("items.slice(0, 3)");
-    expect(source).toContain("items.slice(0, 4)");
+    expect(source).toContain("mobile-dashboard-page");
+    expect(source).toContain("mobile-dashboard-hero");
+    expect(source).toContain("mobile-dashboard-metrics");
+    expect(source).toContain("mobile-dashboard-attention");
+    expect(source).toContain("mobile-dashboard-actions");
     expect(source).toContain("requireMobileHref");
+    expect(source).not.toContain("items.slice(0, 4)");
   });
 
   it("keeps owner, admin, manager and foreman copy role-aware and mobile-native", () => {
