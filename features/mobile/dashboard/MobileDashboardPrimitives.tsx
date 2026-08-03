@@ -114,7 +114,7 @@ export function MobileAttentionList({
 
       <div>
         {items.length ? (
-          items.slice(0, 4).map((item) => (
+          items.map((item) => (
             <Link
               key={`${item.title}-${item.href}`}
               href={requireMobileHref(item.href)}
