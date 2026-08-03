@@ -136,6 +136,8 @@ export async function resolveFleetActorContext(
   const canonicalRole = canonicalizeRole(profileRole);
   const internalRole = INTERNAL_STAFF_ROLES.includes(canonicalRole);
   const fleetTier = resolveFleetRoleTier(membershipRole);
+  // A dual-role user can enter the fleet portal only when they have an explicit fleet membership.
+  const hasFleetPortalMembership = fleetTier !== "none";
 
   const actorType: FleetActorType = internalRole
     ? "internal_staff"
@@ -179,7 +181,7 @@ export async function resolveFleetActorContext(
         isInternal || actorType === "fleet_manager",
       canConvertServiceRequestToWorkOrder: isInternal,
       canAccessFleetIntake: isInternal || isFleetActor,
-      canAccessPortalFleetWrappers: isFleetActor,
+      canAccessPortalFleetWrappers: hasFleetPortalMembership,
       canRunFleetDispatchActions:
         isInternal || actorCaps.canManageFleetApprovals,
       canOverrideShopScope: isInternal,
