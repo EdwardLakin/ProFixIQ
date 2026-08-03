@@ -13,6 +13,10 @@ const migration = readFileSync(
   "supabase/migrations/20260724010000_atomic_draft_work_order_delete.sql",
   "utf8",
 );
+const workflowMigration = readFileSync(
+  "supabase/migrations/20260803034531_complete_invoice_workflow_controls.sql",
+  "utf8",
+);
 
 describe("guarded draft work-order deletion", () => {
   it("routes the UI through one shop-scoped owner/admin command", () => {
@@ -71,5 +75,29 @@ describe("guarded draft work-order deletion", () => {
     expect(itemDelete).toBeLessThan(requestDelete);
     expect(requestDelete).toBeLessThan(lineDelete);
     expect(lineDelete).toBeLessThan(workOrderDelete);
+  });
+
+  it("allows only a genuinely empty stale work-order shell through the fallback", () => {
+    expect(route).toContain('"work_order_delete_empty_shell_atomic"');
+    expect(route).toContain("WORK_ORDER_DELETE_NOT_DRAFT");
+    expect(route).toContain("WORK_ORDER_DELETE_FINANCIAL_OR_APPROVAL_HISTORY");
+    expect(workflowMigration).toContain(
+      "coalesce(auth.role(), '') <> 'service_role'",
+    );
+    expect(workflowMigration).toContain("WORK_ORDER_DELETE_NOT_EMPTY");
+    for (const table of [
+      "public.work_order_lines",
+      "public.work_order_quote_lines",
+      "public.work_order_parts",
+      "public.work_order_part_allocations",
+      "public.part_requests",
+      "public.invoices",
+      "public.invoice_versions",
+      "public.payments",
+      "public.work_order_line_labor_segments",
+      "public.inspections",
+    ]) {
+      expect(workflowMigration).toContain(table);
+    }
   });
 });

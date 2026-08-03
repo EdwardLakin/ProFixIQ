@@ -31,6 +31,7 @@ type PartRequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
 
 export type InvoiceSnapshotPart = {
   id: string;
+  pricingSourceId?: string;
   lineId?: string;
   name: string;
   qty: number;
@@ -177,6 +178,37 @@ function safeNumber(v: unknown): number {
 function positiveOrNull(v: unknown): number | null {
   const n = safeNumberOrNull(v);
   return n != null && n > 0 ? n : null;
+}
+
+type InvoicePricingOverrideRow = {
+  line_labor_totals: unknown;
+  part_unit_prices: unknown;
+  shop_supplies_amount: number | null;
+};
+
+type PricingOverrideQuery = {
+  eq(column: string, value: string): PricingOverrideQuery;
+  maybeSingle<T>(): Promise<{
+    data: T | null;
+    error: { message: string } | null;
+  }>;
+};
+
+type PricingOverrideClient = {
+  from(table: string): {
+    select(columns: string): PricingOverrideQuery;
+  };
+};
+
+function moneyOverrideMap(value: unknown): Map<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return new Map();
+  return new Map(
+    Object.entries(value as Record<string, unknown>).flatMap(([id, amount]) => {
+      const parsed = safeNumberOrNull(amount);
+      return id && parsed != null && parsed >= 0 ? [[id, parsed] as const] : [];
+    }),
+  );
 }
 
 function normalizeInvoiceCurrency(v: unknown): "CAD" | "USD" | null {
@@ -886,6 +918,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
 
     allocationPartById.set(String(a.id), {
       id: String(a.id),
+      pricingSourceId: requestItem?.id,
       lineId,
       name: (p?.name ?? "Part").trim() || "Part",
       qty,
@@ -1036,6 +1069,37 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     parts.push(...(fallbackPartsByLineForDisplay.get(line.id) ?? []));
   }
 
+  const overrideClient = supabase as unknown as PricingOverrideClient;
+  const { data: pricingOverride, error: pricingOverrideError } =
+    await overrideClient
+      .from("invoice_pricing_overrides")
+      .select("line_labor_totals,part_unit_prices,shop_supplies_amount")
+      .eq("shop_id", workOrder.shop_id)
+      .eq("work_order_id", workOrderId)
+      .maybeSingle<InvoicePricingOverrideRow>();
+  if (
+    pricingOverrideError &&
+    !/schema cache|does not exist/i.test(pricingOverrideError.message)
+  ) {
+    throw new Error(
+      `Invoice pricing overrides are unavailable: ${pricingOverrideError.message}`,
+    );
+  }
+  const lineLaborOverrides = moneyOverrideMap(
+    pricingOverride?.line_labor_totals,
+  );
+  const partPriceOverrides = moneyOverrideMap(
+    pricingOverride?.part_unit_prices,
+  );
+  for (const part of parts) {
+    const override =
+      partPriceOverrides.get(part.pricingSourceId ?? "") ??
+      partPriceOverrides.get(part.id);
+    if (override == null) continue;
+    part.unitPrice = override;
+    part.totalPrice = Math.max(0, safeNumber(part.qty) * override);
+  }
+
   const unpricedPart = parts.find(
     (part) => safeNumber(part.qty) > 0 && safeNumber(part.unitPrice) <= 0,
   );
@@ -1114,15 +1178,17 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       lineParts.length > 0
         ? lineParts.reduce((sum, part) => sum + safeNumber(part.totalPrice), 0)
         : resolved.partsTotal;
-    resolvedLabor += resolved.laborTotal;
+    const resolvedLineLabor =
+      lineLaborOverrides.get(line.id) ?? resolved.laborTotal;
+    resolvedLabor += resolvedLineLabor;
     resolvedParts += resolvedLineParts;
     pricedLines.push({
       ...line,
       resolvedLaborHours: resolved.laborHours,
       resolvedLaborRate: resolved.laborRate,
-      resolvedLaborTotal: resolved.laborTotal,
+      resolvedLaborTotal: resolvedLineLabor,
       resolvedPartsTotal: resolvedLineParts,
-      resolvedLineTotal: resolved.laborTotal + resolvedLineParts,
+      resolvedLineTotal: resolvedLineLabor + resolvedLineParts,
     });
   }
 
@@ -1167,9 +1233,11 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     ? persistedSupplies && persistedSupplies > 0
       ? persistedSupplies
       : null
-    : shopSupplies.amount > 0
-      ? shopSupplies.amount
-      : null;
+    : pricingOverride?.shop_supplies_amount != null
+      ? Math.max(0, safeNumber(pricingOverride.shop_supplies_amount))
+      : shopSupplies.amount > 0
+        ? shopSupplies.amount
+        : null;
   const configuredTaxRate = Math.max(0, safeNumber(shop?.tax_rate));
   const calculated = calculateInvoiceTotals({
     laborCost: laborCost ?? 0,

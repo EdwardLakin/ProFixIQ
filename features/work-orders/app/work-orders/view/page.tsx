@@ -788,9 +788,14 @@ export default function WorkOrdersView(): JSX.Element {
       } | null;
 
       if (!response.ok) {
-        alert(result?.error ?? "Failed to delete the work order.");
+        const rawError = result?.error ?? "Failed to delete the work order.";
+        const message = rawError.includes("WORK_ORDER_DELETE_")
+          ? "This work order has financial, approval, labor, parts, or inspection history and cannot be deleted."
+          : rawError;
+        toast.error(message);
         setRows(prev);
       } else {
+        toast.success("Work order deleted.");
         setTechRollupByWo((m) => {
           const next = { ...m };
           delete next[id];
@@ -804,7 +809,7 @@ export default function WorkOrdersView(): JSX.Element {
   const handleAssignAll = useCallback(
     async (woId: string) => {
       if (!selectedTechId) {
-        alert("Choose a mechanic first.");
+        toast.error("Choose a technician first.");
         return;
       }
 
@@ -822,7 +827,7 @@ export default function WorkOrdersView(): JSX.Element {
         const json = (await res.json()) as { error?: string };
 
         if (!res.ok) {
-          alert(json.error || "Failed to assign.");
+          toast.error(json.error || "Failed to assign technician.");
           return;
         }
 
@@ -1163,9 +1168,17 @@ export default function WorkOrdersView(): JSX.Element {
                   workOrderOperationalStageProgress(operationalStage);
                 const operationalNote =
                   operationalStage === "awaiting_approval"
-                    ? "Needs approval"
+                    ? "Needs customer approval"
                     : operationalStage === "waiting"
-                      ? "Waiting on the next operational dependency"
+                      ? canonicalStatus === "waiting_parts"
+                        ? "Waiting for parts"
+                        : canonicalStatus === "awaiting_approval"
+                          ? "Needs customer approval"
+                          : shouldShowInspectionPending
+                            ? "Inspection needed"
+                            : !hasAssignedTech
+                              ? "Technician unassigned"
+                              : "Waiting for next step"
                       : !hasAssignedTech
                         ? "Technician unassigned"
                         : shouldShowInspectionPending

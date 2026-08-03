@@ -7026,6 +7026,89 @@ export type Database = {
           },
         ]
       }
+      invoice_pricing_overrides: {
+        Row: {
+          created_at: string
+          line_labor_totals: Json
+          part_unit_prices: Json
+          shop_id: string
+          shop_supplies_amount: number | null
+          updated_at: string
+          updated_by: string | null
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          line_labor_totals?: Json
+          part_unit_prices?: Json
+          shop_id: string
+          shop_supplies_amount?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          line_labor_totals?: Json
+          part_unit_prices?: Json
+          shop_id?: string
+          shop_supplies_amount?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_pricing_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_versions: {
         Row: {
           created_at: string
@@ -25875,6 +25958,15 @@ export type Database = {
         Returns: number
       }
       work_order_delete_draft_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      work_order_delete_empty_shell_atomic: {
         Args: {
           p_actor_user_id: string
           p_operation_key: string

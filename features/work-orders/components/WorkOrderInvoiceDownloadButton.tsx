@@ -17,6 +17,7 @@ type Props = {
 
   autoTrigger?: boolean;
   className?: string;
+  label?: string;
 
   // ✅ New: choose where the button goes
   mode?: "pdf" | "preview"; // default "pdf"
@@ -32,6 +33,7 @@ export function WorkOrderInvoiceDownloadButton({
   draft = false,
   autoTrigger = false,
   className,
+  label: labelOverride,
   mode = "pdf",
   openInNewTab = true,
   forceDownload = false,
@@ -127,13 +129,13 @@ export function WorkOrderInvoiceDownloadButton({
   }, [autoTrigger, workOrderId, open]);
 
   const label =
-    mode === "preview"
+    labelOverride ?? (mode === "preview"
       ? "Open invoice preview"
       : draft
         ? "Preview draft PDF"
       : openInNewTab
         ? "Open invoice PDF"
-        : "View invoice PDF";
+        : "View invoice PDF");
 
   return (
     <div className="flex flex-col items-end gap-1.5">

@@ -13,6 +13,7 @@ import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentB
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 import SyncInvoiceToQuickBooksButton from "@/features/integrations/quickbooks/components/SyncInvoiceToQuickBooksButton";
 import RecordManualPayment from "@/features/invoices/components/RecordManualPayment";
+import InvoicePricingEditor from "@/features/invoices/components/InvoicePricingEditor";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 
 type DB = Database;
@@ -207,6 +208,9 @@ type PdfLinePart = {
 };
 
 type SnapshotPart = {
+  id: string;
+  pricingSourceId?: string;
+  source?: string;
   lineId?: string;
   name?: string;
   qty?: number;
@@ -307,6 +311,7 @@ export default function InvoicePreviewPageClient({
 
   const [fSummary, setFSummary] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
 
   // ✅ inspection PDF (works even when no invoice exists yet)
   const [inspectionPdfLoading, setInspectionPdfLoading] = useState(false);
@@ -821,8 +826,7 @@ export default function InvoicePreviewPageClient({
 
   const sendInvoiceEmail = useCallback(async () => {
     if (sending) return;
-    if (!reviewOk) return;
-    if (activeInvoiceVersion) return;
+    if (!activeInvoiceVersion && !reviewOk) return;
 
     const email = effectiveCustomerInfo?.email;
     if (!email) {
@@ -912,6 +916,39 @@ export default function InvoicePreviewPageClient({
     effectiveShopName,
   ]);
 
+  const finalizeInvoice = useCallback(async () => {
+    if (finalizing || activeInvoiceVersion || !reviewOk) return;
+    try {
+      setFinalizing(true);
+      setReviewError(null);
+      const response = await fetch("/api/invoices/finalize", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": `invoice-finalize:${workOrderId}`,
+        },
+        body: JSON.stringify({ workOrderId }),
+      });
+      const result = (await response.json().catch(() => null)) as SendInvoiceResponse | null;
+      if (!response.ok || !result?.ok || !result.invoiceVersion) {
+        throw new Error(result?.error ?? "Invoice could not be finalized.");
+      }
+      setInvoiceId(result.invoiceId ?? result.invoiceVersion.invoice_id);
+      setActiveInvoiceVersion(result.invoiceVersion);
+      setCanonicalInvoiceTotal(Math.max(0, Number(result.invoiceVersion.total)));
+      if (result.invoiceVersion.snapshot) {
+        setCanonicalSnapshot(result.invoiceVersion.snapshot);
+      }
+      router.refresh();
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Invoice could not be finalized.";
+      setReviewError(message);
+      setReviewIssues([{ kind: "error", message }]);
+    } finally {
+      setFinalizing(false);
+    }
+  }, [activeInvoiceVersion, finalizing, reviewOk, router, workOrderId]);
+
   return (
     <div className="min-h-[calc(100vh-0px)] bg-[color:var(--theme-surface-page)] px-3 py-3 sm:px-4 sm:py-4">
       <div className="mx-auto flex max-w-[1400px] flex-col gap-3">
@@ -960,23 +997,52 @@ export default function InvoicePreviewPageClient({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {!activeInvoiceVersion ? (
+              <InvoicePricingEditor
+                workOrderId={workOrderId}
+                snapshot={canonicalSnapshot ?? { lines: [], parts: [] }}
+                onSaved={(snapshot) => {
+                  setCanonicalSnapshot(snapshot);
+                  setCanonicalInvoiceTotal(Math.max(0, Number(snapshot.total ?? 0)));
+                }}
+              />
+            ) : null}
+
             {!activeInvoiceVersion ? (
               <button
                 type="button"
+                onClick={() => void finalizeInvoice()}
+                disabled={!reviewOk || reviewLoading || finalizing}
+                className="rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-200 hover:bg-emerald-500/20 disabled:opacity-50"
+              >
+                {finalizing ? "Finalizing..." : "Approve & finalize"}
+              </button>
+            ) : null}
+
+            <WorkOrderInvoiceDownloadButton
+              workOrderId={workOrderId}
+              invoiceVersionId={activeInvoiceVersion?.id}
+              draft={!activeInvoiceVersion}
+              autoTrigger={false}
+              label={activeInvoiceVersion ? "Print invoice" : "Print draft"}
+              className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
+            />
+
+            <button
+                type="button"
                 onClick={() => void sendInvoiceEmail()}
-                disabled={!reviewOk || reviewLoading || sending}
+                disabled={(!activeInvoiceVersion && (!reviewOk || reviewLoading)) || sending}
                 className={
                   "rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] shadow-[0_0_12px_rgba(212,118,49,0.35)] " +
-                  (reviewOk && !reviewLoading
+                  ((activeInvoiceVersion || reviewOk) && !reviewLoading
                     ? "bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] text-[color:var(--theme-text-on-accent)] hover:brightness-110"
                     : "border border-amber-500/40 bg-amber-500/10 text-amber-200 opacity-60")
                 }
-                title={reviewOk ? "Email invoice (SendGrid)" : "Blocked until required info is complete"}
+                title={activeInvoiceVersion || reviewOk ? "Email invoice" : "Blocked until required info is complete"}
               >
                 {sending ? "Sending…" : "Send invoice"}
-              </button>
-            ) : null}
+            </button>
 
             {invoiceId ? (
               <SyncInvoiceToQuickBooksButton

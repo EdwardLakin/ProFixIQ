@@ -15,6 +15,7 @@ import type { Database } from "@shared/types/types/supabase";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
 import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/DeleteOrVoidLineModal";
+import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
@@ -254,6 +255,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   // assign mechanic
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignLineId] = useState<string | null>(null);
+  const [addJobOpen, setAddJobOpen] = useState(false);
 
   // delete/void line modal
   const [delOpen, setDelOpen] = useState(false);
@@ -1949,13 +1951,23 @@ export default function WorkOrderIdClient(): JSX.Element {
             {/* Left: jobs list/cards */}
             <div className="space-y-2">
               {sortedLines.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No jobs added yet. Use the{" "}
-                  <span className="font-semibold text-[color:var(--accent-copper,#f97316)]">
-                    Add job
-                  </span>{" "}
-                  actions in the focused panel to start building this work order.
-                </p>
+                <section className={cn(PANEL_VARIANTS.secondary, "rounded-2xl p-4")}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">No jobs added yet.</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Add the first labor line here, then assign it to a technician.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAddJobOpen(true)}
+                      className="rounded-full border border-sky-400/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-100 transition hover:bg-sky-500/20"
+                    >
+                      Add job
+                    </button>
+                  </div>
+                </section>
               ) : (
                 <div className="space-y-2.5">
                   {sortedLines.map((ln, idx) => {
@@ -2281,6 +2293,18 @@ export default function WorkOrderIdClient(): JSX.Element {
           onDone={() => void onDeleteDone()}
         />
       )}
+
+      {addJobOpen && wo?.id ? (
+        <AddJobModal
+          isOpen={addJobOpen}
+          onClose={() => setAddJobOpen(false)}
+          workOrderId={wo.id}
+          vehicleId={wo.vehicle_id ?? vehicle?.id ?? null}
+          techId={currentUserId ?? "system"}
+          shopId={wo.shop_id ?? null}
+          onJobAdded={() => void fetchAll()}
+        />
+      ) : null}
     </div>
   );
 }

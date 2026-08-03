@@ -7,8 +7,14 @@ import {
 } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 import { getIssuableInvoiceSnapshot } from "@/features/invoices/server/getIssuableInvoiceSnapshot";
-import { getInvoiceSnapshotForWorkOrder } from "@/features/invoices/server/getInvoiceSnapshot";
-import { finalizeInvoiceVersion } from "@/features/invoices/server/financialLifecycle";
+import {
+  getInvoiceSnapshotForWorkOrder,
+  type InvoiceSnapshot,
+} from "@/features/invoices/server/getInvoiceSnapshot";
+import {
+  finalizeInvoiceVersion,
+  getActiveInvoiceVersion,
+} from "@/features/invoices/server/financialLifecycle";
 import { attachInspectionReportToInvoice } from "@/features/invoices/server/attachInspectionReportToInvoice";
 import { reviewWorkOrder } from "../../work-orders/[id]/_lib/reviewWorkOrder";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
@@ -18,19 +24,18 @@ type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
-
-const admin = createClient<DB>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
-
 type Body = {
   workOrderId?: string;
   customerEmail?: string;
   customerName?: string;
   shopName?: string;
 };
+
+const admin = createClient<DB>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://profixiq.com";
 
 function joinedName(first?: string | null, last?: string | null) {
   return (
@@ -65,7 +70,7 @@ function invoicePartSignature(
     .join("|");
 }
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
     const access = await requireShopScopedApiAccess({
       requiredCapabilities: ["canManageWorkOrders", "canAuthorizeQuotes"],
@@ -73,16 +78,15 @@ export async function POST(req: Request) {
     });
     if (!access.ok) return access.response;
 
-    const body = (await req.json().catch(() => null)) as Body | null;
+    const body = (await request.json().catch(() => null)) as Body | null;
     const workOrderId = body?.workOrderId?.trim() ?? "";
-    if (!workOrderId) {
+    if (!workOrderId)
       return NextResponse.json(
         { error: "Missing work order ID" },
         { status: 400 },
       );
-    }
 
-    const { data: workOrder } = await admin
+    const { data: workOrder, error: workOrderError } = await admin
       .from("work_orders")
       .select("id,shop_id,customer_id,customer_name,status")
       .eq("id", workOrderId)
@@ -93,6 +97,7 @@ export async function POST(req: Request) {
           "id" | "shop_id" | "customer_id" | "customer_name" | "status"
         >
       >();
+    if (workOrderError) throw new Error(workOrderError.message);
     if (!workOrder)
       return NextResponse.json(
         { error: "Invalid work order" },
@@ -112,58 +117,68 @@ export async function POST(req: Request) {
       );
     }
 
-    const review = await reviewWorkOrder({
+    let version = await getActiveInvoiceVersion({
       supabase: admin,
       workOrderId,
       shopId: workOrder.shop_id,
-      kind: "invoice_review",
     });
-    if (!review.ok) {
-      return NextResponse.json(
-        { error: "Invoice review failed.", issues: review.issues },
-        { status: 400 },
-      );
-    }
+    let snapshot: InvoiceSnapshot;
+    if (version) {
+      snapshot = version.snapshot;
+    } else {
+      const review = await reviewWorkOrder({
+        supabase: admin,
+        workOrderId,
+        shopId: workOrder.shop_id,
+        kind: "invoice_review",
+      });
+      if (!review.ok) {
+        return NextResponse.json(
+          { error: "Invoice review failed.", issues: review.issues },
+          { status: 400 },
+        );
+      }
 
-    const draftSnapshot = await getInvoiceSnapshotForWorkOrder({
-      supabase: admin,
-      workOrderId,
-    });
-    const snapshot = await getIssuableInvoiceSnapshot({
-      supabase: admin,
-      workOrderId,
-      shopId: workOrder.shop_id,
-    });
-    const draftParts = Number(draftSnapshot.partsCost ?? 0);
-    const issuableParts = Number(snapshot.partsCost ?? 0);
-    const draftTotal = Number(draftSnapshot.total ?? 0);
-    const issuableTotal = Number(snapshot.total ?? 0);
-    const partsMatch =
-      invoicePartSignature(draftSnapshot.parts) ===
-      invoicePartSignature(snapshot.parts);
-    if (
-      !partsMatch ||
-      Math.abs(draftParts - issuableParts) > 0.01 ||
-      Math.abs(draftTotal - issuableTotal) > 0.01
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Invoice totals changed because approved parts were not materialized on the work order. Reopen the approved line and repair its attached parts before invoicing.",
-          draftParts,
-          issuableParts,
-          draftTotal,
-          issuableTotal,
-        },
-        { status: 409 },
-      );
-    }
-    const total = Number(snapshot.total ?? 0);
-    if (!Number.isFinite(total) || total <= 0) {
-      return NextResponse.json(
-        { error: "Cannot issue a zero-total invoice." },
-        { status: 400 },
-      );
+      const draftSnapshot = await getInvoiceSnapshotForWorkOrder({
+        supabase: admin,
+        workOrderId,
+      });
+      snapshot = await getIssuableInvoiceSnapshot({
+        supabase: admin,
+        workOrderId,
+        shopId: workOrder.shop_id,
+      });
+      const draftParts = Number(draftSnapshot.partsCost ?? 0);
+      const issuableParts = Number(snapshot.partsCost ?? 0);
+      const draftTotal = Number(draftSnapshot.total ?? 0);
+      const issuableTotal = Number(snapshot.total ?? 0);
+      if (
+        invoicePartSignature(draftSnapshot.parts) !==
+          invoicePartSignature(snapshot.parts) ||
+        Math.abs(draftParts - issuableParts) > 0.01 ||
+        Math.abs(draftTotal - issuableTotal) > 0.01
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Invoice totals changed because approved parts were not materialized on the work order. Reopen the approved line and repair its attached parts before invoicing.",
+            draftParts,
+            issuableParts,
+            draftTotal,
+            issuableTotal,
+          },
+          { status: 409 },
+        );
+      }
+      if (
+        !Number.isFinite(Number(snapshot.total)) ||
+        Number(snapshot.total) <= 0
+      ) {
+        return NextResponse.json(
+          { error: "Cannot issue a zero-total invoice." },
+          { status: 400 },
+        );
+      }
     }
 
     const [{ data: shop }, { data: customer }] = await Promise.all([
@@ -185,90 +200,90 @@ export async function POST(req: Request) {
             >()
         : Promise.resolve({ data: null, error: null }),
     ]);
-
     const email =
       body?.customerEmail?.trim().toLowerCase() ||
       customer?.email?.trim().toLowerCase() ||
       "";
-    if (!email) {
+    if (!email)
       return NextResponse.json(
         { error: "Missing customer email." },
         { status: 400 },
       );
-    }
 
     const now = new Date().toISOString();
-    const { data: pending } = await admin
-      .from("invoices")
-      .select("id")
-      .eq("work_order_id", workOrderId)
-      .eq("shop_id", workOrder.shop_id)
-      .eq("status", "issued_pending_send")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<{ id: string }>();
-
-    const payload = {
-      shop_id: workOrder.shop_id,
-      work_order_id: workOrderId,
-      customer_id: workOrder.customer_id,
-      currency: snapshot.currency,
-      subtotal: snapshot.subtotal ?? 0,
-      labor_cost: snapshot.laborCost ?? 0,
-      parts_cost: snapshot.partsCost ?? 0,
-      discount_total: snapshot.discountTotal ?? 0,
-      tax_total: snapshot.taxTotal ?? 0,
-      total,
-      status: "issued_pending_send",
-      issued_at: now,
-    } as DB["public"]["Tables"]["invoices"]["Insert"];
-
-    let invoiceId = pending?.id ?? null;
-    if (invoiceId) {
-      const { error } = await admin
-        .from("invoices")
-        .update(payload)
-        .eq("id", invoiceId)
-        .eq("shop_id", workOrder.shop_id);
-      if (error) throw new Error(error.message);
-    } else {
-      const { data, error } = await admin
-        .from("invoices")
-        .insert(payload)
-        .select("id")
-        .single<{ id: string }>();
-      if (error || !data?.id)
-        throw new Error(error?.message ?? "Failed to create invoice");
-      invoiceId = data.id;
-    }
-    if (!invoiceId) throw new Error("Invoice persistence did not return an id");
-
-    // Resolve document branding once, at issuance. The complete renderer
-    // configuration is stored in the immutable version snapshot so historical
-    // invoices never change when the shop updates its logo or template later.
     const brand = await getActiveBrandForRender(workOrder.shop_id);
-    const inspectionAttachment = await attachInspectionReportToInvoice({
-      supabase: admin,
-      invoiceId,
-      workOrderId,
-      shopId: workOrder.shop_id,
-      actorUserId: access.authUserId,
-    });
-    const issuedSnapshot = {
-      ...snapshot,
-      documentConfiguration: brand.document,
-    };
-    const version = await finalizeInvoiceVersion({
-      supabase: admin,
-      shopId: workOrder.shop_id,
-      workOrderId,
-      invoiceId,
-      snapshot: issuedSnapshot,
-      actorUserId: access.profile.id,
-      operationKey:
-        req.headers.get("idempotency-key")?.trim() ||
-        `invoice-send:${workOrderId}`,
-    });
+    let invoiceId = version?.invoice_id ?? null;
+    let inspectionAttachment: Awaited<
+      ReturnType<typeof attachInspectionReportToInvoice>
+    > | null = null;
+
+    if (!version) {
+      const { data: pending, error: pendingError } = await admin
+        .from("invoices")
+        .select("id")
+        .eq("work_order_id", workOrderId)
+        .eq("shop_id", workOrder.shop_id)
+        .in("status", ["draft", "issued_pending_send"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ id: string }>();
+      if (pendingError) throw new Error(pendingError.message);
+
+      const payload = {
+        shop_id: workOrder.shop_id,
+        work_order_id: workOrderId,
+        customer_id: workOrder.customer_id,
+        currency: snapshot.currency,
+        subtotal: snapshot.subtotal ?? 0,
+        labor_cost: snapshot.laborCost ?? 0,
+        parts_cost: snapshot.partsCost ?? 0,
+        discount_total: snapshot.discountTotal ?? 0,
+        tax_total: snapshot.taxTotal ?? 0,
+        total: snapshot.total ?? 0,
+        status: "issued_pending_send",
+        issued_at: now,
+      } as DB["public"]["Tables"]["invoices"]["Insert"];
+      invoiceId = pending?.id ?? null;
+      if (invoiceId) {
+        const { error } = await admin
+          .from("invoices")
+          .update(payload)
+          .eq("id", invoiceId)
+          .eq("shop_id", workOrder.shop_id);
+        if (error) throw new Error(error.message);
+      } else {
+        const { data, error } = await admin
+          .from("invoices")
+          .insert(payload)
+          .select("id")
+          .single<{ id: string }>();
+        if (error || !data?.id)
+          throw new Error(error?.message ?? "Failed to create invoice");
+        invoiceId = data.id;
+      }
+
+      inspectionAttachment = await attachInspectionReportToInvoice({
+        supabase: admin,
+        invoiceId,
+        workOrderId,
+        shopId: workOrder.shop_id,
+        actorUserId: access.authUserId,
+      });
+      snapshot = { ...snapshot, documentConfiguration: brand.document };
+      version = await finalizeInvoiceVersion({
+        supabase: admin,
+        shopId: workOrder.shop_id,
+        workOrderId,
+        invoiceId,
+        snapshot,
+        actorUserId: access.profile.id,
+        operationKey:
+          request.headers.get("idempotency-key")?.trim() ||
+          `invoice-send:${workOrderId}`,
+      });
+    }
+    if (!invoiceId || !version)
+      throw new Error("Invoice issuance did not return an active version.");
 
     const base = SITE_URL.trim().replace(/\/+$/, "");
     const portalUrl = `${base}/portal/invoices/${workOrderId}?version=${version.id}`;
@@ -280,19 +295,20 @@ export async function POST(req: Request) {
       joinedName(customer?.first_name, customer?.last_name) ||
       workOrder.customer_name?.trim() ||
       undefined;
+
     await sendInvoiceReadyEmail({
       shopId: workOrder.shop_id,
       to: email,
       portalUrl,
       workOrderId,
       invoiceTotal: version.total,
-      laborTotal: issuedSnapshot.laborCost ?? 0,
-      partsTotal: issuedSnapshot.partsCost ?? 0,
+      laborTotal: snapshot.laborCost ?? 0,
+      partsTotal: snapshot.partsCost ?? 0,
       customerName: customerLabel,
       shopName: shopLabel,
-      brandLogoUrl: brand?.logoUrl ?? null,
-      brandPrimaryColor: brand?.colors.primary ?? null,
-      brandSecondaryColor: brand?.colors.secondary ?? null,
+      brandLogoUrl: brand.logoUrl ?? null,
+      brandPrimaryColor: brand.colors.primary ?? null,
+      brandSecondaryColor: brand.colors.secondary ?? null,
     });
 
     const warnings = await runPostSendPersistence([
@@ -327,8 +343,8 @@ export async function POST(req: Request) {
       },
       {
         step: "invoice_sent_audit_log",
-        run: async () => {
-          await logOperationalEvent({
+        run: async () =>
+          logOperationalEvent({
             supabase: admin,
             event: "invoice_sent",
             entityType: "invoice_version",
@@ -340,8 +356,7 @@ export async function POST(req: Request) {
               invoice_total: version.total,
               recipient: email,
             },
-          });
-        },
+          }),
       },
       ...(customer?.user_id
         ? [
@@ -374,7 +389,7 @@ export async function POST(req: Request) {
       sentWithWarnings: warnings.length > 0 || undefined,
       warnings: warnings.length ? warnings : undefined,
     });
-  } catch (error: unknown) {
+  } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown error sending invoice";
     console.error("[invoices/send] failed:", message);
