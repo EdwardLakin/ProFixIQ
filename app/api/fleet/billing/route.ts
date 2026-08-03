@@ -4,6 +4,8 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import {
+  canManageFleetForActor,
+  manageableFleetIdsForActor,
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
@@ -17,6 +19,8 @@ type Body = {
   quoteLineIds?: string[];
   decision?: "approve" | "decline" | "defer";
   operationKey?: string;
+  contactMethod?: "phone" | "in_person" | "email" | "other";
+  note?: string;
 };
 
 function rows(value: unknown): Row[] {
@@ -39,12 +43,18 @@ function iso(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function canApprove(actor: Awaited<ReturnType<typeof resolveFleetActorContext>>) {
-  return actor.isInternal || actor.capabilities.canRunFleetDispatchActions;
+function canApprove(
+  actor: Awaited<ReturnType<typeof resolveFleetActorContext>>,
+  fleetId?: string,
+) {
+  return fleetId
+    ? canManageFleetForActor(actor, fleetId)
+    : actor.isInternal || manageableFleetIdsForActor(actor).length > 0;
 }
 
 async function accessibleVehicleContext(
   actor: Awaited<ReturnType<typeof resolveFleetActorContext>>,
+  options?: { financialOnly?: boolean },
 ) {
   const scope = resolveFleetActorScope(actor);
   if (!scope?.shopId) throw new Error("Fleet scope is unavailable");
@@ -55,7 +65,15 @@ async function accessibleVehicleContext(
     .select("fleet_id,vehicle_id,nickname,active")
     .eq("shop_id", scope.shopId)
     .or("active.is.null,active.eq.true");
-  if (scope.fleetIds?.length) query = query.in("fleet_id", scope.fleetIds);
+  const allowedFleetIds = actor.isInternal
+    ? scope.fleetIds
+    : options?.financialOnly
+      ? manageableFleetIdsForActor(actor)
+      : scope.fleetIds;
+  if (!actor.isInternal && options?.financialOnly && !allowedFleetIds?.length) {
+    throw new Error("Fleet billing access required");
+  }
+  if (allowedFleetIds?.length) query = query.in("fleet_id", allowedFleetIds);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
@@ -65,15 +83,25 @@ async function accessibleVehicleContext(
 async function listBilling(
   actor: Awaited<ReturnType<typeof resolveFleetActorContext>>,
 ) {
-  const { admin, scope, enrollments } = await accessibleVehicleContext(actor);
+  const { admin, scope, enrollments } = await accessibleVehicleContext(actor, {
+    financialOnly: true,
+  });
   const vehicleIds = Array.from(
     new Set(enrollments.map((row) => String(row.vehicle_id))),
   );
   if (!vehicleIds.length) {
     return {
       canApprove: canApprove(actor),
-      canPay: actor.isInternal || actor.actorType === "fleet_manager",
-      summary: { approvals: 0, outstanding: 0, paid: 0, invoices: 0 },
+      canPay: canApprove(actor),
+      decisionMode: actor.isInternal ? "shop_recorded" : "fleet_self_service",
+      summary: {
+        approvals: 0,
+        invoices: 0,
+        byCurrency: {
+          CAD: { outstanding: 0, paid: 0 },
+          USD: { outstanding: 0, paid: 0 },
+        },
+      },
       items: [],
     };
   }
@@ -108,6 +136,9 @@ async function listBilling(
           )
           .eq("shop_id", scope.shopId)
           .in("work_order_id", workOrderIds)
+          .or(
+            "sent_to_customer_at.not.is.null,approved_at.not.is.null,declined_at.not.is.null,status.in.(sent,approved,converted,declined,deferred)",
+          )
           .order("created_at", { ascending: true }),
         admin
           .from("invoice_versions")
@@ -116,6 +147,7 @@ async function listBilling(
           )
           .eq("shop_id", scope.shopId)
           .in("work_order_id", workOrderIds)
+          .in("lifecycle_status", ["issued", "partially_paid", "paid"])
           .order("version_number", { ascending: false }),
         admin
           .from("payments")
@@ -227,24 +259,29 @@ async function listBilling(
     };
   });
 
+  const byCurrency = {
+    CAD: { outstanding: 0, paid: 0 },
+    USD: { outstanding: 0, paid: 0 },
+  };
+  for (const item of items) {
+    if (!item.invoice) continue;
+    const totals = byCurrency[item.invoice.currency];
+    totals.outstanding += item.invoice.outstandingTotal;
+    totals.paid += item.invoice.paidTotal;
+  }
+
   return {
     canApprove: canApprove(actor),
-    canPay: actor.isInternal || actor.actorType === "fleet_manager",
+    canPay: canApprove(actor),
+    decisionMode: actor.isInternal ? "shop_recorded" : "fleet_self_service",
     summary: {
       approvals: items.reduce(
         (total, item) =>
           total + item.quoteLines.filter((line) => line.needsDecision).length,
         0,
       ),
-      outstanding: items.reduce(
-        (total, item) => total + (item.invoice?.outstandingTotal ?? 0),
-        0,
-      ),
-      paid: items.reduce(
-        (total, item) => total + (item.invoice?.paidTotal ?? 0),
-        0,
-      ),
       invoices: items.filter((item) => Boolean(item.invoice)).length,
+      byCurrency,
     },
     items,
   };
@@ -275,6 +312,8 @@ export async function POST(request: Request) {
       new Set((body.quoteLineIds ?? []).map((value) => value.trim()).filter(Boolean)),
     );
     const operationKey = clean(body.operationKey);
+    const contactMethod = clean(body.contactMethod);
+    const note = clean(body.note);
     if (
       !workOrderId ||
       !decision ||
@@ -284,8 +323,21 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({ error: "Invalid approval decision" }, { status: 400 });
     }
+    if (
+      actor.isInternal &&
+      (!contactMethod ||
+        !["phone", "in_person", "email", "other"].includes(contactMethod) ||
+        !note)
+    ) {
+      return NextResponse.json(
+        { error: "Contact method and decision note are required" },
+        { status: 400 },
+      );
+    }
 
-    const { admin, scope, enrollments } = await accessibleVehicleContext(actor);
+    const { admin, scope, enrollments } = await accessibleVehicleContext(actor, {
+      financialOnly: true,
+    });
     const accessibleVehicleIds = enrollments.map((row) => String(row.vehicle_id));
     const { data: workOrder, error: workOrderError } = await admin
       .from("work_orders")
@@ -310,18 +362,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Estimate line not found" }, { status: 404 });
     }
 
-    const { data, error } = await admin.rpc("apply_customer_quote_decision_atomic", {
-      p_shop_id: scope.shopId,
-      p_work_order_id: workOrderId,
-      p_quote_line_ids: quoteLineIds,
-      p_decision: decision,
-      p_decline_remaining: false,
-      // The SQL contract permits NULL; generated RPC args model it as string.
-      p_customer_id: null as unknown as string,
-      p_actor_user_id: actor.userId,
-      p_operation_key: `fleet:${operationKey}`,
-      p_at: new Date().toISOString(),
-    });
+    const rpcResult = actor.isInternal
+      ? await supabase.rpc("apply_shop_quote_decision_atomic", {
+          p_shop_id: scope.shopId,
+          p_work_order_id: workOrderId,
+          p_quote_line_ids: quoteLineIds,
+          p_decision: decision,
+          p_actor_user_id: actor.userId,
+          p_contact_method: contactMethod ?? "other",
+          p_note: note,
+          p_operation_key: `fleet-staff:${operationKey}`,
+          p_at: new Date().toISOString(),
+        })
+      : await supabase.rpc("apply_customer_quote_decision_atomic", {
+          p_shop_id: scope.shopId,
+          p_work_order_id: workOrderId,
+          p_quote_line_ids: quoteLineIds,
+          p_decision: decision,
+          p_decline_remaining: false,
+          // The SQL contract permits NULL; generated RPC args model it as string.
+          p_customer_id: null as unknown as string,
+          p_actor_user_id: actor.userId,
+          p_operation_key: `fleet:${operationKey}`,
+          p_at: new Date().toISOString(),
+        });
+    const { data, error } = rpcResult;
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true, result: data });
   } catch (error) {
