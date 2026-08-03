@@ -152,12 +152,12 @@ export default function FleetServiceRequestsPage({
 
       {payload ? (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
+          {([
             ["Open", payload.summary.open, ClipboardList],
             ["Scheduled", payload.summary.scheduled, CalendarClock],
             ["Need approval", payload.summary.awaitingApproval, AlertTriangle],
             ["Completed", payload.summary.completed, CheckCircle2],
-          ].map(([label, value, Icon]) => (
+          ] as const).map(([label, value, Icon]) => (
             <div key={String(label)} className={`${panel} p-4`}>
               <Icon size={17} className="text-sky-300" />
               <div className="mt-3 text-2xl font-semibold">{String(value)}</div>
