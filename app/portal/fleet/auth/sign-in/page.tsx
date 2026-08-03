@@ -1,13 +1,12 @@
-// app/portal/auth/sign-in/page.tsx
 "use client";
 
 import { Suspense } from "react";
-import PortalSignInForm from "./PortalSignInForm";
+import PortalSignInForm from "../../../auth/sign-in/PortalSignInForm";
 import AuthShell from "@/features/auth/components/AuthShell";
 
 const COPPER = "#C57A4A";
 
-function LoadingCard({ label }: { label: string }) {
+function FleetLoadingCard() {
   return (
     <AuthShell cardClassName="rounded-2xl border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-md sm:p-6">
       <div>
@@ -15,9 +14,11 @@ function LoadingCard({ label }: { label: string }) {
           className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[11px] uppercase tracking-[0.2em]"
           style={{ color: COPPER }}
         >
-          Customer Portal
+          Fleet Portal
         </div>
-        <div className="mt-4 text-sm text-[color:var(--theme-text-secondary)]">{label}</div>
+        <div className="mt-4 text-sm text-[color:var(--theme-text-secondary)]">
+          Loading fleet sign in…
+        </div>
         <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]">
           <div
             className="h-full w-1/2 animate-pulse rounded-full"
@@ -29,10 +30,10 @@ function LoadingCard({ label }: { label: string }) {
   );
 }
 
-export default function PortalSignInPage() {
+export default function FleetPortalSignInPage() {
   return (
-    <Suspense fallback={<LoadingCard label="Loading sign in…" />}>
-      <PortalSignInForm portalType="customer" />
+    <Suspense fallback={<FleetLoadingCard />}>
+      <PortalSignInForm portalType="fleet" />
     </Suspense>
   );
 }

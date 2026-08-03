@@ -4,6 +4,12 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import {
+  isPortalPathForSurface,
+  PORTAL_HOME,
+  PORTAL_SIGN_IN,
+  type PortalSurface,
+} from "@/features/auth/lib/portalSurfaceRouting";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
@@ -107,7 +113,11 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: { headers: requestHeaders } });
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
-  const isPortalAuthPage = pathname.startsWith("/portal/auth/");
+  const isCustomerPortalAuthPage = pathname.startsWith("/portal/auth/");
+  const isFleetPortalAuthPage = pathname.startsWith("/portal/fleet/auth/");
+  const isPortalAuthPage =
+    isCustomerPortalAuthPage || isFleetPortalAuthPage;
+  const isFleetPortalPath = isPortalPathForSurface(pathname, "fleet");
   const isPortalActivationPage =
     pathname === "/portal/auth/confirm" ||
     pathname === "/portal/auth/fleet-invite";
@@ -258,18 +268,41 @@ export async function middleware(req: NextRequest) {
       !isPortalActivationPage
     ) {
       const access = await resolvePortalAccessServer(supabase, user.id);
-      const requestedFleet = redirectParam?.startsWith("/portal/fleet") ?? false;
-      let to =
-        redirectParam ??
-        (access.fleet && !access.customer ? "/portal/fleet" : "/portal");
-
-      if (requestedFleet && !access.fleet) to = "/portal";
-      if (!requestedFleet && !access.customer && access.fleet) {
-        to = "/portal/fleet";
-      }
+      const requestedSurface: PortalSurface =
+        isFleetPortalAuthPage ||
+        req.nextUrl.searchParams.get("portal") === "fleet" ||
+        isPortalPathForSurface(redirectParam, "fleet")
+          ? "fleet"
+          : "customer";
+      const hasRequestedAccess =
+        requestedSurface === "fleet" ? access.fleet : access.customer;
+      const otherSurface: PortalSurface =
+        requestedSurface === "fleet" ? "customer" : "fleet";
+      const hasOtherAccess =
+        otherSurface === "fleet" ? access.fleet : access.customer;
+      const surface = hasRequestedAccess
+        ? requestedSurface
+        : hasOtherAccess
+          ? otherSurface
+          : requestedSurface;
+      const to = isPortalPathForSurface(redirectParam, surface)
+        ? redirectParam!
+        : PORTAL_HOME[surface];
 
       const target = new URL(to, req.url);
       return NextResponse.redirect(target, { headers: res.headers });
+    }
+
+    if (
+      !user &&
+      pathname === PORTAL_SIGN_IN.customer &&
+      req.nextUrl.searchParams.get("portal") === "fleet"
+    ) {
+      const login = new URL(PORTAL_SIGN_IN.fleet, req.url);
+      if (isPortalPathForSurface(redirectParam, "fleet")) {
+        login.searchParams.set("redirect", redirectParam!);
+      }
+      return NextResponse.redirect(login, { headers: res.headers });
     }
 
     return res;
@@ -277,7 +310,8 @@ export async function middleware(req: NextRequest) {
 
   if (!user) {
     if (isPortal) {
-      const login = new URL("/portal/auth/sign-in", req.url);
+      const surface: PortalSurface = isFleetPortalPath ? "fleet" : "customer";
+      const login = new URL(PORTAL_SIGN_IN[surface], req.url);
       login.searchParams.set("redirect", pathname + search);
       return NextResponse.redirect(login, { headers: res.headers });
     }
@@ -330,8 +364,6 @@ export async function middleware(req: NextRequest) {
 
   if (isPortal) {
     const access = await resolvePortalAccessServer(supabase, user.id);
-    const isFleetPortalPath =
-      pathname === "/portal/fleet" || pathname.startsWith("/portal/fleet/");
 
     if (!access.customer && access.fleet && !isFleetPortalPath) {
       const target = new URL("/portal/fleet", req.url);
