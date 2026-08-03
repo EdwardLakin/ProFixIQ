@@ -300,6 +300,12 @@ export async function POST(request: Request) {
 
     const body = (await request.json().catch(() => ({}))) as Body;
     if (!body.action || body.action === "list") {
+      if (!canApprove(actor)) {
+        return NextResponse.json(
+          { error: "Fleet billing access required" },
+          { status: 403 },
+        );
+      }
       return NextResponse.json(await listBilling(actor));
     }
     if (!canApprove(actor)) {
