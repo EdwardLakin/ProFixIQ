@@ -1,263 +1,213 @@
-// app/api/fleet/units/route.ts
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 
-type DB = Database;
-
 export type FleetUnitListItem = {
   id: string;
   label: string;
-  fleetName?: string | null;
-  plate?: string | null;
-  vin?: string | null;
+  fleetName: string | null;
+  plate: string | null;
+  vin: string | null;
   status: "in_service" | "limited" | "oos";
-  nextInspectionDate?: string | null;
-  location?: string | null;
+  nextInspectionDate: string | null;
+  location: string | null;
+  currentOdometerKm: number | null;
+  currentEngineHours: number | null;
+  pmDueCount: number;
+  openRequestCount: number;
 };
 
-type UnitsBody = {
-  shopId?: string | null;
-};
+type Row = Record<string, unknown>;
 
-type FleetVehicleRow = DB["public"]["Tables"]["fleet_vehicles"]["Row"];
-type FleetRow = DB["public"]["Tables"]["fleets"]["Row"];
-type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
-type FleetServiceRequestRow =
-  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-type FleetInspectionScheduleRow =
-  DB["public"]["Tables"]["fleet_inspection_schedules"]["Row"];
-
-type ServiceRequestSelect = Pick<
-  FleetServiceRequestRow,
-  "vehicle_id" | "severity" | "status"
->;
-
-type InspectionScheduleSelect = Pick<
-  FleetInspectionScheduleRow,
-  "vehicle_id" | "next_inspection_date"
->;
-
-/**
- * Status rules:
- * - Any open/scheduled SAFETY or COMPLIANCE request → OOS
- * - Else any open/scheduled request → LIMITED
- * - Else → IN SERVICE
- */
-function deriveUnitStatus(
-  requests: ServiceRequestSelect[],
-): FleetUnitListItem["status"] {
-  if (!requests || requests.length === 0) return "in_service";
-
-  const severe = requests.some((r) => {
-    const sev = (r.severity ?? "").toLowerCase();
-    const st = (r.status ?? "").toLowerCase();
-    return (
-      (st === "open" || st === "scheduled") &&
-      (sev === "safety" || sev === "compliance")
-    );
-  });
-
-  if (severe) return "oos";
-
-  const anyLimited = requests.some((r) => {
-    const st = (r.status ?? "").toLowerCase();
-    return st === "open" || st === "scheduled";
-  });
-
-  if (anyLimited) return "limited";
-
-  return "in_service";
+function rows(value: unknown): Row[] {
+  return Array.isArray(value) ? (value as Row[]) : [];
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const supabase = createServerSupabaseRoute();
+function clean(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
-    const body = (await req.json().catch(() => ({}))) as UnitsBody;
+function numberValue(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function status(requests: Row[]): FleetUnitListItem["status"] {
+  const active = requests.filter((row) =>
+    ["open", "scheduled"].includes(clean(row.status)?.toLowerCase() ?? ""),
+  );
+  if (
+    active.some((row) =>
+      ["safety", "compliance"].includes(
+        clean(row.severity)?.toLowerCase() ?? "",
+      ),
+    )
+  ) {
+    return "oos";
+  }
+  return active.length ? "limited" : "in_service";
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as {
+      shopId?: string | null;
+    };
+    const supabase = createServerSupabaseRoute();
     const actor = await resolveFleetActorContext(supabase);
     const scope = resolveFleetActorScope(actor, {
       explicitShopId: body.shopId ?? null,
     });
-
+    if (!actor.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     if (!scope?.shopId) {
-      return NextResponse.json(
-        { error: "Unable to resolve shop for fleet units." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
     }
-    const shopId = scope.shopId;
 
-    // 1) Find fleets for this shop (authoritative scoping)
-    let fleetsQuery = supabase
+    const admin = createAdminSupabase();
+    let fleetQuery = admin
       .from("fleets")
-      .select("id, shop_id, name")
-      .eq("shop_id", shopId);
+      .select("id,name")
+      .eq("shop_id", scope.shopId)
+      .order("name", { ascending: true });
+    if (scope.fleetIds?.length) fleetQuery = fleetQuery.in("id", scope.fleetIds);
+    const { data: fleetData, error: fleetError } = await fleetQuery;
+    if (fleetError) throw new Error(fleetError.message);
+    const fleets = rows(fleetData);
+    const fleetIds = fleets.map((row) => String(row.id));
+    if (!fleetIds.length) return NextResponse.json({ units: [] });
 
-    if (scope.fleetIds && scope.fleetIds.length > 0) {
-      fleetsQuery = fleetsQuery.in("id", scope.fleetIds);
-    }
-
-    const { data: fleets, error: fleetsError } = await fleetsQuery;
-
-    if (fleetsError) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/units] fleets error", fleetsError);
-      return NextResponse.json(
-        { error: "Failed to load fleets." },
-        { status: 500 },
-      );
-    }
-
-    const fleetRows = (fleets ?? []) as Pick<FleetRow, "id" | "shop_id" | "name">[];
-    const fleetIds = fleetRows.map((f) => f.id);
-
-    if (fleetIds.length === 0) {
-      return NextResponse.json({ units: [] as FleetUnitListItem[] });
-    }
-
-    const fleetsById = new Map<string, { name: string | null }>();
-    for (const f of fleetRows) {
-      fleetsById.set(f.id, { name: f.name ?? null });
-    }
-
-    // 2) Get fleet_vehicles for those fleets.
-    // IMPORTANT: treat active NULL as active (common in seeds) + active true.
-    const { data: fleetVehiclesRaw, error: fvError } = await supabase
+    const { data: enrollmentData, error: enrollmentError } = await admin
       .from("fleet_vehicles")
-      .select("fleet_id, vehicle_id, active, nickname, custom_interval_days")
+      .select("fleet_id,vehicle_id,nickname,active")
+      .eq("shop_id", scope.shopId)
       .in("fleet_id", fleetIds)
       .or("active.is.null,active.eq.true");
-
-    if (fvError) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/units] fleet_vehicles error", fvError);
-      return NextResponse.json(
-        { error: "Failed to load fleet vehicles." },
-        { status: 500 },
-      );
-    }
-
-    const fleetVehicles = (fleetVehiclesRaw ?? []) as Pick<
-      FleetVehicleRow,
-      "fleet_id" | "vehicle_id" | "active" | "nickname" | "custom_interval_days"
-    >[];
-
-    if (fleetVehicles.length === 0) {
-      return NextResponse.json({ units: [] as FleetUnitListItem[] });
-    }
-
+    if (enrollmentError) throw new Error(enrollmentError.message);
+    const enrollments = rows(enrollmentData);
     const vehicleIds = Array.from(
-      new Set(fleetVehicles.map((r) => r.vehicle_id).filter(Boolean)),
+      new Set(enrollments.map((row) => String(row.vehicle_id))),
     );
+    if (!vehicleIds.length) return NextResponse.json({ units: [] });
 
-    // 3) Load vehicles
-    const { data: vehiclesRaw, error: vError } = await supabase
-      .from("vehicles")
-      .select("id, unit_number, license_plate, vin, make, model, year")
-      .in("id", vehicleIds);
+    const [
+      vehicleResult,
+      requestResult,
+      inspectionResult,
+      readingResult,
+      pmResult,
+    ] = await Promise.all([
+      admin
+        .from("vehicles")
+        .select(
+          "id,unit_number,license_plate,vin,make,model,year,mileage,engine_hours",
+        )
+        .eq("shop_id", scope.shopId)
+        .in("id", vehicleIds),
+      admin
+        .from("fleet_service_requests")
+        .select("vehicle_id,severity,status")
+        .eq("shop_id", scope.shopId)
+        .in("fleet_id", fleetIds)
+        .in("status", ["open", "scheduled"]),
+      admin
+        .from("fleet_inspection_schedules")
+        .select("vehicle_id,next_inspection_date")
+        .eq("shop_id", scope.shopId)
+        .in("fleet_id", fleetIds)
+        .order("next_inspection_date", { ascending: true }),
+      admin
+        .from("fleet_unit_readings")
+        .select("vehicle_id,odometer_km,engine_hours,recorded_at")
+        .eq("shop_id", scope.shopId)
+        .in("fleet_id", fleetIds)
+        .order("recorded_at", { ascending: false })
+        .limit(3000),
+      admin
+        .from("fleet_pm_due_events")
+        .select("vehicle_id,status")
+        .eq("shop_id", scope.shopId)
+        .in("fleet_id", fleetIds)
+        .in("status", ["pending", "deferred", "converted"]),
+    ]);
+    const firstError = [
+      vehicleResult.error,
+      requestResult.error,
+      inspectionResult.error,
+      readingResult.error,
+      pmResult.error,
+    ].find(Boolean);
+    if (firstError) throw new Error(firstError.message);
 
-    if (vError) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/units] vehicles error", vError);
-      return NextResponse.json(
-        { error: "Failed to load vehicles." },
-        { status: 500 },
-      );
+    const fleetNames = new Map(
+      fleets.map((row) => [String(row.id), clean(row.name) ?? "Fleet"]),
+    );
+    const vehicles = new Map(
+      rows(vehicleResult.data).map((row) => [String(row.id), row]),
+    );
+    const requestsByVehicle = new Map<string, Row[]>();
+    for (const row of rows(requestResult.data)) {
+      const key = String(row.vehicle_id);
+      requestsByVehicle.set(key, [...(requestsByVehicle.get(key) ?? []), row]);
+    }
+    const inspectionByVehicle = new Map<string, string | null>();
+    for (const row of rows(inspectionResult.data)) {
+      const key = String(row.vehicle_id);
+      if (!inspectionByVehicle.has(key)) {
+        inspectionByVehicle.set(key, clean(row.next_inspection_date));
+      }
+    }
+    const readingByVehicle = new Map<string, Row>();
+    for (const row of rows(readingResult.data)) {
+      const key = String(row.vehicle_id);
+      if (!readingByVehicle.has(key)) readingByVehicle.set(key, row);
+    }
+    const pmByVehicle = new Map<string, number>();
+    for (const row of rows(pmResult.data)) {
+      const key = String(row.vehicle_id);
+      pmByVehicle.set(key, (pmByVehicle.get(key) ?? 0) + 1);
     }
 
-    const vehicles = (vehiclesRaw ?? []) as Pick<
-      VehicleRow,
-      "id" | "unit_number" | "license_plate" | "vin" | "make" | "model" | "year"
-    >[];
-
-    const vehiclesById = new Map<string, typeof vehicles[number]>();
-    for (const v of vehicles) vehiclesById.set(v.id, v);
-
-    // 4) Load service requests (for status)
-    const { data: srsRaw, error: srError } = await supabase
-      .from("fleet_service_requests")
-      .select("vehicle_id, severity, status")
-      .eq("shop_id", shopId)
-      .in("vehicle_id", vehicleIds)
-      .neq("status", "cancelled");
-
-    if (srError) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/units] service_requests error", srError);
-      return NextResponse.json(
-        { error: "Failed to load service requests." },
-        { status: 500 },
-      );
-    }
-
-    const srs = (srsRaw ?? []) as ServiceRequestSelect[];
-    const srsByVehicle = new Map<string, ServiceRequestSelect[]>();
-    for (const sr of srs) {
-      const arr = srsByVehicle.get(sr.vehicle_id) ?? [];
-      arr.push(sr);
-      srsByVehicle.set(sr.vehicle_id, arr);
-    }
-
-    // 5) Load inspection schedules (CVIP)
-    const { data: schedRaw, error: schedError } = await supabase
-      .from("fleet_inspection_schedules")
-      .select("vehicle_id, next_inspection_date")
-      .eq("shop_id", shopId)
-      .in("vehicle_id", vehicleIds);
-
-    if (schedError) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/units] inspection_schedules error", schedError);
-      return NextResponse.json(
-        { error: "Failed to load inspection schedules." },
-        { status: 500 },
-      );
-    }
-
-    const scheds = (schedRaw ?? []) as InspectionScheduleSelect[];
-    const nextByVehicle = new Map<string, string | null>();
-    for (const row of scheds) {
-      nextByVehicle.set(row.vehicle_id, row.next_inspection_date ?? null);
-    }
-
-    // 6) Build units
-    const units: FleetUnitListItem[] = fleetVehicles.map((fv) => {
-      const vehicle = vehiclesById.get(fv.vehicle_id);
-      const fleetName = fleetsById.get(fv.fleet_id)?.name ?? null;
-
-      const label =
-        fv.nickname ||
-        vehicle?.unit_number ||
-        vehicle?.license_plate ||
-        vehicle?.vin ||
-        "Unit";
-
-      const status = deriveUnitStatus(srsByVehicle.get(fv.vehicle_id) ?? []);
-
+    const units: FleetUnitListItem[] = enrollments.map((enrollment) => {
+      const vehicleId = String(enrollment.vehicle_id);
+      const vehicle = vehicles.get(vehicleId) ?? {};
+      const reading = readingByVehicle.get(vehicleId) ?? {};
+      const requests = requestsByVehicle.get(vehicleId) ?? [];
       return {
-        id: fv.vehicle_id,
-        label,
-        fleetName,
-        plate: vehicle?.license_plate ?? null,
-        vin: vehicle?.vin ?? null,
-        status,
-        nextInspectionDate: nextByVehicle.get(fv.vehicle_id) ?? null,
+        id: vehicleId,
+        label:
+          clean(enrollment.nickname) ??
+          clean(vehicle.unit_number) ??
+          clean(vehicle.license_plate) ??
+          clean(vehicle.vin) ??
+          "Unit",
+        fleetName: fleetNames.get(String(enrollment.fleet_id)) ?? null,
+        plate: clean(vehicle.license_plate),
+        vin: clean(vehicle.vin),
+        status: status(requests),
+        nextInspectionDate: inspectionByVehicle.get(vehicleId) ?? null,
         location: null,
+        currentOdometerKm:
+          numberValue(reading.odometer_km) ?? numberValue(vehicle.mileage),
+        currentEngineHours:
+          numberValue(reading.engine_hours) ?? numberValue(vehicle.engine_hours),
+        pmDueCount: pmByVehicle.get(vehicleId) ?? 0,
+        openRequestCount: requests.length,
       };
     });
 
     return NextResponse.json({ units });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[fleet/units] error", err);
+  } catch (error) {
+    console.error("[fleet/units] error", error);
     return NextResponse.json(
-      { error: "Failed to load fleet units." },
+      { error: error instanceof Error ? error.message : "Failed to load fleet units" },
       { status: 500 },
     );
   }
