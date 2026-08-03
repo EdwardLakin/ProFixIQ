@@ -153,7 +153,11 @@ export default function FleetUnitDetailWorkspace({
                   : "In service"}
             </span>
             <Link
-              href={`${routePrefix}/request/build?unitId=${encodeURIComponent(unitId)}`}
+              href={
+                routePrefix === "/portal/fleet"
+                  ? `/portal/fleet/request/build?unitId=${encodeURIComponent(unitId)}`
+                  : `/fleet/service-requests/new?unitId=${encodeURIComponent(unitId)}`
+              }
               className="rounded-xl bg-sky-300 px-4 py-2 text-xs font-semibold text-slate-950"
             >
               Request service
