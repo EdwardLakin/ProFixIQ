@@ -7,6 +7,7 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import {
+  manageableFleetIdsForActor,
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
@@ -41,10 +42,13 @@ export async function POST(request: Request) {
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (
-      !scope?.shopId ||
-      (!actor.isInternal && actor.actorType !== "fleet_manager")
-    ) {
+    if (!scope?.shopId || actor.actorType === "none") {
+      return NextResponse.json({ error: "Fleet billing access required" }, { status: 403 });
+    }
+    const billableFleetIds = actor.isInternal
+      ? null
+      : manageableFleetIdsForActor(actor);
+    if (!actor.isInternal && !billableFleetIds.length) {
       return NextResponse.json({ error: "Fleet billing access required" }, { status: 403 });
     }
 
@@ -60,10 +64,12 @@ export async function POST(request: Request) {
     const admin = createAdminSupabase();
     let enrollmentQuery = admin
       .from("fleet_vehicles")
-      .select("vehicle_id")
+      .select("fleet_id,vehicle_id")
       .eq("shop_id", scope.shopId)
       .or("active.is.null,active.eq.true");
-    if (scope.fleetIds?.length) enrollmentQuery = enrollmentQuery.in("fleet_id", scope.fleetIds);
+    if (billableFleetIds?.length) {
+      enrollmentQuery = enrollmentQuery.in("fleet_id", billableFleetIds);
+    }
     const { data: enrollments, error: enrollmentError } = await enrollmentQuery;
     if (enrollmentError) throw new Error(enrollmentError.message);
     const vehicleIds = (enrollments ?? []).map((row) => row.vehicle_id);
