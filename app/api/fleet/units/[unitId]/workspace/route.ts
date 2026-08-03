@@ -42,6 +42,39 @@ function rowArray(value: unknown): Row[] {
   return Array.isArray(value) ? (value as Row[]) : [];
 }
 
+async function loadLifetimeWorkOrderMetrics(
+  admin: ReturnType<typeof createAdminSupabase>,
+  shopId: string,
+  unitId: string,
+) {
+  const pageSize = 1000;
+  let offset = 0;
+  let count = 0;
+  let lifetimeSpend = 0;
+  let outstandingBalance = 0;
+
+  for (;;) {
+    const { data, error } = await admin
+      .from("work_orders")
+      .select("invoice_total,outstanding_balance")
+      .eq("shop_id", shopId)
+      .eq("vehicle_id", unitId)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw new Error(error.message);
+    const batch = rowArray(data);
+    count += batch.length;
+    for (const row of batch) {
+      lifetimeSpend += numberValue(row.invoice_total) ?? 0;
+      outstandingBalance += numberValue(row.outstanding_balance) ?? 0;
+    }
+    if (batch.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return { count, lifetimeSpend, outstandingBalance };
+}
+
 function priorityBullet(
   id: string,
   priority: FleetPriority,
@@ -113,6 +146,7 @@ export async function GET(_request: Request, { params }: Props) {
       pretripResult,
       inspectionResult,
       workOrderResult,
+      lifetimeMetrics,
     ] = await Promise.all([
       admin.from("fleets").select("id,name").eq("id", fleetId).maybeSingle(),
       admin
@@ -182,6 +216,7 @@ export async function GET(_request: Request, { params }: Props) {
         .eq("vehicle_id", unitId)
         .order("created_at", { ascending: false })
         .limit(100),
+      loadLifetimeWorkOrderMetrics(admin, scope.shopId, unitId),
     ]);
 
     const firstError = [
@@ -325,14 +360,8 @@ export async function GET(_request: Request, { params }: Props) {
     const activePmDue = maintenance.filter((item) =>
       ["pending", "deferred", "converted"].includes(item.status),
     ).length;
-    const outstandingBalance = history.reduce(
-      (total, row) => total + (row.invoice?.outstandingTotal ?? row.outstandingBalance),
-      0,
-    );
-    const lifetimeSpend = history.reduce(
-      (total, row) => total + (row.invoice?.total ?? row.invoiceTotal),
-      0,
-    );
+    const outstandingBalance = lifetimeMetrics.outstandingBalance;
+    const lifetimeSpend = lifetimeMetrics.lifetimeSpend;
     const latestReading = readings[0] ?? {};
     const summary: FleetSummaryBullet[] = [];
 
@@ -432,7 +461,7 @@ export async function GET(_request: Request, { params }: Props) {
         openRequests,
         openApprovals,
         activePmDue,
-        lifetimeWorkOrders: history.length,
+        lifetimeWorkOrders: lifetimeMetrics.count,
         lifetimeSpend,
         outstandingBalance,
       },
