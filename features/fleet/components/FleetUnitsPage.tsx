@@ -7,7 +7,6 @@ import type { FleetUnitListItem } from "app/api/fleet/units/route";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
 type Props = {
-  shopId?: string | null;
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";
 };
@@ -46,7 +45,6 @@ function StatusPill({ status }: { status: FleetUnitListItem["status"] }) {
 }
 
 export default function FleetUnitsPage({
-  shopId,
   uiContext,
   routePrefix = "/fleet",
 }: Props) {
@@ -63,7 +61,7 @@ export default function FleetUnitsPage({
         const response = await fetch("/api/fleet/units", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shopId: shopId ?? null }),
+          body: JSON.stringify({}),
           cache: "no-store",
         });
         const body = (await response.json().catch(() => ({}))) as {
@@ -83,7 +81,7 @@ export default function FleetUnitsPage({
     return () => {
       cancelled = true;
     };
-  }, [shopId]);
+  }, []);
 
   const fleets = useMemo(
     () =>
