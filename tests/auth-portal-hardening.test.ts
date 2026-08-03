@@ -43,7 +43,7 @@ describe("authentication and portal hardening", () => {
     ).toBe("/portal");
 
     const customerSignIn = read("app/portal/auth/sign-in/page.tsx");
-    const fleetSignIn = read("app/portal/fleet/auth/sign-in/page.tsx");
+    const fleetSignIn = read("app/portal/auth/fleet-sign-in/page.tsx");
     const signInForm = read("app/portal/auth/sign-in/PortalSignInForm.tsx");
     const middleware = read("middleware.ts");
 

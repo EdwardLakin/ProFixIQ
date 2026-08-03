@@ -113,10 +113,8 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: { headers: requestHeaders } });
 
   const isPortal = pathname === "/portal" || pathname.startsWith("/portal/");
-  const isCustomerPortalAuthPage = pathname.startsWith("/portal/auth/");
-  const isFleetPortalAuthPage = pathname.startsWith("/portal/fleet/auth/");
-  const isPortalAuthPage =
-    isCustomerPortalAuthPage || isFleetPortalAuthPage;
+  const isFleetPortalAuthPage = pathname === PORTAL_SIGN_IN.fleet;
+  const isPortalAuthPage = pathname.startsWith("/portal/auth/");
   const isFleetPortalPath = isPortalPathForSurface(pathname, "fleet");
   const isPortalActivationPage =
     pathname === "/portal/auth/confirm" ||

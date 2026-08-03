@@ -269,7 +269,7 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         <Link href="/portal/auth/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
           Customer portal
         </Link>
-        <Link href="/portal/fleet/auth/sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
+        <Link href="/portal/auth/fleet-sign-in" className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2.5 text-center text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-[var(--accent-copper)] hover:text-[color:var(--theme-text-primary)]">
           Fleet portal
         </Link>
       </div>

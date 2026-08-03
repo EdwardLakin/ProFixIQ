@@ -9,7 +9,7 @@ export const PORTAL_HOME: Record<PortalSurface, string> = {
 
 export const PORTAL_SIGN_IN: Record<PortalSurface, string> = {
   customer: "/portal/auth/sign-in",
-  fleet: "/portal/fleet/auth/sign-in",
+  fleet: "/portal/auth/fleet-sign-in",
 };
 
 function isFleetPortalPath(path: string): boolean {

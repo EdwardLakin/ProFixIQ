@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import PortalSignInForm from "../../../auth/sign-in/PortalSignInForm";
+import PortalSignInForm from "../sign-in/PortalSignInForm";
 import AuthShell from "@/features/auth/components/AuthShell";
 
 const COPPER = "#C57A4A";
