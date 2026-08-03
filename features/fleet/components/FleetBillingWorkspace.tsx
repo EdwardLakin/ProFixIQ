@@ -546,11 +546,7 @@ export default function FleetBillingWorkspace({
                     {payload?.canPay && item.invoice.outstandingTotal > 0 ? (
                       <button
                         type="button"
-                        disabled={
-                                Boolean(activeAction) ||
-                                (payload.decisionMode === "shop_recorded" &&
-                                  !decisionNote.trim())
-                              }
+                        disabled={Boolean(activeAction)}
                         onClick={() => void pay(item)}
                         className="inline-flex items-center gap-2 rounded-lg bg-sky-300 px-3 py-2 text-xs font-semibold text-slate-950 disabled:opacity-50"
                       >
