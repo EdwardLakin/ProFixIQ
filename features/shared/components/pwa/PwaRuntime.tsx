@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   clearOfflineState,
@@ -23,8 +24,23 @@ type InstallAvailability = {
   ios: boolean;
 };
 
+type RuntimeStatus = {
+  online: boolean;
+  pending: number;
+  queued: number;
+  syncing: number;
+  failed: number;
+  conflicted: number;
+  updateReady: boolean;
+  activatingUpdate: boolean;
+  syncBlocked: string | null;
+};
+
 const INSTALL_REQUEST_EVENT = "profixiq:pwa-install-request";
 const INSTALL_AVAILABILITY_EVENT = "profixiq:pwa-install-availability";
+const RUNTIME_STATUS_EVENT = "profixiq:pwa-runtime-status";
+const RUNTIME_STATUS_REQUEST_EVENT = "profixiq:pwa-runtime-status-request";
+const UPDATE_REQUEST_EVENT = "profixiq:pwa-update-request";
 
 export default function PwaRuntime() {
   const pathname = usePathname() ?? "/";
@@ -39,12 +55,45 @@ export default function PwaRuntime() {
   const [viewportInsets, setViewportInsets] = useState({ bottom: 0, right: 0 });
   const updateReloading = useRef(false);
   const pending = summary.queued + summary.syncing + summary.failed;
+  const mobileSurface = pathname.startsWith("/mobile");
 
-  const publishInstallAvailability = (detail: InstallAvailability) => {
+  const publishInstallAvailability = useCallback(
+    (detail: InstallAvailability) => {
+      window.dispatchEvent(
+        new CustomEvent<InstallAvailability>(INSTALL_AVAILABILITY_EVENT, {
+          detail,
+        }),
+      );
+    },
+    [],
+  );
+
+  const publishRuntimeStatus = useCallback(() => {
+    const detail: RuntimeStatus = {
+      online,
+      pending,
+      queued: summary.queued,
+      syncing: summary.syncing,
+      failed: summary.failed,
+      conflicted: summary.conflicted,
+      updateReady: Boolean(updateReady),
+      activatingUpdate,
+      syncBlocked,
+    };
     window.dispatchEvent(
-      new CustomEvent<InstallAvailability>(INSTALL_AVAILABILITY_EVENT, { detail }),
+      new CustomEvent<RuntimeStatus>(RUNTIME_STATUS_EVENT, { detail }),
     );
-  };
+  }, [
+    activatingUpdate,
+    online,
+    pending,
+    summary.conflicted,
+    summary.failed,
+    summary.queued,
+    summary.syncing,
+    syncBlocked,
+    updateReady,
+  ]);
 
   useEffect(() => {
     setOnline(navigator.onLine);
@@ -143,16 +192,18 @@ export default function PwaRuntime() {
     const interval = window.setInterval(sync, 60_000);
 
     if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js", { scope: "/" }).then((registration) => {
-        if (registration.waiting) setUpdateReady(registration.waiting);
-        registration.addEventListener("updatefound", () => {
-          registration.installing?.addEventListener("statechange", () => {
-            if (registration.waiting && navigator.serviceWorker.controller) {
-              setUpdateReady(registration.waiting);
-            }
+      void navigator.serviceWorker
+        .register("/sw.js", { scope: "/" })
+        .then((registration) => {
+          if (registration.waiting) setUpdateReady(registration.waiting);
+          registration.addEventListener("updatefound", () => {
+            registration.installing?.addEventListener("statechange", () => {
+              if (registration.waiting && navigator.serviceWorker.controller) {
+                setUpdateReady(registration.waiting);
+              }
+            });
           });
         });
-      });
     }
 
     sync();
@@ -168,7 +219,7 @@ export default function PwaRuntime() {
       window.visualViewport?.removeEventListener("resize", updateViewportInsets);
       window.visualViewport?.removeEventListener("scroll", updateViewportInsets);
     };
-  }, []);
+  }, [publishInstallAvailability]);
 
   useEffect(() => {
     const install = async () => {
@@ -176,7 +227,10 @@ export default function PwaRuntime() {
         await installPrompt.prompt();
         await installPrompt.userChoice;
         setInstallPrompt(null);
-        publishInstallAvailability({ available: iosInstallAvailable, ios: iosInstallAvailable });
+        publishInstallAvailability({
+          available: iosInstallAvailable,
+          ios: iosInstallAvailable,
+        });
         return;
       }
       if (iosInstallAvailable) setShowIosInstructions(true);
@@ -190,14 +244,20 @@ export default function PwaRuntime() {
       });
 
     window.addEventListener(INSTALL_REQUEST_EVENT, onInstallRequest);
-    window.addEventListener("profixiq:pwa-install-availability-request", onAvailabilityRequest);
+    window.addEventListener(
+      "profixiq:pwa-install-availability-request",
+      onAvailabilityRequest,
+    );
     return () => {
       window.removeEventListener(INSTALL_REQUEST_EVENT, onInstallRequest);
-      window.removeEventListener("profixiq:pwa-install-availability-request", onAvailabilityRequest);
+      window.removeEventListener(
+        "profixiq:pwa-install-availability-request",
+        onAvailabilityRequest,
+      );
     };
-  }, [installPrompt, iosInstallAvailable]);
+  }, [installPrompt, iosInstallAvailable, publishInstallAvailability]);
 
-  const activateUpdate = () => {
+  const activateUpdate = useCallback(() => {
     if (!updateReady || activatingUpdate) return;
     setActivatingUpdate(true);
     const reloadWhenControlled = () => {
@@ -205,22 +265,43 @@ export default function PwaRuntime() {
       updateReloading.current = true;
       window.location.reload();
     };
-    navigator.serviceWorker.addEventListener("controllerchange", reloadWhenControlled, {
-      once: true,
-    });
+    navigator.serviceWorker.addEventListener(
+      "controllerchange",
+      reloadWhenControlled,
+      { once: true },
+    );
     updateReady.postMessage({ type: "SKIP_WAITING" });
     window.setTimeout(reloadWhenControlled, 8_000);
-  };
+  }, [activatingUpdate, updateReady]);
 
-  const showRuntimeStatus = !online || pending > 0 || Boolean(updateReady) || Boolean(syncBlocked);
+  useEffect(() => {
+    publishRuntimeStatus();
+  }, [publishRuntimeStatus]);
 
-  if (isStandalonePublicRoute(pathname) || (!showRuntimeStatus && !showIosInstructions)) {
+  useEffect(() => {
+    const onStatusRequest = () => publishRuntimeStatus();
+    const onUpdateRequest = () => activateUpdate();
+    window.addEventListener(RUNTIME_STATUS_REQUEST_EVENT, onStatusRequest);
+    window.addEventListener(UPDATE_REQUEST_EVENT, onUpdateRequest);
+    return () => {
+      window.removeEventListener(RUNTIME_STATUS_REQUEST_EVENT, onStatusRequest);
+      window.removeEventListener(UPDATE_REQUEST_EVENT, onUpdateRequest);
+    };
+  }, [activateUpdate, publishRuntimeStatus]);
+
+  const showRuntimeStatus =
+    !online || pending > 0 || Boolean(updateReady) || Boolean(syncBlocked);
+
+  if (
+    isStandalonePublicRoute(pathname) ||
+    ((!showRuntimeStatus || mobileSurface) && !showIosInstructions)
+  ) {
     return null;
   }
 
   return (
     <>
-      {showRuntimeStatus && (
+      {showRuntimeStatus && !mobileSurface ? (
         <div
           className="fixed z-[100] flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-xl backdrop-blur sm:flex-nowrap sm:rounded-full"
           style={{
@@ -228,7 +309,11 @@ export default function PwaRuntime() {
             right: `calc(1rem + env(safe-area-inset-right, 0px) + ${viewportInsets.right}px)`,
           }}
         >
-          <span className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-amber-400"}`} />
+          <span
+            className={`h-2 w-2 rounded-full ${
+              online ? "bg-emerald-400" : "bg-amber-400"
+            }`}
+          />
           <span>
             {syncBlocked
               ? "Sync needs attention"
@@ -262,7 +347,7 @@ export default function PwaRuntime() {
             </button>
           )}
         </div>
-      )}
+      ) : null}
 
       {showIosInstructions && (
         <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">

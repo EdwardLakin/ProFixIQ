@@ -7,6 +7,11 @@ import { MobileShell } from "components/layout/MobileShell";
 import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
 import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBoundaries";
 
+import "./mobile-command.css";
+import "./mobile-command-overrides.css";
+import "./mobile-route-surfaces.css";
+import "./mobile-work-command.css";
+
 export default function MobileLayout({
   children,
 }: {

@@ -1,0 +1,431 @@
+/* Route-level visual normalization for legacy mobile screens.
+ * This stylesheet changes presentation only; feature components retain their
+ * existing queries, permissions, mutations and lifecycle behavior.
+ */
+
+.mobile-command-route {
+  min-width: 0;
+  min-height: calc(100dvh - 3.75rem - env(safe-area-inset-top, 0px));
+  overflow-x: clip;
+}
+
+.mobile-command-route > main,
+.mobile-command-route > div,
+.mobile-command-route .mobile-body-gradient {
+  background: transparent !important;
+}
+
+.mobile-command-route :is(.shadow-card, .glass-card) {
+  border-color: color-mix(in srgb, var(--theme-border-strong) 68%, transparent) !important;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--theme-surface-panel) 97%, white 3%), var(--theme-surface-panel)) !important;
+  box-shadow: var(--mobile-shadow) !important;
+  backdrop-filter: blur(18px);
+}
+
+.mobile-command-route :is(.glass-card, .shadow-card, section, article) {
+  scroll-margin-top: 5rem;
+}
+
+.mobile-command-route :is(h1, h2, h3) {
+  text-wrap: balance;
+}
+
+.mobile-command-route h1 {
+  letter-spacing: -0.035em !important;
+  text-transform: none !important;
+}
+
+.mobile-command-route .font-blackops {
+  font-family: inherit !important;
+  font-weight: 820 !important;
+  letter-spacing: -0.035em !important;
+  text-transform: none !important;
+}
+
+.mobile-command-route :is(.text-orange-300, .text-orange-400, .text-orange-500) {
+  color: var(--mobile-accent-bright) !important;
+}
+
+.mobile-command-route :is(.border-orange-400, .border-orange-500) {
+  border-color: color-mix(in srgb, var(--mobile-accent) 70%, transparent) !important;
+}
+
+.mobile-command-route :is(.bg-orange-400, .bg-orange-500) {
+  background: var(--mobile-accent) !important;
+}
+
+.mobile-command-route button,
+.mobile-command-route a {
+  min-height: 2.75rem;
+}
+
+.mobile-command-route button.rounded-full,
+.mobile-command-route a.rounded-full {
+  min-height: 2.5rem;
+}
+
+.mobile-command-route :is(section, article).rounded-3xl {
+  border-radius: 1.2rem !important;
+}
+
+.mobile-command-route :is(section, article).rounded-2xl,
+.mobile-command-route .rounded-2xl {
+  border-radius: 1rem;
+}
+
+.mobile-command-route select,
+.mobile-command-route input,
+.mobile-command-route textarea {
+  width: 100%;
+}
+
+.mobile-command-route :is(.divide-y, .divide-x) > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--theme-border-soft);
+}
+
+/* Generic top-level route hero. */
+.mobile-command-route > :is(main, div) > :is(div, section):first-child > section:first-child,
+.mobile-command-route > :is(main, div) > section:first-child,
+.mobile-command-route > :is(main, div) > div:first-child > header:first-child {
+  position: relative;
+  overflow: hidden;
+}
+
+.mobile-command-route > :is(main, div) > :is(div, section):first-child > section:first-child:not(.mobile-dashboard-attention):not(.mobile-dashboard-actions),
+.mobile-command-route > :is(main, div) > section:first-child:not(.mobile-dashboard-attention):not(.mobile-dashboard-actions) {
+  border-color: rgba(61, 113, 255, 0.42) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(25, 183, 255, 0.2), transparent 16rem),
+    linear-gradient(145deg, #0a1c40, #07142d) !important;
+  color: #f8fbff !important;
+  box-shadow: 0 22px 52px rgba(3, 13, 32, 0.22) !important;
+}
+
+.mobile-command-route > :is(main, div) > :is(div, section):first-child > section:first-child:not(.mobile-dashboard-attention):not(.mobile-dashboard-actions)
+  :is(h1, h2, h3),
+.mobile-command-route > :is(main, div) > section:first-child:not(.mobile-dashboard-attention):not(.mobile-dashboard-actions)
+  :is(h1, h2, h3) {
+  color: #fff !important;
+}
+
+.mobile-command-route > :is(main, div) > :is(div, section):first-child > section:first-child:not(.mobile-dashboard-attention):not(.mobile-dashboard-actions)
+  p,
+.mobile-command-route > :is(main, div) > section:first-child:not(.mobile-dashboard-attention):not(.mobile-dashboard-actions)
+  p {
+  color: rgba(224, 235, 252, 0.76) !important;
+}
+
+.mobile-command-route > :is(main, div) > :is(div, section):first-child > section:first-child:not(.mobile-dashboard-attention):not(.mobile-dashboard-actions)
+  [class*="accent-copper"],
+.mobile-command-route > :is(main, div) > section:first-child:not(.mobile-dashboard-attention):not(.mobile-dashboard-actions)
+  [class*="accent-copper"] {
+  color: #8ed4ff !important;
+}
+
+/* Settings */
+.mobile-command-route--settings .app-shell {
+  min-height: auto !important;
+  background: transparent !important;
+}
+
+.mobile-command-route--settings .mobile-body-gradient {
+  padding: 0.9rem !important;
+}
+
+.mobile-command-route--settings .mobile-body-gradient > div {
+  max-width: 48rem !important;
+}
+
+.mobile-command-route--settings .glass-card {
+  border-radius: 1.1rem !important;
+  padding: 1rem !important;
+}
+
+.mobile-command-route--settings .glass-card h2 {
+  font-size: 1rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em;
+}
+
+.mobile-command-route--settings .glass-card button:not([role="switch"]) {
+  border-radius: 0.85rem !important;
+}
+
+.mobile-command-route--settings .glass-card .grid-cols-3 {
+  grid-template-columns: 1fr;
+}
+
+/* Appointments */
+.mobile-command-route--appointments main > div {
+  max-width: 52rem !important;
+  gap: 0.85rem !important;
+  padding: 0.9rem !important;
+}
+
+.mobile-command-route--appointments main > div > header:first-child {
+  padding: 1.1rem;
+  border: 1px solid rgba(61, 113, 255, 0.42);
+  border-radius: 1.2rem;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(25, 183, 255, 0.22), transparent 15rem),
+    linear-gradient(145deg, #0a1c40, #07142d);
+  color: #f8fbff;
+  box-shadow: 0 22px 52px rgba(3, 13, 32, 0.22);
+}
+
+.mobile-command-route--appointments main > div > header:first-child h1 {
+  color: #fff !important;
+  font-size: 1.75rem !important;
+}
+
+.mobile-command-route--appointments main > div > header:first-child p {
+  color: rgba(224, 235, 252, 0.76) !important;
+}
+
+.mobile-command-route--appointments main > div > section {
+  border-radius: 1rem !important;
+  background: var(--theme-surface-panel) !important;
+  box-shadow: var(--mobile-shadow) !important;
+}
+
+.mobile-command-route--appointments input[type="date"],
+.mobile-command-route--appointments input[type="time"] {
+  min-width: 0;
+}
+
+/* Dispatch and workforce */
+.mobile-command-route--dispatch > div,
+.mobile-command-route--workforce > div {
+  max-width: 52rem !important;
+  padding: 0.9rem !important;
+}
+
+.mobile-command-route--dispatch section.grid,
+.mobile-command-route--workforce section.grid {
+  gap: 0.65rem !important;
+}
+
+.mobile-command-route--dispatch section.grid > a,
+.mobile-command-route--workforce section.grid > :is(a, div) {
+  min-height: 6.5rem;
+  border-color: color-mix(in srgb, var(--theme-border-strong) 68%, transparent) !important;
+  background: var(--theme-surface-panel) !important;
+  box-shadow: var(--mobile-shadow);
+}
+
+.mobile-command-route--dispatch section:last-child,
+.mobile-command-route--workforce section:last-child {
+  box-shadow: var(--mobile-shadow);
+}
+
+.mobile-command-route--dispatch section:last-child a,
+.mobile-command-route--workforce section:last-child > div > div {
+  min-height: 4.75rem;
+}
+
+/* Parts */
+.mobile-command-route--parts > div {
+  max-width: 56rem !important;
+  padding: 0.9rem !important;
+}
+
+.mobile-command-route--parts [role="tablist"],
+.mobile-command-route--parts .overflow-x-auto {
+  scrollbar-width: none;
+}
+
+.mobile-command-route--parts [role="tablist"]::-webkit-scrollbar,
+.mobile-command-route--parts .overflow-x-auto::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-command-route--parts :is(button, a)[class*="rounded"] {
+  min-height: 2.75rem;
+}
+
+/* Fleet */
+.mobile-command-route--fleet > div {
+  max-width: 52rem !important;
+  padding: 0.9rem !important;
+}
+
+.mobile-command-route--fleet article {
+  position: relative;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--theme-border-strong) 68%, transparent) !important;
+  background: var(--theme-surface-panel) !important;
+  box-shadow: var(--mobile-shadow);
+}
+
+.mobile-command-route--fleet article::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 0.3rem;
+  background: var(--mobile-accent);
+}
+
+.mobile-command-route--fleet article > * {
+  margin-left: 0.2rem;
+}
+
+.mobile-command-route--fleet article a:first-child {
+  background: linear-gradient(135deg, var(--mobile-accent), #2563eb) !important;
+  color: #fff !important;
+  box-shadow: 0 12px 26px rgba(23, 71, 255, 0.23);
+}
+
+/* Offline / device center */
+.mobile-command-route--offline > div {
+  max-width: 52rem !important;
+  padding: 0.9rem !important;
+}
+
+.mobile-command-route--offline section:first-child button {
+  background: linear-gradient(135deg, var(--mobile-accent), #2563eb) !important;
+  color: #fff !important;
+  box-shadow: 0 14px 28px rgba(23, 71, 255, 0.25);
+}
+
+.mobile-command-route--offline section:nth-child(2) {
+  box-shadow: var(--mobile-shadow);
+}
+
+/* Messages */
+.mobile-command-route--messages > :is(main, div) {
+  max-width: 52rem;
+  margin-inline: auto;
+}
+
+.mobile-command-route--messages textarea,
+.mobile-command-route--messages input {
+  font-size: 1rem !important;
+}
+
+.mobile-command-route--messages form {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* Technician and performance pages */
+.mobile-command-route--tech .mobile-tech-page {
+  padding: 0.9rem !important;
+}
+
+.mobile-command-route--tech .mobile-tech-page > section:first-child {
+  border-color: rgba(61, 113, 255, 0.42) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(25, 183, 255, 0.2), transparent 16rem),
+    linear-gradient(145deg, #0a1c40, #07142d) !important;
+  color: #fff;
+}
+
+.mobile-command-route--tech .mobile-tech-page > section:first-child h1,
+.mobile-command-route--tech .mobile-tech-page > section:first-child h2 {
+  color: #fff !important;
+}
+
+/* Reports */
+.mobile-command-route--reports main {
+  background: transparent !important;
+}
+
+.mobile-command-route--reports main > * {
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
+.mobile-command-route--reports :is(section, article, [class*="rounded-"]) {
+  border-color: color-mix(in srgb, var(--theme-border-strong) 66%, transparent);
+}
+
+/* Technician roster */
+.mobile-command-route--technicians main > div {
+  max-width: 54rem !important;
+  gap: 0.85rem !important;
+  padding: 0.9rem !important;
+}
+
+.mobile-command-route--technicians main > div > header:first-child {
+  padding: 1.1rem;
+  border: 1px solid rgba(61, 113, 255, 0.42);
+  border-radius: 1.2rem;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(25, 183, 255, 0.2), transparent 15rem),
+    linear-gradient(145deg, #0a1c40, #07142d);
+  box-shadow: 0 22px 52px rgba(3, 13, 32, 0.22);
+}
+
+.mobile-command-route--technicians main > div > header:first-child h1 {
+  color: #fff !important;
+  font-size: 1.75rem !important;
+}
+
+.mobile-command-route--technicians main > div > header:first-child p {
+  color: rgba(224, 235, 252, 0.76) !important;
+}
+
+.mobile-command-route--technicians article {
+  border-color: color-mix(in srgb, var(--theme-border-strong) 68%, transparent) !important;
+  background: var(--theme-surface-panel) !important;
+  box-shadow: var(--mobile-shadow) !important;
+}
+
+/* Assistant and planner */
+.mobile-command-route--assistant > :is(main, div),
+.mobile-command-route--planner > :is(main, div) {
+  max-width: 64rem;
+  margin-inline: auto;
+}
+
+.mobile-command-route--assistant :is(textarea, input),
+.mobile-command-route--planner :is(textarea, input) {
+  font-size: 1rem !important;
+}
+
+/* Inspection runner and lists. Keep controls large, but do not change state. */
+.mobile-command-route--inspections > :is(main, div) {
+  max-width: 64rem;
+  margin-inline: auto;
+}
+
+.mobile-command-route--inspections :is(button, a) {
+  min-height: 2.9rem;
+}
+
+.mobile-command-route--inspections :is(input, textarea, select) {
+  font-size: 1rem !important;
+}
+
+.mobile-command-route--inspections [class*="sticky"] {
+  backdrop-filter: blur(18px);
+}
+
+/* Customer record */
+.mobile-command-route--customers > :is(main, div) {
+  max-width: 52rem;
+  margin-inline: auto;
+}
+
+.mobile-command-route--customers :is(section, article) {
+  box-shadow: var(--mobile-shadow);
+}
+
+@media (max-width: 420px) {
+  .mobile-command-route--offline .grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mobile-command-route--settings .mobile-body-gradient,
+  .mobile-command-route--appointments main > div,
+  .mobile-command-route--technicians main > div {
+    padding-inline: 0.75rem !important;
+  }
+}
+
+@media (min-width: 640px) {
+  .mobile-command-route--settings .glass-card .grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

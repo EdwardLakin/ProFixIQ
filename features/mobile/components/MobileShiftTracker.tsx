@@ -1,13 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import {
-  getOfflineMutationScope,
-  getOfflineSyncSummary,
-  subscribeOfflineMutations,
-} from "@/features/shared/lib/offline/mutations";
-import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
+import { Clock3, Coffee, LogOut, Play, Utensils } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
 import {
   fetchMobileShiftState,
   type MobileShiftState,
@@ -18,6 +14,12 @@ import {
   saveCachedMobileShiftState,
   type MobileShiftAction,
 } from "@/features/mobile/shifts/offline";
+import {
+  getOfflineMutationScope,
+  getOfflineSyncSummary,
+  subscribeOfflineMutations,
+} from "@/features/shared/lib/offline/mutations";
+import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
 
 type Props = { userId: string };
 
@@ -46,7 +48,6 @@ export default function MobileShiftTracker({ userId }: Props) {
 
   const replayOfflineMutations = useCallback(async () => {
     const result = await replayAndReconcileOfflineMutations();
-
     if (result.failed > 0) {
       setErr(`${result.failed} queued punch event(s) still failing to sync.`);
     }
@@ -65,8 +66,9 @@ export default function MobileShiftTracker({ userId }: Props) {
     try {
       const next = await fetchMobileShiftState();
       applyState(next.shiftId ? next : null);
-      if (scope && next.shiftId)
+      if (scope && next.shiftId) {
         await saveCachedMobileShiftState({ scope, state: next });
+      }
     } catch (error) {
       const cached = scope ? await getCachedMobileShiftState(scope) : null;
       if (cached) {
@@ -79,7 +81,7 @@ export default function MobileShiftTracker({ userId }: Props) {
         applyState(null);
       }
     }
-  }, [userId, applyState]);
+  }, [applyState, userId]);
 
   useEffect(() => {
     void loadOpenShift();
@@ -102,7 +104,7 @@ export default function MobileShiftTracker({ userId }: Props) {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [replayOfflineMutations, loadOpenShift]);
+  }, [loadOpenShift, replayOfflineMutations]);
 
   const performAction = useCallback(
     async (action: MobileShiftAction) => {
@@ -116,10 +118,12 @@ export default function MobileShiftTracker({ userId }: Props) {
           current: shiftState,
         });
         applyState(result.state);
-        if (result.queued)
+        if (result.queued) {
           setErr("Shift update saved on this device and queued.");
-        if (action === "end_shift")
+        }
+        if (action === "end_shift") {
           window.dispatchEvent(new CustomEvent("wol:refresh"));
+        }
       } catch (error) {
         setErr(
           error instanceof Error ? error.message : "Failed to update shift",
@@ -128,7 +132,7 @@ export default function MobileShiftTracker({ userId }: Props) {
         setBusy(false);
       }
     },
-    [busy, userId, shiftState, applyState],
+    [applyState, busy, shiftState, userId],
   );
 
   const startShift = useCallback(
@@ -139,21 +143,21 @@ export default function MobileShiftTracker({ userId }: Props) {
   const endShift = useCallback(async () => {
     if (busy || !shiftId) return;
     await performAction("end_shift");
-  }, [busy, shiftId, performAction]);
+  }, [busy, performAction, shiftId]);
 
   const toggleBreak = useCallback(async () => {
     if (busy || !shiftId) return;
     await performAction(
       shiftState?.activity === "on_break" ? "end_break" : "start_break",
     );
-  }, [busy, shiftId, shiftState?.activity, performAction]);
+  }, [busy, performAction, shiftId, shiftState?.activity]);
 
   const toggleLunch = useCallback(async () => {
     if (busy || !shiftId) return;
     await performAction(
       shiftState?.activity === "on_lunch" ? "end_lunch" : "start_lunch",
     );
-  }, [busy, shiftId, shiftState?.activity, performAction]);
+  }, [busy, performAction, shiftId, shiftState?.activity]);
 
   const activity = shiftState?.activity ?? "off_shift";
   const mode = shiftState?.mode ?? "none";
@@ -161,151 +165,141 @@ export default function MobileShiftTracker({ userId }: Props) {
     activity === "off_shift"
       ? "Off shift"
       : activity === "working"
-        ? "Working"
+        ? "On shift"
         : activity === "on_break"
           ? "On break"
-          : "On lunch";
-
-  const btnBase =
-    "rounded-xl px-3 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.18em] transition-colors disabled:opacity-60 disabled:cursor-not-allowed";
+          : "At lunch";
+  const hasSyncAttention =
+    syncSummary.queued > 0 ||
+    syncSummary.failed > 0 ||
+    syncSummary.syncing > 0 ||
+    syncSummary.conflicted > 0;
 
   return (
-    <div className="rounded-2xl border border-[var(--metal-border-soft)] bg-[var(--theme-surface-inset)] px-3 py-3 text-[0.75rem] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)] backdrop-blur-md space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-secondary)]">
-          Shift tracker
-        </span>
-        <span className="text-[0.7rem] text-[var(--accent-copper-light)]">
-          {niceStatus}
-        </span>
-      </div>
-      {(syncSummary.queued > 0 ||
-        syncSummary.failed > 0 ||
-        syncSummary.syncing > 0 ||
-        syncSummary.conflicted > 0) && (
-        <div className="rounded-md border border-amber-400/35 bg-amber-500/10 px-2 py-1 text-[0.65rem] text-amber-100">
-          Sync queue • Pending {syncSummary.queued + syncSummary.syncing} •
-          Failed {syncSummary.failed} • Conflicted {syncSummary.conflicted}
+    <section className="mobile-command-device-card" aria-label="Shift tracker">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.08] text-[#7dcfff]">
+            <Clock3 aria-hidden className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[0.64rem] font-extrabold uppercase tracking-[0.17em] text-slate-400">
+              Shift tracker
+            </div>
+            <div className="mt-1 text-base font-bold text-white">{niceStatus}</div>
+          </div>
         </div>
-      )}
+        <span
+          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+            mode === "shift"
+              ? "bg-emerald-400"
+              : mode === "break" || mode === "lunch"
+                ? "bg-amber-400"
+                : "bg-slate-500"
+          }`}
+        />
+      </div>
 
-      {err && (
-        <div className="rounded-md border border-red-500/40 bg-red-950/70 px-2 py-1 text-[0.65rem] text-red-200">
+      {mode !== "none" && startTime && mode !== "ended" ? (
+        <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-black/15 p-2.5 text-xs">
+          <div>
+            <div className="text-[0.62rem] uppercase tracking-[0.12em] text-slate-400">
+              Started
+            </div>
+            <div className="mt-1 font-semibold text-white">
+              {new Date(startTime).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </div>
+          </div>
+          <div>
+            <div className="text-[0.62rem] uppercase tracking-[0.12em] text-slate-400">
+              Elapsed
+            </div>
+            <div className="mt-1 font-semibold text-white">
+              {formatDistanceToNow(new Date(startTime), { includeSeconds: true })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {hasSyncAttention ? (
+        <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-[0.68rem] leading-4 text-amber-100">
+          Shift changes pending {syncSummary.queued + syncSummary.syncing} · failed{" "}
+          {syncSummary.failed} · conflicted {syncSummary.conflicted}
+        </div>
+      ) : null}
+
+      {err ? (
+        <div className="mt-3 rounded-xl border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-[0.68rem] leading-4 text-rose-100">
           {err}
         </div>
-      )}
+      ) : null}
 
-      {mode !== "none" && startTime && mode !== "ended" && (
-        <div className="space-y-1 text-[0.65rem] text-[color:var(--theme-text-secondary)]">
-          <p>
-            Started{" "}
-            <span className="font-mono text-[color:var(--theme-text-primary)]">
-              {new Date(startTime).toLocaleTimeString()}
-            </span>
-          </p>
-          <p>
-            Elapsed{" "}
-            <span className="font-mono text-[color:var(--theme-text-primary)]">
-              {formatDistanceToNow(new Date(startTime), {
-                includeSeconds: true,
-              })}
-            </span>
-          </p>
-          <p>
-            Activity{" "}
-            <span className="text-[color:var(--theme-text-primary)]">
-              {niceStatus}
-            </span>
-          </p>
-        </div>
-      )}
-
-      {mode === "none" && (
+      {mode === "none" ? (
         <button
           type="button"
           onClick={startShift}
           disabled={busy || !online}
-          className={
-            btnBase +
-            " w-full border border-[var(--accent-copper-soft)] " +
-            "bg-[var(--theme-gradient-panel)] " +
-            "text-[color:var(--theme-text-primary)] shadow-[0_0_22px_rgba(248,113,22,0.55)] hover:bg-[rgba(248,113,22,0.25)]"
-          }
+          className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-sm font-extrabold text-[#041022] shadow-lg disabled:opacity-55"
         >
-          {busy
-            ? "Starting…"
-            : online
-              ? "Start shift"
-              : "Connect to start shift"}
+          <Play aria-hidden className="h-4 w-4 fill-current" />
+          {busy ? "Starting…" : online ? "Clock in" : "Connect to clock in"}
         </button>
-      )}
+      ) : null}
 
-      {mode !== "none" && mode !== "ended" && (
-        <div className="mt-1 space-y-2">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={toggleBreak}
-              disabled={busy || mode === "lunch"}
-              className={
-                btnBase +
-                " flex-1 border border-[var(--accent-copper-soft)]/70 " +
-                (mode === "break"
-                  ? "bg-[var(--accent-copper-soft)]/25 text-[var(--accent-copper-light)]"
-                  : "bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[var(--accent-copper-soft)]/15")
-              }
-            >
-              {mode === "break" ? "End break" : "Break"}
-            </button>
-
-            <button
-              type="button"
-              onClick={toggleLunch}
-              disabled={busy || mode === "break"}
-              className={
-                btnBase +
-                " flex-1 border border-[var(--accent-copper-soft)]/70 " +
-                (mode === "lunch"
-                  ? "bg-[var(--accent-copper-soft)]/25 text-[var(--accent-copper-light)]"
-                  : "bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:bg-[var(--accent-copper-soft)]/15")
-              }
-            >
-              {mode === "lunch" ? "End lunch" : "Lunch"}
-            </button>
-          </div>
-
+      {mode !== "none" && mode !== "ended" ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={toggleBreak}
+            disabled={busy || mode === "lunch"}
+            className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-2 text-xs font-bold disabled:opacity-45 ${
+              mode === "break"
+                ? "border-amber-300/40 bg-amber-400/15 text-amber-100"
+                : "border-white/15 bg-white/[0.06] text-white"
+            }`}
+          >
+            <Coffee aria-hidden className="h-4 w-4" />
+            {mode === "break" ? "End break" : "Break"}
+          </button>
+          <button
+            type="button"
+            onClick={toggleLunch}
+            disabled={busy || mode === "break"}
+            className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-2 text-xs font-bold disabled:opacity-45 ${
+              mode === "lunch"
+                ? "border-amber-300/40 bg-amber-400/15 text-amber-100"
+                : "border-white/15 bg-white/[0.06] text-white"
+            }`}
+          >
+            <Utensils aria-hidden className="h-4 w-4" />
+            {mode === "lunch" ? "End lunch" : "Lunch"}
+          </button>
           <button
             type="button"
             onClick={endShift}
             disabled={busy}
-            className={
-              btnBase +
-              " w-full border border-red-500/70 bg-red-500/10 text-red-100 hover:bg-red-500/20"
-            }
+            className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-bold text-rose-100 disabled:opacity-45"
           >
+            <LogOut aria-hidden className="h-4 w-4" />
             End shift
           </button>
         </div>
-      )}
+      ) : null}
 
-      {mode === "ended" && (
-        <div className="mt-1 space-y-2">
-          <p className="text-[0.65rem] text-[color:var(--theme-text-secondary)]">
-            Shift closed. Start a new shift when you&apos;re back on the bench.
-          </p>
-          <button
-            type="button"
-            onClick={startShift}
-            disabled={busy}
-            className={
-              btnBase +
-              " w-full border border-[var(--accent-copper-soft)] bg-[color:var(--theme-surface-overlay)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]/20"
-            }
-          >
-            {busy ? "Starting…" : "Start new shift"}
-          </button>
-        </div>
-      )}
-    </div>
+      {mode === "ended" ? (
+        <button
+          type="button"
+          onClick={startShift}
+          disabled={busy}
+          className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-sm font-extrabold text-[#041022] disabled:opacity-55"
+        >
+          <Play aria-hidden className="h-4 w-4 fill-current" />
+          {busy ? "Starting…" : "Start new shift"}
+        </button>
+      ) : null}
+    </section>
   );
 }

@@ -1,3 +1,4 @@
+import MobileCommandRoute from "@/features/mobile/layout/MobileCommandRoute";
 import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -7,5 +8,5 @@ export default async function MobileReportsLayout({
   children: React.ReactNode;
 }) {
   await requireShopPageAccess({ allowRoles: ROLE_GROUPS.financialViewers });
-  return children;
+  return <MobileCommandRoute surface="reports">{children}</MobileCommandRoute>;
 }

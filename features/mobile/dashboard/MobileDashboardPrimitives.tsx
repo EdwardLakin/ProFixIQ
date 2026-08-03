@@ -1,16 +1,13 @@
 "use client";
 
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { requireMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 
 export function MobileDashboardPage({ children }: { children: ReactNode }) {
-  return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 overflow-x-hidden px-3 py-3 sm:px-4">
-      {children}
-    </div>
-  );
+  return <div className="mobile-dashboard-page">{children}</div>;
 }
 
 export function MobileDashboardHero({
@@ -25,22 +22,17 @@ export function MobileDashboardHero({
   action?: { href: string; label: string };
 }) {
   return (
-    <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-[var(--theme-shadow-medium)]">
-      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[color:var(--accent-copper)]">
-        {eyebrow}
-      </div>
-      <h1 className="mt-2 text-2xl font-semibold leading-tight text-[color:var(--theme-text-primary)]">
-        {title}
-      </h1>
-      <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-        {subtitle}
-      </p>
+    <section className="mobile-dashboard-hero">
+      <div className="mobile-dashboard-hero__eyebrow">{eyebrow}</div>
+      <h1 className="mobile-dashboard-hero__title">{title}</h1>
+      <p className="mobile-dashboard-hero__subtitle">{subtitle}</p>
       {action ? (
         <Link
           href={requireMobileHref(action.href)}
-          className="mt-4 flex min-h-12 w-full items-center justify-center rounded-2xl bg-[color:var(--accent-copper)] px-4 text-sm font-semibold text-white shadow-sm"
+          className="mobile-command-primary mt-5 flex w-full items-center justify-center gap-2 px-4 text-sm font-bold"
         >
           {action.label}
+          <ArrowRight aria-hidden className="h-4 w-4" />
         </Link>
       ) : null}
     </section>
@@ -58,35 +50,25 @@ export function MobileMetricGrid({
   }>;
 }) {
   return (
-    <section className="grid min-w-0 grid-cols-2 gap-2">
+    <section className="mobile-dashboard-metrics" aria-label="Current metrics">
       {items.map((item) => {
-        const className = `min-w-0 rounded-2xl border p-3 ${
-          item.tone === "warning"
-            ? "border-amber-500/40 bg-amber-500/10"
-            : item.tone === "positive"
-              ? "border-emerald-500/35 bg-emerald-500/10"
-              : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
-        }`;
         const body = (
           <>
-            <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">
-              {item.label}
-            </div>
-            <div className="mt-1 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
-              {item.value}
-            </div>
+            <div className="mobile-dashboard-metric__label">{item.label}</div>
+            <div className="mobile-dashboard-metric__value">{item.value}</div>
           </>
         );
+        const props = {
+          className: "mobile-dashboard-metric",
+          "data-tone": item.tone ?? "default",
+        } as const;
+
         return item.href ? (
-          <Link
-            key={item.label}
-            href={requireMobileHref(item.href)}
-            className={className}
-          >
+          <Link key={item.label} href={requireMobileHref(item.href)} {...props}>
             {body}
           </Link>
         ) : (
-          <div key={item.label} className={className}>
+          <div key={item.label} {...props}>
             {body}
           </div>
         );
@@ -111,44 +93,54 @@ export function MobileAttentionList({
   }>;
 }) {
   return (
-    <section className="overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]">
-      <div className="p-4">
-        <h2 className="text-xl font-semibold text-[color:var(--theme-text-primary)]">
-          {title}
-        </h2>
-        {subtitle ? (
-          <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-            {subtitle}
-          </p>
-        ) : null}
+    <section className="mobile-dashboard-attention">
+      <div className="mobile-dashboard-attention__header">
+        <div className="flex items-center gap-2">
+          <span className="inline-grid h-8 w-8 place-items-center rounded-xl bg-amber-500/12 text-amber-600 dark:text-amber-300">
+            <AlertTriangle aria-hidden className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="text-lg font-bold tracking-[-0.025em] text-[color:var(--theme-text-primary)]">
+              {title}
+            </h2>
+            {subtitle ? (
+              <p className="mt-0.5 text-xs leading-4 text-[color:var(--theme-text-secondary)]">
+                {subtitle}
+              </p>
+            ) : null}
+          </div>
+        </div>
       </div>
-      <div className="divide-y divide-[color:var(--theme-border-soft)]">
+
+      <div>
         {items.length ? (
-          items.slice(0, 3).map((item) => (
+          items.map((item) => (
             <Link
               key={`${item.title}-${item.href}`}
               href={requireMobileHref(item.href)}
-              className="block p-4 active:bg-[color:var(--theme-surface-overlay)]"
+              className="mobile-dashboard-attention__row"
             >
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold text-[color:var(--theme-text-primary)]">
-                    {item.count ? `${item.count} ` : ""}
-                    {item.title}
-                  </div>
-                  <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                    {item.detail}
-                  </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-[color:var(--theme-text-primary)]">
+                  {item.count ? `${item.count} ` : ""}
+                  {item.title}
                 </div>
-                <span className="shrink-0 text-sm font-medium text-[color:var(--accent-copper)]">
-                  {item.action} →
-                </span>
+                <div className="mt-1 text-xs leading-4 text-[color:var(--theme-text-secondary)]">
+                  {item.detail}
+                </div>
               </div>
+              <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-[color:var(--accent-copper)]">
+                {item.action}
+                <ChevronRight aria-hidden className="h-4 w-4" />
+              </span>
             </Link>
           ))
         ) : (
-          <div className="p-4 text-sm text-[color:var(--theme-text-secondary)]">
-            Nothing urgent right now.
+          <div className="mobile-dashboard-attention__row">
+            <div className="flex items-center gap-3 text-sm text-[color:var(--theme-text-secondary)]">
+              <CheckCircle2 aria-hidden className="h-5 w-5 text-emerald-500" />
+              Nothing urgent right now.
+            </div>
           </div>
         )}
       </div>
@@ -162,21 +154,37 @@ export function MobileActionGrid({
   items: Array<{ title: string; detail: string; href: string }>;
 }) {
   return (
-    <section className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-      {items.slice(0, 4).map((item) => (
-        <Link
-          key={`${item.href}-${item.title}`}
-          href={requireMobileHref(item.href)}
-          className="min-w-0 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4"
-        >
-          <div className="font-semibold text-[color:var(--theme-text-primary)]">
-            {item.title}
-          </div>
-          <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-            {item.detail}
-          </div>
-        </Link>
-      ))}
+    <section className="mobile-dashboard-actions">
+      <div className="mobile-dashboard-actions__header">
+        <h2 className="text-lg font-bold tracking-[-0.025em] text-[color:var(--theme-text-primary)]">
+          Workspace
+        </h2>
+        <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+          Open a role-specific mobile tool.
+        </p>
+      </div>
+      <div className="mobile-dashboard-actions__list">
+        {items.map((item) => (
+          <Link
+            key={`${item.href}-${item.title}`}
+            href={requireMobileHref(item.href)}
+            className="mobile-dashboard-action-row"
+          >
+            <div className="min-w-0">
+              <div className="font-semibold text-[color:var(--theme-text-primary)]">
+                {item.title}
+              </div>
+              <div className="mt-1 text-xs leading-4 text-[color:var(--theme-text-secondary)]">
+                {item.detail}
+              </div>
+            </div>
+            <ChevronRight
+              aria-hidden
+              className="h-5 w-5 shrink-0 text-[color:var(--accent-copper)]"
+            />
+          </Link>
+        ))}
+      </div>
     </section>
   );
 }

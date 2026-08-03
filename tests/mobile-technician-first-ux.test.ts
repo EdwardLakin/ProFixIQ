@@ -68,14 +68,16 @@ const suggestions = readFileSync(
 );
 
 describe("technician-first mobile UX", () => {
-  it("keeps the technician home simple and opens work directly", () => {
+  it("keeps the technician home operational and opens focused work directly", () => {
     expect(mobileHome).toContain('`/mobile/work-orders/${line.work_order_id}`');
     expect(mobileHome).toContain('"in_progress"');
-    expect(techHome).toContain('href={`/mobile/work-orders/${workOrder.id}`}');
+    expect(techHome).toContain(
+      '`/mobile/work-orders/${workOrder.id}?focus=${encodeURIComponent(job.id)}`',
+    );
+    expect(techHome).toContain("Open current job");
     expect(techHome).toContain("Hours &amp; efficiency");
     expect(techHome).toContain("<details");
     expect(techHome).not.toContain("Bench-side view");
-    expect(techHome).not.toContain("next action");
   });
 
   it("gives mechanics an assigned work-order route for contextual inspections", () => {
@@ -101,7 +103,10 @@ describe("technician-first mobile UX", () => {
       "export async function fetchAssignedTechnicianWork",
     );
     expect(technicianFeed).toContain(
-      "assigned_to.eq.${user.id},user_id.eq.${user.id}",
+      "assigned_tech_id.eq.${technicianId},assigned_to.eq.${technicianId},user_id.eq.${technicianId}",
+    );
+    expect(technicianFeed).toContain(
+      '.from("work_order_line_technicians")',
     );
     expect(technicianFeed).toContain(
       '.or("type.neq.historical_import,type.is.null")',
@@ -130,7 +135,7 @@ describe("technician-first mobile UX", () => {
     expect(mobileShell).toContain('pathname.startsWith("/mobile/jobs/")');
     expect(mobileShell).toContain("isImmersiveRoute(pathname)");
     expect(mobileShell).toContain("/^\\/mobile\\/inspections\\/[^/]+$/");
-    expect(mobileShell).toContain("routes such as /[id]/run");
+    expect(mobileShell).toContain("mobile-command-main");
   });
 
   it("makes mobile photo capture direct while preserving the desktop flow", () => {
@@ -148,10 +153,10 @@ describe("technician-first mobile UX", () => {
   });
 
   it("keeps the assistant contextual, question-driven, and non-automatic", () => {
+    expect(mobileMenu).toContain('if (role === "mechanic") return [];');
     expect(mobileMenu).toContain(
-      'if (role === "mechanic") return [syncItem];',
+      '{ href: "/mobile/assistant", label: "Ask Assistant", icon: Bot }',
     );
-    expect(mobileMenu).toContain("Open a job and tap AI Assist");
     expect(assistantModal).toContain("Ask ProFixIQ");
     expect(assistantModal).toContain("Nothing is changed automatically.");
     expect(assistantModal).toContain("<MobileTechnicianAssistant");
@@ -176,10 +181,9 @@ describe("technician-first mobile UX", () => {
   });
 });
 
-
 test("job media capture supports video and attached media visibility", () => {
   expect(photoModal).toContain("Record video");
-  expect(photoModal).toContain("accept=\"video/*,.mov,.m4v,.mp4,.webm\"");
+  expect(photoModal).toContain('accept="video/*,.mov,.m4v,.mp4,.webm"');
   expect(photoModal).toContain("image/*,video/*,.heic,.heif,.mov,.m4v,.mp4,.webm");
   expect(photoModal).toContain("<video");
   expect(photoModal).toContain("Choose media");
@@ -194,5 +198,5 @@ test("job media capture supports video and attached media visibility", () => {
 
   expect(focusedJobModal).toContain("WorkOrderMediaGallery");
   expect(mobileFocusedJob).toContain("WorkOrderMediaGallery");
-  expect(mobileFocusedJob).toContain("isVideo ? \"Video\" : \"Photo\"");
+  expect(mobileFocusedJob).toContain('isVideo ? "Video" : "Photo"');
 });

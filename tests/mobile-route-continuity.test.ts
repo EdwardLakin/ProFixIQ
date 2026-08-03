@@ -13,6 +13,8 @@ describe("mobile route continuity", () => {
   it.each([
     ["/dashboard", "/mobile"],
     ["/dashboard/workforce/attendance", "/mobile/workforce/attendance"],
+    ["/dashboard/owner/settings#settings-team", "/mobile/settings#settings-team"],
+    ["/dashboard/admin/settings#settings-team", "/mobile/settings#settings-team"],
     ["/work-orders/board", "/mobile/dispatch"],
     ["/work-orders/create", "/mobile/work-orders/create"],
     ["/work-orders/abc/quote-review", "/mobile/work-orders/abc"],
@@ -62,11 +64,6 @@ describe("mobile route continuity", () => {
     expect(requireMobileHref("/unknown-internal-route")).toBe("/mobile");
   });
 
-  it("keeps owner and admin settings on their desktop routes on mobile devices", () => {
-    expect(resolveMobileHref("/dashboard/owner/settings#settings-team")).toBeNull();
-    expect(resolveMobileHref("/dashboard/admin/settings#settings-team")).toBeNull();
-  });
-
   it("does not treat similar route names as dynamic record prefixes", () => {
     expect(resolveMobileHref("/work-orders/viewer")).toBe(
       "/mobile/work-orders/viewer",
@@ -82,8 +79,10 @@ describe("mobile route continuity", () => {
     expect(shell).toContain("resolveMobileHref");
     expect(shell).toContain('document.addEventListener("click"');
     expect(shell).toContain("anchor.origin !== window.location.origin");
+    expect(shell).toContain("isSharedDestination");
     expect(shell).toContain("event.preventDefault()");
     expect(shell).toContain("router.push(mobileHref)");
+    expect(shell).toContain('router.push("/mobile")');
 
     expect(middleware).toContain("isMobileDeviceRequest");
     expect(middleware).toContain('req.headers.get("sec-ch-ua-mobile")');
@@ -98,7 +97,7 @@ describe("mobile route continuity", () => {
     const signIn = read("app/mobile/sign-in/page.tsx");
     expect(menu).toContain('href: "/mobile/assistant"');
     expect(menu).toContain('href: "/mobile/planner"');
-    expect(menu).toContain('href: "/mobile/offline"');
+    expect(menu).toContain('href="/mobile/offline"');
     expect(menu).toContain('router.replace("/mobile/sign-in")');
     expect(signIn).not.toContain('href="/sign-in"');
   });
@@ -135,11 +134,14 @@ describe("mobile route continuity", () => {
     expect(isOutsideDesktopAppShell("/mobile/jobs/line-id")).toBe(true);
   });
 
-  it("allows scoped drivers and fleet managers to read mobile service requests", () => {
+  it("uses the canonical fleet actor scope for mobile service requests", () => {
     const route = read("app/api/fleet/service-requests/route.ts");
+    expect(route).toContain("resolveFleetActorContext");
+    expect(route).toContain("resolveFleetActorScope");
+    expect(route).toContain("scope.fleetIds");
+    expect(route).toContain('.eq("shop_id", scope.shopId)');
     expect(route).toContain(
-      "actor.capabilities.canSeeFleetWideUnits || actor.isFleetActor",
+      'actor.isInternal || actor.actorType === "fleet_manager"',
     );
-    expect(route).toContain("RLS and fleet membership remain");
   });
 });

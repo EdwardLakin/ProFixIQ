@@ -69,8 +69,10 @@ describe("mobile-native navigation", () => {
     expect(read("app/mobile/fleet/service-requests/page.tsx")).toContain(
       "Service requests",
     );
-    expect(read("app/mobile/offline/page.tsx")).toContain("Offline &amp; sync");
-    expect(read("app/mobile/assistant/page.tsx")).toContain("Shop conversation");
+    expect(read("app/mobile/offline/page.tsx")).toContain("Offline & sync");
+    expect(read("app/mobile/assistant/page.tsx")).toContain(
+      "Shop conversation",
+    );
   });
 
   it("uses the existing shop-scoped operations payload", () => {
@@ -99,7 +101,11 @@ describe("mobile-native navigation", () => {
   });
 
   it("limits the mechanic work-order list to the existing assignment RLS boundary", () => {
-    const source = read("app/mobile/work-orders/page.tsx");
+    const route = read("app/mobile/work-orders/page.tsx");
+    const source = read(
+      "features/mobile/work-orders/MobileWorkOrderQueue.tsx",
+    );
+    expect(route).toContain("MobileWorkOrderQueue");
     expect(source).toContain("actor.canPerformAssignedWork");
     expect(source).toContain("!actor.canViewShopWideData");
     expect(source).toContain('.eq("shop_id", me.shop_id)');
@@ -120,5 +126,19 @@ describe("mobile-native navigation", () => {
     const source = read("app/forgot-password/page.tsx");
     expect(source).toContain('redirect?.startsWith("/mobile")');
     expect(source).toContain('"/mobile/sign-in"');
+  });
+
+  it("loads one mobile-only command presentation layer", () => {
+    const layout = read("app/mobile/layout.tsx");
+    const shell = read("components/layout/MobileShell.tsx");
+    const runtime = read("features/shared/components/pwa/PwaRuntime.tsx");
+
+    expect(layout).toContain('import "./mobile-command.css"');
+    expect(layout).toContain('import "./mobile-route-surfaces.css"');
+    expect(layout).toContain('import "./mobile-work-command.css"');
+    expect(shell).toContain("profixiq-mobile-command");
+    expect(shell).toContain("isSharedDestination");
+    expect(runtime).toContain('pathname.startsWith("/mobile")');
+    expect(runtime).toContain("profixiq:pwa-runtime-status");
   });
 });

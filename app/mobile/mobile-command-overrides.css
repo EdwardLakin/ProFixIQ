@@ -1,0 +1,27 @@
+/* Header ownership corrections loaded after the main mobile command layer. */
+
+.profixiq-mobile-command:has(> .mobile-command-header):not(:has(.app-shell > main.mobile-tech-page))
+  > .mobile-command-header {
+  display: block;
+}
+
+.profixiq-mobile-command:has(> .mobile-command-header):not(:has(.app-shell > main.mobile-tech-page))
+  .mobile-command-main {
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.profixiq-mobile-command:has(> .mobile-command-header):not(:has(.app-shell > main.mobile-tech-page))
+  .app-shell
+  > .metal-bar {
+  display: none;
+}
+
+.profixiq-mobile-command:has(.app-shell > main.mobile-tech-page)
+  > .mobile-command-header {
+  display: none;
+}
+
+.profixiq-mobile-command:has(.app-shell > main.mobile-tech-page)
+  .mobile-command-main {
+  padding-bottom: 0;
+}

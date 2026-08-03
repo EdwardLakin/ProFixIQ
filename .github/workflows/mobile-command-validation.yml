@@ -1,0 +1,151 @@
+name: Mobile Command Validation
+
+on:
+  push:
+    branches:
+      - ui/mobile-command-refactor
+  pull_request:
+    paths:
+      - "app/mobile/**"
+      - "components/layout/MobileBottomNav.tsx"
+      - "components/layout/MobileShell.tsx"
+      - "features/mobile/**"
+      - "features/shared/components/pwa/PwaRuntime.tsx"
+      - "features/work-orders/mobile/**"
+      - "tests/mobile-*.test.ts"
+      - "tests/pwa-install-prompt-safe-area.test.ts"
+      - ".github/workflows/mobile-command-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: TypeScript
+        run: pnpm typecheck
+
+      - name: Lint mobile command surface
+        run: >-
+          pnpm exec eslint
+          app/mobile
+          components/layout/MobileBottomNav.tsx
+          components/layout/MobileShell.tsx
+          features/mobile
+          features/shared/components/pwa/PwaRuntime.tsx
+          features/work-orders/mobile
+          tests/mobile-native-route-audit.test.ts
+          tests/mobile-route-continuity.test.ts
+          tests/mobile-technician-first-ux.test.ts
+          tests/mobile-technician-stabilization.test.ts
+          tests/mobile-role-dashboard-layout.test.ts
+          tests/mobile-remaining-role-dashboards.test.ts
+          tests/mobile-global-menu-and-shift-scope.test.ts
+          tests/pwa-install-prompt-safe-area.test.ts
+
+      - name: Mobile contract tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm exec vitest run \
+            tests/mobile-native-route-audit.test.ts \
+            tests/mobile-route-continuity.test.ts \
+            tests/mobile-technician-first-ux.test.ts \
+            tests/mobile-technician-stabilization.test.ts \
+            tests/mobile-role-dashboard-layout.test.ts \
+            tests/mobile-remaining-role-dashboards.test.ts \
+            tests/mobile-global-menu-and-shift-scope.test.ts \
+            tests/pwa-install-prompt-safe-area.test.ts \
+            --reporter=verbose 2>&1 | tee mobile-contract-tests.log
+
+      - name: Upload mobile contract diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-command-contract-tests
+          path: mobile-contract-tests.log
+          if-no-files-found: ignore
+          retention-days: 5
+
+      - name: Compare full suite with main
+        id: full-suite
+        shell: bash
+        run: |
+          set +e
+
+          pnpm exec vitest run > mobile-full-suite.log 2>&1
+          head_status=$?
+          cat mobile-full-suite.log
+
+          git worktree add --detach ../profixiq-main origin/main
+          (
+            cd ../profixiq-main
+            pnpm install --frozen-lockfile
+            pnpm exec vitest run > "$GITHUB_WORKSPACE/mobile-main-suite.log" 2>&1
+          )
+          main_status=$?
+
+          HEAD_STATUS="$head_status" MAIN_STATUS="$main_status" node <<'NODE'
+          const fs = require("node:fs");
+
+          const stripAnsi = (value) =>
+            value.replace(/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g, "");
+
+          const collectFailures = (path) => {
+            if (!fs.existsSync(path)) return [];
+            return [...new Set(
+              stripAnsi(fs.readFileSync(path, "utf8"))
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter((line) => line.startsWith("FAIL "))
+                .map((line) => line.replace(/\s+\d+ms$/, "")),
+            )].sort();
+          };
+
+          const headFailures = collectFailures("mobile-full-suite.log");
+          const mainFailures = new Set(collectFailures("mobile-main-suite.log"));
+          const newFailures = headFailures.filter((failure) => !mainFailures.has(failure));
+
+          const report = [
+            `Head exit status: ${process.env.HEAD_STATUS}`,
+            `Main exit status: ${process.env.MAIN_STATUS}`,
+            `Head failures: ${headFailures.length}`,
+            `Main failures: ${mainFailures.size}`,
+            `New failures: ${newFailures.length}`,
+            "",
+            ...newFailures,
+          ].join("\n");
+
+          fs.writeFileSync("mobile-new-failures.log", `${report}\n`);
+          console.log(report);
+          process.exitCode = newFailures.length > 0 ? 1 : 0;
+          NODE
+
+      - name: Upload full-suite diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-command-full-suite-${{ github.run_id }}
+          path: |
+            mobile-full-suite.log
+            mobile-main-suite.log
+            mobile-new-failures.log
+          if-no-files-found: error
+          retention-days: 5
