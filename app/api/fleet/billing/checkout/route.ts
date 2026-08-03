@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     const billableFleetIds = actor.isInternal
       ? null
       : manageableFleetIdsForActor(actor);
-    if (!actor.isInternal && !billableFleetIds.length) {
+    if (!actor.isInternal && (billableFleetIds?.length ?? 0) === 0) {
       return NextResponse.json({ error: "Fleet billing access required" }, { status: 403 });
     }
 
