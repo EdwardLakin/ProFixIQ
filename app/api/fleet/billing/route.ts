@@ -265,7 +265,8 @@ async function listBilling(
   };
   for (const item of items) {
     if (!item.invoice) continue;
-    const totals = byCurrency[item.invoice.currency];
+    const currency = item.invoice.currency === "USD" ? "USD" : "CAD";
+    const totals = byCurrency[currency];
     totals.outstanding += item.invoice.outstandingTotal;
     totals.paid += item.invoice.paidTotal;
   }
