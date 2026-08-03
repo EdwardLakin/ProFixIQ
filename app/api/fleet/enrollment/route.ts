@@ -12,7 +12,7 @@ import {
 export const dynamic = "force-dynamic";
 
 type Body = {
-  action?: "context" | "enroll_existing" | "create_and_enroll" | "assign";
+  action?: "context" | "search_vehicles" | "enroll_existing" | "create_and_enroll" | "assign";
   fleetId?: string | null;
   vehicleId?: string | null;
   driverProfileId?: string | null;
@@ -25,6 +25,7 @@ type Body = {
   nickname?: string | null;
   routeLabel?: string | null;
   pretripDueLocalTime?: string | null;
+  query?: string | null;
 };
 
 type Row = Record<string, unknown>;
@@ -63,6 +64,32 @@ export async function POST(request: Request) {
     const action = body.action ?? "context";
     const admin = createAdminSupabase();
 
+    if (action === "search_vehicles") {
+      const needle = (clean(body.query) ?? "").replace(/[,%()]/g, "").slice(0, 80);
+      let vehicleQuery = admin
+        .from("vehicles")
+        .select("id,unit_number,vin,license_plate,year,make,model")
+        .eq("shop_id", scope.shopId)
+        .order("unit_number", { ascending: true })
+        .limit(50);
+      if (needle) {
+        vehicleQuery = vehicleQuery.or(
+          `unit_number.ilike.%${needle}%,vin.ilike.%${needle}%,license_plate.ilike.%${needle}%,make.ilike.%${needle}%,model.ilike.%${needle}%`,
+        );
+      }
+      const { data, error } = await vehicleQuery;
+      if (error) throw new Error(error.message);
+      return NextResponse.json({
+        vehicles: rows(data).map((row) => ({
+          id: String(row.id),
+          unitNumber: clean(row.unit_number),
+          vin: clean(row.vin),
+          licensePlate: clean(row.license_plate),
+          description: [row.year, clean(row.make), clean(row.model)].filter(Boolean).join(" "),
+        })),
+      });
+    }
+
     if (action === "context") {
       const [fleetResult, vehicleResult] = await Promise.all([
         admin
@@ -75,7 +102,7 @@ export async function POST(request: Request) {
           .select("id,unit_number,vin,license_plate,year,make,model")
           .eq("shop_id", scope.shopId)
           .order("unit_number", { ascending: true })
-          .limit(500),
+          .limit(100),
       ]);
       if (fleetResult.error) throw new Error(fleetResult.error.message);
       if (vehicleResult.error) throw new Error(vehicleResult.error.message);
