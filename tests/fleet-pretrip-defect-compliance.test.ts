@@ -77,14 +77,19 @@ describe("fleet pre-trip, defects, and compliance", () => {
     expect(migration).toContain("revoke execute on function public.evaluate_fleet_pretrip_compliance");
   });
 
-  it("schedules missed-pretrip evaluation and keeps the retired sign-in URL safe", () => {
+  it("schedules missed-pretrip evaluation in Supabase and keeps the retired sign-in URL safe", () => {
     const config = JSON.parse(read("vercel.json")) as {
       crons: Array<{ path: string; schedule: string }>;
     };
-    expect(config.crons).toContainEqual({
+    expect(config.crons).not.toContainEqual(expect.objectContaining({
       path: "/api/internal/fleet/pretrip-compliance",
-      schedule: "11 * * * *",
-    });
+    }));
+    const scheduler = read(
+      "supabase/migrations/20260803041000_schedule_fleet_pretrip_compliance.sql",
+    );
+    expect(scheduler).toContain("create extension if not exists pg_cron");
+    expect(scheduler).toContain("'fleet-pretrip-compliance-hourly'");
+    expect(scheduler).toContain("public.evaluate_fleet_pretrip_compliance(clock_timestamp())");
     const cronRoute = read("app/api/internal/fleet/pretrip-compliance/route.ts");
     expect(cronRoute).toContain("process.env.CRON_SECRET");
     expect(cronRoute).toContain("`Bearer ${cronSecret}`");
