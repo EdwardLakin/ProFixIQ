@@ -1,19 +1,8 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+import { redirect } from "next/navigation";
 
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-import AssetDetailScreen from "@/features/fleet/components/AssetDetailScreen";
-import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
+type Props = { params: Promise<{ id: string }> };
 
-interface FleetAssetPageProps {
-  params: Promise<{ id: string }>;
-}
-
-
-export default async function FleetAssetPage({ params }: FleetAssetPageProps) {
+export default async function LegacyFleetAssetPage({ params }: Props) {
   const { id } = await params;
-  const supabase = createServerSupabaseRSC();
-  const uiContext = await resolveFleetUiContext(supabase);
-
-  return <AssetDetailScreen unitId={id} uiContext={uiContext} />;
+  redirect(`/fleet/units/${encodeURIComponent(id)}`);
 }
