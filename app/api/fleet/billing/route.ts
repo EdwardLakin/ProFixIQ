@@ -376,7 +376,7 @@ export async function POST(request: Request) {
           p_decision: decision,
           p_actor_user_id: actor.userId,
           p_contact_method: contactMethod ?? "other",
-          p_note: note,
+          p_note: note ?? "",
           p_operation_key: `fleet-staff:${operationKey}`,
           p_at: new Date().toISOString(),
         })
