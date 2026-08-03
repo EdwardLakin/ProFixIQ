@@ -323,6 +323,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, evaluations });
     }
 
+    if (!["defer", "create_request"].includes(action)) {
+      return NextResponse.json({ error: "Unsupported PM action" }, { status: 400 });
+    }
+
     const dueEventId = clean(body.dueEventId);
     if (!dueEventId) {
       return NextResponse.json({ error: "dueEventId is required" }, { status: 400 });
