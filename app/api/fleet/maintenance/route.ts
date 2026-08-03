@@ -279,7 +279,7 @@ export async function POST(request: Request) {
       }
       const { data, error } = await supabase.rpc("evaluate_fleet_pm_due_events", {
         p_fleet_id: fleetId,
-        p_vehicle_id: clean(body.vehicleId),
+        p_vehicle_id: clean(body.vehicleId) ?? undefined,
       });
       if (error) throw new Error(error.message);
       return NextResponse.json({ ok: true, evaluated: data ?? [] });
@@ -371,7 +371,8 @@ export async function POST(request: Request) {
         p_vehicle_id: dueRow.vehicle_id,
         p_title: `${policyName} service`,
         p_summary: `Preventive maintenance due: ${dueReasons.join(", ") || "policy interval reached"}.`,
-        p_requested_for_date: null,
+        // The SQL function intentionally accepts an unscheduled request.
+        p_requested_for_date: null as unknown as string,
         p_operation_key: operationKey,
         p_lines: [
           {
