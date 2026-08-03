@@ -57,6 +57,14 @@ type Filter = "active" | "approval" | "scheduled" | "completed" | "all";
 const panel =
   "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
 
+const TERMINAL_REQUEST_STATUSES = new Set([
+  "completed",
+  "closed",
+  "cancelled",
+  "declined",
+  "rejected",
+]);
+
 function dateLabel(value: string | null) {
   if (!value) return null;
   return new Intl.DateTimeFormat(undefined, {
@@ -67,7 +75,12 @@ function dateLabel(value: string | null) {
 }
 
 function statusTone(status: string) {
-  if (["completed", "closed"].includes(status)) return "text-emerald-300 bg-emerald-400/10";
+  if (["completed", "closed"].includes(status)) {
+    return "text-emerald-300 bg-emerald-400/10";
+  }
+  if (["cancelled", "declined", "rejected"].includes(status)) {
+    return "text-red-300 bg-red-400/10";
+  }
   if (status === "scheduled") return "text-sky-300 bg-sky-400/10";
   return "text-amber-200 bg-amber-300/10";
 }
@@ -123,7 +136,7 @@ export default function FleetServiceRequestsPage({
     if (filter === "completed") {
       return requests.filter((item) => ["completed", "closed"].includes(item.status));
     }
-    return requests.filter((item) => !["completed", "closed"].includes(item.status));
+    return requests.filter((item) => !TERMINAL_REQUEST_STATUSES.has(item.status));
   }, [filter, payload?.requests]);
 
   const buildHref =
