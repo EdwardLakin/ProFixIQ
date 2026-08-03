@@ -1,12 +1,19 @@
 "use client";
 
 import { format } from "date-fns";
+import {
+  BriefcaseBusiness,
+  Camera,
+  ChevronRight,
+  ClipboardCheck,
+  FileScan,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { resolveCurrentActor } from "@/features/shared/lib/currentActor";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type InspectionRow = {
   id: string;
@@ -28,7 +35,10 @@ type CanonicalInspectionRow = {
   summary: {
     templateName?: string | null;
     templateitem?: string | null;
-    customer?: { first_name?: string | null; last_name?: string | null } | null;
+    customer?: {
+      first_name?: string | null;
+      last_name?: string | null;
+    } | null;
     vehicle?: {
       year?: string | number | null;
       make?: string | null;
@@ -49,21 +59,38 @@ function vehicleLabel(row: CanonicalInspectionRow): string | null {
   return value || null;
 }
 
-const BADGE_BASE =
-  "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]";
+function normalizedStatus(status: string | null | undefined): string {
+  return String(status ?? "open").toLowerCase().replace(/\s+/g, "_");
+}
 
-const STATUS_CLASS: Record<string, string> = {
-  open: "border-sky-500/70 bg-sky-500/10 text-sky-100",
-  in_progress: "border-orange-500/70 bg-orange-500/10 text-orange-100",
-  completed: "border-emerald-500/70 bg-emerald-500/10 text-emerald-100",
-  archived:
-    "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)]",
-};
+function statusLabel(status: string | null | undefined): string {
+  const key = normalizedStatus(status);
+  if (key === "in_progress") return "In progress";
+  if (key === "completed") return "Completed";
+  if (key === "archived") return "Archived";
+  return "Ready";
+}
 
-function statusChip(status: string | null | undefined): string {
-  const key = (status ?? "open").toLowerCase().replace(/\s+/g, "_");
-  const extra = STATUS_CLASS[key] ?? STATUS_CLASS.open;
-  return `${BADGE_BASE} ${extra}`;
+function statusTone(status: string | null | undefined): string {
+  const key = normalizedStatus(status);
+  if (key === "in_progress") {
+    return "border-cyan-500/35 bg-cyan-500/10 text-cyan-700 dark:text-cyan-200";
+  }
+  if (key === "completed") {
+    return "border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200";
+  }
+  if (key === "archived") {
+    return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-secondary)]";
+  }
+  return "border-blue-500/35 bg-blue-500/10 text-blue-700 dark:text-blue-200";
+}
+
+function statusRail(status: string | null | undefined): string {
+  const key = normalizedStatus(status);
+  if (key === "in_progress") return "bg-cyan-500";
+  if (key === "completed") return "bg-emerald-500";
+  if (key === "archived") return "bg-slate-400";
+  return "bg-blue-500";
 }
 
 export default function MobileInspectionsListPage() {
@@ -133,74 +160,121 @@ export default function MobileInspectionsListPage() {
     };
   }, [supabase]);
 
-  return (
-    <div className="min-h-screen space-y-4 bg-[color:var(--theme-surface-page)] px-4 py-4 text-foreground">
-      <header>
-        <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
-          Vehicle checks
-        </div>
-        <h1 className="mt-2 font-blackops text-lg uppercase tracking-[0.18em] text-[color:var(--theme-text-primary)]">
-          Inspections
-        </h1>
-        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-          Open a recent inspection or return to a work order to start the correct
-          checklist for that job.
-        </p>
-      </header>
+  const activeCount = rows.filter((row) => {
+    const status = normalizedStatus(row.status);
+    return status === "open" || status === "in_progress";
+  }).length;
 
-      <div className="grid grid-cols-2 gap-2">
+  return (
+    <main className="mx-auto w-full max-w-3xl space-y-3 px-3 py-3 sm:px-4">
+      <section className="mobile-dashboard-hero">
+        <div className="flex items-start gap-3">
+          <span className="inline-grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/15 bg-white/10 text-[#8ed4ff]">
+            <ClipboardCheck aria-hidden className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="mobile-dashboard-hero__eyebrow">Vehicle checks</div>
+            <h1 className="mobile-dashboard-hero__title">Inspections</h1>
+            <p className="mobile-dashboard-hero__subtitle">
+              {activeCount > 0
+                ? `${activeCount} inspection${activeCount === 1 ? " is" : "s are"} ready to continue.`
+                : "Start from the correct job or review recently completed vehicle checks."}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className={`grid gap-2 ${canImportForms ? "grid-cols-2" : "grid-cols-2"}`}>
         {canImportForms ? (
           <Link
             href="/mobile/inspections/import"
-            className="col-span-2 rounded-2xl border border-[var(--accent-copper)] bg-[color:var(--theme-surface-subtle)] p-4 text-sm font-semibold text-[color:var(--theme-text-primary)]"
+            className="mobile-command-row col-span-2 flex min-h-[5.6rem] items-center gap-3 border p-3"
           >
-            Import customer form
-            <div className="mt-1 text-xs font-normal text-[color:var(--theme-text-secondary)]">
-              Photograph a paper checklist and process it in the background
-            </div>
+            <span className="inline-grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-300">
+              <FileScan aria-hidden className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-[color:var(--theme-text-primary)]">
+                Import customer form
+              </span>
+              <span className="mt-1 block text-xs leading-4 text-[color:var(--theme-text-secondary)]">
+                Photograph a paper checklist and build a reusable inspection.
+              </span>
+            </span>
+            <ChevronRight className="h-5 w-5 shrink-0 text-[color:var(--accent-copper)]" />
           </Link>
         ) : null}
         <Link
           href="/mobile/tech/queue"
-          className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 text-sm font-semibold text-[color:var(--theme-text-primary)]"
+          className="mobile-command-row flex min-h-[5.5rem] items-center gap-3 border p-3"
         >
-          My jobs
-          <div className="mt-1 text-xs font-normal text-[color:var(--theme-text-secondary)]">
-            Open the assigned line first
-          </div>
+          <span className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-300">
+            <BriefcaseBusiness aria-hidden className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-[color:var(--theme-text-primary)]">
+              My jobs
+            </span>
+            <span className="mt-1 block text-xs text-[color:var(--theme-text-secondary)]">
+              Assigned work
+            </span>
+          </span>
         </Link>
         <Link
           href="/mobile/work-orders"
-          className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 text-sm font-semibold text-[color:var(--theme-text-primary)]"
+          className="mobile-command-row flex min-h-[5.5rem] items-center gap-3 border p-3"
         >
-          Work orders
-          <div className="mt-1 text-xs font-normal text-[color:var(--theme-text-secondary)]">
-            Find another vehicle or job
-          </div>
+          <span className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-300">
+            <Camera aria-hidden className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-bold text-[color:var(--theme-text-primary)]">
+              Work orders
+            </span>
+            <span className="mt-1 block text-xs text-[color:var(--theme-text-secondary)]">
+              Find a vehicle
+            </span>
+          </span>
         </Link>
-      </div>
+      </section>
 
       {error ? (
-        <div className="rounded-md border border-red-500/60 bg-red-950/40 px-3 py-2 text-xs text-red-200">
+        <div className="rounded-2xl border border-red-500/35 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-200">
           {error}
         </div>
       ) : null}
 
-      {loading ? (
-        <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
-          Loading inspections…
+      <section className="space-y-2.5">
+        <div className="flex items-end justify-between gap-3 px-1">
+          <div>
+            <h2 className="text-[0.66rem] font-extrabold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+              Recent inspections
+            </h2>
+            <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+              Open the canonical job and continue from its work order.
+            </p>
+          </div>
+          <span className="text-xs font-bold text-[color:var(--theme-text-secondary)]">
+            {rows.length}
+          </span>
         </div>
-      ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-6 text-sm text-[color:var(--theme-text-secondary)]">
-          No inspections found yet.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((row) => {
-            const created = row.created_at
-              ? format(new Date(row.created_at), "PP p")
-              : "—";
 
+        {loading ? (
+          [0, 1, 2].map((item) => (
+            <div
+              key={item}
+              className="h-28 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
+            />
+          ))
+        ) : rows.length === 0 ? (
+          <div className="mobile-command-panel border p-6 text-center text-sm text-[color:var(--theme-text-secondary)]">
+            No inspections found yet.
+          </div>
+        ) : (
+          rows.map((row) => {
+            const created = row.created_at
+              ? format(new Date(row.created_at), "MMM d · p")
+              : "—";
             const canonicalHref =
               row.work_order_id && row.work_order_line_id
                 ? `/mobile/work-orders/${row.work_order_id}?focus=${encodeURIComponent(row.work_order_line_id)}`
@@ -210,40 +284,36 @@ export default function MobileInspectionsListPage() {
               <Link
                 key={row.id}
                 href={canonicalHref}
-                className="block rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)] shadow-sm shadow-[var(--theme-shadow-medium)] active:scale-[0.99]"
+                className="mobile-command-row relative flex min-h-[6.5rem] items-center gap-3 overflow-hidden border p-4 pl-5 active:scale-[0.992]"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-semibold text-[color:var(--theme-text-primary)]">
-                        {row.custom_id ?? `Inspect ${row.id.slice(0, 6)}`}
-                      </span>
-                      <span className={statusChip(row.status)}>
-                        {(row.status ?? "open").replaceAll("_", " ")}
-                      </span>
-                    </div>
-                    <div className="mt-1 truncate text-[0.75rem] text-[color:var(--theme-text-secondary)]">
-                      {row.customer_name ?? "No customer"}
-                      <span className="mx-1 text-[color:var(--theme-text-muted)]">
-                        •
-                      </span>
-                      {row.vehicle_label ?? "No vehicle"}
-                    </div>
-                  </div>
-                  <div className="ml-2 shrink-0 text-right">
-                    <div className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
-                      {created}
-                    </div>
-                    <div className="mt-1 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-[var(--accent-copper)]">
-                      Open canonical job
-                    </div>
-                  </div>
-                </div>
+                <span
+                  aria-hidden
+                  className={`absolute inset-y-0 left-0 w-1.5 ${statusRail(row.status)}`}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="truncate text-sm font-extrabold text-[color:var(--theme-text-primary)]">
+                      {row.custom_id ?? `Inspection ${row.id.slice(0, 6)}`}
+                    </span>
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[0.62rem] font-bold ${statusTone(row.status)}`}
+                    >
+                      {statusLabel(row.status)}
+                    </span>
+                  </span>
+                  <span className="mt-1.5 block truncate text-xs text-[color:var(--theme-text-secondary)]">
+                    {row.vehicle_label ?? "No vehicle"}
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-[color:var(--theme-text-muted)]">
+                    {row.customer_name ?? "No customer"} · {created}
+                  </span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-[color:var(--accent-copper)]" />
               </Link>
             );
-          })}
-        </div>
-      )}
-    </div>
+          })
+        )}
+      </section>
+    </main>
   );
 }
