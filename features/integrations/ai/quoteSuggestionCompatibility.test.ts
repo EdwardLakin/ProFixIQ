@@ -16,6 +16,10 @@ describe("quote suggestion OpenAI compatibility", () => {
     expect(source).toContain("p_payload");
     expect(source).toContain("p_shop_id");
     expect(source).toContain("p_training_source");
+    expect(source).toContain("canonicalTrainingSource(source)");
+    expect(source).toContain('return "quote"');
+    expect(source).toContain('return "work_order"');
+    expect(source).toContain('return "inspection"');
     expect(source).not.toContain("trainingSource: source,\n    p_shop_id");
   });
 });

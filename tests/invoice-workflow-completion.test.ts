@@ -35,8 +35,27 @@ describe("invoice and work-order workflow completion", () => {
     expect(finalize).toContain("getActiveInvoiceVersion");
     expect(finalize).toContain("documentConfiguration: brand.document");
     expect(finalize).toContain("invoicePartSignature");
+    expect(finalize).toContain('status: "draft"');
+    expect(finalize).toContain("issued_at: null");
+    expect(finalize).not.toContain("issued_pending_send");
+    expect(finalize).not.toContain("invoiceUpdateError");
     expect(send).toContain("if (version)");
     expect(send).toContain("snapshot = version.snapshot");
+    expect(send).toContain('status: "draft"');
+    expect(send).not.toContain("issued_pending_send");
+    expect(preview).toContain("Invoice finalization failed");
+    expect(preview).toContain("toast.error(message)");
+  });
+
+  it("allows delivery metadata updates after the financial snapshot is locked", () => {
+    const migration = source(
+      "supabase/migrations/20260803173514_invoice_finalize_production_contract.sql",
+    );
+    expect(migration).toContain("invoice_sent_at");
+    expect(migration).toContain("invoice_last_sent_to");
+    expect(migration).toContain("invoice_url");
+    expect(migration).toContain("invoice_pdf_url");
+    expect(migration).toContain("WORK_ORDER_FINANCIALLY_LOCKED");
   });
 
   it("keeps payment and QuickBooks actions on the immutable invoice", () => {
