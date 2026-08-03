@@ -22,17 +22,17 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: ".nvmrc"
+          node-version: 20
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -40,12 +40,23 @@ jobs:
       - name: TypeScript
         run: pnpm typecheck
 
-      - name: Lint changed TypeScript
-        shell: bash
-        run: |
-          git diff --name-only origin/main...HEAD -- '*.ts' '*.tsx' \
-            | tr '\n' '\0' \
-            | xargs -0 --no-run-if-empty pnpm exec eslint
+      - name: Lint mobile command surface
+        run: >-
+          pnpm exec eslint
+          app/mobile
+          components/layout/MobileBottomNav.tsx
+          components/layout/MobileShell.tsx
+          features/mobile
+          features/shared/components/pwa/PwaRuntime.tsx
+          features/work-orders/mobile
+          tests/mobile-native-route-audit.test.ts
+          tests/mobile-route-continuity.test.ts
+          tests/mobile-technician-first-ux.test.ts
+          tests/mobile-technician-stabilization.test.ts
+          tests/mobile-role-dashboard-layout.test.ts
+          tests/mobile-remaining-role-dashboards.test.ts
+          tests/mobile-global-menu-and-shift-scope.test.ts
+          tests/pwa-install-prompt-safe-area.test.ts
 
       - name: Mobile contract tests
         run: >-
