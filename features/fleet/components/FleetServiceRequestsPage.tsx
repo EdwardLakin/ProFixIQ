@@ -84,7 +84,7 @@ export default function FleetServiceRequestsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     setLoading(true);
     setError(null);
     try {
@@ -93,6 +93,7 @@ export default function FleetServiceRequestsPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
         cache: "no-store",
+        signal,
       });
       const body = (await response.json().catch(() => ({}))) as Payload & {
         error?: string;
@@ -100,14 +101,18 @@ export default function FleetServiceRequestsPage({
       if (!response.ok) throw new Error(body.error || "Unable to load requests");
       setPayload(body);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to load requests");
+      if (!signal?.aborted) {
+        setError(cause instanceof Error ? cause.message : "Unable to load requests");
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, []);
 
   const visible = useMemo(() => {
