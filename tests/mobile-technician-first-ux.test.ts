@@ -151,8 +151,8 @@ describe("technician-first mobile UX", () => {
 
   it("keeps the assistant contextual, question-driven, and non-automatic", () => {
     expect(mobileMenu).toContain('if (role === "mechanic") return [];');
-    expect(mobileMenu).not.toContain(
-      '{ href: "/mobile/assistant", label: "Ask Assistant", icon: Bot },\n    ];\n  }, [role]);',
+    expect(mobileMenu).toContain(
+      '{ href: "/mobile/assistant", label: "Ask Assistant", icon: Bot }',
     );
     expect(assistantModal).toContain("Ask ProFixIQ");
     expect(assistantModal).toContain("Nothing is changed automatically.");
