@@ -13,6 +13,14 @@ export const dynamic = "force-dynamic";
 type Row = Record<string, unknown>;
 type Body = { fleetId?: string | null };
 
+const TERMINAL_REQUEST_STATUSES = new Set([
+  "completed",
+  "closed",
+  "cancelled",
+  "declined",
+  "rejected",
+]);
+
 function rows(value: unknown): Row[] {
   return Array.isArray(value) ? (value as Row[]) : [];
 }
@@ -111,6 +119,37 @@ export async function POST(request: Request) {
       : { data: [] as unknown[], error: null };
     if (workOrderError) throw new Error(workOrderError.message);
 
+    const workOrderRows = rows(workOrderData);
+    const workOrderIds = workOrderRows.map((row) => String(row.id));
+    const { data: quoteData, error: quoteError } = workOrderIds.length
+      ? await admin
+          .from("work_order_quote_lines")
+          .select(
+            "id,work_order_id,status,sent_to_customer_at,approved_at,declined_at",
+          )
+          .eq("shop_id", scope.shopId)
+          .in("work_order_id", workOrderIds)
+      : { data: [] as unknown[], error: null };
+    if (quoteError) throw new Error(quoteError.message);
+
+    const pendingApprovalsByWorkOrder = new Map<string, number>();
+    for (const quote of rows(quoteData)) {
+      const status = clean(quote.status)?.toLowerCase() ?? "";
+      const needsDecision =
+        Boolean(quote.sent_to_customer_at) &&
+        !quote.approved_at &&
+        !quote.declined_at &&
+        !["approved", "converted", "declined", "deferred", "rejected", "cancelled"].includes(
+          status,
+        );
+      if (!needsDecision) continue;
+      const key = String(quote.work_order_id);
+      pendingApprovalsByWorkOrder.set(
+        key,
+        (pendingApprovalsByWorkOrder.get(key) ?? 0) + 1,
+      );
+    }
+
     const vehicles = new Map(
       rows(vehicleResult.data).map((row) => [String(row.id), row]),
     );
@@ -121,7 +160,7 @@ export async function POST(request: Request) {
       enrollments.map((row) => [String(row.vehicle_id), row]),
     );
     const workOrders = new Map(
-      rows(workOrderData).map((row) => [
+      workOrderRows.map((row) => [
         String(row.source_fleet_service_request_id),
         row,
       ]),
@@ -134,9 +173,7 @@ export async function POST(request: Request) {
       const approvalState = clean(workOrder.approval_state);
       const needsApproval =
         Boolean(clean(workOrder.id)) &&
-        ["pending", "awaiting_customer", "awaiting_approval", "sent"].includes(
-          approvalState?.toLowerCase() ?? "",
-        );
+        (pendingApprovalsByWorkOrder.get(String(workOrder.id)) ?? 0) > 0;
 
       return {
         id: String(row.id),
@@ -155,7 +192,7 @@ export async function POST(request: Request) {
         title: clean(row.title) ?? "Service request",
         summary: clean(row.summary) ?? "",
         severity: clean(row.severity) ?? "recommend",
-        status: clean(row.status) ?? "open",
+        status: clean(row.status)?.toLowerCase() ?? "open",
         createdAt: iso(row.created_at) ?? new Date().toISOString(),
         updatedAt: iso(row.updated_at),
         requestedForDate: clean(row.requested_for_date),
@@ -187,6 +224,9 @@ export async function POST(request: Request) {
         awaitingApproval: payload.filter((item) => item.workOrder?.needsApproval).length,
         completed: payload.filter((item) =>
           ["completed", "closed"].includes(item.status),
+        ).length,
+        terminal: payload.filter((item) =>
+          TERMINAL_REQUEST_STATUSES.has(item.status),
         ).length,
       },
       requests: payload,
