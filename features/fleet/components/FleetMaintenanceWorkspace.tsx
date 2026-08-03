@@ -231,7 +231,7 @@ export default function FleetMaintenanceWorkspace({
                 onClick={() =>
                   void mutate({
                     action: "evaluate",
-                    fleetId: fleetId === "all" ? data.fleets[0]?.id : fleetId,
+                    fleetId: fleetId === "all" ? null : fleetId,
                   })
                 }
                 className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-sky-300 px-4 py-2 text-xs font-semibold text-slate-950 disabled:opacity-50"
