@@ -60,16 +60,25 @@ type BillingItem = {
 type Payload = {
   canApprove: boolean;
   canPay: boolean;
+  decisionMode: "shop_recorded" | "fleet_self_service";
   summary: {
     approvals: number;
-    outstanding: number;
-    paid: number;
     invoices: number;
+    byCurrency: Record<
+      "CAD" | "USD",
+      { outstanding: number; paid: number }
+    >;
   };
   items: BillingItem[];
 };
 
 type Filter = "approvals" | "unpaid" | "paid" | "all";
+
+function billingFilter(value?: string): Filter {
+  return value && ["approvals", "unpaid", "paid", "all"].includes(value)
+    ? (value as Filter)
+    : "approvals";
+}
 
 const panel =
   "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
@@ -79,6 +88,26 @@ function money(amount: number, currency: "CAD" | "USD" = "CAD") {
     style: "currency",
     currency,
   }).format(amount || 0);
+}
+
+function CurrencyTotals({
+  totals,
+  kind,
+}: {
+  totals: Payload["summary"]["byCurrency"];
+  kind: "outstanding" | "paid";
+}) {
+  const currencies = (["CAD", "USD"] as const).filter(
+    (currency) => totals[currency][kind] !== 0,
+  );
+  const visible = currencies.length ? currencies : (["CAD"] as const);
+  return (
+    <div className="mt-3 space-y-0.5 text-sm font-semibold">
+      {visible.map((currency) => (
+        <div key={currency}>{money(totals[currency][kind], currency)}</div>
+      ))}
+    </div>
+  );
 }
 
 function date(value: string | null) {
@@ -92,14 +121,24 @@ function date(value: string | null) {
 
 export default function FleetBillingWorkspace({
   routePrefix,
+  initialWorkOrderId,
+  initialFilter,
 }: {
   routePrefix: "/fleet" | "/portal/fleet";
+  initialWorkOrderId?: string;
+  initialFilter?: string;
 }) {
   const [payload, setPayload] = useState<Payload | null>(null);
-  const [filter, setFilter] = useState<Filter>("approvals");
+  const [filter, setFilter] = useState<Filter>(
+    initialWorkOrderId ? "all" : billingFilter(initialFilter),
+  );
   const [loading, setLoading] = useState(true);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [contactMethod, setContactMethod] = useState<
+    "phone" | "in_person" | "email" | "other"
+  >("phone");
+  const [decisionNote, setDecisionNote] = useState("");
 
   async function load(signal?: AbortSignal) {
     setLoading(true);
@@ -117,7 +156,13 @@ export default function FleetBillingWorkspace({
       };
       if (!response.ok) throw new Error(body.error || "Unable to load fleet billing");
       setPayload(body);
-      if (body.summary.approvals === 0) setFilter("unpaid");
+      if (
+        !initialWorkOrderId &&
+        !initialFilter &&
+        body.summary.approvals === 0
+      ) {
+        setFilter("unpaid");
+      }
     } catch (cause) {
       if (!signal?.aborted) {
         setError(
@@ -137,20 +182,30 @@ export default function FleetBillingWorkspace({
 
   const visible = useMemo(() => {
     const items = payload?.items ?? [];
-    if (filter === "all") return items;
-    if (filter === "approvals") {
-      return items.filter((item) => item.quoteLines.some((line) => line.needsDecision));
-    }
-    if (filter === "unpaid") {
-      return items.filter((item) => (item.invoice?.outstandingTotal ?? 0) > 0);
-    }
-    return items.filter(
-      (item) =>
-        item.invoice &&
-        item.invoice.outstandingTotal <= 0 &&
-        item.invoice.paidTotal > 0,
+    const filtered =
+      filter === "all"
+        ? items
+        : filter === "approvals"
+          ? items.filter((item) =>
+              item.quoteLines.some((line) => line.needsDecision),
+            )
+          : filter === "unpaid"
+            ? items.filter(
+                (item) => (item.invoice?.outstandingTotal ?? 0) > 0,
+              )
+            : items.filter(
+                (item) =>
+                  item.invoice &&
+                  item.invoice.outstandingTotal <= 0 &&
+                  item.invoice.paidTotal > 0,
+              );
+    if (!initialWorkOrderId) return filtered;
+    return [...filtered].sort(
+      (left, right) =>
+        Number(right.id === initialWorkOrderId) -
+        Number(left.id === initialWorkOrderId),
     );
-  }, [filter, payload?.items]);
+  }, [filter, initialWorkOrderId, payload?.items]);
 
   async function decide(
     item: BillingItem,
@@ -169,6 +224,8 @@ export default function FleetBillingWorkspace({
           quoteLineIds: [line.id],
           decision,
           operationKey: crypto.randomUUID(),
+          contactMethod,
+          note: decisionNote.trim() || undefined,
         }),
       });
       const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -235,18 +292,38 @@ export default function FleetBillingWorkspace({
 
       {payload ? (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {([
-            ["Awaiting approval", payload.summary.approvals, FileCheck2],
-            ["Outstanding", money(payload.summary.outstanding), CreditCard],
-            ["Paid", money(payload.summary.paid), CheckCircle2],
-            ["Invoices", payload.summary.invoices, ReceiptText],
-          ] as const).map(([label, value, Icon]) => (
-            <div key={String(label)} className={`${panel} p-4`}>
-              <Icon size={17} className="text-sky-300" />
-              <div className="mt-3 text-xl font-semibold">{String(value)}</div>
-              <div className="text-xs text-[color:var(--theme-text-muted)]">{String(label)}</div>
+          <div className={`${panel} p-4`}>
+            <FileCheck2 size={17} className="text-sky-300" />
+            <div className="mt-3 text-xl font-semibold">
+              {payload.summary.approvals}
             </div>
-          ))}
+            <div className="text-xs text-[color:var(--theme-text-muted)]">
+              Awaiting approval
+            </div>
+          </div>
+          <div className={`${panel} p-4`}>
+            <CreditCard size={17} className="text-sky-300" />
+            <CurrencyTotals totals={payload.summary.byCurrency} kind="outstanding" />
+            <div className="text-xs text-[color:var(--theme-text-muted)]">
+              Outstanding by currency
+            </div>
+          </div>
+          <div className={`${panel} p-4`}>
+            <CheckCircle2 size={17} className="text-sky-300" />
+            <CurrencyTotals totals={payload.summary.byCurrency} kind="paid" />
+            <div className="text-xs text-[color:var(--theme-text-muted)]">
+              Paid by currency
+            </div>
+          </div>
+          <div className={`${panel} p-4`}>
+            <ReceiptText size={17} className="text-sky-300" />
+            <div className="mt-3 text-xl font-semibold">
+              {payload.summary.invoices}
+            </div>
+            <div className="text-xs text-[color:var(--theme-text-muted)]">
+              Invoices
+            </div>
+          </div>
         </section>
       ) : null}
 
@@ -275,6 +352,43 @@ export default function FleetBillingWorkspace({
           ))}
         </div>
 
+        {payload?.decisionMode === "shop_recorded" &&
+        payload.summary.approvals > 0 ? (
+          <div className="grid gap-2 border-b border-[color:var(--theme-border-soft)] p-3 sm:grid-cols-[180px_1fr]">
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              Customer contact
+              <select
+                value={contactMethod}
+                onChange={(event) =>
+                  setContactMethod(
+                    event.target.value as
+                      | "phone"
+                      | "in_person"
+                      | "email"
+                      | "other",
+                  )
+                }
+                className="mt-1 h-10 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2"
+              >
+                <option value="phone">Phone</option>
+                <option value="in_person">In person</option>
+                <option value="email">Email</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label className="text-xs text-[color:var(--theme-text-secondary)]">
+              Decision note
+              <input
+                value={decisionNote}
+                onChange={(event) => setDecisionNote(event.target.value)}
+                placeholder="Who approved or declined, and any conditions"
+                maxLength={1000}
+                className="mt-1 h-10 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3"
+              />
+            </label>
+          </div>
+        ) : null}
+
         {error ? <p className="p-5 text-sm text-red-300">{error}</p> : null}
         {loading && !payload ? (
           <p className="p-5 text-sm text-[color:var(--theme-text-secondary)]">
@@ -295,7 +409,15 @@ export default function FleetBillingWorkspace({
           {visible.map((item) => {
             const pendingLines = item.quoteLines.filter((line) => line.needsDecision);
             return (
-              <article key={item.id} className="p-4">
+              <article
+                key={item.id}
+                id={`billing-${item.id}`}
+                className={
+                  item.id === initialWorkOrderId
+                    ? "bg-sky-300/5 p-4 ring-1 ring-inset ring-sky-300/30"
+                    : "p-4"
+                }
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -345,7 +467,11 @@ export default function FleetBillingWorkspace({
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
-                              disabled={Boolean(activeAction)}
+                              disabled={
+                                Boolean(activeAction) ||
+                                (payload.decisionMode === "shop_recorded" &&
+                                  !decisionNote.trim())
+                              }
                               onClick={() => void decide(item, line, "approve")}
                               className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-400 px-3 py-2 text-xs font-semibold text-slate-950 disabled:opacity-50"
                             >
@@ -354,7 +480,11 @@ export default function FleetBillingWorkspace({
                             </button>
                             <button
                               type="button"
-                              disabled={Boolean(activeAction)}
+                              disabled={
+                                Boolean(activeAction) ||
+                                (payload.decisionMode === "shop_recorded" &&
+                                  !decisionNote.trim())
+                              }
                               onClick={() => void decide(item, line, "defer")}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs disabled:opacity-50"
                             >
@@ -363,7 +493,11 @@ export default function FleetBillingWorkspace({
                             </button>
                             <button
                               type="button"
-                              disabled={Boolean(activeAction)}
+                              disabled={
+                                Boolean(activeAction) ||
+                                (payload.decisionMode === "shop_recorded" &&
+                                  !decisionNote.trim())
+                              }
                               onClick={() => void decide(item, line, "decline")}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-300 disabled:opacity-50"
                             >
@@ -412,7 +546,11 @@ export default function FleetBillingWorkspace({
                     {payload?.canPay && item.invoice.outstandingTotal > 0 ? (
                       <button
                         type="button"
-                        disabled={Boolean(activeAction)}
+                        disabled={
+                                Boolean(activeAction) ||
+                                (payload.decisionMode === "shop_recorded" &&
+                                  !decisionNote.trim())
+                              }
                         onClick={() => void pay(item)}
                         className="inline-flex items-center gap-2 rounded-lg bg-sky-300 px-3 py-2 text-xs font-semibold text-slate-950 disabled:opacity-50"
                       >
