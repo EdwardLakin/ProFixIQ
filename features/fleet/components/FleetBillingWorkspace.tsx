@@ -228,12 +228,12 @@ export default function FleetBillingWorkspace({
 
       {payload ? (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
+          {([
             ["Awaiting approval", payload.summary.approvals, FileCheck2],
             ["Outstanding", money(payload.summary.outstanding), CreditCard],
             ["Paid", money(payload.summary.paid), CheckCircle2],
             ["Invoices", payload.summary.invoices, ReceiptText],
-          ].map(([label, value, Icon]) => (
+          ] as const).map(([label, value, Icon]) => (
             <div key={String(label)} className={`${panel} p-4`}>
               <Icon size={17} className="text-sky-300" />
               <div className="mt-3 text-xl font-semibold">{String(value)}</div>
