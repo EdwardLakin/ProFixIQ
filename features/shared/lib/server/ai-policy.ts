@@ -13,6 +13,7 @@ export type AIPolicy = {
 export type AIFeature =
   | "work_orders_suggest_lines"
   | "ai_summarize_stats"
+  | "fleet_operations_summary"
   | "openai_realtime_token"
   | "work_order_documentation_rewrite"
   | "branding_generate_logo"
@@ -32,6 +33,13 @@ const AI_POLICIES: Record<AIFeature, AIPolicy> = {
     modelPurpose: "fast",
     timeoutMs: 12000,
     maxTokens: 300,
+    fallbackMode: "graceful_empty",
+  },
+  fleet_operations_summary: {
+    feature: "fleet_operations_summary",
+    modelPurpose: "fast",
+    timeoutMs: 10000,
+    maxTokens: 80,
     fallbackMode: "graceful_empty",
   },
   openai_realtime_token: {

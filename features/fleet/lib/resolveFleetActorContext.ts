@@ -11,6 +11,12 @@ type DB = Database;
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 type FleetMemberRow = DB["public"]["Tables"]["fleet_members"]["Row"];
 
+export type FleetMembershipContext = {
+  fleetId: string;
+  shopId: string | null;
+  role: string | null;
+};
+
 export type FleetActorType =
   | "internal_staff"
   | "fleet_manager"
@@ -36,6 +42,7 @@ export type FleetActorContext = {
   profileShopId: string | null;
   shopId: string | null;
   fleetIds: string[];
+  fleetMemberships: FleetMembershipContext[];
   primaryFleetId: string | null;
   membershipRole: string | null;
   isInternal: boolean;
@@ -70,6 +77,7 @@ export async function resolveFleetActorContext(
       profileShopId: null,
       shopId: null,
       fleetIds: [],
+      fleetMemberships: [],
       primaryFleetId: null,
       membershipRole: null,
       isInternal: false,
@@ -154,6 +162,11 @@ export async function resolveFleetActorContext(
     profileShopId: typedProfile?.shop_id ?? null,
     shopId: typedProfile?.shop_id ?? membershipShopId ?? null,
     fleetIds: membershipFleetIds,
+    fleetMemberships: typedMemberships.map((membership) => ({
+      fleetId: membership.fleet_id,
+      shopId: membership.shop_id,
+      role: membership.role,
+    })),
     primaryFleetId:
       membershipRow?.fleet_id ?? typedMemberships[0]?.fleet_id ?? null,
     membershipRole,
@@ -172,6 +185,37 @@ export async function resolveFleetActorContext(
       canOverrideShopScope: isInternal,
     },
   };
+}
+
+export function fleetRoleForActor(
+  actor: FleetActorContext,
+  fleetId: string,
+): string | null {
+  return (
+    actor.fleetMemberships.find((membership) => membership.fleetId === fleetId)
+      ?.role ?? null
+  );
+}
+
+export function canManageFleetForActor(
+  actor: FleetActorContext,
+  fleetId: string,
+): boolean {
+  if (actor.isInternal) return true;
+  const tier = resolveFleetRoleTier(fleetRoleForActor(actor, fleetId));
+  return tier === "manager" || tier === "approver";
+}
+
+export function manageableFleetIdsForActor(actor: FleetActorContext): string[] {
+  if (actor.isInternal) return [];
+  return uniqueStrings(
+    actor.fleetMemberships
+      .filter((membership) => {
+        const tier = resolveFleetRoleTier(membership.role);
+        return tier === "manager" || tier === "approver";
+      })
+      .map((membership) => membership.fleetId),
+  );
 }
 
 export type FleetActorScope = {

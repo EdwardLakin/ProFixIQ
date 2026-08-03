@@ -1,154 +1,243 @@
-// app/api/fleet/service-requests/route.ts
-import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
 
-type DB = Database;
+export const dynamic = "force-dynamic";
 
-type FleetServiceRequestRow =
-  DB["public"]["Tables"]["fleet_service_requests"]["Row"];
-type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+type Row = Record<string, unknown>;
+type Body = { fleetId?: string | null };
 
-export type PortalServiceRequest = {
-  id: string;
-  vehicleId: string;
-  unitLabel: string | null;
-  plate: string | null;
-  title: string;
-  summary: string;
-  severity: FleetServiceRequestRow["severity"];
-  status: FleetServiceRequestRow["status"];
-  createdAt: string;
-  scheduledForDate: string | null;
-};
+const TERMINAL_REQUEST_STATUSES = new Set([
+  "completed",
+  "closed",
+  "cancelled",
+  "declined",
+  "rejected",
+]);
 
-type Body = {
-  fleetId?: string | null;
-};
+function rows(value: unknown): Row[] {
+  return Array.isArray(value) ? (value as Row[]) : [];
+}
 
-export async function POST(req: NextRequest) {
+function clean(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function iso(value: unknown): string | null {
+  const raw = clean(value);
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
-    const body = (await req.json().catch(() => ({}))) as Body;
-
+    const body = (await request.json().catch(() => ({}))) as Body;
     const actor = await resolveFleetActorContext(supabase, {
       requestedFleetId: body.fleetId ?? null,
     });
-    const canReadRequests =
-      actor.capabilities.canSeeFleetWideUnits || actor.isFleetActor;
-    if (!actor.userId || !canReadRequests) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const scope = resolveFleetActorScope(actor, {
       explicitFleetId: body.fleetId ?? null,
     });
-    const fleetId = scope?.fleetId;
-    if (!fleetId) {
-      return NextResponse.json(
-        { error: "No fleet access for this account." },
-        { status: 403 },
-      );
+
+    if (!actor.userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!scope?.shopId) {
+      return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
     }
 
-    // RLS and fleet membership remain the final authorization boundary.
-    const { data: requests, error: requestError } = await supabase
-      .from("fleet_service_requests")
-      .select(
-        "id, vehicle_id, title, summary, severity, status, created_at, scheduled_for_date",
-      )
-      .eq("fleet_id", fleetId)
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    if (requestError) {
-      // eslint-disable-next-line no-console
-      console.error("[fleet/service-requests] query error:", requestError);
-      return NextResponse.json(
-        { error: "Failed to load service requests." },
-        { status: 500 },
-      );
+    const admin = createAdminSupabase();
+    let enrollmentQuery = admin
+      .from("fleet_vehicles")
+      .select("fleet_id,vehicle_id,nickname,active")
+      .eq("shop_id", scope.shopId)
+      .or("active.is.null,active.eq.true");
+    if (scope.fleetIds?.length) {
+      enrollmentQuery = enrollmentQuery.in("fleet_id", scope.fleetIds);
     }
 
-    const typed = (requests ?? []) as Pick<
-      FleetServiceRequestRow,
-      | "id"
-      | "vehicle_id"
-      | "title"
-      | "summary"
-      | "severity"
-      | "status"
-      | "created_at"
-      | "scheduled_for_date"
-    >[];
+    const { data: enrollmentData, error: enrollmentError } = await enrollmentQuery;
+    if (enrollmentError) throw new Error(enrollmentError.message);
+    const enrollments = rows(enrollmentData);
+    const vehicleIds = Array.from(
+      new Set(enrollments.map((row) => String(row.vehicle_id))),
+    );
+    const fleetIds = Array.from(
+      new Set(enrollments.map((row) => String(row.fleet_id))),
+    );
 
-    const vehicleIds = Array.from(new Set(typed.map((request) => request.vehicle_id)));
-    const vehiclesMap = new Map<
-      string,
-      { unitLabel: string | null; plate: string | null }
-    >();
+    if (!vehicleIds.length || !fleetIds.length) {
+      return NextResponse.json({
+        canManage: actor.isInternal || actor.actorType === "fleet_manager",
+        summary: { open: 0, scheduled: 0, awaitingApproval: 0, completed: 0 },
+        requests: [],
+      });
+    }
 
-    if (vehicleIds.length > 0) {
-      const { data: vehicleRows, error: vehiclesError } = await supabase
+    const [vehicleResult, fleetResult, requestResult] = await Promise.all([
+      admin
         .from("vehicles")
-        .select("id, unit_number, license_plate, vin")
-        .in("id", vehicleIds);
+        .select("id,unit_number,license_plate,vin,year,make,model")
+        .eq("shop_id", scope.shopId)
+        .in("id", vehicleIds),
+      admin.from("fleets").select("id,name").in("id", fleetIds),
+      admin
+        .from("fleet_service_requests")
+        .select(
+          "id,fleet_id,vehicle_id,title,summary,severity,status,created_at,updated_at,requested_for_date,scheduled_for_date,work_order_id,source_pm_due_event_id",
+        )
+        .eq("shop_id", scope.shopId)
+        .in("fleet_id", fleetIds)
+        .order("created_at", { ascending: false })
+        .limit(300),
+    ]);
+    const firstError = [
+      vehicleResult.error,
+      fleetResult.error,
+      requestResult.error,
+    ].find(Boolean);
+    if (firstError) throw new Error(firstError.message);
 
-      if (vehiclesError) {
-        // eslint-disable-next-line no-console
-        console.error("[fleet/service-requests] vehicles error:", vehiclesError);
-      } else {
-        const rows = (vehicleRows ?? []) as Pick<
-          VehicleRow,
-          "id" | "unit_number" | "license_plate" | "vin"
-        >[];
+    const requests = rows(requestResult.data);
+    const requestIds = requests.map((row) => String(row.id));
+    const { data: workOrderData, error: workOrderError } = requestIds.length
+      ? await admin
+          .from("work_orders")
+          .select(
+            "id,source_fleet_service_request_id,custom_id,status,approval_state,scheduled_at,expected_completion_at,payment_status,outstanding_balance",
+          )
+          .eq("shop_id", scope.shopId)
+          .in("source_fleet_service_request_id", requestIds)
+      : { data: [] as unknown[], error: null };
+    if (workOrderError) throw new Error(workOrderError.message);
 
-        for (const vehicle of rows) {
-          const primaryLabel =
-            (vehicle.unit_number && vehicle.unit_number.trim().length > 0
-              ? vehicle.unit_number
-              : vehicle.license_plate || vehicle.vin) ?? null;
+    const workOrderRows = rows(workOrderData);
+    const workOrderIds = workOrderRows.map((row) => String(row.id));
+    const { data: quoteData, error: quoteError } = workOrderIds.length
+      ? await admin
+          .from("work_order_quote_lines")
+          .select(
+            "id,work_order_id,status,sent_to_customer_at,approved_at,declined_at",
+          )
+          .eq("shop_id", scope.shopId)
+          .in("work_order_id", workOrderIds)
+      : { data: [] as unknown[], error: null };
+    if (quoteError) throw new Error(quoteError.message);
 
-          vehiclesMap.set(vehicle.id, {
-            unitLabel: primaryLabel,
-            plate: vehicle.license_plate ?? null,
-          });
-        }
-      }
+    const pendingApprovalsByWorkOrder = new Map<string, number>();
+    for (const quote of rows(quoteData)) {
+      const status = clean(quote.status)?.toLowerCase() ?? "";
+      const needsDecision =
+        Boolean(quote.sent_to_customer_at) &&
+        !quote.approved_at &&
+        !quote.declined_at &&
+        !["approved", "converted", "declined", "deferred", "rejected", "cancelled"].includes(
+          status,
+        );
+      if (!needsDecision) continue;
+      const key = String(quote.work_order_id);
+      pendingApprovalsByWorkOrder.set(
+        key,
+        (pendingApprovalsByWorkOrder.get(key) ?? 0) + 1,
+      );
     }
 
-    const payload: PortalServiceRequest[] = typed.map((request) => {
-      const vehicle = vehiclesMap.get(request.vehicle_id) ?? {
-        unitLabel: null,
-        plate: null,
-      };
+    const vehicles = new Map(
+      rows(vehicleResult.data).map((row) => [String(row.id), row]),
+    );
+    const fleets = new Map(
+      rows(fleetResult.data).map((row) => [String(row.id), clean(row.name) ?? "Fleet"]),
+    );
+    const enrollmentByVehicle = new Map(
+      enrollments.map((row) => [String(row.vehicle_id), row]),
+    );
+    const workOrders = new Map(
+      workOrderRows.map((row) => [
+        String(row.source_fleet_service_request_id),
+        row,
+      ]),
+    );
+
+    const payload = requests.map((row) => {
+      const vehicle = vehicles.get(String(row.vehicle_id)) ?? {};
+      const enrollment = enrollmentByVehicle.get(String(row.vehicle_id)) ?? {};
+      const workOrder = workOrders.get(String(row.id)) ?? {};
+      const approvalState = clean(workOrder.approval_state);
+      const needsApproval =
+        Boolean(clean(workOrder.id)) &&
+        (pendingApprovalsByWorkOrder.get(String(workOrder.id)) ?? 0) > 0;
 
       return {
-        id: request.id,
-        vehicleId: request.vehicle_id,
-        unitLabel: vehicle.unitLabel,
-        plate: vehicle.plate,
-        title: request.title,
-        summary: request.summary,
-        severity: request.severity,
-        status: request.status,
-        createdAt: request.created_at,
-        scheduledForDate: request.scheduled_for_date,
+        id: String(row.id),
+        fleetId: String(row.fleet_id),
+        fleetName: fleets.get(String(row.fleet_id)) ?? "Fleet",
+        vehicleId: String(row.vehicle_id),
+        unitLabel:
+          clean(enrollment.nickname) ??
+          clean(vehicle.unit_number) ??
+          clean(vehicle.license_plate) ??
+          clean(vehicle.vin) ??
+          "Unit",
+        vehicleDescription: [vehicle.year, clean(vehicle.make), clean(vehicle.model)]
+          .filter(Boolean)
+          .join(" "),
+        title: clean(row.title) ?? "Service request",
+        summary: clean(row.summary) ?? "",
+        severity: clean(row.severity) ?? "recommend",
+        status: clean(row.status)?.toLowerCase() ?? "open",
+        createdAt: iso(row.created_at) ?? new Date().toISOString(),
+        updatedAt: iso(row.updated_at),
+        requestedForDate: clean(row.requested_for_date),
+        scheduledForDate: clean(row.scheduled_for_date),
+        sourcePmDueEventId: clean(row.source_pm_due_event_id),
+        workOrder: clean(workOrder.id)
+          ? {
+              id: String(workOrder.id),
+              reference:
+                clean(workOrder.custom_id) ??
+                `#${String(workOrder.id).slice(0, 8).toUpperCase()}`,
+              status: clean(workOrder.status) ?? "open",
+              approvalState,
+              needsApproval,
+              scheduledAt: iso(workOrder.scheduled_at),
+              expectedCompletionAt: iso(workOrder.expected_completion_at),
+              paymentStatus: clean(workOrder.payment_status) ?? "unpaid",
+              outstandingBalance: Number(workOrder.outstanding_balance) || 0,
+            }
+          : null,
       };
     });
 
-    return NextResponse.json({ requests: payload, fleetId });
+    return NextResponse.json({
+      canManage: actor.isInternal || actor.actorType === "fleet_manager",
+      summary: {
+        open: payload.filter((item) => item.status === "open").length,
+        scheduled: payload.filter((item) => item.status === "scheduled").length,
+        awaitingApproval: payload.filter((item) => item.workOrder?.needsApproval).length,
+        completed: payload.filter((item) =>
+          ["completed", "closed"].includes(item.status),
+        ).length,
+        terminal: payload.filter((item) =>
+          TERMINAL_REQUEST_STATUSES.has(item.status),
+        ).length,
+      },
+      requests: payload,
+    });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("[fleet/service-requests] unexpected error:", error);
+    console.error("[fleet/service-requests] error", error);
     return NextResponse.json(
-      { error: "Failed to load service requests." },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to load service requests",
+      },
       { status: 500 },
     );
   }

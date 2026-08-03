@@ -33,38 +33,43 @@ export async function GET(_request: Request, context: RouteContext) {
   if (
     !actor.userId ||
     !actor.shopId ||
-    !actor.isFleetActor ||
-    actor.fleetIds.length === 0
+    (!actor.isInternal &&
+      (!actor.isFleetActor || actor.fleetIds.length === 0))
   ) {
     return NextResponse.json({ error: "Fleet access required" }, { status: 403 });
   }
 
   const admin = createAdminSupabase();
-  const { data: enrollment, error: enrollmentError } = await admin
+  let enrollmentQuery = admin
     .from("fleet_vehicles")
     .select("fleet_id,shop_id")
     .eq("vehicle_id", unitId)
-    .in("fleet_id", actor.fleetIds)
-    .limit(1)
-    .maybeSingle();
-  if (enrollmentError || !enrollment?.fleet_id) {
+    .eq("shop_id", actor.shopId)
+    .limit(1);
+  if (!actor.isInternal) {
+    enrollmentQuery = enrollmentQuery.in("fleet_id", actor.fleetIds);
+  }
+  const { data: enrollment, error: enrollmentError } =
+    await enrollmentQuery.maybeSingle();
+  if (enrollmentError || !enrollment?.fleet_id || !enrollment.shop_id) {
     return NextResponse.json({ error: "Fleet unit not found" }, { status: 404 });
   }
 
-  const { data: membership, error: membershipError } = await admin
-    .from("fleet_members")
-    .select("shop_id")
-    .eq("user_id", actor.userId)
-    .eq("fleet_id", enrollment.fleet_id)
-    .maybeSingle();
-  const evidenceShopId = enrollment.shop_id ?? membership?.shop_id ?? null;
-  if (
-    !evidenceShopId ||
-    membershipError ||
-    !membership?.shop_id ||
-    membership.shop_id !== evidenceShopId
-  ) {
-    return NextResponse.json({ error: "Fleet unit not found" }, { status: 404 });
+  const evidenceShopId = enrollment.shop_id;
+  if (!actor.isInternal) {
+    const { data: membership, error: membershipError } = await admin
+      .from("fleet_members")
+      .select("shop_id")
+      .eq("user_id", actor.userId)
+      .eq("fleet_id", enrollment.fleet_id)
+      .maybeSingle();
+    if (
+      membershipError ||
+      !membership?.shop_id ||
+      membership.shop_id !== evidenceShopId
+    ) {
+      return NextResponse.json({ error: "Fleet unit not found" }, { status: 404 });
+    }
   }
 
   const { data: workOrders, error: workOrdersError } = await admin

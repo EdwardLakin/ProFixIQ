@@ -1,10 +1,9 @@
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
-import FleetServiceRequestsPage from "@/features/fleet/components/FleetServiceRequestsPage";
+import PretripReportsPage from "@/features/fleet/components/PretripReportsPage";
 import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
-export default async function FleetServiceRequestsRoutePage() {
+export default async function FleetPretripHistoryPage() {
   const supabase = createServerSupabaseRSC();
   const uiContext = await resolveFleetUiContext(supabase);
-
-  return <FleetServiceRequestsPage uiContext={uiContext} routePrefix="/fleet" />;
+  return <PretripReportsPage uiContext={uiContext} routePrefix="/fleet" />;
 }

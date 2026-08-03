@@ -1,0 +1,66 @@
+name: Fleet Premier Workspace Validation
+
+on:
+  pull_request:
+    paths:
+      - "app/api/fleet/**"
+      - "app/fleet/**"
+      - "app/portal/fleet/**"
+      - "features/fleet/**"
+      - "tests/fleet-operations-core.test.ts"
+      - "tests/fleet-premier-workspaces.test.ts"
+      - ".github/workflows/fleet-premier-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm typecheck
+      - name: Fleet lint
+        run: >-
+          pnpm exec eslint
+          app/api/fleet/ai-summary/route.ts
+          app/api/fleet/billing/checkout/route.ts
+          app/api/fleet/billing/route.ts
+          app/api/fleet/maintenance/route.ts
+          app/api/fleet/service-requests/route.ts
+          app/api/fleet/units/route.ts
+          "app/api/fleet/units/[unitId]/workspace/route.ts"
+          app/fleet/layout.tsx
+          app/fleet/maintenance/page.tsx
+          app/fleet/service-requests/page.tsx
+          "app/fleet/units/[unitId]/page.tsx"
+          app/portal/fleet/FleetShell.tsx
+          app/portal/fleet/maintenance/page.tsx
+          app/portal/fleet/service-requests/page.tsx
+          app/portal/fleet/units/page.tsx
+          "app/portal/fleet/units/[unitId]/page.tsx"
+          features/fleet/components/FleetAISummary.tsx
+          features/fleet/components/FleetBillingWorkspace.tsx
+          features/fleet/components/FleetControlTower.tsx
+          features/fleet/components/FleetMaintenanceWorkspace.tsx
+          features/fleet/components/FleetServiceRequestsPage.tsx
+          features/fleet/components/FleetUnitDetailWorkspace.tsx
+          features/fleet/components/FleetUnitsPage.tsx
+          features/fleet/components/FleetWorkspaceNav.tsx
+          features/fleet/types/workspace.ts
+          tests/fleet-premier-workspaces.test.ts
+      - name: Fleet contracts
+        run: >-
+          pnpm exec vitest run
+          tests/fleet-operations-core.test.ts
+          tests/fleet-premier-workspaces.test.ts

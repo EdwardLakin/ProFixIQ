@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Toaster, toast } from "sonner";
 import { Button } from "@shared/components/ui/Button";
 import SharedServiceRequestBuilder, {
@@ -148,6 +148,7 @@ function menuAppliesToUnit(item: MenuItem, unit: Unit) {
 
 export default function FleetRequestBuilderPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [context, setContext] = useState<BuilderContext | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState(
@@ -355,7 +356,11 @@ export default function FleetRequestBuilderPage() {
       }
 
       toast.success("Fleet service request sent to the shop.");
-      router.replace("/portal/fleet/service-requests");
+      router.replace(
+        pathname.startsWith("/fleet/")
+          ? "/fleet/service-requests"
+          : "/portal/fleet/service-requests",
+      );
     } catch (error) {
       toast.error(
         error instanceof Error

@@ -1,17 +1,13 @@
-import FleetUnitDetailWorkspace from "@/features/fleet/components/FleetUnitDetailWorkspace";
+import FleetMaintenanceWorkspace from "@/features/fleet/components/FleetMaintenanceWorkspace";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { resolveFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 
-type Props = { params: Promise<{ unitId: string }> };
-
-export default async function PortalFleetUnitDetailPage({ params }: Props) {
-  const { unitId } = await params;
+export default async function PortalFleetMaintenancePage() {
   const supabase = createServerSupabaseRSC();
   const uiContext = await resolveFleetUiContext(supabase);
 
   return (
-    <FleetUnitDetailWorkspace
-      unitId={unitId}
+    <FleetMaintenanceWorkspace
       uiContext={uiContext}
       routePrefix="/portal/fleet"
     />
