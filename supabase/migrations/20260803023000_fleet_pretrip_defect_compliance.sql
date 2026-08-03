@@ -708,11 +708,22 @@ begin
   if v_user_id is null then raise exception 'Authentication required'; end if;
   if coalesce(cardinality(p_defect_ids),0)=0 then raise exception 'Select at least one defect'; end if;
 
-  select count(*)::integer,min(d.fleet_id),min(d.vehicle_id),min(d.shop_id),min(d.source_pretrip_id)
-  into v_count,v_fleet_id,v_vehicle_id,v_shop_id,v_pretrip_id
+  perform 1
   from public.fleet_unit_defects d
   where d.id=any(p_defect_ids)
   for update;
+
+  select count(*)::integer
+  into v_count
+  from public.fleet_unit_defects d
+  where d.id=any(p_defect_ids);
+
+  select d.fleet_id,d.vehicle_id,d.shop_id,d.source_pretrip_id
+  into v_fleet_id,v_vehicle_id,v_shop_id,v_pretrip_id
+  from public.fleet_unit_defects d
+  where d.id=any(p_defect_ids)
+  order by d.id
+  limit 1;
 
   if v_count <> cardinality(p_defect_ids) then raise exception 'One or more defects were not found'; end if;
   if exists (
