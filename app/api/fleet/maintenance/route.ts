@@ -11,16 +11,14 @@ import {
 export const dynamic = "force-dynamic";
 
 type Row = Record<string, unknown>;
-type Body =
-  | { action?: "list"; fleetId?: string | null }
-  | { action: "evaluate"; fleetId: string; vehicleId?: string | null }
-  | {
-      action: "defer";
-      dueEventId: string;
-      deferredUntil: string;
-      reason: string;
-    }
-  | { action: "create_request"; dueEventId: string };
+type Body = {
+  action?: "list" | "evaluate" | "defer" | "create_request";
+  fleetId?: string | null;
+  vehicleId?: string | null;
+  dueEventId?: string;
+  deferredUntil?: string;
+  reason?: string;
+};
 
 function rows(value: unknown): Row[] {
   return Array.isArray(value) ? (value as Row[]) : [];
@@ -299,7 +297,7 @@ export async function POST(request: Request) {
       .eq("id", dueEventId)
       .maybeSingle();
     if (dueError) throw new Error(dueError.message);
-    if (!dueRow || !inActorScope(actor, dueRow as Row)) {
+    if (!dueRow || !inActorScope(actor, dueRow as unknown as Row)) {
       return NextResponse.json({ error: "PM item not found" }, { status: 404 });
     }
 
@@ -354,6 +352,10 @@ export async function POST(request: Request) {
       });
     }
 
+    const dueReasons = Array.isArray(dueRow.due_reasons)
+      ? dueRow.due_reasons.map(String)
+      : [];
+
     const { data: policy, error: policyError } = await admin
       .from("fleet_pm_policies")
       .select("id,name,interval_km,interval_hours,interval_days")
@@ -368,7 +370,7 @@ export async function POST(request: Request) {
         p_fleet_id: dueRow.fleet_id,
         p_vehicle_id: dueRow.vehicle_id,
         p_title: `${policyName} service`,
-        p_summary: `Preventive maintenance due: ${(dueRow.due_reasons ?? []).join(", ") || "policy interval reached"}.`,
+        p_summary: `Preventive maintenance due: ${dueReasons.join(", ") || "policy interval reached"}.`,
         p_requested_for_date: null,
         p_operation_key: operationKey,
         p_lines: [
@@ -385,7 +387,7 @@ export async function POST(request: Request) {
               intervalKm: policy?.interval_km ?? null,
               intervalHours: policy?.interval_hours ?? null,
               intervalDays: policy?.interval_days ?? null,
-              dueReasons: dueRow.due_reasons ?? [],
+              dueReasons,
             },
           },
         ],
