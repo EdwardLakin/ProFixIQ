@@ -32,7 +32,7 @@ function LoadingCard({ label }: { label: string }) {
 export default function PortalSignInPage() {
   return (
     <Suspense fallback={<LoadingCard label="Loading sign in…" />}>
-      <PortalSignInForm />
+      <PortalSignInForm portalType="customer" />
     </Suspense>
   );
 }
