@@ -125,6 +125,12 @@ export default function FleetUnitsPage({
         <p className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
           {uiContext.actorLabel}
         </p>
+        <Link
+          href={`${routePrefix}/pretrip-history`}
+          className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
+        >
+          Fleet-wide pre-trip history
+        </Link>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3">
