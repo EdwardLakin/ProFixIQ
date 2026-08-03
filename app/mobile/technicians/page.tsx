@@ -5,7 +5,6 @@ import {
   BriefcaseBusiness,
   ChevronRight,
   Clock3,
-  Gauge,
   TrendingUp,
   Users,
   Wrench,
