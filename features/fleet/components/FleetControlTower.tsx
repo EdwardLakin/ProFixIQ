@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import FleetSummaryCards from "./FleetSummaryCards";
 import FleetIssueTables from "./FleetIssueTables";
 import FleetAISummary from "./FleetAISummary";
 import FleetUnitEconomicsPanel from "./FleetUnitEconomicsPanel";
+import FleetDefectQueue from "./FleetDefectQueue";
 import WorkOrderBoardWidget from "@shared/components/workboard/WorkOrderBoardWidget";
 import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import {
@@ -49,6 +51,7 @@ export type DispatchAssignment = {
 type Props = {
   shopName: string;
   shopId?: string | null;
+  fleetId?: string | null;
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";
 };
@@ -80,6 +83,7 @@ function isDueInNextDays(nextInspectionDate?: string | null, days = 30) {
 export default function FleetControlTower({
   shopName,
   shopId,
+  fleetId,
   uiContext,
   routePrefix = "/fleet",
 }: Props) {
@@ -98,7 +102,10 @@ export default function FleetControlTower({
         const res = await fetch("/api/fleet/tower", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shopId: shopId ?? null }),
+          body: JSON.stringify({
+            shopId: shopId ?? null,
+            fleetId: fleetId ?? null,
+          }),
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -121,7 +128,7 @@ export default function FleetControlTower({
     return () => {
       cancelled = true;
     };
-  }, [shopId]);
+  }, [fleetId, shopId]);
 
   const units = useMemo(() => data?.units ?? [], [data?.units]);
   const issues = useMemo(() => data?.issues ?? [], [data?.issues]);
@@ -130,6 +137,10 @@ export default function FleetControlTower({
     [data?.assignments],
   );
   const isExternal = !uiContext.isInternal;
+  const todaysAssignment =
+    assignments.find((assignment) => assignment.state === "pretrip_due") ??
+    assignments[0] ??
+    null;
 
   const regions = useMemo(() => {
     const set = new Set<string>();
@@ -225,13 +236,39 @@ export default function FleetControlTower({
         />
       }
       issueTables={
-        <FleetIssueTables
-          units={filteredUnits}
-          issues={issues}
-          assignments={assignments}
-          uiContext={uiContext}
-          routePrefix={routePrefix}
-        />
+        <div className="space-y-4">
+          {uiContext.experience === "external_driver" && todaysAssignment ? (
+            <div className="metal-card flex flex-col gap-3 rounded-3xl border border-sky-400/25 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+                  Required today
+                </p>
+                <h2 className="mt-1 text-lg font-semibold">
+                  Pre-trip • {todaysAssignment.unitLabel}
+                </h2>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Enter mileage and engine hours, complete the walk-around, and submit defects.
+                </p>
+              </div>
+              <Link
+                href={`/portal/fleet/pretrip/${encodeURIComponent(todaysAssignment.unitId)}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-sky-300 px-4 py-2 text-sm font-semibold text-slate-950"
+              >
+                Start today’s pre-trip
+              </Link>
+            </div>
+          ) : null}
+          {uiContext.capabilities.canViewBroadFleetOperations ? (
+            <FleetDefectQueue fleetId={fleetId} />
+          ) : null}
+          <FleetIssueTables
+            units={filteredUnits}
+            issues={issues}
+            assignments={assignments}
+            uiContext={uiContext}
+            routePrefix={routePrefix}
+          />
+        </div>
       }
     />
   );
