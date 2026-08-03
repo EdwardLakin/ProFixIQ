@@ -65,14 +65,14 @@ type StatusKey =
   | "ready_to_invoice"
   | "invoiced";
 
+// Preserve the existing mobile work-order query contract. The refactor changes
+// presentation only; it does not broaden or reinterpret the canonical list.
 const NORMAL_FLOW_STATUSES: StatusKey[] = [
   "awaiting",
-  "assigned",
   "queued",
   "in_progress",
   "on_hold",
   "planned",
-  "new",
 ];
 
 const FILTERS: Array<{ value: string; label: string }> = [
@@ -406,7 +406,11 @@ export default function MobileWorkOrderQueue() {
               aria-label={searchOpen ? "Close search" : "Search work orders"}
               className="inline-grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 text-white"
             >
-              {searchOpen ? <X className="h-5 w-5" /> : <Search className="h-5 w-5" />}
+              {searchOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Search className="h-5 w-5" />
+              )}
             </button>
             <button
               type="button"
@@ -415,7 +419,9 @@ export default function MobileWorkOrderQueue() {
               className="inline-grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10 text-white disabled:opacity-55"
               disabled={refreshing}
             >
-              <RefreshCw className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`}
+              />
             </button>
           </div>
         </div>
@@ -439,7 +445,10 @@ export default function MobileWorkOrderQueue() {
 
       <section className="mt-3 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-[var(--mobile-shadow)]">
         <div className="flex items-center gap-2 overflow-x-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <Filter aria-hidden className="h-4 w-4 shrink-0 text-[color:var(--theme-text-muted)]" />
+          <Filter
+            aria-hidden
+            className="h-4 w-4 shrink-0 text-[color:var(--theme-text-muted)]"
+          />
           {FILTERS.map((filter) => {
             const active = status === filter.value;
             return (
@@ -460,7 +469,8 @@ export default function MobileWorkOrderQueue() {
         </div>
         <div className="flex items-center justify-between border-t border-[color:var(--theme-border-soft)] px-4 py-2.5 text-xs text-[color:var(--theme-text-secondary)]">
           <span>
-            {filteredRows.length} work order{filteredRows.length === 1 ? "" : "s"}
+            {filteredRows.length} work order
+            {filteredRows.length === 1 ? "" : "s"}
           </span>
           {!assignedOnly ? (
             <Link
@@ -557,7 +567,8 @@ export default function MobileWorkOrderQueue() {
                     </div>
 
                     <p className="mt-1.5 text-xs leading-4 text-[color:var(--theme-text-secondary)]">
-                      {signalText || "Open to review jobs and current operational state."}
+                      {signalText ||
+                        "Open to review jobs and current operational state."}
                     </p>
                   </div>
                   <ChevronRight
