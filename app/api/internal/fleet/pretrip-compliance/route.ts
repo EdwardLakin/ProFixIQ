@@ -5,21 +5,25 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function bearer(request: Request) {
-  const value = request.headers.get("authorization")?.trim() ?? "";
-  const [scheme, token] = value.split(/\s+/, 2);
-  return scheme?.toLowerCase() === "bearer" ? token ?? null : null;
-}
+function authorize(request: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+  const authorization = request.headers.get("authorization");
 
-export async function GET(request: Request) {
-  const gate = requireInternalApiSecret({
+  if (cronSecret && authorization === `Bearer ${cronSecret}`) {
+    return { ok: true } as const;
+  }
+
+  return requireInternalApiSecret({
     request,
     envSecretName: "INTERNAL_CRON_SECRET",
     headerName: "x-internal-cron-secret",
     routeLabel: "internal/fleet/pretrip-compliance",
   });
-  const configured = process.env.INTERNAL_CRON_SECRET;
-  if (!gate.ok && (!configured || bearer(request) !== configured)) {
+}
+
+export async function GET(request: Request) {
+  const gate = authorize(request);
+  if (!gate.ok) {
     return gate.response;
   }
 
