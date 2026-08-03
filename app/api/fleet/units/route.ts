@@ -54,16 +54,11 @@ function status(requests: Row[]): FleetUnitListItem["status"] {
   return active.length ? "limited" : "in_service";
 }
 
-export async function POST(request: Request) {
+export async function POST(_request: Request) {
   try {
-    const body = (await request.json().catch(() => ({}))) as {
-      shopId?: string | null;
-    };
     const supabase = createServerSupabaseRoute();
     const actor = await resolveFleetActorContext(supabase);
-    const scope = resolveFleetActorScope(actor, {
-      explicitShopId: body.shopId ?? null,
-    });
+    const scope = resolveFleetActorScope(actor);
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
