@@ -9,6 +9,7 @@ import { isStandalonePublicRoute } from "@/features/shared/lib/routes/shellBound
 
 import "./mobile-command.css";
 import "./mobile-command-overrides.css";
+import "./mobile-route-surfaces.css";
 
 export default function MobileLayout({
   children,
