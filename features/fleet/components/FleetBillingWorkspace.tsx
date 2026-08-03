@@ -101,7 +101,7 @@ export default function FleetBillingWorkspace({
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  async function load(signal?: AbortSignal) {
     setLoading(true);
     setError(null);
     try {
@@ -110,6 +110,7 @@ export default function FleetBillingWorkspace({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "list" }),
         cache: "no-store",
+        signal,
       });
       const body = (await response.json().catch(() => ({}))) as Payload & {
         error?: string;
@@ -118,14 +119,20 @@ export default function FleetBillingWorkspace({
       setPayload(body);
       if (body.summary.approvals === 0) setFilter("unpaid");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to load fleet billing");
+      if (!signal?.aborted) {
+        setError(
+          cause instanceof Error ? cause.message : "Unable to load fleet billing",
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
   }, []);
 
   const visible = useMemo(() => {
