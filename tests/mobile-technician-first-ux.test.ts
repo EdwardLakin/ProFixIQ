@@ -103,7 +103,10 @@ describe("technician-first mobile UX", () => {
       "export async function fetchAssignedTechnicianWork",
     );
     expect(technicianFeed).toContain(
-      "assigned_to.eq.${user.id},user_id.eq.${user.id}",
+      "assigned_tech_id.eq.${technicianId},assigned_to.eq.${technicianId},user_id.eq.${technicianId}",
+    );
+    expect(technicianFeed).toContain(
+      '.from("work_order_line_technicians")',
     );
     expect(technicianFeed).toContain(
       '.or("type.neq.historical_import,type.is.null")',
