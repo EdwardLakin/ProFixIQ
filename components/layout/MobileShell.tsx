@@ -76,6 +76,12 @@ export function MobileShell({ children, title }: Props) {
   const resolvedTitle = title ?? getTitleFromPath(pathname);
 
   useEffect(() => {
+    const openMenu = () => setMenuOpen(true);
+    window.addEventListener("profixiq:mobile-menu-open", openMenu);
+    return () => window.removeEventListener("profixiq:mobile-menu-open", openMenu);
+  }, []);
+
+  useEffect(() => {
     const keepNavigationMobile = (event: MouseEvent) => {
       const element = event.target instanceof Element ? event.target : null;
       const anchor = element?.closest("a[href]") as HTMLAnchorElement | null;
@@ -96,8 +102,6 @@ export function MobileShell({ children, title }: Props) {
 
       if (isSharedDestination(anchor.pathname)) return;
 
-      // Mobile navigation fails closed. A missed desktop-only destination must
-      // never open the desktop application shell from inside the mobile app.
       event.preventDefault();
       event.stopPropagation();
       if (currentHref !== "/mobile") router.push("/mobile");
