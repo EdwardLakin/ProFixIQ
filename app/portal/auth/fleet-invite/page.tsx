@@ -34,11 +34,6 @@ export default function FleetInvitePage() {
     let cancelled = false;
     void (async () => {
       try {
-        const code = searchParams.get("code")?.trim();
-        if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-          if (exchangeError) throw new Error("This invitation could not be verified.");
-        }
         const response = await fetch(`/api/portal/fleet/invites/preview?token=${encodeURIComponent(token)}`, { cache: "no-store" });
         const payload = (await response.json().catch(() => null)) as { invite?: Invite; error?: string } | null;
         if (!response.ok || !payload?.invite) throw new Error(payload?.error || "This fleet invitation is unavailable.");
@@ -52,26 +47,31 @@ export default function FleetInvitePage() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, supabase, token]);
+  }, [token]);
 
   async function activate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (password.length < 12) return setError("Use at least 12 characters for your password.");
+    if (password.length < 12 || password.length > 128) return setError("Use between 12 and 128 characters for your password.");
     if (password !== confirmPassword) return setError("Passwords do not match.");
     setSubmitting(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) throw new Error("Open the one-time invitation email on this device before activating access.");
-      const { error: passwordError } = await supabase.auth.updateUser({ password });
-      if (passwordError) throw new Error("Your password could not be saved. Try a different password.");
       const response = await fetch("/api/portal/fleet/invites/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token, password }),
       });
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error || "Fleet access could not be activated.");
+      const payload = (await response.json().catch(() => null)) as { email?: string; error?: string } | null;
+      if (!response.ok || !payload?.email) throw new Error(payload?.error || "Fleet access could not be activated.");
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: payload.email,
+        password,
+      });
+      if (signInError) {
+        throw new Error("Fleet access is active, but automatic sign-in failed. Sign in through the fleet portal with the password you just created.");
+      }
+
       router.replace("/portal/fleet");
       router.refresh();
     } catch (value) {
@@ -111,9 +111,9 @@ export default function FleetInvitePage() {
           <form onSubmit={activate} className="mt-5 space-y-4">
             <div>
               <label htmlFor="fleet-password" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">Create password</label>
-              <div className="relative"><input id="fleet-password" className={`${inputClass} pr-11`} type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 12 characters" required minLength={12} /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute inset-y-0 right-0 grid w-11 place-items-center text-[color:var(--theme-text-muted)]">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
+              <div className="relative"><input id="fleet-password" className={`${inputClass} pr-11`} type={showPassword ? "text" : "password"} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 12 characters" required minLength={12} maxLength={128} /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute inset-y-0 right-0 grid w-11 place-items-center text-[color:var(--theme-text-muted)]">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
             </div>
-            <div><label htmlFor="fleet-confirm" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">Confirm password</label><input id="fleet-confirm" className={inputClass} type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></div>
+            <div><label htmlFor="fleet-confirm" className="mb-1.5 block text-xs font-semibold text-[color:var(--theme-text-secondary)]">Confirm password</label><input id="fleet-confirm" className={inputClass} type={showPassword ? "text" : "password"} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={12} maxLength={128} /></div>
             <button type="submit" disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] disabled:opacity-60">{submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}{submitting ? "Activating…" : "Create account & continue"}</button>
           </form>
           <div className="mt-4 text-center text-[11px] text-[color:var(--theme-text-muted)]">Invitation expires {new Date(invite.expiresAt).toLocaleDateString()}.</div>
