@@ -4,11 +4,13 @@ on:
   pull_request:
     paths:
       - "app/api/fleet/**"
+      - "app/api/internal/fleet/**"
       - "app/fleet/**"
       - "app/portal/fleet/**"
       - "features/fleet/**"
       - "tests/fleet-operations-core.test.ts"
       - "tests/fleet-premier-workspaces.test.ts"
+      - "tests/fleet-pretrip-defect-compliance.test.ts"
       - ".github/workflows/fleet-premier-validation.yml"
 
 permissions:
@@ -39,6 +41,7 @@ jobs:
           app/api/fleet/maintenance/route.ts
           app/api/fleet/service-requests/route.ts
           app/api/fleet/units/route.ts
+          app/api/internal/fleet/pretrip-compliance/route.ts
           "app/api/fleet/units/[unitId]/workspace/route.ts"
           app/fleet/layout.tsx
           app/fleet/maintenance/page.tsx
@@ -59,8 +62,10 @@ jobs:
           features/fleet/components/FleetWorkspaceNav.tsx
           features/fleet/types/workspace.ts
           tests/fleet-premier-workspaces.test.ts
+          tests/fleet-pretrip-defect-compliance.test.ts
       - name: Fleet contracts
         run: >-
           pnpm exec vitest run
           tests/fleet-operations-core.test.ts
           tests/fleet-premier-workspaces.test.ts
+          tests/fleet-pretrip-defect-compliance.test.ts

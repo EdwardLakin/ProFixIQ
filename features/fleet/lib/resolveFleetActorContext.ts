@@ -229,6 +229,7 @@ export type FleetActorScope = {
 type ResolveFleetActorScopeInput = {
   explicitShopId?: string | null;
   explicitFleetId?: string | null;
+  preferMembershipFleet?: boolean;
 };
 
 export function resolveFleetActorScope(
@@ -250,10 +251,16 @@ export function resolveFleetActorScope(
 
     if (!scopedShopId) return null;
 
+    const membershipFleetId =
+      input?.preferMembershipFleet && actor.primaryFleetId
+        ? actor.primaryFleetId
+        : null;
+    const scopedFleetId = explicitFleetId ?? membershipFleetId;
+
     return {
       shopId: scopedShopId,
-      fleetId: explicitFleetId ?? null,
-      fleetIds: explicitFleetId ? [explicitFleetId] : null,
+      fleetId: scopedFleetId,
+      fleetIds: scopedFleetId ? [scopedFleetId] : null,
     };
   }
 

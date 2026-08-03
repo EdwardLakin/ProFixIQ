@@ -108,12 +108,17 @@ export async function POST(req: NextRequest) {
     const actor = await resolveFleetActorContext(supabase, {
       requestedFleetId: body.fleetId ?? null,
     });
-    if (!actor.userId || !actor.capabilities.canRunFleetDispatchActions) {
+    if (
+      !actor.userId ||
+      (!actor.capabilities.canRunFleetDispatchActions &&
+        !actor.capabilities.canAccessPortalFleetWrappers)
+    ) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const scope = resolveFleetActorScope(actor, {
       explicitFleetId: body.fleetId ?? null,
       explicitShopId: body.shopId ?? null,
+      preferMembershipFleet: true,
     });
     const fleetId = scope?.fleetId;
 
@@ -210,12 +215,17 @@ export async function POST(req: NextRequest) {
     // ────────────────────────────────────────────────────────────────────────
     // 2) Dispatch assignments (pre-trip & who’s where)
     // ────────────────────────────────────────────────────────────────────────
-    const { data: dispatchRaw, error: dispatchError } = await supabase
+    let dispatchQuery = supabase
       .from("fleet_dispatch_assignments")
       .select(
         "id, fleet_id, shop_id, vehicle_id, driver_profile_id, driver_name, route_label, next_pretrip_due, state, unit_label, vehicle_identifier",
       )
-      .eq("fleet_id", fleetId);
+      .eq("fleet_id", fleetId)
+      .eq("active", true);
+    if (actor.actorType === "fleet_driver") {
+      dispatchQuery = dispatchQuery.eq("driver_profile_id", actor.userId);
+    }
+    const { data: dispatchRaw, error: dispatchError } = await dispatchQuery;
 
     if (dispatchError) {
       // eslint-disable-next-line no-console
@@ -304,7 +314,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const vehicleIds = Array.from(vehicleIdSet);
+    const vehicleIds =
+      actor.actorType === "fleet_driver"
+        ? Array.from(new Set(dispatchRows.map((row) => row.vehicle_id)))
+        : Array.from(vehicleIdSet);
 
     // ────────────────────────────────────────────────────────────────────────
     // 5) Group service requests by vehicle for quick lookups
@@ -367,7 +380,10 @@ export async function POST(req: NextRequest) {
     // ────────────────────────────────────────────────────────────────────────
     // 7) Build issues payload
     // ────────────────────────────────────────────────────────────────────────
-    const issues: FleetIssue[] = serviceRequestsTyped.map((sr) => {
+    const visibleVehicleIds = new Set(vehicleIds);
+    const issues: FleetIssue[] = serviceRequestsTyped
+      .filter((sr) => visibleVehicleIds.has(sr.vehicle_id))
+      .map((sr) => {
       const meta = vehicleMeta.get(sr.vehicle_id) ?? {
         label: "Unit",
         plate: null,

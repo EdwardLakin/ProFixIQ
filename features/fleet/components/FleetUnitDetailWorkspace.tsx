@@ -49,10 +49,12 @@ function priorityClass(priority: FleetPriority) {
 
 export default function FleetUnitDetailWorkspace({
   unitId,
+  fleetId,
   uiContext,
   routePrefix,
 }: {
   unitId: string;
+  fleetId?: string | null;
   uiContext: FleetUiContext;
   routePrefix: RoutePrefix;
 }) {
@@ -66,7 +68,7 @@ export default function FleetUnitDetailWorkspace({
     void (async () => {
       try {
         const response = await fetch(
-          `/api/fleet/units/${encodeURIComponent(unitId)}/workspace`,
+          `/api/fleet/units/${encodeURIComponent(unitId)}/workspace${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`,
           { cache: "no-store" },
         );
         const body = (await response.json().catch(() => ({}))) as
@@ -91,7 +93,7 @@ export default function FleetUnitDetailWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [unitId]);
+  }, [fleetId, unitId]);
 
   const pendingQuotes = useMemo(
     () =>
@@ -152,6 +154,14 @@ export default function FleetUnitDetailWorkspace({
                   ? "Limited use"
                   : "In service"}
             </span>
+            {routePrefix === "/portal/fleet" && uiContext.capabilities.canSubmitPretrip ? (
+              <Link
+                href={`/portal/fleet/pretrip/${encodeURIComponent(unitId)}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
+                className="rounded-xl border border-sky-300/40 px-4 py-2 text-xs font-semibold text-sky-200"
+              >
+                Today’s pre-trip
+              </Link>
+            ) : null}
             {uiContext.capabilities.canCreateFleetWorkOrders ? (
               <Link
                 href={
@@ -167,11 +177,12 @@ export default function FleetUnitDetailWorkspace({
           </div>
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
           {[
             ["Odometer", data.unit.currentOdometerKm == null ? "—" : `${data.unit.currentOdometerKm.toLocaleString()} km`],
             ["Engine hours", data.unit.currentEngineHours == null ? "—" : data.unit.currentEngineHours.toLocaleString()],
             ["PM due", data.metrics.activePmDue],
+            ["Open defects", data.metrics.activeDefects],
             ["Open requests", data.metrics.openRequests],
             ["Approvals", data.metrics.openApprovals],
             ["Outstanding", money(data.metrics.outstandingBalance, data.workOrders.find((row) => row.invoice)?.invoice?.currency ?? "CAD")],
@@ -275,6 +286,36 @@ export default function FleetUnitDetailWorkspace({
               ))}
               {data.metrics.openRequests === 0 ? (
                 <p className="text-sm text-[color:var(--theme-text-secondary)]">No open service requests.</p>
+              ) : null}
+            </div>
+          </section>
+          <section className={`${card} lg:col-span-2`}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Tracked pre-trip defects</h2>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  Durable history from driver report through request, work order, and resolution.
+                </p>
+              </div>
+              <span className="rounded-full bg-amber-400/10 px-3 py-1 text-[10px] font-semibold uppercase text-amber-100">
+                {data.metrics.activeDefects} active
+              </span>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {data.defects.slice(0, 12).map((defect) => (
+                <div key={defect.id} className="rounded-xl border border-[color:var(--theme-border-soft)] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">{defect.label}</span>
+                    <span className="text-[10px] uppercase">{defect.severity} • {defect.state}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                    {dateLabel(defect.reportedAt)}
+                    {defect.description ? ` • ${defect.description}` : ""}
+                  </p>
+                </div>
+              ))}
+              {!data.defects.length ? (
+                <p className="text-sm text-[color:var(--theme-text-secondary)]">No defects have been reported for this unit.</p>
               ) : null}
             </div>
           </section>
