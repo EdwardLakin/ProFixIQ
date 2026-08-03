@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  isPortalPathForSurface,
+  resolvePortalSurfaceRedirect,
+} from "../features/auth/lib/portalSurfaceRouting";
+import {
   isSafeInternalRedirect,
   safeInternalRedirect,
 } from "../features/auth/lib/safeRedirect";
@@ -25,6 +29,30 @@ describe("authentication and portal hardening", () => {
     );
     expect(isSafeInternalRedirect("/portal?tab=quotes", allowed)).toBe(true);
     expect(isSafeInternalRedirect("/portal\\evil", allowed)).toBe(false);
+  });
+
+  it("keeps customer and fleet sign-in routes on separate portal surfaces", () => {
+    expect(isPortalPathForSurface("/portal/fleet", "fleet")).toBe(true);
+    expect(isPortalPathForSurface("/portal/fleet/units", "customer")).toBe(false);
+    expect(isPortalPathForSurface("/portal/invoices", "customer")).toBe(true);
+    expect(
+      resolvePortalSurfaceRedirect("/portal", "/portal/fleet", "fleet"),
+    ).toBe("/portal/fleet");
+    expect(
+      resolvePortalSurfaceRedirect("/portal/fleet", "/portal", "customer"),
+    ).toBe("/portal");
+
+    const customerSignIn = read("app/portal/auth/sign-in/page.tsx");
+    const fleetSignIn = read("app/portal/fleet/auth/sign-in/page.tsx");
+    const signInForm = read("app/portal/auth/sign-in/PortalSignInForm.tsx");
+    const middleware = read("middleware.ts");
+
+    expect(customerSignIn).toContain('portalType="customer"');
+    expect(fleetSignIn).toContain('portalType="fleet"');
+    expect(signInForm).not.toContain('setPortalType');
+    expect(signInForm).toContain("resolvePortalSurfaceRedirect");
+    expect(middleware).toContain("isFleetPortalAuthPage");
+    expect(middleware).toContain("PORTAL_SIGN_IN[surface]");
   });
 
   it("keeps email identity resolution inside the server-owned sign-in exchange", () => {
