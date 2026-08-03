@@ -45,12 +45,24 @@ describe("authentication and portal hardening", () => {
     const customerSignIn = read("app/portal/auth/sign-in/page.tsx");
     const fleetSignIn = read("app/portal/auth/fleet-sign-in/page.tsx");
     const signInForm = read("app/portal/auth/sign-in/PortalSignInForm.tsx");
+    const fleetActorResolver = read(
+      "features/fleet/lib/resolveFleetActorContext.ts",
+    );
     const middleware = read("middleware.ts");
 
     expect(customerSignIn).toContain('portalType="customer"');
     expect(fleetSignIn).toContain('portalType="fleet"');
     expect(signInForm).not.toContain('setPortalType');
     expect(signInForm).toContain("resolvePortalSurfaceRedirect");
+    expect(fleetActorResolver).toContain(
+      'const hasFleetPortalMembership = fleetTier !== "none";',
+    );
+    expect(fleetActorResolver).toContain(
+      "canAccessPortalFleetWrappers: hasFleetPortalMembership",
+    );
+    expect(fleetActorResolver).not.toContain(
+      "canAccessPortalFleetWrappers: isFleetActor",
+    );
     expect(middleware).toContain("isFleetPortalAuthPage");
     expect(middleware).toContain("PORTAL_SIGN_IN[surface]");
   });
