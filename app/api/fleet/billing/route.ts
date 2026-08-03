@@ -316,7 +316,8 @@ export async function POST(request: Request) {
       p_quote_line_ids: quoteLineIds,
       p_decision: decision,
       p_decline_remaining: false,
-      p_customer_id: null,
+      // The SQL contract permits NULL; generated RPC args model it as string.
+      p_customer_id: null as unknown as string,
       p_actor_user_id: actor.userId,
       p_operation_key: `fleet:${operationKey}`,
       p_at: new Date().toISOString(),
