@@ -50,9 +50,9 @@ describe("premier fleet workspaces", () => {
     expect(route).toContain('action === "defer"');
     expect(route).toContain("create_fleet_service_request_atomic");
     expect(route).toContain("actorUserId");
-    expect(workspace).toContain("Create service request");
-    expect(workspace).toContain("Program overview");
-    expect(workspace).toContain("Deferral reason");
+    expect(workspace).toContain("Create request");
+    expect(workspace).toContain("PM programs");
+    expect(workspace).toContain("Confirm deferral");
   });
 
   it("keeps the service request lifecycle in one shared staff and portal view", () => {
