@@ -3917,12 +3917,17 @@ export type Database = {
       }
       fleet_dispatch_assignments: {
         Row: {
+          active: boolean
+          assigned_at: string
+          assigned_by: string | null
           created_at: string
           driver_name: string | null
           driver_profile_id: string
           fleet_id: string
           id: string
           next_pretrip_due: string | null
+          pretrip_due_local_time: string
+          pretrip_required: boolean
           route_label: string | null
           shop_id: string
           state: string
@@ -3932,12 +3937,17 @@ export type Database = {
           vehicle_identifier: string | null
         }
         Insert: {
+          active?: boolean
+          assigned_at?: string
+          assigned_by?: string | null
           created_at?: string
           driver_name?: string | null
           driver_profile_id: string
           fleet_id: string
           id?: string
           next_pretrip_due?: string | null
+          pretrip_due_local_time?: string
+          pretrip_required?: boolean
           route_label?: string | null
           shop_id: string
           state?: string
@@ -3947,12 +3957,17 @@ export type Database = {
           vehicle_identifier?: string | null
         }
         Update: {
+          active?: boolean
+          assigned_at?: string
+          assigned_by?: string | null
           created_at?: string
           driver_name?: string | null
           driver_profile_id?: string
           fleet_id?: string
           id?: string
           next_pretrip_due?: string | null
+          pretrip_due_local_time?: string
+          pretrip_required?: boolean
           route_label?: string | null
           shop_id?: string
           state?: string
@@ -3962,6 +3977,13 @@ export type Database = {
           vehicle_identifier?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fleet_dispatch_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fleet_dispatch_assignments_driver_profile_id_fkey"
             columns: ["driver_profile_id"]
@@ -4453,6 +4475,123 @@ export type Database = {
           },
         ]
       }
+      fleet_pretrip_compliance: {
+        Row: {
+          assignment_id: string
+          completed_at: string | null
+          created_at: string
+          driver_profile_id: string
+          due_at: string
+          excuse_reason: string | null
+          excused_at: string | null
+          excused_by: string | null
+          fleet_id: string
+          id: string
+          notification_fingerprint: string | null
+          pretrip_report_id: string | null
+          service_date: string
+          shop_id: string
+          status: string
+          updated_at: string
+          vehicle_id: string
+        }
+        Insert: {
+          assignment_id: string
+          completed_at?: string | null
+          created_at?: string
+          driver_profile_id: string
+          due_at: string
+          excuse_reason?: string | null
+          excused_at?: string | null
+          excused_by?: string | null
+          fleet_id: string
+          id?: string
+          notification_fingerprint?: string | null
+          pretrip_report_id?: string | null
+          service_date: string
+          shop_id: string
+          status?: string
+          updated_at?: string
+          vehicle_id: string
+        }
+        Update: {
+          assignment_id?: string
+          completed_at?: string | null
+          created_at?: string
+          driver_profile_id?: string
+          due_at?: string
+          excuse_reason?: string | null
+          excused_at?: string | null
+          excused_by?: string | null
+          fleet_id?: string
+          id?: string
+          notification_fingerprint?: string | null
+          pretrip_report_id?: string | null
+          service_date?: string
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_pretrip_compliance_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_dispatch_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_compliance_driver_profile_id_fkey"
+            columns: ["driver_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_compliance_excused_by_fkey"
+            columns: ["excused_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_compliance_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_compliance_pretrip_report_id_fkey"
+            columns: ["pretrip_report_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_pretrip_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_compliance_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_compliance_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_pretrip_compliance_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_pretrip_reports: {
         Row: {
           checklist: Json
@@ -4922,6 +5061,183 @@ export type Database = {
           },
           {
             foreignKeyName: "fleet_service_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_unit_defects: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          created_at: string
+          defect_key: string
+          deferred_reason: string | null
+          deferred_until: string | null
+          description: string | null
+          fleet_id: string
+          id: string
+          label: string
+          reported_at: string
+          reported_by: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          service_request_id: string | null
+          severity: string
+          shop_id: string
+          source_pretrip_id: string
+          state: string
+          updated_at: string
+          vehicle_id: string
+          work_order_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          defect_key: string
+          deferred_reason?: string | null
+          deferred_until?: string | null
+          description?: string | null
+          fleet_id: string
+          id?: string
+          label: string
+          reported_at?: string
+          reported_by?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          service_request_id?: string | null
+          severity: string
+          shop_id: string
+          source_pretrip_id: string
+          state?: string
+          updated_at?: string
+          vehicle_id: string
+          work_order_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          defect_key?: string
+          deferred_reason?: string | null
+          deferred_until?: string | null
+          description?: string | null
+          fleet_id?: string
+          id?: string
+          label?: string
+          reported_at?: string
+          reported_by?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          service_request_id?: string | null
+          severity?: string
+          shop_id?: string
+          source_pretrip_id?: string
+          state?: string
+          updated_at?: string
+          vehicle_id?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_unit_defects_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_service_request_id_fkey"
+            columns: ["service_request_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_service_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_source_pretrip_id_fkey"
+            columns: ["source_pretrip_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_pretrip_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "fleet_unit_defects_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
@@ -6706,6 +7022,89 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_pricing_overrides: {
+        Row: {
+          created_at: string
+          line_labor_totals: Json
+          part_unit_prices: Json
+          shop_id: string
+          shop_supplies_amount: number | null
+          updated_at: string
+          updated_by: string | null
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          line_labor_totals?: Json
+          part_unit_prices?: Json
+          shop_id: string
+          shop_supplies_amount?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          line_labor_totals?: Json
+          part_unit_prices?: Json
+          shop_id?: string
+          shop_supplies_amount?: number | null
+          updated_at?: string
+          updated_by?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_pricing_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "invoice_pricing_overrides_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -24298,6 +24697,10 @@ export type Database = {
           vehicle_id: string
         }[]
       }
+      evaluate_fleet_pretrip_compliance: {
+        Args: { p_at?: string }
+        Returns: Json
+      }
       fail_stripe_webhook_event: {
         Args: { p_claim_token: string; p_error: string; p_event_id: string }
         Returns: boolean
@@ -24390,6 +24793,8 @@ export type Database = {
         Returns: Json
       }
       first_segment_uuid: { Args: { p: string }; Returns: string }
+      fleet_defect_descriptor: { Args: { p_key: string }; Returns: Json }
+      get_fleet_defect_queue: { Args: { p_fleet_id?: string }; Returns: Json }
       get_invoice_net_issued_parts: {
         Args: { p_shop_id: string; p_work_order_id: string }
         Returns: Json
@@ -24460,6 +24865,34 @@ export type Database = {
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_shop_member_v2: { Args: { shop_id: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
+      manage_fleet_unit_defects: {
+        Args: {
+          p_action: string
+          p_defect_ids: string[]
+          p_deferred_until?: string
+          p_reason?: string
+          p_requested_for_date?: string
+        }
+        Returns: Json
+      }
+      manage_fleet_unit_enrollment: {
+        Args: {
+          p_action: string
+          p_driver_profile_id?: string
+          p_fleet_id: string
+          p_license_plate?: string
+          p_make?: string
+          p_model?: string
+          p_nickname?: string
+          p_pretrip_due_local_time?: string
+          p_route_label?: string
+          p_unit_number?: string
+          p_vehicle_id?: string
+          p_vin?: string
+          p_year?: number
+        }
+        Returns: Json
+      }
       mark_active: { Args: never; Returns: undefined }
       mark_all_portal_notifications_read: { Args: never; Returns: number }
       mark_financial_outbox_delivery_ambiguous: {
@@ -25420,6 +25853,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      sync_fleet_defect_notification: {
+        Args: { p_pretrip_id: string }
+        Returns: undefined
+      }
       sync_quote_line_pricing_from_parts: {
         Args: { p_quote_line_id: string; p_shop_id: string }
         Returns: Json
@@ -25521,6 +25958,15 @@ export type Database = {
         Returns: number
       }
       work_order_delete_draft_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      work_order_delete_empty_shell_atomic: {
         Args: {
           p_actor_user_id: string
           p_operation_key: string
