@@ -125,12 +125,22 @@ export default function FleetUnitsPage({
         <p className="mt-1 text-[10px] text-[color:var(--theme-text-muted)]">
           {uiContext.actorLabel}
         </p>
-        <Link
-          href={`${routePrefix}/pretrip-history`}
-          className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
-        >
-          Fleet-wide pre-trip history
-        </Link>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            href={`${routePrefix}/pretrip-history`}
+            className="inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
+          >
+            Fleet-wide pre-trip history
+          </Link>
+          {routePrefix === "/fleet" && uiContext.capabilities.canManageUnits ? (
+            <Link
+              href="/fleet/units/new"
+              className="inline-flex min-h-10 items-center rounded-xl bg-sky-300 px-3 py-2 text-xs font-semibold text-slate-950"
+            >
+              Enroll units & assign drivers
+            </Link>
+          ) : null}
+        </div>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3">
