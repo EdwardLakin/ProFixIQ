@@ -205,7 +205,7 @@ export default function FleetControlTower({
       aiSummary={
         <div className="space-y-4">
           <div className="metal-card rounded-3xl p-4">
-            <FleetAISummary shopId={shopId ?? null} />
+            <FleetAISummary shopId={shopId ?? null} routePrefix={routePrefix} />
           </div>
           <div className="metal-card rounded-3xl p-4">
             <FleetUnitEconomicsPanel
