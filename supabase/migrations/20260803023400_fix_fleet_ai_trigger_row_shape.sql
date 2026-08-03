@@ -256,6 +256,6 @@ begin
 
   return new;
 end;
-$function$
+$function$;
 
 revoke execute on function public.capture_fleet_ai_event() from public, anon, authenticated;
